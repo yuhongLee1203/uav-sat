@@ -1,5 +1,6 @@
 import math
 from dataclasses import dataclass
+from typing import List, Optional
 
 import open_clip
 import torch
@@ -206,328 +207,299 @@ class AllMapGeoCLIP(nn.Module):
         return relation.reshape(pair.shape[0], pair.shape[1], -1)
 
 
+
 @dataclass
-class TemporalOutput:
-    hidden: torch.Tensor
-    delta_local: torch.Tensor
-    motion_logvar: torch.Tensor
-    motion_center: torch.Tensor
-    posterior_logits: torch.Tensor
-    posterior_prob: torch.Tensor
-    visual_expectation: torch.Tensor
+class LatticeOutput:
+    emission_logits: torch.Tensor
+    path_probability: torch.Tensor
+    path_expectation: torch.Tensor
     final_xy: torch.Tensor
     correction_gate: torch.Tensor
-    entropy: torch.Tensor
-    spatial_std: torch.Tensor
+    path_entropy: torch.Tensor
+    emission_entropy: torch.Tensor
+    crf_nll: Optional[torch.Tensor]
 
 
-class TemporalMotionRetriever(nn.Module):
-    """Temporal Motion-Conditioned Retrieval (TMCR).
+class TemporalLatticeCRF(nn.Module):
+    """Residual second-order CRF over consecutive retrieval lattices.
 
-    1. Frozen spatial feature correlation estimates frame-to-frame motion.
-    2. A causal GRU accumulates the last frames into a temporal state.
-    3. The state cross-attends to all SAT candidates and re-ranks the frozen
-       retrieval logits.
-    4. A learned uncertainty gate combines motion prediction and the decoded
-       visual posterior.  There are no hand-written accept/reject thresholds.
+    Each frame contributes all candidate nodes rather than one early Top-1.
+    A learned second-order transition potential scores velocity continuation
+    and acceleration, so the model learns which candidate sequence is visually
+    strong and approximately straight.  The final prediction is a learned
+    residual correction of Fixed HardMS, which makes the visual baseline an
+    explicit fallback instead of allowing catastrophic temporal drift.
     """
 
-    def __init__(self, spatial_channels):
+    def __init__(self):
         super().__init__()
-        spatial_size = int(config.MOTION_SPATIAL_SIZE)
-        correlation_dim = spatial_size**4
+        token_dim = int(config.TOKEN_DIM)
+        dropout = float(config.TEMPORAL_DROPOUT)
 
-        self.spatial_projection = nn.Sequential(
-            nn.Conv2d(
-                int(spatial_channels),
-                int(config.MOTION_CORR_CHANNELS),
-                kernel_size=1,
-                bias=False,
-            ),
-            nn.GroupNorm(8, int(config.MOTION_CORR_CHANNELS)),
+        self.uav_projection = nn.Sequential(
+            nn.Linear(config.EMBED_DIM, token_dim),
             nn.GELU(),
+            nn.Dropout(dropout),
         )
-        self.correlation_encoder = nn.Sequential(
-            nn.Linear(correlation_dim, 256),
+        self.sat_projection = nn.Sequential(
+            nn.Linear(config.EMBED_DIM, token_dim),
             nn.GELU(),
-            nn.Dropout(config.TEMPORAL_DROPOUT),
-            nn.Linear(256, config.MOTION_FEATURE_DIM),
+            nn.Dropout(dropout),
         )
-        self.global_pair_encoder = nn.Sequential(
-            nn.Linear(config.CLIP_DIM * 4, 512),
+        self.numeric_projection = nn.Sequential(
+            nn.Linear(5, token_dim),
             nn.GELU(),
-            nn.Dropout(config.TEMPORAL_DROPOUT),
-            nn.Linear(512, config.GLOBAL_PAIR_DIM),
+            nn.Linear(token_dim, token_dim),
         )
-        self.state_encoder = nn.Sequential(
-            nn.Linear(4, 64),
+        self.emission_head = nn.Sequential(
+            nn.LayerNorm(token_dim),
+            nn.Linear(token_dim, token_dim // 2),
             nn.GELU(),
-            nn.Linear(64, 32),
+            nn.Dropout(dropout),
+            nn.Linear(token_dim // 2, 1),
         )
-        gru_input = config.MOTION_FEATURE_DIM + config.GLOBAL_PAIR_DIM + 32
-        self.temporal_gru = nn.GRUCell(gru_input, config.TEMPORAL_HIDDEN)
+        # softplus(0.5413) ~= 1, therefore the untrained model retains the raw
+        # retrieval ordering while learning a residual emission calibration.
+        self.raw_logit_weight = nn.Parameter(torch.tensor(0.5413249))
 
-        self.motion_head = nn.Sequential(
-            nn.Linear(config.TEMPORAL_HIDDEN, config.TEMPORAL_HIDDEN),
+        hidden = int(config.TRANSITION_HIDDEN)
+        self.first_transition = nn.Sequential(
+            nn.Linear(3, hidden),
             nn.GELU(),
-            nn.Dropout(config.TEMPORAL_DROPOUT),
-            nn.Linear(config.TEMPORAL_HIDDEN, 4),
+            nn.Linear(hidden, 1),
         )
-        # Zero residual initialisation makes the untrained architecture exactly
-        # a straight-line predictor. Training learns only the image-conditioned
-        # forward/lateral residual and its uncertainty.
-        nn.init.zeros_(self.motion_head[-1].weight)
-        nn.init.zeros_(self.motion_head[-1].bias)
-        with torch.no_grad():
-            self.motion_head[-1].bias[2:].fill_(math.log(4.0**2))
-
-        self.uav_query = nn.Sequential(
-            nn.Linear(config.TEMPORAL_HIDDEN + config.EMBED_DIM, 512),
+        self.second_transition = nn.Sequential(
+            nn.Linear(9, hidden),
             nn.GELU(),
-            nn.Linear(512, config.CANDIDATE_TOKEN_DIM),
-        )
-        self.sat_key = nn.Linear(
-            config.EMBED_DIM, config.CANDIDATE_TOKEN_DIM, bias=False
-        )
-        self.coord_key = nn.Sequential(
-            nn.Linear(3, 128),
+            nn.Linear(hidden, hidden),
             nn.GELU(),
-            nn.Linear(128, config.CANDIDATE_TOKEN_DIM),
+            nn.Linear(hidden, 1),
         )
-        self.visual_key = nn.Sequential(
-            nn.Linear(2, 64),
-            nn.GELU(),
-            nn.Linear(64, config.CANDIDATE_TOKEN_DIM),
-        )
-        self.visual_logit_weight = nn.Parameter(torch.tensor(0.0))
+        # The initial structured prior is constant velocity.  The MLP learns
+        # route-specific deviations; the positive quadratic coefficient remains
+        # trainable instead of being a manually selected threshold.
+        nn.init.zeros_(self.first_transition[-1].weight)
+        nn.init.zeros_(self.first_transition[-1].bias)
+        nn.init.zeros_(self.second_transition[-1].weight)
+        nn.init.zeros_(self.second_transition[-1].bias)
+        self.acceleration_weight_raw = nn.Parameter(torch.tensor(0.0))
 
         self.correction_gate = nn.Sequential(
-            nn.Linear(config.TEMPORAL_HIDDEN + 5, 128),
+            nn.Linear(5, 64),
             nn.GELU(),
-            nn.Dropout(config.TEMPORAL_DROPOUT),
-            nn.Linear(128, 1),
+            nn.Dropout(dropout),
+            nn.Linear(64, 1),
         )
+        # Start close to Fixed HardMS; temporal correction must earn a larger
+        # gate through coordinate supervision.
+        nn.init.zeros_(self.correction_gate[-1].weight)
+        nn.init.constant_(self.correction_gate[-1].bias, -2.0)
 
     @staticmethod
-    def initial_hidden(batch_size, device, dtype=torch.float32):
-        return torch.zeros(
-            batch_size, config.TEMPORAL_HIDDEN, device=device, dtype=dtype
-        )
+    def _entropy(probability: torch.Tensor) -> torch.Tensor:
+        count = max(int(probability.shape[-1]), 2)
+        return -(
+            probability * probability.clamp_min(1e-8).log()
+        ).sum(dim=-1) / math.log(float(count))
 
-    def encode_motion(
+    def _emissions(
         self,
-        previous_global,
-        current_global,
-        previous_spatial,
-        current_spatial,
-        previous_local_delta,
-        previous_speed,
-        dt,
-        hidden,
+        z_uav: torch.Tensor,
+        z_sat: torch.Tensor,
+        raw_logits: torch.Tensor,
+        raw_prob: torch.Tensor,
+        centers: torch.Tensor,
     ):
-        if bool(config.USE_SPATIAL_CORRELATION):
-            previous_map = self.spatial_projection(previous_spatial.float())
-            current_map = self.spatial_projection(current_spatial.float())
-            previous_map = F.normalize(previous_map.flatten(2), dim=1)
-            current_map = F.normalize(current_map.flatten(2), dim=1)
-            correlation = torch.einsum("bcn,bcm->bnm", previous_map, current_map)
-            correlation_feature = self.correlation_encoder(
-                correlation.flatten(1)
-            )
-        else:
-            correlation_feature = torch.zeros(
-                previous_global.shape[0],
-                config.MOTION_FEATURE_DIM,
-                device=previous_global.device,
-                dtype=previous_global.dtype,
-            )
-
-        pair = torch.cat(
+        lattice_center = centers.mean(dim=2, keepdim=True)
+        relative = (centers - lattice_center) / float(config.POSITION_SCALE_M)
+        radius = torch.linalg.norm(relative, dim=-1, keepdim=True)
+        mean = raw_logits.mean(dim=2, keepdim=True)
+        std = raw_logits.std(dim=2, keepdim=True).clamp_min(1e-5)
+        standardized = (raw_logits - mean) / std
+        numeric = torch.cat(
             [
-                previous_global,
-                current_global,
-                current_global - previous_global,
-                current_global * previous_global,
+                standardized.unsqueeze(-1),
+                raw_prob.unsqueeze(-1),
+                relative,
+                radius,
             ],
-            dim=1,
+            dim=-1,
         )
-        global_feature = self.global_pair_encoder(pair.float())
-
-        state_input = torch.cat(
-            [
-                previous_local_delta / float(config.POSITION_SCALE_M),
-                previous_speed.unsqueeze(1) / float(config.POSITION_SCALE_M),
-                dt.unsqueeze(1) / float(config.DT_SCALE),
-            ],
-            dim=1,
-        )
-        state_feature = self.state_encoder(state_input)
-        hidden = self.temporal_gru(
-            torch.cat(
-                [correlation_feature, global_feature, state_feature], dim=1
-            ),
-            hidden,
-        )
-
-        motion = self.motion_head(hidden)
-        straight_line_delta = torch.stack(
-            [previous_speed * dt, torch.zeros_like(previous_speed)], dim=1
-        )
-        delta_local = straight_line_delta + motion[:, :2]
-        motion_logvar = motion[:, 2:].clamp(
-            min=float(config.MOTION_LOGVAR_MIN),
-            max=float(config.MOTION_LOGVAR_MAX),
-        )
-        return hidden, delta_local, motion_logvar
-
-    def decode_candidates(
-        self,
-        hidden,
-        z_uav,
-        z_sat,
-        raw_logits,
-        raw_prob,
-        candidate_xy,
-        motion_center,
-        forward_axis,
-        lateral_axis,
-        motion_logvar,
-    ):
-        relative = candidate_xy - motion_center[:, None, :]
-        forward = (relative * forward_axis[:, None, :]).sum(dim=2)
-        lateral = (relative * lateral_axis[:, None, :]).sum(dim=2)
-        radius = torch.sqrt(forward.square() + lateral.square() + 1e-8)
-        coord = torch.stack([forward, lateral, radius], dim=2) / float(
-            config.POSITION_SCALE_M
-        )
-
-        raw_mean = raw_logits.mean(dim=1, keepdim=True)
-        raw_std = raw_logits.std(dim=1, keepdim=True).clamp_min(1e-5)
-        standard_logits = (raw_logits - raw_mean) / raw_std
-        visual_statistics = torch.stack([standard_logits, raw_prob], dim=2)
-
         token = (
-            self.sat_key(z_sat)
-            + self.coord_key(coord)
-            + self.visual_key(visual_statistics)
+            self.uav_projection(z_uav)[:, :, None, :]
+            + self.sat_projection(z_sat)
+            + self.numeric_projection(numeric)
         )
-        query = self.uav_query(torch.cat([hidden, z_uav], dim=1))
-        attention = (
-            token * query[:, None, :]
-        ).sum(dim=2) / math.sqrt(float(config.CANDIDATE_TOKEN_DIM))
-        posterior_logits = (
-            attention + self.visual_logit_weight.exp() * standard_logits
-            if bool(config.USE_TEMPORAL_CANDIDATE_DECODER)
-            else standard_logits
-        )
-        posterior_prob = torch.softmax(
-            posterior_logits / float(config.TEMPORAL_TEMPERATURE), dim=1
-        )
-        visual_expectation = (
-            posterior_prob.unsqueeze(2) * candidate_xy
-        ).sum(dim=1)
+        learned = self.emission_head(token).squeeze(-1)
+        emission = learned + F.softplus(self.raw_logit_weight) * standardized
+        return emission, token
 
-        entropy = -(
-            posterior_prob
-            * posterior_prob.clamp_min(1e-8).log()
-        ).sum(dim=1) / math.log(float(posterior_prob.shape[1]))
-        centered = candidate_xy - visual_expectation[:, None, :]
-        spatial_variance = (
-            posterior_prob.unsqueeze(2) * centered.square()
-        ).sum(dim=1)
-        spatial_std = torch.sqrt(spatial_variance.sum(dim=1).clamp_min(1e-8))
-        top_values = posterior_prob.topk(k=2, dim=1).values
-        posterior_margin = top_values[:, 0] - top_values[:, 1]
-        motion_std = torch.exp(0.5 * motion_logvar).mean(dim=1)
+    def _first_transition_score(
+        self,
+        centers0: torch.Tensor,
+        centers1: torch.Tensor,
+        dt: torch.Tensor,
+    ):
+        velocity = (
+            centers1[:, None, :, :] - centers0[:, :, None, :]
+        ) / dt[:, None, None, None].clamp_min(1.0)
+        speed = torch.linalg.norm(velocity, dim=-1, keepdim=True)
+        feature = torch.cat(
+            [velocity / float(config.POSITION_SCALE_M),
+             speed / float(config.POSITION_SCALE_M)],
+            dim=-1,
+        )
+        return self.first_transition(feature).squeeze(-1)
 
-        gate_input = torch.cat(
+    def _second_transition_score(
+        self,
+        centers0: torch.Tensor,
+        centers1: torch.Tensor,
+        centers2: torch.Tensor,
+        dt01: torch.Tensor,
+        dt12: torch.Tensor,
+    ):
+        p0 = centers0[:, :, None, None, :]
+        p1 = centers1[:, None, :, None, :]
+        p2 = centers2[:, None, None, :, :]
+        v01 = (p1 - p0) / dt01[:, None, None, None, None].clamp_min(1.0)
+        v12 = (p2 - p1) / dt12[:, None, None, None, None].clamp_min(1.0)
+        candidate_count = centers0.shape[1]
+        v01 = v01.expand(-1, -1, -1, candidate_count, -1)
+        v12 = v12.expand(-1, candidate_count, -1, -1, -1)
+        acceleration = v12 - v01
+        speed01 = torch.linalg.norm(v01, dim=-1, keepdim=True)
+        speed12 = torch.linalg.norm(v12, dim=-1, keepdim=True)
+        cosine = (v01 * v12).sum(dim=-1, keepdim=True) / (
+            speed01 * speed12
+        ).clamp_min(1e-5)
+        feature = torch.cat(
             [
-                hidden,
-                entropy.unsqueeze(1),
-                spatial_std.unsqueeze(1) / float(config.POSITION_SCALE_M),
-                posterior_margin.unsqueeze(1),
-                motion_std.unsqueeze(1) / float(config.POSITION_SCALE_M),
-                raw_prob.max(dim=1).values.unsqueeze(1),
+                v01 / float(config.POSITION_SCALE_M),
+                v12 / float(config.POSITION_SCALE_M),
+                acceleration / float(config.POSITION_SCALE_M),
+                speed01 / float(config.POSITION_SCALE_M),
+                speed12 / float(config.POSITION_SCALE_M),
+                cosine,
+            ],
+            dim=-1,
+        )
+        learned = self.second_transition(feature).squeeze(-1)
+        acceleration_energy = acceleration.square().sum(dim=-1) / (
+            float(config.POSITION_SCALE_M) ** 2
+        )
+        return learned - F.softplus(self.acceleration_weight_raw) * acceleration_energy
+
+    @staticmethod
+    def _gather_path_score(
+        emission: torch.Tensor,
+        first_score: torch.Tensor,
+        second_scores: List[torch.Tensor],
+        target_index: torch.Tensor,
+    ):
+        batch = torch.arange(emission.shape[0], device=emission.device)
+        score = torch.zeros(emission.shape[0], device=emission.device)
+        for time in range(emission.shape[1]):
+            score = score + emission[batch, time, target_index[:, time]]
+        score = score + first_score[
+            batch, target_index[:, 0], target_index[:, 1]
+        ]
+        for time, transition in enumerate(second_scores, start=2):
+            score = score + transition[
+                batch,
+                target_index[:, time - 2],
+                target_index[:, time - 1],
+                target_index[:, time],
+            ]
+        return score
+
+    def forward(
+        self,
+        z_uav: torch.Tensor,
+        z_sat: torch.Tensor,
+        raw_logits: torch.Tensor,
+        raw_prob: torch.Tensor,
+        centers: torch.Tensor,
+        frame_ids: torch.Tensor,
+        hardms_xy: torch.Tensor,
+        target_index: Optional[torch.Tensor] = None,
+    ) -> LatticeOutput:
+        if centers.shape[1] < 3:
+            raise ValueError("TemporalLatticeCRF requires at least three frames")
+
+        emission, _ = self._emissions(
+            z_uav, z_sat, raw_logits, raw_prob, centers
+        )
+        dt = (frame_ids[:, 1:] - frame_ids[:, :-1]).float().clamp_min(1.0)
+        first_score = self._first_transition_score(
+            centers[:, 0], centers[:, 1], dt[:, 0]
+        )
+        alpha = (
+            emission[:, 0, :, None]
+            + emission[:, 1, None, :]
+            + first_score
+        )
+        second_scores: List[torch.Tensor] = []
+        for time in range(2, centers.shape[1]):
+            transition = self._second_transition_score(
+                centers[:, time - 2],
+                centers[:, time - 1],
+                centers[:, time],
+                dt[:, time - 2],
+                dt[:, time - 1],
+            )
+            second_scores.append(transition)
+            score = (
+                alpha[:, :, :, None]
+                + transition
+                + emission[:, time, None, None, :]
+            )
+            alpha = torch.logsumexp(score, dim=1)
+
+        log_partition = torch.logsumexp(alpha.flatten(1), dim=1)
+        last_log_probability = torch.logsumexp(alpha, dim=1) - log_partition[:, None]
+        path_probability = last_log_probability.exp()
+        path_expectation = (
+            path_probability.unsqueeze(-1) * centers[:, -1]
+        ).sum(dim=1)
+
+        emission_probability = torch.softmax(emission[:, -1], dim=1)
+        path_entropy = self._entropy(path_probability)
+        emission_entropy = self._entropy(emission_probability)
+        path_top = path_probability.topk(k=2, dim=1).values
+        emission_top = emission_probability.topk(k=2, dim=1).values
+        disagreement = torch.linalg.norm(
+            path_expectation - hardms_xy[:, -1], dim=1
+        ) / float(config.POSITION_SCALE_M)
+        gate_feature = torch.stack(
+            [
+                path_entropy,
+                emission_entropy,
+                path_top[:, 0] - path_top[:, 1],
+                emission_top[:, 0] - emission_top[:, 1],
+                disagreement,
             ],
             dim=1,
         )
-        if bool(config.USE_LEARNED_UNCERTAINTY_GATE):
-            correction_gate = torch.sigmoid(self.correction_gate(gate_input))
-        else:
-            correction_gate = torch.ones(
-                motion_center.shape[0], 1,
-                device=motion_center.device, dtype=motion_center.dtype
+        correction_gate = torch.sigmoid(self.correction_gate(gate_feature))
+        final_xy = hardms_xy[:, -1] + correction_gate * (
+            path_expectation - hardms_xy[:, -1]
+        )
+
+        crf_nll = None
+        if target_index is not None:
+            target_score = self._gather_path_score(
+                emission, first_score, second_scores, target_index
             )
-        final_xy = motion_center + correction_gate * (
-            visual_expectation - motion_center
-        )
+            crf_nll = (log_partition - target_score).mean()
 
-        return (
-            posterior_logits,
-            posterior_prob,
-            visual_expectation,
-            final_xy,
-            correction_gate,
-            entropy,
-            spatial_std,
-        )
-
-    def forward_step(
-        self,
-        previous_global,
-        current_global,
-        previous_spatial,
-        current_spatial,
-        previous_local_delta,
-        previous_speed,
-        dt,
-        hidden,
-        previous_xy,
-        forward_axis,
-        lateral_axis,
-        z_uav,
-        z_sat,
-        raw_logits,
-        raw_prob,
-        candidate_xy,
-    ):
-        hidden, delta_local, motion_logvar = self.encode_motion(
-            previous_global,
-            current_global,
-            previous_spatial,
-            current_spatial,
-            previous_local_delta,
-            previous_speed,
-            dt,
-            hidden,
-        )
-        delta_map = (
-            delta_local[:, :1] * forward_axis
-            + delta_local[:, 1:2] * lateral_axis
-        )
-        motion_center = previous_xy + delta_map
-        decoded = self.decode_candidates(
-            hidden,
-            z_uav,
-            z_sat,
-            raw_logits,
-            raw_prob,
-            candidate_xy,
-            motion_center,
-            forward_axis,
-            lateral_axis,
-            motion_logvar,
-        )
-        return TemporalOutput(
-            hidden=hidden,
-            delta_local=delta_local,
-            motion_logvar=motion_logvar,
-            motion_center=motion_center,
-            posterior_logits=decoded[0],
-            posterior_prob=decoded[1],
-            visual_expectation=decoded[2],
-            final_xy=decoded[3],
-            correction_gate=decoded[4],
-            entropy=decoded[5],
-            spatial_std=decoded[6],
+        return LatticeOutput(
+            emission_logits=emission,
+            path_probability=path_probability,
+            path_expectation=path_expectation,
+            final_xy=final_xy,
+            correction_gate=correction_gate,
+            path_entropy=path_entropy,
+            emission_entropy=emission_entropy,
+            crf_nll=crf_nll,
         )

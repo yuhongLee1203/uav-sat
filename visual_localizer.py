@@ -1,10 +1,8 @@
-"""Frozen retrieval front-end and differentiable candidate provider."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import torch
-import torch.nn.functional as F
 
 import config
 from visual_model import AllMapGeoCLIP
@@ -39,15 +37,14 @@ def regular_grid_indices(
     stride,
     device,
 ):
-    """Return one fixed square lattice around the nearest gallery anchor."""
+    """Return a fixed grid around the nearest gallery anchor.
+
+    Even grids use offsets [-N/2, ..., N/2-1], matching the original 6x6
+    experiment.  No GT or retrieval score is consulted by this geometry step.
+    """
     grid_size = int(grid_size)
-    if grid_size % 2 == 0:
-        raise ValueError(
-            "TMCR uses an odd GRID_SIZE so the motion prediction is the exact "
-            "centre anchor."
-        )
-    radius = grid_size // 2
-    offsets = range(-radius, radius + 1)
+    start = -(grid_size // 2)
+    offsets = range(start, start + grid_size)
     gallery_xy_cpu = gallery_xy.cpu()
     gallery_pixel_cpu = gallery_pixel.cpu()
     rows = []
@@ -80,8 +77,6 @@ def regular_grid_indices(
             if not complete:
                 break
 
-        # Near map borders, use the nearest unique anchors.  This is a geometry
-        # fallback only; it does not inspect GT or retrieval scores.
         if not complete:
             row = torch.topk(
                 distance_squared,
@@ -94,7 +89,6 @@ def regular_grid_indices(
 
 
 def hard_mean_shift(logits, centers, tau, bandwidth_m, iterations):
-    """Archived Fixed HardMS baseline."""
     epsilon = 1e-8
     probability = torch.softmax(logits / float(tau), dim=1)
     modes = centers.clone()
@@ -110,9 +104,7 @@ def hard_mean_shift(logits, centers, tau, bandwidth_m, iterations):
 
     distance_squared = torch.cdist(modes, centers).square()
     support = (
-        torch.exp(
-            -distance_squared / (2.0 * float(bandwidth_m) ** 2)
-        )
+        torch.exp(-distance_squared / (2.0 * float(bandwidth_m) ** 2))
         * probability[:, None, :]
     ).sum(dim=2)
     mode_index = support.argmax(dim=1)
@@ -129,8 +121,6 @@ def hard_mean_shift(logits, centers, tau, bandwidth_m, iterations):
 
 
 class FrozenVisualLocalizer:
-    """Loads the archived retrieval model and cached satellite gallery."""
-
     def __init__(self, device):
         checkpoint = torch.load(config.VISUAL_CHECKPOINT, map_location="cpu")
         self.origin_lat = float(checkpoint["origin_lat"])
@@ -154,12 +144,6 @@ class FrozenVisualLocalizer:
         )
 
     @torch.no_grad()
-    def encode_uav_spatial(self, uav):
-        return self.model.encode_clip_spatial(
-            uav.to(self.device, non_blocking=True),
-            output_size=config.MOTION_SPATIAL_SIZE,
-        )
-
     def candidate_batch(self, uav_clip, center_xy, grid_size=None):
         grid_size = int(grid_size or config.GRID_SIZE)
         indices = regular_grid_indices(
@@ -210,9 +194,8 @@ class FrozenVisualLocalizer:
 
     @torch.no_grad()
     def candidate_contains_gt_anchor(self, indices, gt_xy):
-        gallery_xy = self.gallery["xy"]
         distance_squared = (
-            gallery_xy[None, :, :] - gt_xy[:, None, :]
+            self.gallery["xy"][None, :, :] - gt_xy[:, None, :]
         ).square().sum(dim=2)
         nearest_index = distance_squared.argmin(dim=1)
         return (indices == nearest_index[:, None]).any(dim=1)

@@ -1,0 +1,9 @@
+cached route_A: frames=1732 capture=98.04%
+cached route_B: frames=2276 capture=97.36%
+cached route_C: frames=1258 capture=98.41%
+Traceback (most recent call last):
+  File "robust_tracker.py", line 539, in <module>
+    main()
+  File "robust_tracker.py", line 513, in main
+    raise RuntimeError(
+RuntimeError: candidate capture is below 98%; first run --jitter-m 0 to verify geometry
