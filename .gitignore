@@ -1,0 +1,44 @@
+# Python and editor state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.idea/
+.vscode/
+
+# Model weights and large generated media are never versioned.
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.gif
+
+# Generated experiment artifacts are ignored by default. Keep only compact,
+# human-readable training logs and evaluation summaries in any future output
+# directory so experiment metrics can still be reviewed in Git.
+output/**
+outputs/**
+!output/
+!outputs/
+!output/**/
+!outputs/**/
+!output/**/*.csv
+!output/**/*.json
+!output/**/*.log
+!output/**/*.txt
+!outputs/**/*.csv
+!outputs/**/*.json
+!outputs/**/*.log
+!outputs/**/*.txt
+
+# Common local runtime artifacts
+wandb/
+runs/
+tensorboard/
+*.tmp
+*.bak
