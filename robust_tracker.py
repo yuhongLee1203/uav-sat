@@ -1,747 +1,808 @@
-"""Oracle-candidate causal straight-line HardMS smoothing.
+"""Train and evaluate Temporal Motion-Conditioned Retrieval (TMCR).
 
-The current goal is deliberately narrow: first prove that temporal smoothing can
-remove left/right/front/back jitter when the correct local satellite region is
-available.  GT (or GT plus bounded deterministic jitter) is therefore used only
-as the 6x6 candidate-window centre.  After the first five-frame
-initialisation, GT is never passed to the temporal prediction or correction.
+This file replaces the training-free Kalman/gating tracker.  After five GT
+initialisation frames, evaluation is fully closed-loop:
 
-This is an Oracle Candidate Temporal Smoothing diagnostic, not a closed-loop
-tracking claim.
+    consecutive UAV spatial features -> learned local motion distribution
+    learned motion centre -> fixed local SAT candidate lattice
+    temporal query x candidate tokens -> learned candidate posterior
+    learned uncertainty gate -> final position
+
+No hand-written Mahalanobis rejection, displacement cap, recovery expansion,
+or alpha-beta coefficient is used by the proposed method.
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import json
-from collections import deque
+import math
+import random
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict, Iterable, List, Sequence, Tuple
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 import config
 from data import RouteDataset
-from visual_localizer import FrozenVisualLocalizer, VisualMeasurement
-
-EPS = 1e-8
-INIT_HISTORY = int(config.HISTORY)
+from visual_localizer import CandidateBatch, FrozenVisualLocalizer
+from visual_model import TemporalMotionRetriever
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--candidate-center",
-        choices=["gt", "gt_jitter"],
-        default=str(config.CANDIDATE_CENTER_MODE),
-        help="Use exact GT or GT plus deterministic bounded jitter as the local-window centre.",
-    )
-    parser.add_argument(
-        "--jitter-m",
-        type=float,
-        default=float(config.GT_JITTER_MAX_M),
-        help="Maximum radial jitter in metres for --candidate-center gt_jitter.",
-    )
-    parser.add_argument(
-        "--routes",
-        nargs="*",
-        default=None,
-        help="Optional subset, for example: --routes route_A route_C",
-    )
-    return parser.parse_args()
+@dataclass
+class RouteCache:
+    name: str
+    frame_ids: torch.Tensor
+    gt_xy: torch.Tensor
+    global_features: torch.Tensor
+    spatial_features: torch.Tensor
+
+    def __len__(self):
+        return int(self.gt_xy.shape[0])
 
 
-def tracking_frames(root, origin_lat, origin_lon):
-    """Sample frames by image order only; GT motion never selects frames."""
+@dataclass
+class SplitRange:
+    start: int
+    end: int
+
+    @property
+    def length(self):
+        return max(0, self.end - self.start)
+
+
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def parse_frame_id(value) -> int:
+    if isinstance(value, torch.Tensor):
+        return int(value.item())
+    return int(str(value))
+
+
+def cache_dtype():
+    return torch.float16 if config.FEATURE_CACHE_DTYPE == "float16" else torch.float32
+
+
+@torch.no_grad()
+def build_route_cache(
+    root: Path,
+    name: str,
+    visual: FrozenVisualLocalizer,
+    device: torch.device,
+) -> RouteCache:
+    """Encode every real frame; GT is never used to collapse or select frames."""
     dataset = RouteDataset(
         root,
         train=False,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon,
+        origin_lat=visual.origin_lat,
+        origin_lon=visual.origin_lon,
     )
-    stride = max(1, int(config.TRACK_FRAME_STRIDE))
-    indices = list(range(0, len(dataset), stride))
-    if indices[-1] != len(dataset) - 1:
-        indices.append(len(dataset) - 1)
-    return dataset, indices
+    frame_ids: List[int] = []
+    gt_xy: List[torch.Tensor] = []
+    global_features: List[torch.Tensor] = []
+    spatial_features: List[torch.Tensor] = []
 
+    batch_size = int(config.EVAL_BATCH_SIZE)
+    for start in range(0, len(dataset), batch_size):
+        items = [dataset[index] for index in range(start, min(start + batch_size, len(dataset)))]
+        uav = torch.stack([item["uav"] for item in items]).to(device)
+        global_batch = visual.encode_uav_clip(uav)
+        spatial_batch = visual.encode_uav_spatial(uav)
 
-def robust_initial_velocity(gt_init: np.ndarray, frame_ids: np.ndarray):
-    """Median pairwise slope, in metres per original frame ID."""
-    slopes = []
-    for i in range(len(gt_init)):
-        for j in range(i + 1, len(gt_init)):
-            dt = float(frame_ids[j] - frame_ids[i])
-            if dt > 0:
-                slopes.append((gt_init[j] - gt_init[i]) / dt)
-    if not slopes:
-        return np.zeros(2, dtype=np.float32)
+        global_features.append(global_batch.to("cpu", dtype=cache_dtype()))
+        spatial_features.append(spatial_batch.to("cpu", dtype=cache_dtype()))
+        gt_xy.extend(item["xy"].float().cpu() for item in items)
+        frame_ids.extend(parse_frame_id(item["frame_id"]) for item in items)
 
-    velocity = np.median(np.asarray(slopes, dtype=np.float64), axis=0)
-    speed = float(np.linalg.norm(velocity))
-    if speed < float(config.MIN_NONZERO_SPEED_M_PER_FRAME):
-        return np.zeros(2, dtype=np.float32)
-    if speed > float(config.MAX_SPEED_M_PER_FRAME):
-        velocity *= float(config.MAX_SPEED_M_PER_FRAME) / max(speed, EPS)
-    return velocity.astype(np.float32)
-
-
-def deterministic_jitter(frame_ids: np.ndarray, route_index: int, radius_m: float):
-    """Independent, reproducible uniform-in-disc candidate-centre perturbations."""
-    if radius_m <= 0:
-        return np.zeros((len(frame_ids), 2), dtype=np.float32)
-    rng = np.random.default_rng(int(config.SEED) + 1009 * int(route_index))
-    angle = rng.uniform(0.0, 2.0 * np.pi, size=len(frame_ids))
-    radius = float(radius_m) * np.sqrt(rng.uniform(0.0, 1.0, size=len(frame_ids)))
-    jitter = np.stack([radius * np.cos(angle), radius * np.sin(angle)], axis=1)
-    return jitter.astype(np.float32)
-
-
-def limit_speed(velocity: torch.Tensor):
-    speed = velocity.norm()
-    maximum = float(config.MAX_SPEED_M_PER_FRAME)
-    if float(speed.item()) > maximum:
-        velocity = velocity * (maximum / speed.clamp_min(EPS))
-    return velocity
-
-
-def constrain_turn(previous: torch.Tensor, candidate: torch.Tensor, dt: float):
-    """Limit abrupt heading changes while allowing gradual real turns."""
-    candidate = limit_speed(candidate)
-    prev_speed = previous.norm()
-    cand_speed = candidate.norm()
-    if float(prev_speed.item()) < 1e-5 or float(cand_speed.item()) < 1e-5:
-        return candidate
-
-    prev_dir = previous / prev_speed
-    cand_dir = candidate / cand_speed
-    angle = torch.acos(torch.clamp((prev_dir * cand_dir).sum(), -1.0, 1.0))
-    max_angle = torch.deg2rad(
-        torch.tensor(
-            min(179.0, float(config.MAX_TURN_DEG_PER_FRAME) * max(float(dt), 1.0)),
-            device=previous.device,
-            dtype=previous.dtype,
-        )
+    return RouteCache(
+        name=name,
+        frame_ids=torch.tensor(frame_ids, dtype=torch.long),
+        gt_xy=torch.stack(gt_xy).float(),
+        global_features=torch.cat(global_features, dim=0),
+        spatial_features=torch.cat(spatial_features, dim=0),
     )
-    if bool(angle <= max_angle):
-        return candidate
 
-    cross = prev_dir[0] * cand_dir[1] - prev_dir[1] * cand_dir[0]
-    sign = torch.sign(cross)
-    if float(sign.item()) == 0.0:
-        sign = torch.tensor(1.0, device=previous.device, dtype=previous.dtype)
-    signed = sign * max_angle
-    c, s = torch.cos(signed), torch.sin(signed)
-    direction = torch.stack(
-        [
-            c * prev_dir[0] - s * prev_dir[1],
-            s * prev_dir[0] + c * prev_dir[1],
-        ]
+
+def contiguous_splits(length: int) -> Dict[str, SplitRange]:
+    guard = int(config.SPLIT_GUARD_FRAMES)
+    train_end = int(length * float(config.TRAIN_FRACTION))
+    val_end = int(length * (float(config.TRAIN_FRACTION) + float(config.VAL_FRACTION)))
+
+    train = SplitRange(0, max(0, train_end - guard))
+    val = SplitRange(min(length, train_end + guard), max(min(length, train_end + guard), val_end - guard))
+    test = SplitRange(min(length, val_end + guard), length)
+    return {"train": train, "val": val, "test": test, "all": SplitRange(0, length)}
+
+
+def sequence_windows(
+    caches: Sequence[RouteCache],
+    split_name: str,
+    sequence_length: int,
+    stride: int,
+) -> List[Tuple[int, int, int]]:
+    windows = []
+    minimum = int(config.HISTORY) + 2
+    for route_index, cache in enumerate(caches):
+        segment = contiguous_splits(len(cache))[split_name]
+        if segment.length < minimum:
+            continue
+        effective_length = min(int(sequence_length), segment.length)
+        last_start = segment.end - effective_length
+        for start in range(segment.start, last_start + 1, int(stride)):
+            windows.append((route_index, start, start + effective_length))
+        if not any(item[0] == route_index for item in windows):
+            windows.append((route_index, segment.start, segment.end))
+    return windows
+
+
+def teacher_forcing_ratio(epoch: int, epochs: int) -> float:
+    if epochs <= 1:
+        return float(config.TEACHER_FORCING_END)
+    progress = epoch / float(epochs - 1)
+    return float(config.TEACHER_FORCING_START) + progress * (
+        float(config.TEACHER_FORCING_END) - float(config.TEACHER_FORCING_START)
     )
-    return direction * cand_speed
 
 
-def predict(state: torch.Tensor, covariance: torch.Tensor, dt: float):
-    dtype, device = state.dtype, state.device
-    transition = torch.eye(4, device=device, dtype=dtype)
-    transition[0, 2] = float(dt)
-    transition[1, 3] = float(dt)
+def stable_axes(velocity: torch.Tensor, fallback: torch.Tensor | None = None):
+    """Construct trajectory-frame forward/lateral axes without GT."""
+    speed = torch.linalg.norm(velocity, dim=1, keepdim=True)
+    forward = velocity / speed.clamp_min(1e-6)
+    if fallback is None:
+        fallback = torch.zeros_like(forward)
+        fallback[:, 0] = 1.0
+    fallback = F.normalize(fallback, dim=1)
+    forward = torch.where((speed > 1e-4).expand_as(forward), forward, fallback)
+    lateral = torch.stack([-forward[:, 1], forward[:, 0]], dim=1)
+    return forward, lateral, speed.squeeze(1)
 
-    q_pos = float(config.PROCESS_POSITION_STD_M) ** 2 * max(float(dt), 1.0)
-    q_vel = (
-        float(config.PROCESS_VELOCITY_STD_M_PER_FRAME) ** 2
-        * max(float(dt), 1.0)
+
+def project_local(vector, forward, lateral):
+    return torch.stack(
+        [(vector * forward).sum(dim=1), (vector * lateral).sum(dim=1)], dim=1
     )
-    process = torch.diag(
-        torch.tensor([q_pos, q_pos, q_vel, q_vel], device=device, dtype=dtype)
+
+
+def local_to_map(local, forward, lateral):
+    return local[:, :1] * forward + local[:, 1:2] * lateral
+
+
+def random_jitter(batch_size: int, device: torch.device):
+    radius = torch.sqrt(torch.rand(batch_size, 1, device=device)) * float(
+        config.TEACHER_JITTER_M
     )
-    predicted_state = transition @ state
-    predicted_cov = transition @ covariance @ transition.T + process
-    return predicted_state, 0.5 * (predicted_cov + predicted_cov.T)
+    angle = torch.rand(batch_size, 1, device=device) * (2.0 * math.pi)
+    return torch.cat([radius * angle.cos(), radius * angle.sin()], dim=1)
 
 
-def line_fit_velocity(
-    positions: deque,
-    times: deque,
-    fallback: torch.Tensor,
+def nearest_candidate_target(candidate_xy, gt_xy):
+    distance_squared = (candidate_xy - gt_xy[:, None, :]).square().sum(dim=2)
+    return distance_squared.argmin(dim=1)
+
+
+def initialise_temporal_state(
+    model: TemporalMotionRetriever,
+    cache: RouteCache,
+    start: int,
+    device: torch.device,
 ):
-    """Robust causal local-linear velocity fitted to filtered positions."""
-    if len(positions) < 3:
-        return fallback
+    """Use the first five GT nodes only, as required by the protocol."""
+    history = int(config.HISTORY)
+    gt = cache.gt_xy[start : start + history].to(device)
+    frame_ids = cache.frame_ids[start : start + history].to(device)
+    global_features = cache.global_features[start : start + history].to(device).float()
+    spatial_features = cache.spatial_features[start : start + history].to(device).float()
 
-    pos = torch.stack(list(positions), dim=0)
-    t = torch.tensor(list(times), device=pos.device, dtype=pos.dtype)
-    t = t - t.mean()
-    weights = torch.ones(len(pos), device=pos.device, dtype=pos.dtype)
-    slope = fallback
+    hidden = model.initial_hidden(1, device)
+    fallback_displacement = (gt[-1] - gt[0]).unsqueeze(0)
+    fallback_axis = F.normalize(
+        torch.where(
+            torch.linalg.norm(fallback_displacement, dim=1, keepdim=True) > 1e-4,
+            fallback_displacement,
+            torch.tensor([[1.0, 0.0]], device=device),
+        ),
+        dim=1,
+    )
 
-    for _ in range(4):
-        w_sum = weights.sum().clamp_min(EPS)
-        t_mean = (weights * t).sum() / w_sum
-        p_mean = (weights[:, None] * pos).sum(dim=0) / w_sum
-        tc = t - t_mean
-        denominator = (weights * tc.square()).sum().clamp_min(EPS)
-        slope = (
-            weights[:, None] * tc[:, None] * (pos - p_mean)
-        ).sum(dim=0) / denominator
-        intercept = p_mean - slope * t_mean
-        residual = torch.norm(pos - (intercept + t[:, None] * slope), dim=1)
-        delta = float(config.LINE_HUBER_M)
-        weights = torch.where(
-            residual <= delta,
-            torch.ones_like(residual),
-            delta / residual.clamp_min(EPS),
+    previous_local = torch.zeros(1, 2, device=device)
+    previous_speed = torch.zeros(1, device=device)
+    previous_velocity = torch.zeros(1, 2, device=device)
+
+    for index in range(1, history):
+        dt = (frame_ids[index] - frame_ids[index - 1]).clamp_min(1).float().view(1)
+        forward, lateral, _ = stable_axes(previous_velocity, fallback_axis)
+        hidden, _, _ = model.encode_motion(
+            global_features[index - 1 : index],
+            global_features[index : index + 1],
+            spatial_features[index - 1 : index],
+            spatial_features[index : index + 1],
+            previous_local,
+            previous_speed,
+            dt,
+            hidden,
         )
+        displacement = (gt[index] - gt[index - 1]).view(1, 2)
+        previous_velocity = displacement / dt[:, None]
+        previous_local = project_local(displacement, forward, lateral)
+        previous_speed = torch.linalg.norm(previous_velocity, dim=1)
 
-    if not torch.isfinite(slope).all():
-        return fallback
-    return limit_speed(slope)
+    previous_xy = gt[-1:].clone()
+    previous_previous_xy = gt[-2:-1].clone()
+    previous_frame_id = frame_ids[-1:].clone()
+    previous_previous_frame_id = frame_ids[-2:-1].clone()
+    previous_velocity = (previous_xy - previous_previous_xy) / (
+        previous_frame_id - previous_previous_frame_id
+    ).clamp_min(1).float()[:, None]
+    previous_gt_delta = (gt[-1] - gt[-2]).view(1, 2)
+
+    return {
+        "hidden": hidden,
+        "previous_xy": previous_xy,
+        "previous_previous_xy": previous_previous_xy,
+        "previous_frame_id": previous_frame_id,
+        "previous_velocity": previous_velocity,
+        "previous_local": previous_local,
+        "previous_gt_delta": previous_gt_delta,
+        "fallback_axis": fallback_axis,
+        "previous_prediction_delta": previous_xy - previous_previous_xy,
+    }
 
 
-def motion_axes(predicted_state: torch.Tensor, candidate_xy: torch.Tensor | None = None):
-    velocity = predicted_state[2:]
-    speed = velocity.norm()
-    if float(speed.item()) >= float(config.MIN_NONZERO_SPEED_M_PER_FRAME):
-        direction = velocity / speed
-    elif candidate_xy is not None:
-        residual = candidate_xy - predicted_state[:2]
-        norm = residual.norm()
-        if float(norm.item()) > 1e-6:
-            direction = residual / norm
-        else:
-            direction = torch.tensor(
-                [1.0, 0.0], device=velocity.device, dtype=velocity.dtype
+def one_temporal_step(
+    model: TemporalMotionRetriever,
+    visual: FrozenVisualLocalizer,
+    cache: RouteCache,
+    index: int,
+    state: dict,
+    device: torch.device,
+    teacher_ratio: float,
+    training: bool,
+):
+    previous_index = index - 1
+    previous_global = cache.global_features[previous_index : previous_index + 1].to(device).float()
+    current_global = cache.global_features[index : index + 1].to(device).float()
+    previous_spatial = cache.spatial_features[previous_index : previous_index + 1].to(device).float()
+    current_spatial = cache.spatial_features[index : index + 1].to(device).float()
+    gt_xy = cache.gt_xy[index : index + 1].to(device)
+    previous_gt_xy = cache.gt_xy[previous_index : previous_index + 1].to(device)
+    frame_id = cache.frame_ids[index : index + 1].to(device)
+    dt = (frame_id - state["previous_frame_id"]).clamp_min(1).float()
+
+    forward, lateral, previous_speed = stable_axes(
+        state["previous_velocity"], state["fallback_axis"]
+    )
+    hidden, delta_local, motion_logvar = model.encode_motion(
+        previous_global,
+        current_global,
+        previous_spatial,
+        current_spatial,
+        state["previous_local"],
+        previous_speed,
+        dt,
+        state["hidden"],
+    )
+    motion_center = state["previous_xy"] + local_to_map(
+        delta_local, forward, lateral
+    )
+
+    use_teacher = training and random.random() < float(teacher_ratio)
+    candidate_center = (
+        gt_xy + random_jitter(1, device)
+        if use_teacher
+        else motion_center.detach()
+    )
+    candidates = visual.candidate_batch(
+        current_global, candidate_center, grid_size=config.GRID_SIZE
+    )
+    decoded = model.decode_candidates(
+        hidden,
+        candidates.z_uav,
+        candidates.z_sat,
+        candidates.raw_logits,
+        candidates.raw_prob,
+        candidates.centers,
+        motion_center,
+        forward,
+        lateral,
+        motion_logvar,
+    )
+    posterior_logits, posterior_prob, visual_expectation, final_xy = decoded[:4]
+    correction_gate, entropy, spatial_std = decoded[4:]
+
+    gt_delta = gt_xy - previous_gt_xy
+    target_local = project_local(gt_delta, forward.detach(), lateral.detach())
+    motion_nll = 0.5 * (
+        torch.exp(-motion_logvar) * (delta_local - target_local).square()
+        + motion_logvar
+    ).mean()
+    target_index = nearest_candidate_target(candidates.centers, gt_xy)
+    candidate_loss = F.cross_entropy(posterior_logits, target_index)
+    coordinate_loss = F.smooth_l1_loss(final_xy, gt_xy)
+
+    prediction_delta = final_xy - state["previous_xy"]
+    relative_loss = F.smooth_l1_loss(prediction_delta, gt_delta)
+    predicted_acceleration = prediction_delta - state["previous_prediction_delta"]
+    gt_acceleration = gt_delta - state["previous_gt_delta"]
+    acceleration_loss = F.smooth_l1_loss(
+        predicted_acceleration, gt_acceleration
+    )
+
+    final_error = torch.linalg.norm(final_xy - gt_xy, dim=1).detach()
+    uncertainty_loss = F.smooth_l1_loss(
+        torch.log1p(spatial_std), torch.log1p(final_error)
+    )
+    total_loss = (
+        float(config.LOSS_COORD) * coordinate_loss
+        + float(config.LOSS_CANDIDATE) * candidate_loss
+        + float(config.LOSS_MOTION_NLL) * motion_nll
+        + float(config.LOSS_RELATIVE) * relative_loss
+        + float(config.LOSS_ACCELERATION) * acceleration_loss
+        + float(config.LOSS_UNCERTAINTY) * uncertainty_loss
+    )
+
+    new_velocity = prediction_delta / dt[:, None]
+    new_local = project_local(prediction_delta.detach(), forward, lateral)
+    contains_gt = (
+        torch.ones(1, dtype=torch.bool, device=device)
+        if training
+        else visual.candidate_contains_gt_anchor(candidates.indices, gt_xy)
+    )
+
+    next_state = {
+        "hidden": hidden,
+        "previous_xy": final_xy,
+        "previous_previous_xy": state["previous_xy"],
+        "previous_frame_id": frame_id,
+        "previous_velocity": new_velocity,
+        "previous_local": new_local,
+        "previous_gt_delta": gt_delta.detach(),
+        "fallback_axis": forward.detach(),
+        "previous_prediction_delta": prediction_delta,
+    }
+    output = {
+        "loss": total_loss,
+        "loss_coord": coordinate_loss.detach(),
+        "loss_candidate": candidate_loss.detach(),
+        "loss_motion": motion_nll.detach(),
+        "gt": gt_xy,
+        "raw_top1": candidates.raw_top1_xy,
+        "hardms": candidates.hardms_xy,
+        "motion": motion_center,
+        "visual_expectation": visual_expectation,
+        "temporal": final_xy,
+        "gate": correction_gate,
+        "entropy": entropy,
+        "spatial_std": spatial_std,
+        "motion_std": torch.exp(0.5 * motion_logvar).mean(dim=1),
+        "capture": contains_gt,
+        "frame_id": frame_id,
+        "teacher": use_teacher,
+    }
+    return next_state, output
+
+
+def run_training_window(
+    model,
+    visual,
+    cache,
+    start,
+    end,
+    device,
+    teacher_ratio,
+):
+    state = initialise_temporal_state(model, cache, start, device)
+    losses = []
+    diagnostics = []
+    for index in range(start + int(config.HISTORY), end):
+        state, output = one_temporal_step(
+            model,
+            visual,
+            cache,
+            index,
+            state,
+            device,
+            teacher_ratio=teacher_ratio,
+            training=True,
+        )
+        losses.append(output["loss"])
+        diagnostics.append(output)
+    if not losses:
+        raise RuntimeError("Training window is shorter than HISTORY + 1")
+    return torch.stack(losses).mean(), diagnostics
+
+
+@torch.no_grad()
+def validation_mle(model, visual, caches, windows, device):
+    model.eval()
+    errors = []
+    for route_index, start, end in windows:
+        cache = caches[route_index]
+        state = initialise_temporal_state(model, cache, start, device)
+        for index in range(start + int(config.HISTORY), end):
+            state, output = one_temporal_step(
+                model,
+                visual,
+                cache,
+                index,
+                state,
+                device,
+                teacher_ratio=0.0,
+                training=False,
             )
+            errors.append(
+                torch.linalg.norm(output["temporal"] - output["gt"], dim=1)
+                .cpu()
+                .item()
+            )
+    return float(np.mean(errors)) if errors else float("inf")
+
+
+def train_model(model, visual, caches, device, epochs):
+    train_windows = sequence_windows(
+        caches,
+        "train",
+        config.SEQUENCE_LENGTH,
+        config.SEQUENCE_STRIDE,
+    )
+    val_windows = sequence_windows(
+        caches,
+        "val",
+        config.SEQUENCE_LENGTH,
+        config.SEQUENCE_STRIDE,
+    )
+    if not train_windows:
+        raise RuntimeError("No training sequence was produced from the route splits")
+    if not val_windows:
+        val_windows = train_windows
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(config.LR),
+        weight_decay=float(config.WEIGHT_DECAY),
+    )
+    config.CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    best_validation = float("inf")
+
+    for epoch in range(int(epochs)):
+        model.train()
+        random.shuffle(train_windows)
+        ratio = teacher_forcing_ratio(epoch, int(epochs))
+        epoch_losses = []
+
+        for route_index, start, end in train_windows:
+            optimizer.zero_grad(set_to_none=True)
+            loss, _ = run_training_window(
+                model,
+                visual,
+                caches[route_index],
+                start,
+                end,
+                device,
+                ratio,
+            )
+            if not torch.isfinite(loss):
+                raise FloatingPointError(f"Non-finite loss at epoch {epoch}: {loss}")
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(), float(config.GRAD_CLIP_NORM)
+            )
+            optimizer.step()
+            epoch_losses.append(float(loss.detach().cpu()))
+
+        validation = validation_mle(
+            model, visual, caches, val_windows, device
+        )
+        train_loss = float(np.mean(epoch_losses))
+        print(
+            f"epoch={epoch + 1:03d}/{epochs} "
+            f"loss={train_loss:.5f} val_mle={validation:.3f}m "
+            f"teacher={ratio:.3f}",
+            flush=True,
+        )
+
+        if validation < best_validation:
+            best_validation = validation
+            torch.save(
+                {
+                    "model": model.state_dict(),
+                    "spatial_channels": int(caches[0].spatial_features.shape[1]),
+                    "epoch": epoch + 1,
+                    "validation_mle": validation,
+                    "architecture": "TemporalMotionConditionedRetrieval",
+                },
+                config.TEMPORAL_CHECKPOINT,
+            )
+
+    print(
+        f"best validation MLE={best_validation:.3f}m; "
+        f"checkpoint={config.TEMPORAL_CHECKPOINT}",
+        flush=True,
+    )
+
+
+def metric_block(prediction, gt):
+    prediction = np.asarray(prediction, dtype=np.float64)
+    gt = np.asarray(gt, dtype=np.float64)
+    error = np.linalg.norm(prediction - gt, axis=1)
+    if len(prediction) > 1:
+        predicted_step = np.diff(prediction, axis=0)
+        gt_step = np.diff(gt, axis=0)
+        rpe = np.linalg.norm(predicted_step - gt_step, axis=1)
+        gt_step_length = np.linalg.norm(gt_step, axis=1)
+        jump_threshold = float(np.percentile(gt_step_length, 99)) + float(
+            config.JUMP_TOLERANCE_M
+        )
+        jump_rate = float(
+            (np.linalg.norm(predicted_step, axis=1) > jump_threshold).mean() * 100
+        )
+        if len(predicted_step) > 1:
+            acceleration = np.linalg.norm(np.diff(predicted_step, axis=0), axis=1)
+            acceleration_p90 = float(np.percentile(acceleration, 90))
+        else:
+            acceleration_p90 = 0.0
+        path_ratio = float(
+            np.linalg.norm(predicted_step, axis=1).sum()
+            / max(np.linalg.norm(gt_step, axis=1).sum(), 1e-8)
+        )
     else:
-        direction = torch.tensor(
-            [1.0, 0.0], device=velocity.device, dtype=velocity.dtype
-        )
-    normal = torch.stack([-direction[1], direction[0]])
-    return direction, normal
-
-
-def visual_confidence(measurement: VisualMeasurement, mode_id: int):
-    """Relative concentration within a known-correct local candidate region."""
-    probability = measurement.raw_prob[0]
-    k = min(2, int(probability.numel()))
-    top = torch.topk(probability, k=k).values
-    p1 = top[0]
-    p2 = top[1] if k > 1 else torch.zeros_like(p1)
-    margin = ((p1 - p2) / p1.clamp_min(EPS)).clamp(0.0, 1.0)
-
-    n = max(int(probability.numel()), 2)
-    entropy = -(
-        probability * probability.clamp_min(EPS).log()
-    ).sum() / np.log(float(n))
-    concentration = (1.0 - entropy).clamp(0.0, 1.0)
-
-    local_mass = measurement.mode_local_mass[0, mode_id]
-    mass_quality = (local_mass / 0.35).clamp(0.0, 1.0)
-    spatial_std = measurement.mode_spatial_std[0, mode_id]
-    spatial_quality = torch.exp(
-        -spatial_std / max(float(config.MODE_LOCAL_RADIUS_M), EPS)
-    )
-
-    confidence = (
-        0.32 * margin
-        + 0.30 * concentration
-        + 0.23 * mass_quality
-        + 0.15 * spatial_quality
-    ).clamp(0.0, 1.0)
-    return {
-        "confidence": float(confidence.item()),
-        "margin": float(margin.item()),
-        "entropy": float(entropy.item()),
-        "local_mass": float(local_mass.item()),
-        "spatial_std": float(spatial_std.item()),
-        "peak_prob": float(measurement.mode_peak_prob[0, mode_id].item()),
-    }
-
-
-def select_temporal_mode(
-    measurement: VisualMeasurement,
-    predicted_state: torch.Tensor,
-):
-    """Softly rank raw HardMS modes using visual evidence and straight motion."""
-    candidate_count = int(measurement.centers.shape[1])
-    best = None
-
-    for mode_id in range(min(int(config.TOP_MODES), measurement.mode_xy.shape[1])):
-        xy = measurement.mode_xy[0, mode_id]
-        direction, normal = motion_axes(predicted_state, xy)
-        residual = xy - predicted_state[:2]
-        along = (residual * direction).sum()
-        cross = (residual * normal).sum()
-        distance_units = (
-            residual.norm() / max(float(config.CANDIDATE_SPACING_M), EPS)
-        ).clamp(max=float(config.MODE_MAX_DISTANCE_UNITS))
-        cross_units = (
-            cross.abs() / max(float(config.CANDIDATE_SPACING_M), EPS)
-        ).clamp(max=float(config.MODE_MAX_DISTANCE_UNITS))
-
-        local_mass = measurement.mode_local_mass[0, mode_id].clamp_min(EPS)
-        peak = measurement.mode_peak_prob[0, mode_id].clamp_min(EPS)
-        spatial_std = measurement.mode_spatial_std[0, mode_id]
-        visual_score = (
-            torch.log(local_mass)
-            + 0.30 * torch.log1p(peak * candidate_count)
-            - 0.18 * spatial_std / max(float(config.MODE_LOCAL_RADIUS_M), EPS)
-        )
-        score = (
-            float(config.MODE_VISUAL_WEIGHT) * visual_score
-            - float(config.MODE_MOTION_WEIGHT) * distance_units
-            - float(config.MODE_CROSS_WEIGHT) * cross_units
-        )
-        item = {
-            "mode_id": int(mode_id),
-            "xy": xy,
-            "score": score,
-            "along": float(along.item()),
-            "cross": float(cross.item()),
-        }
-        if best is None or float(score.item()) > float(best["score"].item()):
-            best = item
-
-    if best is None:
-        raise RuntimeError("No HardMS mode was returned")
-
-    confidence = visual_confidence(measurement, best["mode_id"])
-    best.update(confidence)
-    best["boundary"] = FrozenVisualLocalizer.mode_at_search_boundary(
-        measurement, best["mode_id"]
-    )
-    if best["boundary"]:
-        best["confidence"] *= 0.80
-    return best
-
-
-def straight_line_update(
-    previous_state: torch.Tensor,
-    predicted_state: torch.Tensor,
-    predicted_cov: torch.Tensor,
-    selected: dict,
-    dt: float,
-):
-    """Continuous robust alpha-beta correction; no binary Mahalanobis gate."""
-    visual_xy = selected["xy"]
-    direction, normal = motion_axes(predicted_state, visual_xy)
-    innovation = visual_xy - predicted_state[:2]
-    along = (innovation * direction).sum()
-    cross = (innovation * normal).sum()
-    innovation_norm = innovation.norm()
-
-    huber = min(
-        1.0,
-        float(config.INNOVATION_HUBER_M)
-        / max(float(innovation_norm.item()), EPS),
-    )
-    confidence = max(float(config.CONFIDENCE_FLOOR), float(selected["confidence"]))
-    effective = confidence * huber
-
-    along_cap = float(config.MAX_ALONG_CORRECTION_M_PER_FRAME) * max(float(dt), 1.0)
-    cross_cap = float(config.MAX_CROSS_CORRECTION_M_PER_FRAME) * max(float(dt), 1.0)
-    bounded_along = along.clamp(-along_cap, along_cap)
-    bounded_cross = cross.clamp(-cross_cap, cross_cap)
-
-    alpha_along = (
-        float(config.ALPHA_ALONG_MIN)
-        + (float(config.ALPHA_ALONG_MAX) - float(config.ALPHA_ALONG_MIN))
-        * confidence
-    ) * huber
-    alpha_cross = (
-        float(config.ALPHA_CROSS_MIN)
-        + (float(config.ALPHA_CROSS_MAX) - float(config.ALPHA_CROSS_MIN))
-        * confidence
-    ) * huber
-
-    correction = (
-        alpha_along * bounded_along * direction
-        + alpha_cross * bounded_cross * normal
-    )
-    updated_state = predicted_state.clone()
-    updated_state[:2] = predicted_state[:2] + correction
-
-    observed_velocity = (
-        updated_state[:2] - previous_state[:2]
-    ) / max(float(dt), 1.0)
-    beta = (
-        float(config.BETA_MIN)
-        + (float(config.BETA_MAX) - float(config.BETA_MIN)) * effective
-    )
-    velocity_candidate = (
-        (1.0 - beta) * predicted_state[2:] + beta * observed_velocity
-    )
-    updated_state[2:] = constrain_turn(
-        previous_state[2:], velocity_candidate, dt
-    )
-
-    # The covariance is diagnostic only in this oracle-candidate stage.
-    mean_alpha = 0.5 * (alpha_along + alpha_cross)
-    updated_cov = predicted_cov.clone()
-    updated_cov[:2, :2] *= max(0.20, 1.0 - 0.60 * mean_alpha)
-    updated_cov = 0.5 * (updated_cov + updated_cov.T)
-
-    return {
-        "state": updated_state,
-        "covariance": updated_cov,
-        "innovation_m": float(innovation_norm.item()),
-        "along_innovation_m": float(along.item()),
-        "cross_innovation_m": float(cross.item()),
-        "bounded_along_m": float(bounded_along.item()),
-        "bounded_cross_m": float(bounded_cross.item()),
-        "alpha_along": float(alpha_along),
-        "alpha_cross": float(alpha_cross),
-        "beta": float(beta),
-        "huber_weight": float(huber),
-    }
-
-
-def metrics(rows, key):
-    pred = np.asarray([r[key] for r in rows], dtype=np.float64)
-    gt = np.asarray([r["gt"] for r in rows], dtype=np.float64)
-    error = np.linalg.norm(pred - gt, axis=1)
-
-    pred_step = np.diff(pred, axis=0)
-    gt_step = np.diff(gt, axis=0)
-    pred_step_len = np.linalg.norm(pred_step, axis=1) if len(pred_step) else np.zeros(0)
-    gt_step_len = np.linalg.norm(gt_step, axis=1) if len(gt_step) else np.zeros(0)
-    rpe = np.linalg.norm(pred_step - gt_step, axis=1) if len(pred_step) else np.zeros(0)
-
-    if len(gt_step_len):
-        jump_threshold = float(
-            np.percentile(gt_step_len, 99) + float(config.JUMP_TOLERANCE_M)
-        )
-        jump_rate = float((pred_step_len > jump_threshold).mean() * 100)
-        stationary = gt_step_len <= float(config.STATIONARY_GT_STEP_M)
-        stationary_drift = pred_step_len[stationary]
-    else:
-        jump_threshold = 0.0
+        rpe = np.zeros(1)
         jump_rate = 0.0
-        stationary_drift = np.zeros(0)
-
-    acceleration = (
-        np.linalg.norm(np.diff(pred_step, axis=0), axis=1)
-        if len(pred_step) >= 2
-        else np.zeros(0)
-    )
-    pred_length = float(pred_step_len.sum())
-    gt_length = float(gt_step_len.sum())
+        acceleration_p90 = 0.0
+        path_ratio = 0.0
+        jump_threshold = 0.0
 
     return {
         "MLE_m": float(error.mean()),
         "MedLE_m": float(np.median(error)),
         "P90_m": float(np.percentile(error, 90)),
         "P95_m": float(np.percentile(error, 95)),
-        "MaxLE_m": float(error.max()),
-        "LSR@5_pct": float((error <= 5.0).mean() * 100),
-        "LSR@10_pct": float((error <= 10.0).mean() * 100),
-        "LSR@15_pct": float((error <= 15.0).mean() * 100),
-        "LSR@20_pct": float((error <= 20.0).mean() * 100),
-        "RPE_m": float(rpe.mean()) if len(rpe) else 0.0,
-        "JumpThreshold_m": jump_threshold,
+        "ATE_RMSE_m": float(np.sqrt(np.mean(error**2))),
+        "LSR@5_pct": float((error <= 5).mean() * 100),
+        "LSR@10_pct": float((error <= 10).mean() * 100),
+        "LSR@15_pct": float((error <= 15).mean() * 100),
+        "LSR@20_pct": float((error <= 20).mean() * 100),
+        "RPE_m": float(rpe.mean()),
         "JumpRate_pct": jump_rate,
-        "PathLengthRatio": pred_length / max(gt_length, EPS),
-        "AccelerationP90_m": (
-            float(np.percentile(acceleration, 90)) if len(acceleration) else 0.0
-        ),
-        "StationaryDriftMean_m": (
-            float(stationary_drift.mean()) if len(stationary_drift) else 0.0
-        ),
-        "StationaryDriftP90_m": (
-            float(np.percentile(stationary_drift, 90))
-            if len(stationary_drift)
-            else 0.0
-        ),
+        "JumpThreshold_m": jump_threshold,
+        "AccelerationP90_m": acceleration_p90,
+        "PathLengthRatio": path_ratio,
+        "MaxLE_m": float(error.max()),
     }
 
 
-def write_route_csv(path: Path, rows):
-    fields = [
-        "frame_id", "dt_raw", "dt_used",
-        "gt_x", "gt_y",
-        "candidate_center_x", "candidate_center_y", "candidate_jitter_m",
-        "raw_top1_x", "raw_top1_y",
-        "raw_hardms_x", "raw_hardms_y",
-        "selected_visual_x", "selected_visual_y",
-        "prediction_x", "prediction_y",
-        "final_x", "final_y",
-        "velocity_x", "velocity_y",
-        "candidate_captured", "selected_mode", "boundary",
-        "confidence", "margin", "entropy", "mode_local_mass",
-        "mode_spatial_std", "mode_peak_prob",
-        "innovation_m", "along_innovation_m", "cross_innovation_m",
-        "bounded_along_m", "bounded_cross_m",
-        "alpha_along", "alpha_cross", "beta", "huber_weight",
-    ]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(
-                {
-                    "frame_id": row["frame_id"],
-                    "dt_raw": row["dt_raw"],
-                    "dt_used": row["dt_used"],
-                    "gt_x": row["gt"][0],
-                    "gt_y": row["gt"][1],
-                    "candidate_center_x": row["candidate_center"][0],
-                    "candidate_center_y": row["candidate_center"][1],
-                    "candidate_jitter_m": row["candidate_jitter_m"],
-                    "raw_top1_x": row["raw_top1"][0],
-                    "raw_top1_y": row["raw_top1"][1],
-                    "raw_hardms_x": row["raw_hardms"][0],
-                    "raw_hardms_y": row["raw_hardms"][1],
-                    "selected_visual_x": row["selected_visual"][0],
-                    "selected_visual_y": row["selected_visual"][1],
-                    "prediction_x": row["prediction"][0],
-                    "prediction_y": row["prediction"][1],
-                    "final_x": row["final"][0],
-                    "final_y": row["final"][1],
-                    "velocity_x": row["velocity"][0],
-                    "velocity_y": row["velocity"][1],
-                    "candidate_captured": int(row["candidate_captured"]),
-                    "selected_mode": row["selected_mode"],
-                    "boundary": int(row["boundary"]),
-                    "confidence": row["confidence"],
-                    "margin": row["margin"],
-                    "entropy": row["entropy"],
-                    "mode_local_mass": row["mode_local_mass"],
-                    "mode_spatial_std": row["mode_spatial_std"],
-                    "mode_peak_prob": row["mode_peak_prob"],
-                    "innovation_m": row["innovation_m"],
-                    "along_innovation_m": row["along_innovation_m"],
-                    "cross_innovation_m": row["cross_innovation_m"],
-                    "bounded_along_m": row["bounded_along_m"],
-                    "bounded_cross_m": row["bounded_cross_m"],
-                    "alpha_along": row["alpha_along"],
-                    "alpha_cross": row["alpha_cross"],
-                    "beta": row["beta"],
-                    "huber_weight": row["huber_weight"],
-                }
-            )
-
-
-def run_route(
-    root,
-    name,
-    route_index,
+@torch.no_grad()
+def evaluate_route(
+    model,
     visual,
+    cache,
     device,
-    candidate_mode: str,
-    jitter_m: float,
+    split_name,
 ):
-    dataset, indices = tracking_frames(root, visual.origin_lat, visual.origin_lon)
-    if len(indices) <= INIT_HISTORY:
-        raise ValueError(f"{name} needs more than {INIT_HISTORY} frames")
-
-    sampled_meta = [dataset.samples[i] for i in indices]
-    frame_ids = np.asarray(
-        [int(sample["frame_id"]) for sample in sampled_meta], dtype=np.int64
-    )
-    eval_gt = np.asarray(
-        [[sample["x_meter"], sample["y_meter"]] for sample in sampled_meta],
-        dtype=np.float32,
-    )
-
-    jitter = deterministic_jitter(frame_ids, route_index, jitter_m)
-    if candidate_mode == "gt":
-        jitter[:] = 0.0
-    candidate_centers = eval_gt + jitter
-
-    # Encode UAVs in bounded batches.  Cached CLIP features stay on CPU.
-    clip_batches = []
-    for start in range(0, len(indices), 64):
-        chunk = indices[start:start + 64]
-        uav_batch = torch.stack([dataset[i]["uav"] for i in chunk], dim=0)
-        clip_batches.append(visual.encode_uav_clip(uav_batch).cpu())
-    clips = torch.cat(clip_batches, dim=0)
-
-    state = torch.zeros(4, device=device)
-    state[:2] = torch.from_numpy(eval_gt[INIT_HISTORY - 1]).to(device)
-    initial_velocity = robust_initial_velocity(
-        eval_gt[:INIT_HISTORY], frame_ids[:INIT_HISTORY]
-    )
-    state[2:] = torch.from_numpy(initial_velocity).to(device)
-
-    covariance = torch.diag(
-        torch.tensor(
-            [
-                float(config.POSITION_STD_M) ** 2,
-                float(config.POSITION_STD_M) ** 2,
-                float(config.VELOCITY_STD_M_PER_FRAME) ** 2,
-                float(config.VELOCITY_STD_M_PER_FRAME) ** 2,
-            ],
-            device=device,
-            dtype=state.dtype,
+    model.eval()
+    segment = contiguous_splits(len(cache))[split_name]
+    if segment.length < int(config.HISTORY) + 2:
+        raise RuntimeError(
+            f"{cache.name} {split_name} split is too short: {segment.length}"
         )
-    )
 
-    history_positions = deque(maxlen=int(config.LINE_FIT_HISTORY))
-    history_times = deque(maxlen=int(config.LINE_FIT_HISTORY))
-    for p, frame_id in zip(eval_gt[:INIT_HISTORY], frame_ids[:INIT_HISTORY]):
-        history_positions.append(torch.from_numpy(p).to(device))
-        history_times.append(float(frame_id))
+    state = initialise_temporal_state(model, cache, segment.start, device)
+    history_slice = slice(segment.start, segment.start + int(config.HISTORY))
+    history_gt = cache.gt_xy[history_slice].to(device)
+    history_ids = cache.frame_ids[history_slice].to(device)
+    total_dt = (history_ids[-1] - history_ids[0]).clamp_min(1).float()
+    constant_velocity = (history_gt[-1] - history_gt[0]) / total_dt
+    constant_xy = history_gt[-1].clone()
+    constant_frame_id = history_ids[-1].clone()
 
-    previous_frame_id = int(frame_ids[INIT_HISTORY - 1])
     rows = []
+    for index in range(segment.start + int(config.HISTORY), segment.end):
+        current_frame_id = cache.frame_ids[index].to(device)
+        constant_dt = (current_frame_id - constant_frame_id).clamp_min(1).float()
+        constant_xy = constant_xy + constant_velocity * constant_dt
+        constant_frame_id = current_frame_id
 
-    for t in range(INIT_HISTORY, len(indices)):
-        frame_id = int(frame_ids[t])
-        dt_raw = max(1, frame_id - previous_frame_id)
-        dt = float(min(dt_raw, int(config.MAX_FRAME_ID_GAP)))
-
-        previous_state = state.clone()
-        predicted_state, predicted_cov = predict(state, covariance, dt)
-        search_center = torch.from_numpy(candidate_centers[t]).to(device)
-        measurement = visual.measure(
-            clips[t:t + 1].to(device, non_blocking=True),
-            predicted_state[:2].unsqueeze(0),
-            predicted_state[2:].unsqueeze(0),
-            search_centers=search_center.unsqueeze(0),
-            grid_size=int(config.GRID_SIZE),
-            sigma_along=float(config.MOTION_SIGMA_ALONG_M),
-            sigma_cross=float(config.MOTION_SIGMA_CROSS_M),
-            prior_weight=float(config.MOTION_PRIOR_WEIGHT),
+        state, output = one_temporal_step(
+            model,
+            visual,
+            cache,
+            index,
+            state,
+            device,
+            teacher_ratio=0.0,
+            training=False,
         )
-
-        selected = select_temporal_mode(measurement, predicted_state)
-        update = straight_line_update(
-            previous_state,
-            predicted_state,
-            predicted_cov,
-            selected,
-            dt,
-        )
-        state = update["state"]
-        covariance = update["covariance"]
-
-        history_positions.append(state[:2].clone())
-        history_times.append(float(frame_id))
-        fitted_velocity = line_fit_velocity(
-            history_positions, history_times, state[2:]
-        )
-        blend = float(config.VELOCITY_LINE_BLEND) * max(
-            float(config.CONFIDENCE_FLOOR), float(selected["confidence"])
-        )
-        velocity_candidate = (
-            (1.0 - blend) * state[2:] + blend * fitted_velocity
-        )
-        state[2:] = constrain_turn(state[2:], velocity_candidate, dt=1.0)
-
-        gt_tensor = torch.from_numpy(eval_gt[t:t + 1]).to(device)
-        captured = bool(
-            visual.candidate_contains_gt(measurement, gt_tensor).item()
-        )
-
         rows.append(
             {
-                "frame_id": frame_id,
-                "dt_raw": dt_raw,
-                "dt_used": dt,
-                "gt": eval_gt[t].tolist(),
-                "candidate_center": candidate_centers[t].tolist(),
-                "candidate_jitter_m": float(np.linalg.norm(jitter[t])),
-                "raw_top1": measurement.raw_top1_xy[0].cpu().tolist(),
-                "raw_hardms": measurement.raw_visual_xy[0].cpu().tolist(),
-                "selected_visual": selected["xy"].cpu().tolist(),
-                "prediction": predicted_state[:2].cpu().tolist(),
-                "final": state[:2].cpu().tolist(),
-                "velocity": state[2:].cpu().tolist(),
-                "candidate_captured": captured,
-                "selected_mode": int(selected["mode_id"]),
-                "boundary": bool(selected["boundary"]),
-                "confidence": float(selected["confidence"]),
-                "margin": float(selected["margin"]),
-                "entropy": float(selected["entropy"]),
-                "mode_local_mass": float(selected["local_mass"]),
-                "mode_spatial_std": float(selected["spatial_std"]),
-                "mode_peak_prob": float(selected["peak_prob"]),
-                **update,
+                "frame_id": int(output["frame_id"].item()),
+                "gt": output["gt"].squeeze(0).cpu().tolist(),
+                "constant_velocity": constant_xy.cpu().tolist(),
+                "raw_top1": output["raw_top1"].squeeze(0).cpu().tolist(),
+                "hardms": output["hardms"].squeeze(0).cpu().tolist(),
+                "motion": output["motion"].squeeze(0).cpu().tolist(),
+                "visual_expectation": output["visual_expectation"].squeeze(0).cpu().tolist(),
+                "temporal": output["temporal"].squeeze(0).cpu().tolist(),
+                "gate": float(output["gate"].item()),
+                "entropy": float(output["entropy"].item()),
+                "visual_std": float(output["spatial_std"].item()),
+                "motion_std": float(output["motion_std"].item()),
+                "capture": bool(output["capture"].item()),
             }
         )
-        # Remove tensor-valued fields copied from update.
-        rows[-1].pop("state", None)
-        rows[-1].pop("covariance", None)
-        previous_frame_id = frame_id
 
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    write_route_csv(config.OUTPUT_DIR / f"{name}_robust_frames.csv", rows)
+    csv_path = config.OUTPUT_DIR / f"{cache.name}_robust_frames.csv"
+    with csv_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(
+            [
+                "frame_id",
+                "gt_x",
+                "gt_y",
+                "constant_velocity_x",
+                "constant_velocity_y",
+                "raw_top1_x",
+                "raw_top1_y",
+                "hardms_x",
+                "hardms_y",
+                "motion_x",
+                "motion_y",
+                "visual_expectation_x",
+                "visual_expectation_y",
+                "temporal_x",
+                "temporal_y",
+                "correction_gate",
+                "posterior_entropy",
+                "visual_std_m",
+                "motion_std_m",
+                "candidate_capture",
+            ]
+        )
+        for row in rows:
+            writer.writerow(
+                [
+                    row["frame_id"],
+                    *row["gt"],
+                    *row["constant_velocity"],
+                    *row["raw_top1"],
+                    *row["hardms"],
+                    *row["motion"],
+                    *row["visual_expectation"],
+                    *row["temporal"],
+                    row["gate"],
+                    row["entropy"],
+                    row["visual_std"],
+                    row["motion_std"],
+                    int(row["capture"]),
+                ]
+            )
 
-    return {
-        "route": name,
-        "Experiment": "Oracle Candidate Temporal Smoothing",
-        "CandidateCenterMode": candidate_mode,
-        "GTJitterMax_m": float(jitter_m if candidate_mode == "gt_jitter" else 0.0),
-        "GTUsedAfterInitializationByFilter": False,
-        "GTUsedForCandidateCenter": True,
-        "GridSize": int(config.GRID_SIZE),
-        "SampledFrames": len(indices),
-        "InitialSpeed_m_per_frame_id": float(np.linalg.norm(initial_velocity)),
-        "RawTop1": metrics(rows, "raw_top1"),
-        "RawHardMS": metrics(rows, "raw_hardms"),
-        "TemporalSelectedMode": metrics(rows, "selected_visual"),
-        "StraightPrediction": metrics(rows, "prediction"),
-        "StraightLineSmoothedHardMS": metrics(rows, "final"),
+    gt = [row["gt"] for row in rows]
+    summary = {
+        "route": cache.name,
+        "split": split_name,
+        "ConstantVelocity": metric_block(
+            [row["constant_velocity"] for row in rows], gt
+        ),
+        "RawTop1": metric_block([row["raw_top1"] for row in rows], gt),
+        "FixedHardMS": metric_block([row["hardms"] for row in rows], gt),
+        "LearnedMotionOnly": metric_block([row["motion"] for row in rows], gt),
+        "TemporalVisualExpectation": metric_block(
+            [row["visual_expectation"] for row in rows], gt
+        ),
+        "TMCR": metric_block([row["temporal"] for row in rows], gt),
         "CandidateCaptureRate_pct": float(
-            np.mean([r["candidate_captured"] for r in rows]) * 100.0
+            np.mean([row["capture"] for row in rows]) * 100
         ),
-        "MeanVisualConfidence": float(
-            np.mean([r["confidence"] for r in rows])
+        "MeanCorrectionGate": float(np.mean([row["gate"] for row in rows])),
+        "MeanPosteriorEntropy": float(
+            np.mean([row["entropy"] for row in rows])
         ),
-        "BoundaryRate_pct": float(
-            np.mean([r["boundary"] for r in rows]) * 100.0
+        "MeanVisualStd_m": float(
+            np.mean([row["visual_std"] for row in rows])
+        ),
+        "MeanMotionStd_m": float(
+            np.mean([row["motion_std"] for row in rows])
         ),
     }
+    print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
+    return summary
+
+
+def load_temporal_checkpoint(model, device):
+    if not config.TEMPORAL_CHECKPOINT.exists():
+        raise FileNotFoundError(
+            f"Temporal checkpoint not found: {config.TEMPORAL_CHECKPOINT}. "
+            "Run --mode train_eval first."
+        )
+    checkpoint = torch.load(config.TEMPORAL_CHECKPOINT, map_location=device)
+    model.load_state_dict(checkpoint["model"], strict=True)
+    return checkpoint
+
+
+def selected_routes(names: Iterable[str] | None):
+    if not names:
+        return list(zip(config.ROUTE_ROOTS, config.ROUTE_NAMES))
+    requested = set(names)
+    pairs = [
+        (root, name)
+        for root, name in zip(config.ROUTE_ROOTS, config.ROUTE_NAMES)
+        if name in requested
+    ]
+    missing = requested - {name for _, name in pairs}
+    if missing:
+        raise ValueError(f"Unknown routes: {sorted(missing)}")
+    return pairs
 
 
 def main():
-    args = parse_args()
-    torch.manual_seed(int(config.SEED))
-    np.random.seed(int(config.SEED))
-    device = torch.device(config.DEVICE if torch.cuda.is_available() else "cpu")
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=("train", "eval", "train_eval"),
+        default="train_eval",
+    )
+    parser.add_argument("--epochs", type=int, default=config.EPOCHS)
+    parser.add_argument(
+        "--eval-split", choices=("test", "all"), default="test"
+    )
+    parser.add_argument("--routes", nargs="*", default=None)
+    args = parser.parse_args()
+
+    set_seed(int(config.SEED))
+    device = torch.device(
+        config.DEVICE if torch.cuda.is_available() else "cpu"
+    )
     visual = FrozenVisualLocalizer(device)
 
-    selected_routes = set(args.routes) if args.routes else None
-    route_items = [
-        (root, name, i)
-        for i, (root, name) in enumerate(zip(config.ROUTE_ROOTS, config.ROUTE_NAMES))
-        if selected_routes is None or name in selected_routes
-    ]
-    if not route_items:
-        raise ValueError(f"No valid routes selected: {args.routes}")
-
-    results = [
-        run_route(
-            root,
-            name,
-            route_index,
-            visual,
-            device,
-            args.candidate_center,
-            max(0.0, float(args.jitter_m)),
-        )
-        for root, name, route_index in route_items
-    ]
-
-    config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    summary_path = config.OUTPUT_DIR / "robust_tracker_summary.json"
-    with summary_path.open("w", encoding="utf-8") as handle:
-        json.dump(results, handle, indent=2, ensure_ascii=False)
-
-    for result in results:
-        raw = result["RawHardMS"]
-        smooth = result["StraightLineSmoothedHardMS"]
+    caches = []
+    for root, name in selected_routes(args.routes):
+        print(f"encoding {name}: {root}", flush=True)
+        caches.append(build_route_cache(root, name, visual, device))
         print(
-            f"{result['route']}: "
-            f"raw MLE={raw['MLE_m']:.2f}m, jump={raw['JumpRate_pct']:.2f}% | "
-            f"smooth MLE={smooth['MLE_m']:.2f}m, "
-            f"P90={smooth['P90_m']:.2f}m, "
-            f"jump={smooth['JumpRate_pct']:.2f}%, "
-            f"stationary-P90={smooth['StationaryDriftP90_m']:.2f}m | "
-            f"CCR={result['CandidateCaptureRate_pct']:.2f}%"
+            f"  frames={len(caches[-1])}, "
+            f"spatial={tuple(caches[-1].spatial_features.shape[1:])}",
+            flush=True,
         )
-    print(f"summary: {summary_path}")
+
+    if not caches:
+        raise RuntimeError("No route cache was created")
+    spatial_channels = int(caches[0].spatial_features.shape[1])
+    model = TemporalMotionRetriever(spatial_channels).to(device)
+
+    if args.mode in ("train", "train_eval"):
+        train_model(model, visual, caches, device, args.epochs)
+
+    if args.mode in ("eval", "train_eval"):
+        checkpoint = load_temporal_checkpoint(model, device)
+        print(
+            f"loaded epoch={checkpoint.get('epoch')} "
+            f"val_mle={checkpoint.get('validation_mle')}",
+            flush=True,
+        )
+        summaries = [
+            evaluate_route(
+                model,
+                visual,
+                cache,
+                device,
+                split_name=args.eval_split,
+            )
+            for cache in caches
+        ]
+        config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        summary_path = config.OUTPUT_DIR / "robust_tracker_summary.json"
+        with summary_path.open("w", encoding="utf-8") as file:
+            json.dump(summaries, file, ensure_ascii=False, indent=2)
+        print(f"summary={summary_path}", flush=True)
 
 
 if __name__ == "__main__":
