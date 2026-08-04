@@ -1,34 +1,22 @@
-# UAV--Satellite Temporal Tracking
+前 5 個 GT nodes
+→ 初始化位置與穩健速度
 
-This directory contains the current temporal diagnostic system.  It reuses the
-archived P320/S32 6x6 HardMS visual localizer as a frozen measurement model and
-applies a constant-velocity, robust Kalman-style temporal update.
+最近 5 個最終位置
+→ least-squares 直線擬合
+→ 更新平滑速度與方向
+→ 向前預測下一個位置
 
-## Layout
+預測位置
+→ 根據 tracking confidence 選擇 6×6 / 10×10 / 14×14 / 18×18
 
-- `visual_model.py`: frozen MobileCLIP plus the archived UAV/SAT projection heads.
-- `visual_localizer.py`: local 6x6 gallery lookup and Fixed HardMS measurement.
-- `robust_tracker.py`: constant-velocity prediction and innovation-gated update.
-- `render_results_video.py`: aspect-ratio-preserving UAV/orthomosaic videos.
-- `outputs/temporal_prior_hardms/`: generated metrics, frame predictions, and videos.
+UAV × SAT candidates
+→ cosine logits
+→ 沿行進方向較寬、左右方向較窄的 motion prior
+→ fused logits
+→ Fixed HardMS
+→ fused visual position
 
-## Run
-
-The current tracker has no trainable module.  It evaluates the frozen visual
-checkpoint and writes trajectories:
-
-```bash
-cd /yh/study/uav-sat
-CUDA_VISIBLE_DEVICES=0 bash run_robust_tracker.sh
-```
-
-Render the resulting videos with:
-
-```bash
-cd /yh/study/uav-sat
-bash render_results_video.sh
-```
-
-External dataset, orthomosaic, and archived visual-checkpoint paths are defined
-in `config.py` and deliberately remain absolute because they are shared source
-assets outside this project directory.
+直線預測 + fused visual position
+→ 限制沿線與橫向最大修正
+→ continuous correction
+→ final temporal position
