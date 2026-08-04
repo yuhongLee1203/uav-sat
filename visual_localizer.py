@@ -24,6 +24,7 @@ class VisualMeasurement:
     raw_top1_xy: torch.Tensor
     raw_logits: torch.Tensor
     fused_logits: torch.Tensor
+    raw_prob: torch.Tensor
     fused_prob: torch.Tensor
 
     # [B, M, ...] multi-mode outputs.
@@ -355,6 +356,9 @@ class FrozenVisualLocalizer:
         raw_logits = self.model.logit_scale.exp().clamp(max=100.0) * (
             z_uav[:, None] * z_sat
         ).sum(dim=-1)
+        raw_prob = torch.softmax(
+            raw_logits / float(config.MEANSHIFT_SCORE_TAU), dim=1
+        )
 
         (
             raw_mode_xy,
@@ -423,6 +427,7 @@ class FrozenVisualLocalizer:
             raw_top1_xy=raw_top1_xy,
             raw_logits=raw_logits,
             fused_logits=fused_logits,
+            raw_prob=raw_prob,
             fused_prob=fused_prob,
             mode_xy=mode_xy,
             mode_support=mode_support,
