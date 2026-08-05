@@ -55,6 +55,13 @@ MEANSHIFT_ITERATIONS = 3
 # this prior and to compute supervision; GT is never an input token to the CRF.
 GRID_SIZE = 6
 LOCAL_PRIOR_JITTER_M = 12.0
+# A candidate lattice represents a continuous GT location when at least one
+# candidate centre is within the gallery quantisation radius.  With 9.6 m
+# anchor spacing, the ideal half-cell diagonal is 6.79 m; 7.5 m allows small
+# map-coordinate and boundary rounding differences without treating a remote
+# lattice as captured.
+CANDIDATE_CAPTURE_RADIUS_M = 7.5
+MIN_TRAIN_CAPTURE_RATE = 0.95
 TEMPORAL_WINDOW = 5
 WINDOW_STRIDE = 1
 

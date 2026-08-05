@@ -307,8 +307,9 @@ def predict_split(model, caches, split_name, device, save_rows=False):
         rows = []
         for index in range(segment.start + window - 1, segment.end):
             start = index - window + 1
-            if not bool(cache.capture[start : index + 1].all()):
-                continue
+            # Evaluation must include every frame.  Capture is reported as a
+            # diagnostic, not used to hide difficult windows.  Training still
+            # uses only fully representable windows in make_windows().
             batch = gather_batch(caches, [(route_index, start)], device)
             output = model(
                 batch["z_uav"], batch["z_sat"], batch["raw_logits"],
@@ -509,9 +510,22 @@ def main():
         build_route_cache(root, name, index, visual, device, args.jitter_m)
         for index, (root, name) in enumerate(route_pairs)
     ]
-    if min(cache.capture.float().mean().item() for cache in caches) < 0.98:
+    capture_rates = [
+        cache.capture.float().mean().item() for cache in caches
+    ]
+    minimum_capture = min(capture_rates)
+    if minimum_capture < float(config.MIN_TRAIN_CAPTURE_RATE):
         raise RuntimeError(
-            "candidate capture is below 98%; first run --jitter-m 0 to verify geometry"
+            "candidate lattice represents less than "
+            f"{100.0 * float(config.MIN_TRAIN_CAPTURE_RATE):.1f}% of GT locations; "
+            "run --jitter-m 0 to verify map/gallery geometry"
+        )
+    if minimum_capture < 0.98:
+        print(
+            "warning: geometric candidate capture is below 98% on at least "
+            "one route; training will use only fully captured windows, while "
+            "evaluation will still include every frame",
+            flush=True,
         )
 
     model = TemporalLatticeCRF().to(device)

@@ -1,3 +1,4 @@
+"""Frozen retrieval front-end for temporal lattice decoding."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -194,8 +195,17 @@ class FrozenVisualLocalizer:
 
     @torch.no_grad()
     def candidate_contains_gt_anchor(self, indices, gt_xy):
-        distance_squared = (
-            self.gallery["xy"][None, :, :] - gt_xy[:, None, :]
-        ).square().sum(dim=2)
-        nearest_index = distance_squared.argmin(dim=1)
-        return (indices == nearest_index[:, None]).any(dim=1)
+        """Return whether the lattice spatially represents the GT location.
+
+        Exact gallery-index membership is unnecessarily brittle near map
+        boundaries and when multiple gallery entries share nearly identical
+        coordinates.  The correct local-refinement criterion is geometric:
+        at least one candidate centre must lie within one quantisation cell of
+        GT.  This keeps the diagnostic tied to achievable coordinate accuracy
+        rather than an arbitrary gallery row ID.
+        """
+        candidate_xy = self.gallery["xy"][indices]
+        nearest_distance = torch.linalg.norm(
+            candidate_xy - gt_xy[:, None, :], dim=2
+        ).min(dim=1).values
+        return nearest_distance <= float(config.CANDIDATE_CAPTURE_RADIUS_M)
