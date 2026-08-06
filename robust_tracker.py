@@ -499,6 +499,14 @@ def main():
     parser.add_argument("--routes", nargs="*", default=None)
     parser.add_argument("--jitter-m", type=float, default=config.LOCAL_PRIOR_JITTER_M)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--render-video",
+        action="store_true",
+        help="render RTL-CRF inference MP4 files after evaluation",
+    )
+    parser.add_argument("--video-fps", type=float, default=8.0)
+    parser.add_argument("--video-width", type=int, default=1600)
+    parser.add_argument("--video-height", type=int, default=900)
     args = parser.parse_args()
 
     config.LOCAL_PRIOR_JITTER_M = float(args.jitter_m)
@@ -547,6 +555,19 @@ def main():
         ) as file:
             json.dump(summary, file, ensure_ascii=False, indent=2)
         print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
+        if args.render_video:
+            # Import only after CSV generation so training/evaluation has no
+            # OpenCV dependency unless video rendering is explicitly requested.
+            from render_results_video import render_routes
+
+            video_paths = render_routes(
+                route_pairs,
+                fps=float(args.video_fps),
+                video_width=int(args.video_width),
+                video_height=int(args.video_height),
+            )
+            for video_path in video_paths:
+                print(f"inference video: {video_path}", flush=True)
 
 
 if __name__ == "__main__":
