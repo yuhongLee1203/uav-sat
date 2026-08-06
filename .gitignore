@@ -35,6 +35,7 @@ outputs/**
 !outputs/**/*.json
 !outputs/**/*.log
 !outputs/**/*.txt
+!outputs/**/*.png
 
 # Common local runtime artifacts
 wandb/
