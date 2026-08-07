@@ -1,0 +1,50 @@
+{
+  "comparison": "3-frame vs existing 5-frame RTL-CRF",
+  "fairness": "Metrics are recomputed only on frame IDs shared by both runs. Both runs use the same Route-A-only visual checkpoint and the same Route-A train/validation boundary; only temporal window length differs.",
+  "routes": {
+    "route_B": {
+      "window_5": {
+        "frames": 2272,
+        "MLE_m": 5.29262449655483,
+        "P90_m": 9.28427717969639,
+        "RPE_m": 4.576363791249282,
+        "JumpRate_pct": 1.9815059445178336,
+        "LSR@5_pct": 53.125,
+        "LSR@10_pct": 92.73767605633803,
+        "LSR@15_pct": 99.73591549295774
+      },
+      "window_3": {
+        "frames": 2272,
+        "MLE_m": 5.703442915984913,
+        "P90_m": 9.944870801377812,
+        "RPE_m": 5.58447128905765,
+        "JumpRate_pct": 4.051078819903126,
+        "LSR@5_pct": 46.434859154929576,
+        "LSR@10_pct": 90.18485915492957,
+        "LSR@15_pct": 99.73591549295774
+      }
+    },
+    "route_C": {
+      "window_5": {
+        "frames": 1254,
+        "MLE_m": 4.576755329966609,
+        "P90_m": 8.004994903495813,
+        "RPE_m": 4.139238662452105,
+        "JumpRate_pct": 1.3567438148443736,
+        "LSR@5_pct": 63.63636363636363,
+        "LSR@10_pct": 96.57097288676236,
+        "LSR@15_pct": 100.0
+      },
+      "window_3": {
+        "frames": 1254,
+        "MLE_m": 5.121379322283673,
+        "P90_m": 8.978176028354156,
+        "RPE_m": 5.055236225990334,
+        "JumpRate_pct": 2.2346368715083798,
+        "LSR@5_pct": 53.66826156299841,
+        "LSR@10_pct": 93.77990430622009,
+        "LSR@15_pct": 99.92025518341308
+      }
+    }
+  }
+}
