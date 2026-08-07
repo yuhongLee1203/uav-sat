@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -7,6 +6,9 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 import cv2
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -20,7 +22,7 @@ VIDEO_HEIGHT = 900
 DEFAULT_FPS = 8.0
 EARTH_RADIUS_M = 6378137.0
 
-# BGR colours.
+# Video colours are BGR.
 GT_COLOR = (50, 220, 70)
 RTL_COLOR = (220, 70, 220)
 TEXT_COLOR = (242, 242, 242)
@@ -28,10 +30,9 @@ BACKGROUND_COLOR = (0, 0, 0)
 
 REQUIRED_COLUMNS = {
     "frame_id",
-    "gt_x",
-    "gt_y",
-    "temporal_x",
-    "temporal_y",
+    "gt_x", "gt_y",
+    "hardms_x", "hardms_y",
+    "temporal_x", "temporal_y",
 }
 
 
@@ -41,7 +42,7 @@ def meters_to_latlon(
     origin_lat: float,
     origin_lon: float,
 ) -> Tuple[float, float]:
-    """Exact inverse of data.meters_from_latlon for the fixed route origin."""
+    """Exact inverse of the local meter conversion used by the dataset."""
     origin_lat_rad = math.radians(float(origin_lat))
     lat = float(origin_lat) + math.degrees(float(y_meter) / EARTH_RADIUS_M)
     lon_scale = EARTH_RADIUS_M * math.cos(origin_lat_rad)
@@ -57,7 +58,6 @@ def xy_to_source_pixels(
     origin_lat: float,
     origin_lon: float,
 ) -> np.ndarray:
-    """Convert local ENU-like metre coordinates through the calibrated mapper."""
     pixels = []
     for x_meter, y_meter in np.asarray(xy, dtype=np.float64):
         lat, lon = meters_to_latlon(
@@ -71,13 +71,50 @@ def xy_to_source_pixels(
     return np.asarray(pixels, dtype=np.float64)
 
 
+def direct_gt_pixels(rows: pd.DataFrame, sample_by_id) -> np.ndarray:
+    pixels = []
+    missing = []
+    for frame_id in rows["frame_id"].astype(int).tolist():
+        sample = sample_by_id.get(frame_id)
+        if sample is None:
+            missing.append(frame_id)
+            continue
+        pixels.append((float(sample["pixel_x"]), float(sample["pixel_y"])))
+    if missing:
+        raise RuntimeError(
+            "Evaluation CSV contains frame IDs absent from RouteDataset: "
+            f"{missing[:10]}"
+        )
+    return np.asarray(pixels, dtype=np.float64)
+
+
+def verify_coordinate_mapping(
+    converted_gt: np.ndarray,
+    exact_gt: np.ndarray,
+    route_name: str,
+) -> None:
+    errors = np.linalg.norm(converted_gt - exact_gt, axis=1)
+    median_error = float(np.median(errors))
+    maximum_error = float(np.max(errors))
+    print(
+        f"{route_name}: map-coordinate verification "
+        f"median={median_error:.4f}px max={maximum_error:.4f}px",
+        flush=True,
+    )
+    if median_error > 1.5 or maximum_error > 5.0:
+        raise RuntimeError(
+            f"{route_name}: local XY and georeferenced map disagree "
+            f"(median {median_error:.2f}px, max {maximum_error:.2f}px). "
+            "Rendering stopped instead of drawing a flipped trajectory."
+        )
+
+
 def contain_image(
     image: np.ndarray,
     width: int,
     height: int,
     fill: Tuple[int, int, int] = BACKGROUND_COLOR,
 ) -> np.ndarray:
-    """Letterbox only the UAV image while preserving its aspect ratio."""
     source_height, source_width = image.shape[:2]
     scale = min(float(width) / source_width, float(height) / source_height)
     destination_width = max(1, int(round(source_width * scale)))
@@ -209,52 +246,7 @@ def open_video_writer(
     raise RuntimeError(f"Could not open MP4 writer for {path}")
 
 
-def direct_gt_pixels(rows: pd.DataFrame, sample_by_id) -> np.ndarray:
-    pixels = []
-    missing = []
-    for frame_id in rows["frame_id"].astype(int).tolist():
-        sample = sample_by_id.get(frame_id)
-        if sample is None:
-            missing.append(frame_id)
-            continue
-        pixels.append((float(sample["pixel_x"]), float(sample["pixel_y"])))
-    if missing:
-        raise RuntimeError(
-            "Evaluation CSV contains frame IDs that are absent from RouteDataset: "
-            f"{missing[:10]}"
-        )
-    return np.asarray(pixels, dtype=np.float64)
-
-
-def verify_coordinate_mapping(
-    converted_gt: np.ndarray,
-    exact_gt: np.ndarray,
-    route_name: str,
-) -> None:
-    errors = np.linalg.norm(converted_gt - exact_gt, axis=1)
-    median_error = float(np.median(errors))
-    maximum_error = float(np.max(errors))
-    print(
-        f"{route_name}: map-coordinate verification "
-        f"median={median_error:.4f}px max={maximum_error:.4f}px",
-        flush=True,
-    )
-    if median_error > 1.5 or maximum_error > 5.0:
-        raise RuntimeError(
-            f"{route_name}: local XY and georeferenced map disagree "
-            f"(median {median_error:.2f}px, max {maximum_error:.2f}px). "
-            "Video rendering stopped instead of drawing a flipped trajectory."
-        )
-
-
-def render_route(
-    root: Path,
-    name: str,
-    output_dir: Path,
-    fps: float = DEFAULT_FPS,
-    video_width: int = VIDEO_WIDTH,
-    video_height: int = VIDEO_HEIGHT,
-) -> Path:
+def load_route_result(root: Path, name: str):
     result_csv = config.OUTPUT_DIR / f"{name}_robust_frames.csv"
     if not result_csv.exists():
         raise FileNotFoundError(
@@ -285,34 +277,312 @@ def render_route(
     }
 
     gt_xy = rows[["gt_x", "gt_y"]].to_numpy(dtype=np.float64)
+    hardms_xy = rows[["hardms_x", "hardms_y"]].to_numpy(dtype=np.float64)
     temporal_xy = rows[["temporal_x", "temporal_y"]].to_numpy(dtype=np.float64)
 
-    # GT uses exact source pixels from RouteDataset. Predictions use the same
-    # calibrated meter -> lat/lon -> source-pixel chain as the dataset.
     gt_source_px = direct_gt_pixels(rows, sample_by_id)
     converted_gt_px = xy_to_source_pixels(
-        gt_xy,
-        dataset,
-        origin_lat,
-        origin_lon,
+        gt_xy, dataset, origin_lat, origin_lon
     )
     verify_coordinate_mapping(converted_gt_px, gt_source_px, name)
+    hardms_source_px = xy_to_source_pixels(
+        hardms_xy, dataset, origin_lat, origin_lon
+    )
     temporal_source_px = xy_to_source_pixels(
-        temporal_xy,
-        dataset,
-        origin_lat,
-        origin_lon,
+        temporal_xy, dataset, origin_lat, origin_lon
     )
 
-    # Restore the earlier reference-style layout: the orthomosaic occupies the
-    # full video height and is resized without flipping or stretching.
-    with Image.open(config.SAT_IMAGE) as image:
-        image = image.convert("RGB")
-        source_width, source_height = image.size
-        map_width = int(round(source_width * (float(video_height) / source_height)))
-        map_rgb = np.asarray(
-            image.resize((map_width, video_height), Image.Resampling.LANCZOS)
+    return {
+        "rows": rows,
+        "dataset": dataset,
+        "sample_by_id": sample_by_id,
+        "gt_xy": gt_xy,
+        "hardms_xy": hardms_xy,
+        "temporal_xy": temporal_xy,
+        "gt_px": gt_source_px,
+        "hardms_px": hardms_source_px,
+        "temporal_px": temporal_source_px,
+    }
+
+
+def _metric_summary(prediction: np.ndarray, gt: np.ndarray):
+    error = np.linalg.norm(prediction - gt, axis=1)
+    if len(prediction) > 1:
+        pred_step = np.diff(prediction, axis=0)
+        gt_step = np.diff(gt, axis=0)
+        gt_step_length = np.linalg.norm(gt_step, axis=1)
+        jump_threshold = float(np.percentile(gt_step_length, 99)) + float(
+            config.JUMP_TOLERANCE_M
         )
+        jump_rate = float(
+            (np.linalg.norm(pred_step, axis=1) > jump_threshold).mean() * 100.0
+        )
+    else:
+        jump_rate = 0.0
+    return float(error.mean()), float(np.percentile(error, 90)), jump_rate
+
+
+def _crop_bounds(
+    source_width: int,
+    source_height: int,
+    points: np.ndarray,
+    margin: int,
+) -> Tuple[int, int, int, int]:
+    points = np.asarray(points, dtype=np.float64)
+    finite = np.isfinite(points).all(axis=1)
+    points = points[finite]
+    if len(points) == 0:
+        return 0, 0, source_width, source_height
+    left = max(0, int(math.floor(points[:, 0].min())) - margin)
+    right = min(source_width, int(math.ceil(points[:, 0].max())) + margin)
+    top = max(0, int(math.floor(points[:, 1].min())) - margin)
+    bottom = min(source_height, int(math.ceil(points[:, 1].max())) + margin)
+    if right <= left or bottom <= top:
+        return 0, 0, source_width, source_height
+    return left, top, right, bottom
+
+
+def _localize_pixels(points: np.ndarray, box: Tuple[int, int, int, int]):
+    left, top, _, _ = box
+    result = np.asarray(points, dtype=np.float64).copy()
+    result[:, 0] -= left
+    result[:, 1] -= top
+    return result
+
+
+def save_full_route_figure(
+    sat_image: Image.Image,
+    name: str,
+    result,
+    output_dir: Path,
+) -> Path:
+    gt_xy = result["gt_xy"]
+    hardms_xy = result["hardms_xy"]
+    temporal_xy = result["temporal_xy"]
+    gt_px = result["gt_px"]
+    hardms_px = result["hardms_px"]
+    temporal_px = result["temporal_px"]
+
+    all_points = np.concatenate([gt_px, hardms_px, temporal_px], axis=0)
+    box = _crop_bounds(sat_image.width, sat_image.height, all_points, margin=350)
+    crop = sat_image.crop(box)
+    local_gt = _localize_pixels(gt_px, box)
+    local_hard = _localize_pixels(hardms_px, box)
+    local_rtl = _localize_pixels(temporal_px, box)
+
+    hard_mle, hard_p90, hard_jump = _metric_summary(hardms_xy, gt_xy)
+    rtl_mle, rtl_p90, rtl_jump = _metric_summary(temporal_xy, gt_xy)
+
+    figure, axis = plt.subplots(figsize=(14, 10))
+    axis.imshow(crop)
+    axis.plot(
+        local_gt[:, 0], local_gt[:, 1],
+        linewidth=2.4, label="GT trajectory",
+    )
+    axis.plot(
+        local_hard[:, 0], local_hard[:, 1],
+        linewidth=1.2, linestyle="--", alpha=0.75,
+        label=(
+            f"Fixed HardMS (single-frame): MLE {hard_mle:.2f} m, "
+            f"P90 {hard_p90:.2f} m, Jump {hard_jump:.2f}%"
+        ),
+    )
+    axis.plot(
+        local_rtl[:, 0], local_rtl[:, 1],
+        linewidth=2.2,
+        label=(
+            f"RTL-CRF final: MLE {rtl_mle:.2f} m, "
+            f"P90 {rtl_p90:.2f} m, Jump {rtl_jump:.2f}%"
+        ),
+    )
+    axis.scatter(local_gt[0, 0], local_gt[0, 1], marker="o", s=70, label="Start")
+    axis.scatter(local_gt[-1, 0], local_gt[-1, 1], marker="*", s=130, label="End")
+    axis.set_title(
+        f"{name.upper()} — complete unseen-route localization\n"
+        "Single-frame HardMS vs. RTL-CRF temporal localization"
+    )
+    axis.legend(loc="best", fontsize=9)
+    axis.axis("off")
+    figure.tight_layout()
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / f"{name}_full_localization.png"
+    figure.savefig(path, dpi=220, bbox_inches="tight")
+    plt.close(figure)
+    print(f"full-route figure written: {path}", flush=True)
+    return path
+
+
+def _select_jump_events(
+    gt_xy: np.ndarray,
+    hardms_xy: np.ndarray,
+    temporal_xy: np.ndarray,
+    number: int,
+    min_separation: int,
+) -> List[int]:
+    if len(gt_xy) < 2 or number <= 0:
+        return []
+
+    gt_step = np.diff(gt_xy, axis=0)
+    hard_step = np.diff(hardms_xy, axis=0)
+    rtl_step = np.diff(temporal_xy, axis=0)
+
+    hard_rpe = np.linalg.norm(hard_step - gt_step, axis=1)
+    rtl_rpe = np.linalg.norm(rtl_step - gt_step, axis=1)
+    improvement = hard_rpe - rtl_rpe
+
+    # Prefer transitions where the single-frame result jumps substantially more
+    # than RTL-CRF.  The index is shifted by +1 because a transition i-1 -> i
+    # is visualized at frame i.
+    priority = np.argsort(improvement)[::-1]
+    selected: List[int] = []
+    for transition_index in priority.tolist():
+        frame_index = int(transition_index + 1)
+        if improvement[transition_index] <= 0:
+            continue
+        if all(abs(frame_index - old) >= min_separation for old in selected):
+            selected.append(frame_index)
+        if len(selected) >= number:
+            return selected
+
+    # If temporal separation leaves fewer than requested, fill with the largest
+    # single-frame transition errors so the script still writes exactly N plots.
+    fallback = np.argsort(hard_rpe)[::-1]
+    for transition_index in fallback.tolist():
+        frame_index = int(transition_index + 1)
+        if frame_index not in selected:
+            selected.append(frame_index)
+        if len(selected) >= number:
+            break
+    return selected
+
+
+def save_zoom_jump_figures(
+    sat_image: Image.Image,
+    name: str,
+    result,
+    output_dir: Path,
+    number: int = 15,
+    half_window: int = 15,
+) -> List[Path]:
+    rows = result["rows"]
+    gt_xy = result["gt_xy"]
+    hardms_xy = result["hardms_xy"]
+    temporal_xy = result["temporal_xy"]
+    gt_px = result["gt_px"]
+    hardms_px = result["hardms_px"]
+    temporal_px = result["temporal_px"]
+
+    selected = _select_jump_events(
+        gt_xy,
+        hardms_xy,
+        temporal_xy,
+        number=number,
+        min_separation=max(5, half_window),
+    )
+
+    gt_step = np.diff(gt_xy, axis=0)
+    hard_step = np.diff(hardms_xy, axis=0)
+    rtl_step = np.diff(temporal_xy, axis=0)
+    hard_rpe = np.linalg.norm(hard_step - gt_step, axis=1)
+    rtl_rpe = np.linalg.norm(rtl_step - gt_step, axis=1)
+
+    paths: List[Path] = []
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for rank, center in enumerate(selected, start=1):
+        start = max(0, center - half_window)
+        end = min(len(rows), center + half_window + 1)
+        points = np.concatenate(
+            [gt_px[start:end], hardms_px[start:end], temporal_px[start:end]],
+            axis=0,
+        )
+        box = _crop_bounds(
+            sat_image.width,
+            sat_image.height,
+            points,
+            margin=220,
+        )
+        crop = sat_image.crop(box)
+        local_gt = _localize_pixels(gt_px[start:end], box)
+        local_hard = _localize_pixels(hardms_px[start:end], box)
+        local_rtl = _localize_pixels(temporal_px[start:end], box)
+
+        event_local = center - start
+        frame_id = int(rows.iloc[center]["frame_id"])
+        previous_frame_id = int(rows.iloc[max(0, center - 1)]["frame_id"])
+        event_hard_rpe = float(hard_rpe[center - 1]) if center > 0 else 0.0
+        event_rtl_rpe = float(rtl_rpe[center - 1]) if center > 0 else 0.0
+
+        figure, axis = plt.subplots(figsize=(10, 9))
+        axis.imshow(crop)
+        axis.plot(
+            local_gt[:, 0], local_gt[:, 1],
+            marker="o", markersize=3.0, linewidth=2.2,
+            label="GT",
+        )
+        axis.plot(
+            local_hard[:, 0], local_hard[:, 1],
+            marker="s", markersize=3.0, linewidth=1.3, linestyle="--",
+            label="Fixed HardMS (single-frame)",
+        )
+        axis.plot(
+            local_rtl[:, 0], local_rtl[:, 1],
+            marker="o", markersize=3.0, linewidth=2.3,
+            label="RTL-CRF final",
+        )
+
+        if 0 <= event_local < len(local_gt):
+            axis.scatter(
+                local_hard[event_local, 0], local_hard[event_local, 1],
+                marker="X", s=130, zorder=5,
+                label="Selected HardMS jump frame",
+            )
+            axis.scatter(
+                local_rtl[event_local, 0], local_rtl[event_local, 1],
+                marker="*", s=150, zorder=6,
+                label="RTL-CRF at same frame",
+            )
+
+        axis.set_title(
+            f"{name.upper()} zoom {rank:02d} — frames {previous_frame_id} -> {frame_id}\n"
+            f"single-frame transition error {event_hard_rpe:.2f} m  |  "
+            f"RTL-CRF transition error {event_rtl_rpe:.2f} m"
+        )
+        axis.legend(loc="best", fontsize=8)
+        axis.axis("off")
+        figure.tight_layout()
+
+        path = output_dir / f"{name}_jump_comparison_{rank:02d}.png"
+        figure.savefig(path, dpi=240, bbox_inches="tight")
+        plt.close(figure)
+        paths.append(path)
+        print(f"zoom comparison written: {path}", flush=True)
+
+    return paths
+
+
+def render_video(
+    sat_image: Image.Image,
+    name: str,
+    result,
+    output_dir: Path,
+    fps: float,
+    video_width: int,
+    video_height: int,
+) -> Path:
+    rows = result["rows"]
+    sample_by_id = result["sample_by_id"]
+    gt_xy = result["gt_xy"]
+    temporal_xy = result["temporal_xy"]
+    gt_source_px = result["gt_px"]
+    temporal_source_px = result["temporal_px"]
+
+    source_width, source_height = sat_image.size
+    map_width = int(round(source_width * (float(video_height) / source_height)))
+    map_rgb = np.asarray(
+        sat_image.resize((map_width, video_height), Image.Resampling.LANCZOS)
+    )
     map_panel = cv2.cvtColor(map_rgb, cv2.COLOR_RGB2BGR)
     uav_width = video_width - map_width
     if uav_width < 420:
@@ -325,10 +595,10 @@ def render_route(
     scale_y = float(video_height) / source_height
 
     def source_to_canvas(points: np.ndarray) -> np.ndarray:
-        result = np.empty_like(points, dtype=np.float64)
-        result[:, 0] = points[:, 0] * scale_x + uav_width
-        result[:, 1] = points[:, 1] * scale_y
-        return result
+        result_px = np.empty_like(points, dtype=np.float64)
+        result_px[:, 0] = points[:, 0] * scale_x + uav_width
+        result_px[:, 1] = points[:, 1] * scale_y
+        return result_px
 
     gt_panel = source_to_canvas(gt_source_px)
     temporal_panel = source_to_canvas(temporal_source_px)
@@ -345,7 +615,6 @@ def render_route(
         for row_index, row in rows.iterrows():
             canvas = np.zeros((video_height, video_width, 3), dtype=np.uint8)
             canvas[:, uav_width:] = map_panel
-
             frame_id = int(row["frame_id"])
             sample = sample_by_id.get(frame_id)
             if sample is not None:
@@ -418,6 +687,57 @@ def render_route(
     return output_path
 
 
+def render_route(
+    root: Path,
+    name: str,
+    output_dir: Path,
+    fps: float,
+    video_width: int,
+    video_height: int,
+    num_zoom: int,
+    zoom_half_window: int,
+    no_video: bool,
+) -> List[Path]:
+    result = load_route_result(root, name)
+    with Image.open(config.SAT_IMAGE) as image:
+        sat_image = image.convert("RGB")
+
+    figure_dir = output_dir / "figures"
+    paths: List[Path] = []
+    paths.append(
+        save_full_route_figure(
+            sat_image,
+            name,
+            result,
+            figure_dir,
+        )
+    )
+    paths.extend(
+        save_zoom_jump_figures(
+            sat_image,
+            name,
+            result,
+            figure_dir,
+            number=num_zoom,
+            half_window=zoom_half_window,
+        )
+    )
+
+    if not no_video:
+        paths.append(
+            render_video(
+                sat_image,
+                name,
+                result,
+                output_dir,
+                fps,
+                video_width,
+                video_height,
+            )
+        )
+    return paths
+
+
 def selected_route_pairs(route: str) -> List[Tuple[Path, str]]:
     pairs = [
         (Path(root), name)
@@ -425,35 +745,8 @@ def selected_route_pairs(route: str) -> List[Tuple[Path, str]]:
     ]
     if route == "all":
         eval_names = set(config.EVAL_ROUTE_NAMES)
-        return [
-            (root, name)
-            for root, name in pairs
-            if name in eval_names
-        ]
+        return [(root, name) for root, name in pairs if name in eval_names]
     return [(root, name) for root, name in pairs if name == route]
-
-
-def render_routes(
-    route_pairs: Sequence[Tuple[Path, str]],
-    fps: float = DEFAULT_FPS,
-    video_width: int = VIDEO_WIDTH,
-    video_height: int = VIDEO_HEIGHT,
-    output_dir: Optional[Path] = None,
-) -> List[Path]:
-    destination = output_dir or (config.OUTPUT_DIR / "inference_videos")
-    output_paths = []
-    for root, name in route_pairs:
-        output_paths.append(
-            render_route(
-                root=Path(root),
-                name=name,
-                output_dir=destination,
-                fps=fps,
-                video_width=video_width,
-                video_height=video_height,
-            )
-        )
-    return output_paths
 
 
 def main() -> None:
@@ -461,7 +754,7 @@ def main() -> None:
     parser.add_argument(
         "--route",
         choices=[*config.ROUTE_NAMES, "all"],
-        default="all",
+        default="route_B",
     )
     parser.add_argument("--fps", type=float, default=DEFAULT_FPS)
     parser.add_argument("--width", type=int, default=VIDEO_WIDTH)
@@ -471,14 +764,44 @@ def main() -> None:
         type=Path,
         default=config.OUTPUT_DIR / "inference_videos",
     )
-    args = parser.parse_args()
-    render_routes(
-        selected_route_pairs(args.route),
-        fps=float(args.fps),
-        video_width=int(args.width),
-        video_height=int(args.height),
-        output_dir=args.output_dir,
+    parser.add_argument(
+        "--num-zoom",
+        type=int,
+        default=15,
+        help="Number of real jump-comparison figures to save per route.",
     )
+    parser.add_argument(
+        "--zoom-half-window",
+        type=int,
+        default=15,
+        help="Frames before/after the selected jump frame in each zoom figure.",
+    )
+    parser.add_argument(
+        "--no-video",
+        action="store_true",
+        help="Write PNG localization figures only; skip MP4 rendering.",
+    )
+    args = parser.parse_args()
+
+    all_outputs: List[Path] = []
+    for root, name in selected_route_pairs(args.route):
+        all_outputs.extend(
+            render_route(
+                root=root,
+                name=name,
+                output_dir=args.output_dir,
+                fps=float(args.fps),
+                video_width=int(args.width),
+                video_height=int(args.height),
+                num_zoom=max(0, int(args.num_zoom)),
+                zoom_half_window=max(1, int(args.zoom_half_window)),
+                no_video=bool(args.no_video),
+            )
+        )
+
+    print("\nGenerated outputs:", flush=True)
+    for path in all_outputs:
+        print(f"  {path}", flush=True)
 
 
 if __name__ == "__main__":

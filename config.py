@@ -1,12 +1,12 @@
-
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "strict_train_A_test_BC"
+# Keep this ablation in a separate directory so the original /10 result is not
+# overwritten.  Training/evaluation protocol remains Route A -> Route B/C.
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "strict_train_A_test_BC_no_position_scale"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
 TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "rtl_crf_A_only.pt"
-
 DATASETS_ROOT = Path("/yh/study/new_data_2")
 ROUTE_ROOTS = [
     DATASETS_ROOT / "model_dataset_new_1_flight",
@@ -16,7 +16,6 @@ ROUTE_ROOTS = [
 ROUTE_NAMES = ["route_A", "route_B", "route_C"]
 TRAIN_ROUTE_NAMES = ["route_A"]
 EVAL_ROUTE_NAMES = ["route_B", "route_C"]
-
 SAT_IMAGE = Path(
     "/yh/study/sim_data/sim_competition_crop_check/"
     "sim_map_competition_roi_crop.png"
@@ -25,7 +24,6 @@ SAT_JSON = Path(
     "/yh/study/sim_data/sim_competition_crop_check/"
     "sim_map_competition_roi_crop_worldfile_epsg3826.json"
 )
-
 # Public pretrained backbone only. No task-specific .pt is loaded here.
 BACKBONE_NAME = "hf-hub:timm/MobileCLIP2-S2-OpenCLIP"
 CLIP_DIM = 512
@@ -67,7 +65,8 @@ WINDOW_STRIDE = 1
 TOKEN_DIM = 192
 TRANSITION_HIDDEN = 64
 TEMPORAL_DROPOUT = 0.10
-POSITION_SCALE_M = 10.0
+# No POSITION_SCALE_M here. Spatial/motion features are fed to RTL-CRF in
+# their original meter-based values for the no-scaling ablation.
 
 EPOCHS = 40
 LR = 2e-4

@@ -9,7 +9,6 @@ import torch.nn.functional as F
 
 import config
 
-
 class FourierCoordEncoder(nn.Module):
     def __init__(self, num_bands=32, max_freq=16.0):
         super().__init__()
@@ -23,7 +22,6 @@ class FourierCoordEncoder(nn.Module):
             nn.GELU(),
             nn.Linear(512, config.EMBED_DIM),
         )
-
     def forward(self, xy):
         xy = xy.float() / 1000.0
         angles = xy[:, :, None] * self.freqs[None, None, :] * math.pi
@@ -35,7 +33,6 @@ class FourierCoordEncoder(nn.Module):
 
 class AllMapGeoCLIP(nn.Module):
     """The archived visual model.
-
     Parameter names intentionally match the existing retrieval checkpoint.
     Spatial extraction adds no trainable parameter and therefore does not alter
     checkpoint compatibility.
@@ -46,7 +43,6 @@ class AllMapGeoCLIP(nn.Module):
         self.clip, _ = open_clip.create_model_from_pretrained(config.BACKBONE_NAME)
         for parameter in self.clip.parameters():
             parameter.requires_grad_(False)
-
         self.use_coord_encoder = bool(getattr(config, "USE_COORD_ENCODER", True))
         self.uav_head = nn.Sequential(
             nn.Linear(config.CLIP_DIM, config.CLIP_DIM),
@@ -60,14 +56,12 @@ class AllMapGeoCLIP(nn.Module):
         else:
             self.coord_encoder = None
             sat_head_in_dim = config.CLIP_DIM
-
         self.sat_head = nn.Sequential(
             nn.Linear(sat_head_in_dim, config.CLIP_DIM),
             nn.GELU(),
             nn.Dropout(0.1),
             nn.Linear(config.CLIP_DIM, config.EMBED_DIM),
         )
-
         self.use_qah_relation = bool(
             getattr(config, "USE_QAH_MS_RELATION", False)
         )
@@ -80,7 +74,6 @@ class AllMapGeoCLIP(nn.Module):
             )
         else:
             self.qah_relation_head = None
-
         self.use_basin_rank_ms = bool(getattr(config, "USE_BASIN_RANK_MS", False))
         if self.use_basin_rank_ms:
             self.basin_ranker = nn.Sequential(
@@ -94,7 +87,6 @@ class AllMapGeoCLIP(nn.Module):
             self.basin_ranker = None
 
         self.logit_scale = nn.Parameter(torch.ones([]) * math.log(1.0 / 0.07))
-
     @torch.no_grad()
     def encode_clip_image(self, image):
         self.clip.eval()
@@ -103,7 +95,6 @@ class AllMapGeoCLIP(nn.Module):
     @torch.no_grad()
     def encode_clip_spatial(self, image, output_size=None):
         """Return a frozen NCHW spatial feature map.
-
         Recent OpenCLIP versions expose ``forward_intermediates``.  A
         ``forward_features`` fallback keeps the code usable with older local
         installations.  The final fallback is the pooled CLIP descriptor as a
@@ -113,7 +104,6 @@ class AllMapGeoCLIP(nn.Module):
         self.clip.eval()
         output_size = int(output_size or config.MOTION_SPATIAL_SIZE)
         feature = None
-
         try:
             result = self.clip.forward_intermediates(
                 image=image.float(),
@@ -128,7 +118,6 @@ class AllMapGeoCLIP(nn.Module):
                 feature = candidates[-1]
         except (AttributeError, RuntimeError, TypeError, NotImplementedError):
             feature = None
-
         if feature is None:
             visual = getattr(self.clip, "visual", None)
             if visual is not None and hasattr(visual, "forward_features"):
@@ -136,7 +125,6 @@ class AllMapGeoCLIP(nn.Module):
                     feature = visual.forward_features(image.float())
                 except (RuntimeError, TypeError, NotImplementedError):
                     feature = None
-
         if isinstance(feature, (tuple, list)):
             feature = feature[-1]
         if isinstance(feature, dict):
@@ -144,7 +132,6 @@ class AllMapGeoCLIP(nn.Module):
                 if key in feature:
                     feature = feature[key]
                     break
-
         if feature is None:
             feature = self.encode_clip_image(image).unsqueeze(-1).unsqueeze(-1)
         elif feature.ndim == 2:
@@ -173,7 +160,6 @@ class AllMapGeoCLIP(nn.Module):
             raise RuntimeError(
                 f"Unsupported spatial feature shape: {tuple(feature.shape)}"
             )
-
         return F.adaptive_avg_pool2d(feature.float(), (output_size, output_size))
 
     def encode_uav_from_clip(self, clip_feat, yaw=None):
@@ -182,7 +168,6 @@ class AllMapGeoCLIP(nn.Module):
 
     def encode_uav(self, uav, yaw=None):
         return self.encode_uav_from_clip(self.encode_clip_image(uav))
-
     def encode_sat_from_clip(self, sat_clip_feat, xy):
         if self.use_coord_encoder:
             coord_feat = self.coord_encoder(xy.float())
@@ -191,7 +176,6 @@ class AllMapGeoCLIP(nn.Module):
             sat_input = sat_clip_feat.float()
         embedding = self.sat_head(sat_input)
         return F.normalize(embedding, dim=1)
-
     def encode_relation(self, z_uav, z_sat, logits):
         if self.qah_relation_head is None:
             raise RuntimeError(
@@ -205,8 +189,6 @@ class AllMapGeoCLIP(nn.Module):
         )
         relation = self.qah_relation_head(pair.reshape(-1, pair.shape[-1]))
         return relation.reshape(pair.shape[0], pair.shape[1], -1)
-
-
 
 @dataclass
 class LatticeOutput:
@@ -222,20 +204,22 @@ class LatticeOutput:
 
 class TemporalLatticeCRF(nn.Module):
     """Residual second-order CRF over consecutive retrieval lattices.
-
     Each frame contributes all candidate nodes rather than one early Top-1.
     A learned second-order transition potential scores velocity continuation
     and acceleration, so the model learns which candidate sequence is visually
     strong and approximately straight.  The final prediction is a learned
     residual correction of Fixed HardMS, which makes the visual baseline an
     explicit fallback instead of allowing catastrophic temporal drift.
-    """
 
+    No-position-scale ablation:
+    spatial offsets, velocities, accelerations and HardMS disagreement are fed
+    in their original meter-based values.  No arbitrary POSITION_SCALE_M is
+    used anywhere in RTL-CRF.
+    """
     def __init__(self):
         super().__init__()
         token_dim = int(config.TOKEN_DIM)
         dropout = float(config.TEMPORAL_DROPOUT)
-
         self.uav_projection = nn.Sequential(
             nn.Linear(config.EMBED_DIM, token_dim),
             nn.GELU(),
@@ -261,7 +245,6 @@ class TemporalLatticeCRF(nn.Module):
         # softplus(0.5413) ~= 1, therefore the untrained model retains the raw
         # retrieval ordering while learning a residual emission calibration.
         self.raw_logit_weight = nn.Parameter(torch.tensor(0.5413249))
-
         hidden = int(config.TRANSITION_HIDDEN)
         self.first_transition = nn.Sequential(
             nn.Linear(3, hidden),
@@ -283,7 +266,6 @@ class TemporalLatticeCRF(nn.Module):
         nn.init.zeros_(self.second_transition[-1].weight)
         nn.init.zeros_(self.second_transition[-1].bias)
         self.acceleration_weight_raw = nn.Parameter(torch.tensor(0.0))
-
         self.correction_gate = nn.Sequential(
             nn.Linear(5, 64),
             nn.GELU(),
@@ -311,7 +293,8 @@ class TemporalLatticeCRF(nn.Module):
         centers: torch.Tensor,
     ):
         lattice_center = centers.mean(dim=2, keepdim=True)
-        relative = (centers - lattice_center) / float(config.POSITION_SCALE_M)
+        # RAW METERS: no /10 or any other position scaling.
+        relative = centers - lattice_center
         radius = torch.linalg.norm(relative, dim=-1, keepdim=True)
         mean = raw_logits.mean(dim=2, keepdim=True)
         std = raw_logits.std(dim=2, keepdim=True).clamp_min(1e-5)
@@ -344,11 +327,8 @@ class TemporalLatticeCRF(nn.Module):
             centers1[:, None, :, :] - centers0[:, :, None, :]
         ) / dt[:, None, None, None].clamp_min(1.0)
         speed = torch.linalg.norm(velocity, dim=-1, keepdim=True)
-        feature = torch.cat(
-            [velocity / float(config.POSITION_SCALE_M),
-             speed / float(config.POSITION_SCALE_M)],
-            dim=-1,
-        )
+        # RAW METER-BASED MOTION FEATURES: [vx, vy, speed].
+        feature = torch.cat([velocity, speed], dim=-1)
         return self.first_transition(feature).squeeze(-1)
 
     def _second_transition_score(
@@ -373,21 +353,22 @@ class TemporalLatticeCRF(nn.Module):
         cosine = (v01 * v12).sum(dim=-1, keepdim=True) / (
             speed01 * speed12
         ).clamp_min(1e-5)
+        # RAW METER-BASED FEATURES. Cosine is already dimensionless.
         feature = torch.cat(
             [
-                v01 / float(config.POSITION_SCALE_M),
-                v12 / float(config.POSITION_SCALE_M),
-                acceleration / float(config.POSITION_SCALE_M),
-                speed01 / float(config.POSITION_SCALE_M),
-                speed12 / float(config.POSITION_SCALE_M),
+                v01,
+                v12,
+                acceleration,
+                speed01,
+                speed12,
                 cosine,
             ],
             dim=-1,
         )
         learned = self.second_transition(feature).squeeze(-1)
-        acceleration_energy = acceleration.square().sum(dim=-1) / (
-            float(config.POSITION_SCALE_M) ** 2
-        )
+        # RAW acceleration energy; trainable positive coefficient must learn the
+        # appropriate strength directly in meter-based units.
+        acceleration_energy = acceleration.square().sum(dim=-1)
         return learned - F.softplus(self.acceleration_weight_raw) * acceleration_energy
 
     @staticmethod
@@ -426,7 +407,6 @@ class TemporalLatticeCRF(nn.Module):
     ) -> LatticeOutput:
         if centers.shape[1] < 3:
             raise ValueError("TemporalLatticeCRF requires at least three frames")
-
         emission, _ = self._emissions(
             z_uav, z_sat, raw_logits, raw_prob, centers
         )
@@ -455,22 +435,21 @@ class TemporalLatticeCRF(nn.Module):
                 + emission[:, time, None, None, :]
             )
             alpha = torch.logsumexp(score, dim=1)
-
         log_partition = torch.logsumexp(alpha.flatten(1), dim=1)
         last_log_probability = torch.logsumexp(alpha, dim=1) - log_partition[:, None]
         path_probability = last_log_probability.exp()
         path_expectation = (
             path_probability.unsqueeze(-1) * centers[:, -1]
         ).sum(dim=1)
-
         emission_probability = torch.softmax(emission[:, -1], dim=1)
         path_entropy = self._entropy(path_probability)
         emission_entropy = self._entropy(emission_probability)
         path_top = path_probability.topk(k=2, dim=1).values
         emission_top = emission_probability.topk(k=2, dim=1).values
+        # RAW METERS: no /10 on HardMS/path disagreement.
         disagreement = torch.linalg.norm(
             path_expectation - hardms_xy[:, -1], dim=1
-        ) / float(config.POSITION_SCALE_M)
+        )
         gate_feature = torch.stack(
             [
                 path_entropy,
@@ -485,14 +464,12 @@ class TemporalLatticeCRF(nn.Module):
         final_xy = hardms_xy[:, -1] + correction_gate * (
             path_expectation - hardms_xy[:, -1]
         )
-
         crf_nll = None
         if target_index is not None:
             target_score = self._gather_path_score(
                 emission, first_score, second_scores, target_index
             )
             crf_nll = (log_partition - target_score).mean()
-
         return LatticeOutput(
             emission_logits=emission,
             path_probability=path_probability,
