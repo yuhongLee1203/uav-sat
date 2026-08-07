@@ -3,73 +3,210 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# ===========================================================================
-# Fixed 4-frame RTL-CRF experiment
-# ===========================================================================
-#
-# Fair temporal-window comparison:
-#
-#   3-frame:
-#     outputs/strict_train_A_test_BC_no_position_scale_w3/
-#
-#   4-frame:
-#     outputs/strict_train_A_test_BC_no_position_scale_w4/
-#
-#   5-frame:
-#     outputs/strict_train_A_test_BC_no_position_scale/
-#
-# All variants:
-#   - reuse the exact same Route-A-only visual retrieval checkpoint
-#   - train temporal model only on Route A
-#   - evaluate on unseen Route B and Route C
-#   - use raw-meter features (no POSITION_SCALE_M=/10)
-#   - use the same split guard (=5)
-#
-# The only intended architecture difference is temporal context length:
-#
-#   3 frames -> 1 T2 term
-#   4 frames -> 2 overlapping T2 terms
-#   5 frames -> 3 overlapping T2 terms
-#
-# Existing 3-frame and 5-frame results are NEVER deleted or overwritten.
-# ===========================================================================
+BASE_VISUAL="outputs/strict_train_A_test_BC_no_position_scale/checkpoints/visual_retrieval_A_only.pt"
 
-BASE_5_DIR="outputs/strict_train_A_test_BC_no_position_scale"
-W3_DIR="outputs/strict_train_A_test_BC_no_position_scale_w3"
-W4_DIR="outputs/strict_train_A_test_BC_no_position_scale_w4"
+compare_results() {
+python3 - <<'PY'
+from pathlib import Path
+import json
+import numpy as np
+import pandas as pd
 
-BASE_VISUAL="${BASE_5_DIR}/checkpoints/visual_retrieval_A_only.pt"
-W4_VISUAL="${W4_DIR}/checkpoints/visual_retrieval_A_only.pt"
+ROOTS = {
+    3: Path("outputs/strict_train_A_test_BC_t2only_w3"),
+    4: Path("outputs/strict_train_A_test_BC_t2only_w4"),
+    5: Path("outputs/strict_train_A_test_BC_t2only_w5"),
+}
+JUMP_TOLERANCE_M = 3.0
 
-mkdir -p "${W4_DIR}/checkpoints"
+for window, root in ROOTS.items():
+    for route in ("route_B", "route_C"):
+        path = root / f"{route}_robust_frames.csv"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Missing {path}. Finish all T2-only 3/4/5 runs first."
+            )
 
-if [[ ! -f "${BASE_VISUAL}" ]]; then
-    echo "ERROR: missing the existing Route-A-only visual checkpoint:" >&2
-    echo "  ${BASE_VISUAL}" >&2
-    echo "The 4-frame run must reuse the exact visual checkpoint from the 5-frame run." >&2
+
+def read_route(window, route):
+    path = ROOTS[window] / f"{route}_robust_frames.csv"
+    frame = pd.read_csv(path)
+    required = {
+        "frame_id", "gt_x", "gt_y", "temporal_x", "temporal_y"
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise RuntimeError(f"{path}: missing columns {missing}")
+    return frame[[
+        "frame_id", "gt_x", "gt_y", "temporal_x", "temporal_y"
+    ]].rename(columns={
+        "temporal_x": f"temporal_x_w{window}",
+        "temporal_y": f"temporal_y_w{window}",
+    })
+
+
+def metrics(prediction, gt):
+    prediction = np.asarray(prediction, dtype=np.float64)
+    gt = np.asarray(gt, dtype=np.float64)
+    error = np.linalg.norm(prediction - gt, axis=1)
+
+    if len(prediction) > 1:
+        pred_step = np.diff(prediction, axis=0)
+        gt_step = np.diff(gt, axis=0)
+        rpe = np.linalg.norm(pred_step - gt_step, axis=1)
+        gt_step_length = np.linalg.norm(gt_step, axis=1)
+        jump_threshold = (
+            float(np.percentile(gt_step_length, 99)) + JUMP_TOLERANCE_M
+        )
+        jump_rate = float(
+            (np.linalg.norm(pred_step, axis=1) > jump_threshold).mean() * 100.0
+        )
+        rpe_mean = float(rpe.mean())
+    else:
+        jump_rate = 0.0
+        rpe_mean = 0.0
+
+    return {
+        "frames": int(len(error)),
+        "MLE_m": float(error.mean()),
+        "P90_m": float(np.percentile(error, 90)),
+        "RPE_m": rpe_mean,
+        "JumpRate_pct": jump_rate,
+        "LSR@5_pct": float((error <= 5.0).mean() * 100.0),
+        "LSR@10_pct": float((error <= 10.0).mean() * 100.0),
+        "LSR@15_pct": float((error <= 15.0).mean() * 100.0),
+    }
+
+
+summary = {
+    "method": "T2-only Residual Second-Order Temporal Lattice CRF",
+    "comparison": "3 vs 4 vs 5 frames on common evaluation frame IDs",
+    "routes": {},
+}
+
+print("=" * 112)
+print("T2-ONLY RTL-CRF: 3-FRAME vs 4-FRAME vs 5-FRAME — COMMON-FRAME COMPARISON")
+print("=" * 112)
+
+for route in ("route_B", "route_C"):
+    merged = read_route(3, route)
+    for window in (4, 5):
+        other = read_route(window, route)
+        merged = merged.merge(
+            other[[
+                "frame_id",
+                f"temporal_x_w{window}",
+                f"temporal_y_w{window}",
+            ]],
+            on="frame_id",
+            how="inner",
+            validate="one_to_one",
+        )
+    merged = merged.sort_values("frame_id").reset_index(drop=True)
+    if merged.empty:
+        raise RuntimeError(f"{route}: no common frames across 3/4/5 runs")
+
+    gt = merged[["gt_x", "gt_y"]].to_numpy(np.float64)
+    route_result = {}
+    for window in (3, 4, 5):
+        prediction = merged[[
+            f"temporal_x_w{window}",
+            f"temporal_y_w{window}",
+        ]].to_numpy(np.float64)
+        route_result[f"window_{window}"] = metrics(prediction, gt)
+
+    summary["routes"][route] = route_result
+
+    print()
+    print(f"{route.upper()}  common frames={len(merged)}")
+    print("-" * 112)
+    print(
+        f"{'metric':<22}"
+        f"{'3-frame':>16}"
+        f"{'4-frame':>16}"
+        f"{'5-frame':>16}"
+        f"{'best':>16}"
+    )
+
+    metric_names = (
+        "MLE_m",
+        "P90_m",
+        "RPE_m",
+        "JumpRate_pct",
+        "LSR@5_pct",
+        "LSR@10_pct",
+        "LSR@15_pct",
+    )
+
+    lower_is_better = {
+        "MLE_m", "P90_m", "RPE_m", "JumpRate_pct"
+    }
+
+    for metric in metric_names:
+        values = {
+            w: float(route_result[f"window_{w}"][metric])
+            for w in (3, 4, 5)
+        }
+        if metric in lower_is_better:
+            best = min(values, key=values.get)
+        else:
+            best = max(values, key=values.get)
+        print(
+            f"{metric:<22}"
+            f"{values[3]:>16.4f}"
+            f"{values[4]:>16.4f}"
+            f"{values[5]:>16.4f}"
+            f"{str(best) + '-frame':>16}"
+        )
+
+output = Path("outputs/t2only_temporal_window_3_4_5_comparison.json")
+output.write_text(
+    json.dumps(summary, ensure_ascii=False, indent=2),
+    encoding="utf-8",
+)
+print()
+print("=" * 112)
+print(f"comparison saved to: {output}")
+print("=" * 112)
+PY
+}
+
+if [[ "${1:-}" == "--compare-t2only" ]]; then
+    compare_results
+    exit 0
+fi
+
+WINDOW="${RTL_TEMPORAL_WINDOW:-4}"
+if [[ "${WINDOW}" != "3" && "${WINDOW}" != "4" && "${WINDOW}" != "5" ]]; then
+    echo "ERROR: RTL_TEMPORAL_WINDOW must be 3, 4, or 5; got '${WINDOW}'" >&2
     exit 2
 fi
 
-# Copy exactly the same visual checkpoint into the 4-frame experiment folder.
-cp -p "${BASE_VISUAL}" "${W4_VISUAL}"
+OUTPUT_DIR="outputs/strict_train_A_test_BC_t2only_w${WINDOW}"
+TARGET_VISUAL="${OUTPUT_DIR}/checkpoints/visual_retrieval_A_only.pt"
+
+if [[ ! -f "${BASE_VISUAL}" ]]; then
+    echo "ERROR: missing the existing A-only visual checkpoint:" >&2
+    echo "  ${BASE_VISUAL}" >&2
+    exit 2
+fi
+
+mkdir -p "${OUTPUT_DIR}/checkpoints"
+
+# Each concurrent GPU run receives its own physical copy.  This is important
+# because visual_localizer.py writes the resumed checkpoint back at the end of
+# the zero-epoch visual stage; sharing one file across 3 GPUs would create a
+# write race.
+cp -p "${BASE_VISUAL}" "${TARGET_VISUAL}"
 
 echo "============================================================================"
-echo "FIXED 4-FRAME SECOND-ORDER RTL-CRF"
-echo "============================================================================"
-echo "Visual checkpoint:"
-echo "  ${BASE_VISUAL}"
-echo "4-frame output:"
-echo "  ${W4_DIR}"
-echo
-echo "Expected temporal structure:"
-echo "  T1(frame0, frame1)"
-echo "  T2(frame0, frame1, frame2)"
-echo "  T2(frame1, frame2, frame3)"
+echo "T2-ONLY SECOND-ORDER RTL-CRF"
+echo "Temporal window: ${WINDOW} frames"
+echo "No learned T1 factor"
+echo "Output directory: ${OUTPUT_DIR}"
+echo "Visual checkpoint copy: ${TARGET_VISUAL}"
 echo "============================================================================"
 
-# robust_tracker.py enters the visual-training function in train/train_eval mode.
-# With --visual-epochs 0, --resume is needed so it loads the copied visual
-# checkpoint rather than attempting an empty zero-epoch visual training run.
 HAS_RESUME=0
 for arg in "$@"; do
     if [[ "${arg}" == "--resume" ]]; then
@@ -84,270 +221,13 @@ else
     python3 robust_tracker.py --resume "$@"
 fi
 
-# ===========================================================================
-# Common-frame temporal-window comparison
-# ===========================================================================
-#
-# 3/4/5 windows have different warm-up lengths.  Therefore we do NOT compare
-# their summary JSON values blindly.  Instead, metrics below are recomputed
-# only on frame IDs present in all available runs.
-# ===========================================================================
-
-if [[ -f "${BASE_5_DIR}/route_B_robust_frames.csv" \
-   && -f "${BASE_5_DIR}/route_C_robust_frames.csv" \
-   && -f "${W4_DIR}/route_B_robust_frames.csv" \
-   && -f "${W4_DIR}/route_C_robust_frames.csv" ]]; then
-
-python3 - <<'PY'
-from pathlib import Path
-import json
-
-import numpy as np
-import pandas as pd
-
-W5 = Path("outputs/strict_train_A_test_BC_no_position_scale")
-W4 = Path("outputs/strict_train_A_test_BC_no_position_scale_w4")
-W3 = Path("outputs/strict_train_A_test_BC_no_position_scale_w3")
-
-JUMP_TOLERANCE_M = 3.0
-
-
-def read_prediction(directory: Path, route: str, suffix: str) -> pd.DataFrame:
-    path = directory / f"{route}_robust_frames.csv"
-    frame = pd.read_csv(path)
-
-    required = {
-        "frame_id",
-        "gt_x",
-        "gt_y",
-        "temporal_x",
-        "temporal_y",
-    }
-    missing = sorted(required - set(frame.columns))
-    if missing:
-        raise RuntimeError(f"{path}: missing columns {missing}")
-
-    return frame[
-        [
-            "frame_id",
-            "gt_x",
-            "gt_y",
-            "temporal_x",
-            "temporal_y",
-        ]
-    ].rename(
-        columns={
-            "temporal_x": f"temporal_x_{suffix}",
-            "temporal_y": f"temporal_y_{suffix}",
-        }
-    )
-
-
-def metric_block(prediction: np.ndarray, gt: np.ndarray):
-    prediction = np.asarray(prediction, dtype=np.float64)
-    gt = np.asarray(gt, dtype=np.float64)
-
-    error = np.linalg.norm(prediction - gt, axis=1)
-
-    if len(prediction) > 1:
-        pred_step = np.diff(prediction, axis=0)
-        gt_step = np.diff(gt, axis=0)
-
-        rpe_each = np.linalg.norm(pred_step - gt_step, axis=1)
-        gt_step_length = np.linalg.norm(gt_step, axis=1)
-
-        jump_threshold = (
-            float(np.percentile(gt_step_length, 99))
-            + JUMP_TOLERANCE_M
-        )
-        jump_rate = float(
-            (
-                np.linalg.norm(pred_step, axis=1)
-                > jump_threshold
-            ).mean()
-            * 100.0
-        )
-        rpe = float(rpe_each.mean())
-    else:
-        rpe = 0.0
-        jump_rate = 0.0
-
-    return {
-        "frames": int(len(error)),
-        "MLE_m": float(error.mean()),
-        "P90_m": float(np.percentile(error, 90)),
-        "RPE_m": rpe,
-        "JumpRate_pct": jump_rate,
-        "LSR@5_pct": float((error <= 5.0).mean() * 100.0),
-        "LSR@10_pct": float((error <= 10.0).mean() * 100.0),
-        "LSR@15_pct": float((error <= 15.0).mean() * 100.0),
-    }
-
-
-have_w3 = (
-    (W3 / "route_B_robust_frames.csv").exists()
-    and (W3 / "route_C_robust_frames.csv").exists()
-)
-
-comparison = {
-    "comparison": (
-        "4-frame RTL-CRF vs existing 5-frame RTL-CRF"
-        + (" and existing 3-frame RTL-CRF" if have_w3 else "")
-    ),
-    "fairness": (
-        "All metrics are recomputed on common frame IDs. "
-        "The visual retrieval checkpoint, Route-A training protocol, "
-        "Route-B/C testing protocol, split guard, and raw-meter feature "
-        "configuration are unchanged; temporal window length is the intended "
-        "difference."
-    ),
-    "routes": {},
-}
-
-print()
-print("=" * 110)
-if have_w3:
-    print("3-FRAME vs 4-FRAME vs 5-FRAME RTL-CRF — COMMON-FRAME COMPARISON")
-else:
-    print("4-FRAME vs 5-FRAME RTL-CRF — COMMON-FRAME COMPARISON")
-print("=" * 110)
-
-for route in ("route_B", "route_C"):
-    d5 = read_prediction(W5, route, "w5")
-    d4 = read_prediction(W4, route, "w4")
-
-    common = d5.merge(
-        d4[
-            [
-                "frame_id",
-                "temporal_x_w4",
-                "temporal_y_w4",
-            ]
-        ],
-        on="frame_id",
-        how="inner",
-        validate="one_to_one",
-    )
-
-    if have_w3:
-        d3 = read_prediction(W3, route, "w3")
-        common = common.merge(
-            d3[
-                [
-                    "frame_id",
-                    "temporal_x_w3",
-                    "temporal_y_w3",
-                ]
-            ],
-            on="frame_id",
-            how="inner",
-            validate="one_to_one",
-        )
-
-    common = common.sort_values("frame_id").reset_index(drop=True)
-
-    if common.empty:
-        raise RuntimeError(f"{route}: no common evaluation frames")
-
-    gt = common[["gt_x", "gt_y"]].to_numpy(np.float64)
-
-    p5 = common[
-        ["temporal_x_w5", "temporal_y_w5"]
-    ].to_numpy(np.float64)
-    p4 = common[
-        ["temporal_x_w4", "temporal_y_w4"]
-    ].to_numpy(np.float64)
-
-    m5 = metric_block(p5, gt)
-    m4 = metric_block(p4, gt)
-
-    route_result = {
-        "window_5": m5,
-        "window_4": m4,
-    }
-
-    if have_w3:
-        p3 = common[
-            ["temporal_x_w3", "temporal_y_w3"]
-        ].to_numpy(np.float64)
-        m3 = metric_block(p3, gt)
-        route_result["window_3"] = m3
-
-    comparison["routes"][route] = route_result
-
-    print()
-    print(f"{route.upper()}  common frames={len(common)}")
-    print("-" * 110)
-
-    metrics = (
-        "MLE_m",
-        "P90_m",
-        "RPE_m",
-        "JumpRate_pct",
-        "LSR@5_pct",
-        "LSR@10_pct",
-        "LSR@15_pct",
-    )
-
-    if have_w3:
-        print(
-            f"{'metric':<22}"
-            f"{'3-frame':>16}"
-            f"{'4-frame':>16}"
-            f"{'5-frame':>16}"
-            f"{'4 - 5':>16}"
-        )
-        for key in metrics:
-            a3 = float(route_result["window_3"][key])
-            a4 = float(route_result["window_4"][key])
-            a5 = float(route_result["window_5"][key])
-            print(
-                f"{key:<22}"
-                f"{a3:>16.4f}"
-                f"{a4:>16.4f}"
-                f"{a5:>16.4f}"
-                f"{(a4-a5):>16.4f}"
-            )
-    else:
-        print(
-            f"{'metric':<22}"
-            f"{'4-frame':>16}"
-            f"{'5-frame':>16}"
-            f"{'4 - 5':>16}"
-        )
-        for key in metrics:
-            a4 = float(route_result["window_4"][key])
-            a5 = float(route_result["window_5"][key])
-            print(
-                f"{key:<22}"
-                f"{a4:>16.4f}"
-                f"{a5:>16.4f}"
-                f"{(a4-a5):>16.4f}"
-            )
-
-comparison_path = W4 / "comparison_temporal_window_3_4_5.json"
-comparison_path.write_text(
-    json.dumps(
-        comparison,
-        ensure_ascii=False,
-        indent=2,
-    ),
-    encoding="utf-8",
-)
-
-print()
-print("=" * 110)
-print(f"comparison saved to: {comparison_path}")
-print("=" * 110)
-PY
-
-else
-    echo
-    echo "NOTE: 4-frame training/evaluation finished, but automatic comparison was skipped."
-    echo "Required existing 5-frame CSVs:"
-    echo "  ${BASE_5_DIR}/route_B_robust_frames.csv"
-    echo "  ${BASE_5_DIR}/route_C_robust_frames.csv"
-    echo "Required new 4-frame CSVs:"
-    echo "  ${W4_DIR}/route_B_robust_frames.csv"
-    echo "  ${W4_DIR}/route_C_robust_frames.csv"
+# If this happens to be the last of the three concurrent jobs, print the
+# common-frame comparison immediately.  Otherwise use --compare-t2only later.
+if [[ -f "outputs/strict_train_A_test_BC_t2only_w3/route_B_robust_frames.csv" \
+   && -f "outputs/strict_train_A_test_BC_t2only_w3/route_C_robust_frames.csv" \
+   && -f "outputs/strict_train_A_test_BC_t2only_w4/route_B_robust_frames.csv" \
+   && -f "outputs/strict_train_A_test_BC_t2only_w4/route_C_robust_frames.csv" \
+   && -f "outputs/strict_train_A_test_BC_t2only_w5/route_B_robust_frames.csv" \
+   && -f "outputs/strict_train_A_test_BC_t2only_w5/route_C_robust_frames.csv" ]]; then
+    compare_results
 fi

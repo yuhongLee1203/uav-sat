@@ -203,18 +203,17 @@ class LatticeOutput:
 
 
 class TemporalLatticeCRF(nn.Module):
-    """Residual second-order CRF over consecutive retrieval lattices.
-    Each frame contributes all candidate nodes rather than one early Top-1.
-    A learned second-order transition potential scores velocity continuation
-    and acceleration, so the model learns which candidate sequence is visually
-    strong and approximately straight.  The final prediction is a learned
-    residual correction of Fixed HardMS, which makes the visual baseline an
-    explicit fallback instead of allowing catastrophic temporal drift.
+    """T2-only residual second-order CRF over consecutive retrieval lattices.
 
-    No-position-scale ablation:
-    spatial offsets, velocities, accelerations and HardMS disagreement are fed
-    in their original meter-based values.  No arbitrary POSITION_SCALE_M is
-    used anywhere in RTL-CRF.
+    The learned first-order T1 factor is intentionally removed in this
+    ablation.  A window is initialized only after three frames are available:
+    E1 + E2 + E3 + T2(1,2,3).  The oldest state is then marginalized with
+    LogSumExp so that the carried dynamic-programming state remains a pair of
+    candidate indices, which is sufficient for a second-order Markov model.
+
+    For longer windows, every additional frame contributes one overlapping T2
+    factor.  All spatial offsets, velocities, accelerations, and HardMS
+    disagreement use raw meter-based values; no POSITION_SCALE_M is used.
     """
     def __init__(self):
         super().__init__()
@@ -246,11 +245,6 @@ class TemporalLatticeCRF(nn.Module):
         # retrieval ordering while learning a residual emission calibration.
         self.raw_logit_weight = nn.Parameter(torch.tensor(0.5413249))
         hidden = int(config.TRANSITION_HIDDEN)
-        self.first_transition = nn.Sequential(
-            nn.Linear(3, hidden),
-            nn.GELU(),
-            nn.Linear(hidden, 1),
-        )
         self.second_transition = nn.Sequential(
             nn.Linear(9, hidden),
             nn.GELU(),
@@ -258,11 +252,8 @@ class TemporalLatticeCRF(nn.Module):
             nn.GELU(),
             nn.Linear(hidden, 1),
         )
-        # The initial structured prior is constant velocity.  The MLP learns
-        # route-specific deviations; the positive quadratic coefficient remains
-        # trainable instead of being a manually selected threshold.
-        nn.init.zeros_(self.first_transition[-1].weight)
-        nn.init.zeros_(self.first_transition[-1].bias)
+        # T2 starts from a neutral learned residual while the positive
+        # acceleration coefficient supplies the initial second-order preference.
         nn.init.zeros_(self.second_transition[-1].weight)
         nn.init.zeros_(self.second_transition[-1].bias)
         self.acceleration_weight_raw = nn.Parameter(torch.tensor(0.0))
@@ -317,20 +308,6 @@ class TemporalLatticeCRF(nn.Module):
         emission = learned + F.softplus(self.raw_logit_weight) * standardized
         return emission, token
 
-    def _first_transition_score(
-        self,
-        centers0: torch.Tensor,
-        centers1: torch.Tensor,
-        dt: torch.Tensor,
-    ):
-        velocity = (
-            centers1[:, None, :, :] - centers0[:, :, None, :]
-        ) / dt[:, None, None, None].clamp_min(1.0)
-        speed = torch.linalg.norm(velocity, dim=-1, keepdim=True)
-        # RAW METER-BASED MOTION FEATURES: [vx, vy, speed].
-        feature = torch.cat([velocity, speed], dim=-1)
-        return self.first_transition(feature).squeeze(-1)
-
     def _second_transition_score(
         self,
         centers0: torch.Tensor,
@@ -374,17 +351,16 @@ class TemporalLatticeCRF(nn.Module):
     @staticmethod
     def _gather_path_score(
         emission: torch.Tensor,
-        first_score: torch.Tensor,
         second_scores: List[torch.Tensor],
         target_index: torch.Tensor,
     ):
+        """Score the supervised candidate path using emissions + T2 only."""
         batch = torch.arange(emission.shape[0], device=emission.device)
         score = torch.zeros(emission.shape[0], device=emission.device)
+
         for time in range(emission.shape[1]):
             score = score + emission[batch, time, target_index[:, time]]
-        score = score + first_score[
-            batch, target_index[:, 0], target_index[:, 1]
-        ]
+
         for time, transition in enumerate(second_scores, start=2):
             score = score + transition[
                 batch,
@@ -392,6 +368,7 @@ class TemporalLatticeCRF(nn.Module):
                 target_index[:, time - 1],
                 target_index[:, time],
             ]
+
         return score
 
     def forward(
@@ -405,22 +382,49 @@ class TemporalLatticeCRF(nn.Module):
         hardms_xy: torch.Tensor,
         target_index: Optional[torch.Tensor] = None,
     ) -> LatticeOutput:
-        if centers.shape[1] < 3:
-            raise ValueError("TemporalLatticeCRF requires at least three frames")
+        frame_count = int(centers.shape[1])
+        if frame_count < 3:
+            raise ValueError(
+                "T2-only TemporalLatticeCRF requires at least three frames"
+            )
+
         emission, _ = self._emissions(
             z_uav, z_sat, raw_logits, raw_prob, centers
         )
         dt = (frame_ids[:, 1:] - frame_ids[:, :-1]).float().clamp_min(1.0)
-        first_score = self._first_transition_score(
-            centers[:, 0], centers[:, 1], dt[:, 0]
+
+        # ------------------------------------------------------------------
+        # T2-only initialization with Frames 1, 2, 3.
+        #
+        # initial_score[j1,j2,j3]
+        #   = E1[j1] + E2[j2] + E3[j3] + T2[j1,j2,j3]
+        #
+        # This is the replacement for the old T1-based two-frame alpha.
+        # We immediately marginalize j1 because a second-order model only
+        # needs the most recent two states to process the next frame.
+        # ------------------------------------------------------------------
+        first_t2 = self._second_transition_score(
+            centers[:, 0],
+            centers[:, 1],
+            centers[:, 2],
+            dt[:, 0],
+            dt[:, 1],
         )
-        alpha = (
-            emission[:, 0, :, None]
-            + emission[:, 1, None, :]
-            + first_score
+        second_scores: List[torch.Tensor] = [first_t2]
+
+        initial_score = (
+            emission[:, 0, :, None, None]
+            + emission[:, 1, None, :, None]
+            + emission[:, 2, None, None, :]
+            + first_t2
         )
-        second_scores: List[torch.Tensor] = []
-        for time in range(2, centers.shape[1]):
+
+        # alpha now represents all histories ending at (j2, j3).
+        alpha = torch.logsumexp(initial_score, dim=1)
+
+        # Frames 4...T: add one overlapping T2 factor and current emission,
+        # then marginalize the oldest of the three active candidate indices.
+        for time in range(3, frame_count):
             transition = self._second_transition_score(
                 centers[:, time - 2],
                 centers[:, time - 1],
@@ -429,23 +433,31 @@ class TemporalLatticeCRF(nn.Module):
                 dt[:, time - 1],
             )
             second_scores.append(transition)
+
             score = (
                 alpha[:, :, :, None]
                 + transition
                 + emission[:, time, None, None, :]
             )
             alpha = torch.logsumexp(score, dim=1)
+
+        # alpha is [B, 36, 36] over the final two frames.
         log_partition = torch.logsumexp(alpha.flatten(1), dim=1)
-        last_log_probability = torch.logsumexp(alpha, dim=1) - log_partition[:, None]
+        last_log_probability = (
+            torch.logsumexp(alpha, dim=1)
+            - log_partition[:, None]
+        )
         path_probability = last_log_probability.exp()
         path_expectation = (
             path_probability.unsqueeze(-1) * centers[:, -1]
         ).sum(dim=1)
+
         emission_probability = torch.softmax(emission[:, -1], dim=1)
         path_entropy = self._entropy(path_probability)
         emission_entropy = self._entropy(emission_probability)
         path_top = path_probability.topk(k=2, dim=1).values
         emission_top = emission_probability.topk(k=2, dim=1).values
+
         # RAW METERS: no /10 on HardMS/path disagreement.
         disagreement = torch.linalg.norm(
             path_expectation - hardms_xy[:, -1], dim=1
@@ -464,12 +476,14 @@ class TemporalLatticeCRF(nn.Module):
         final_xy = hardms_xy[:, -1] + correction_gate * (
             path_expectation - hardms_xy[:, -1]
         )
+
         crf_nll = None
         if target_index is not None:
             target_score = self._gather_path_score(
-                emission, first_score, second_scores, target_index
+                emission, second_scores, target_index
             )
             crf_nll = (log_partition - target_score).mean()
+
         return LatticeOutput(
             emission_logits=emission,
             path_probability=path_probability,
