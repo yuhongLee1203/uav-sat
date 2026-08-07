@@ -424,7 +424,12 @@ def selected_route_pairs(route: str) -> List[Tuple[Path, str]]:
         for root, name in zip(config.ROUTE_ROOTS, config.ROUTE_NAMES)
     ]
     if route == "all":
-        return pairs
+        eval_names = set(config.EVAL_ROUTE_NAMES)
+        return [
+            (root, name)
+            for root, name in pairs
+            if name in eval_names
+        ]
     return [(root, name) for root, name in pairs if name == route]
 
 

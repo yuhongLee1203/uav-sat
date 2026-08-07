@@ -1,5 +1,0 @@
-usage: robust_tracker.py [-h] [--mode {train,eval,train_eval}]
-                         [--visual-epochs VISUAL_EPOCHS] [--epochs EPOCHS]
-                         [--eval-split {test,all}] [--jitter-m JITTER_M]
-                         [--resume]
-robust_tracker.py: error: unrecognized arguments: --train-routes route_A --eval-routes route_B route_C --experiment-name train_A_test_BC
