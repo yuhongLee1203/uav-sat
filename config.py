@@ -3,7 +3,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 # Keep this ablation in a separate directory so the original /10 result is not
 # overwritten.  Training/evaluation protocol remains Route A -> Route B/C.
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "strict_train_A_test_BC_no_position_scale_w3"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "strict_train_A_test_BC_no_position_scale_w4"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
 TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "rtl_crf_A_only.pt"
@@ -55,14 +55,14 @@ MEANSHIFT_SCORE_TAU = 0.30
 MEANSHIFT_BANDWIDTH_M = 8.0
 MEANSHIFT_ITERATIONS = 3
 
-# RTL-CRF: fixed 3-frame minimum full second-order experiment.
-# Three consecutive positions are the minimum required to compute two
-# velocities, acceleration and direction consistency.
+# RTL-CRF: fixed 4-frame second-order experiment.
+# Four consecutive positions provide two overlapping second-order T2 terms:
+# (t-3,t-2,t-1) and (t-2,t-1,t), while preserving the same model.
 GRID_SIZE = 6
 LOCAL_PRIOR_JITTER_M = 12.0
 CANDIDATE_CAPTURE_RADIUS_M = 7.5
 MIN_TRAIN_CAPTURE_RATE = 0.95
-TEMPORAL_WINDOW = 3
+TEMPORAL_WINDOW = 4
 WINDOW_STRIDE = 1
 TOKEN_DIM = 192
 TRANSITION_HIDDEN = 64

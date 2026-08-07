@@ -1,0 +1,178 @@
+{
+  "method": "ResidualSecondOrderTemporalLatticeCRF",
+  "protocol": "Public frozen MobileCLIP backbone; randomly initialized retrieval heads trained/validated only on Route A; randomly initialized RTL-CRF trained/validated only on Route A; Route B/C used only after training for evaluation; GT+jitter controlled local prior",
+  "visual_train_routes": [
+    "route_A"
+  ],
+  "visual_validation_routes": [
+    "route_A"
+  ],
+  "temporal_train_routes": [
+    "route_A"
+  ],
+  "temporal_validation_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "eval_split": "all",
+  "previous_task_checkpoint_loaded": false,
+  "backbone_source": "hf-hub:timm/MobileCLIP2-S2-OpenCLIP",
+  "jitter_m": 12.0,
+  "visual_checkpoint": "/yh/study/uav-sat/outputs/strict_train_A_test_BC_no_position_scale_w4/checkpoints/visual_retrieval_A_only.pt",
+  "temporal_checkpoint": "/yh/study/uav-sat/outputs/strict_train_A_test_BC_no_position_scale_w4/checkpoints/rtl_crf_A_only.pt",
+  "routes": {
+    "route_B": {
+      "route": "route_B",
+      "split": "all",
+      "RawTop1": {
+        "MLE_m": 15.042272890463826,
+        "MedLE_m": 14.739656491128413,
+        "P90_m": 24.00162408011773,
+        "P95_m": 26.08405358503246,
+        "ATE_RMSE_m": 16.412379648156353,
+        "LSR@5_pct": 6.423229212494501,
+        "LSR@10_pct": 23.977122745270567,
+        "LSR@15_pct": 51.51781786185657,
+        "LSR@20_pct": 75.93488781346238,
+        "RPE_m": 14.730833937293047,
+        "JumpRate_pct": 48.811619718309856,
+        "JumpThreshold_m": 13.147027309101288,
+        "StationaryDriftP90_m": 33.553039679794516,
+        "PathLengthRatio": 4.701342287697363,
+        "MaxLE_m": 33.45992443843069
+      },
+      "FixedHardMS": {
+        "MLE_m": 10.463666753575236,
+        "MedLE_m": 10.089854878455643,
+        "P90_m": 17.24978795202582,
+        "P95_m": 19.09889915452587,
+        "ATE_RMSE_m": 11.603110738472695,
+        "LSR@5_pct": 14.650241970963485,
+        "LSR@10_pct": 49.318081830180375,
+        "LSR@15_pct": 81.61020677518698,
+        "LSR@20_pct": 96.04047514298284,
+        "RPE_m": 11.848312981877944,
+        "JumpRate_pct": 44.45422535211267,
+        "JumpThreshold_m": 13.147027309101288,
+        "StationaryDriftP90_m": 23.704921297794968,
+        "PathLengthRatio": 4.005374475381029,
+        "MaxLE_m": 30.119845797461366
+      },
+      "TemporalPathExpectation": {
+        "MLE_m": 5.1435367241342185,
+        "MedLE_m": 4.7007416880019255,
+        "P90_m": 9.19416169370643,
+        "P95_m": 10.5573156284466,
+        "ATE_RMSE_m": 5.895878935158579,
+        "LSR@5_pct": 54.069511658600966,
+        "LSR@10_pct": 92.91684997800263,
+        "LSR@15_pct": 99.91201055873296,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 4.415858696976082,
+        "JumpRate_pct": 2.024647887323944,
+        "JumpThreshold_m": 13.147027309101288,
+        "StationaryDriftP90_m": 7.670282476689277,
+        "PathLengthRatio": 1.4707631867721112,
+        "MaxLE_m": 15.97290529573895
+      },
+      "RTL_CRF": {
+        "MLE_m": 5.1517855942388575,
+        "MedLE_m": 4.698165603542585,
+        "P90_m": 9.217802460966977,
+        "P95_m": 10.581310207209572,
+        "ATE_RMSE_m": 5.902536295895213,
+        "LSR@5_pct": 53.7615486141663,
+        "LSR@10_pct": 92.91684997800263,
+        "LSR@15_pct": 99.8240211174659,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 4.443736470797293,
+        "JumpRate_pct": 2.112676056338028,
+        "JumpThreshold_m": 13.147027309101288,
+        "StationaryDriftP90_m": 7.756706001783577,
+        "PathLengthRatio": 1.4827187731458622,
+        "MaxLE_m": 16.133436912092062
+      },
+      "CandidateCaptureRate_pct": 100.0,
+      "MeanCorrectionGate": 0.9589111588492144,
+      "MeanPathEntropy": 0.5941658164567105
+    },
+    "route_C": {
+      "route": "route_C",
+      "split": "all",
+      "RawTop1": {
+        "MLE_m": 14.067586813235849,
+        "MedLE_m": 13.540723733721665,
+        "P90_m": 23.3704331842951,
+        "P95_m": 25.093774178015376,
+        "ATE_RMSE_m": 15.496602232306255,
+        "LSR@5_pct": 6.693227091633466,
+        "LSR@10_pct": 30.438247011952193,
+        "LSR@15_pct": 58.00796812749004,
+        "LSR@20_pct": 79.04382470119522,
+        "RPE_m": 12.340268722160388,
+        "JumpRate_pct": 41.547049441786285,
+        "JumpThreshold_m": 13.084783094696137,
+        "StationaryDriftP90_m": 28.939326537419134,
+        "PathLengthRatio": 5.6788212017409805,
+        "MaxLE_m": 31.40342350227002
+      },
+      "FixedHardMS": {
+        "MLE_m": 9.526088324467269,
+        "MedLE_m": 9.158009374964557,
+        "P90_m": 15.93146531126307,
+        "P95_m": 17.745735169656797,
+        "ATE_RMSE_m": 10.631720334593357,
+        "LSR@5_pct": 16.97211155378486,
+        "LSR@10_pct": 56.17529880478087,
+        "LSR@15_pct": 85.57768924302789,
+        "LSR@20_pct": 98.00796812749005,
+        "RPE_m": 10.991071111909232,
+        "JumpRate_pct": 40.271132376395535,
+        "JumpThreshold_m": 13.084783094696137,
+        "StationaryDriftP90_m": 20.131632098409597,
+        "PathLengthRatio": 5.298908824927118,
+        "MaxLE_m": 24.498406956445564
+      },
+      "TemporalPathExpectation": {
+        "MLE_m": 4.534895277760034,
+        "MedLE_m": 4.159212185588264,
+        "P90_m": 8.135628881098066,
+        "P95_m": 9.231317266690995,
+        "ATE_RMSE_m": 5.179689989358244,
+        "LSR@5_pct": 63.90438247011952,
+        "LSR@10_pct": 96.65338645418326,
+        "LSR@15_pct": 99.9203187250996,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 3.994303194173369,
+        "JumpRate_pct": 1.5948963317384368,
+        "JumpThreshold_m": 13.084783094696137,
+        "StationaryDriftP90_m": 7.062732079521873,
+        "PathLengthRatio": 1.8942088803282395,
+        "MaxLE_m": 15.126957639017153
+      },
+      "RTL_CRF": {
+        "MLE_m": 4.542467925162646,
+        "MedLE_m": 4.1867406330285535,
+        "P90_m": 8.095739780891838,
+        "P95_m": 9.21017288937906,
+        "ATE_RMSE_m": 5.190495244456615,
+        "LSR@5_pct": 63.66533864541832,
+        "LSR@10_pct": 96.65338645418326,
+        "LSR@15_pct": 100.0,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 4.0292846991859985,
+        "JumpRate_pct": 1.5948963317384368,
+        "JumpThreshold_m": 13.084783094696137,
+        "StationaryDriftP90_m": 7.206019806627346,
+        "PathLengthRatio": 1.9156211208360185,
+        "MaxLE_m": 14.97626871814543
+      },
+      "CandidateCaptureRate_pct": 100.0,
+      "MeanCorrectionGate": 0.9498398278338975,
+      "MeanPathEntropy": 0.6074935097262204
+    }
+  }
+}
