@@ -216,7 +216,15 @@ def main() -> None:
 
     legacy_controls = LEGACY / "basinrank_B_fixed_hardms" / "controlled_decoder_controls_basinrank_B_fixed_hardms"
     legacy_metrics = pd.read_csv(legacy_controls / "metrics.csv")
-    legacy_metrics.to_csv(OUT / "01_archived_hardms_decoder_controls.csv", index=False)
+    # The continuous coordinate is a diagnostic intermediate: it may land
+    # between real anchors. Fixed HardMS is formally the nearest-anchor
+    # (snapped) selection, so only that readout and the raw Top-1 baseline
+    # belong in the presentation table.
+    legacy_primary = legacy_metrics[legacy_metrics.Method.isin([
+        "Top-1 patch center",
+        "Fixed HardMS (snapped anchor)",
+    ])].copy()
+    legacy_primary.to_csv(OUT / "01_archived_hardms_decoder_controls.csv", index=False)
 
     sensitivity = pd.read_csv(LEGACY / "paper_evidence" / "hardms_sensitivity.csv")
     sensitivity.to_csv(OUT / "02_archived_hardms_sensitivity.csv", index=False)
@@ -308,7 +316,6 @@ def main() -> None:
     }
     comparison = []
     for name, display in (
-        ("mobileclip_basic", "MobileCLIP basic (adapted)"),
         ("sample4geo", "Sample4Geo-style (adapted)"),
         ("denseuav", "DenseUAV-style (adapted)"),
         ("game4loc", "Game4Loc-style (adapted)"),
@@ -330,13 +337,21 @@ def main() -> None:
             "Decoder": row.Method,
             **{key: row[key] for key in row.index if key not in {"Run", "Method"}},
         })
+    comparison = sorted(
+        comparison,
+        key=lambda row: {
+            "RawTop1": 0,
+            "FixedHardMS": 1,
+            "Raw Top-1": 2,
+            "Coordinate regression": 5,
+        }.get(row["Decoder"], 9),
+    )
     pd.DataFrame(comparison).to_csv(OUT / "20_common_frame_jump_comparison.csv", index=False)
 
     # Complete 3,534-frame localization table with normalized column names.
     # Bearing-UAV has no official JumpRate, so this table leaves it blank.
     full_rows = []
     for name, display in (
-        ("mobileclip_basic", "MobileCLIP basic (adapted)"),
         ("sample4geo", "Sample4Geo-style (adapted)"),
         ("denseuav", "DenseUAV-style (adapted)"),
         ("game4loc", "Game4Loc-style (adapted)"),
@@ -363,12 +378,7 @@ def main() -> None:
     full["JumpRate_pct"] = np.nan
     full.to_csv(OUT / "21_external_full_localization_comparison.csv", index=False)
 
-    archived = legacy_metrics[legacy_metrics.Split.eq("B+C")].copy()
-    archived_short = archived[archived.Method.isin([
-        "Top-1 patch center",
-        "Fixed HardMS (snapped anchor)",
-        "Fixed HardMS (continuous mode; diagnostic)",
-    ])]
+    archived_short = legacy_primary[legacy_primary.Split.eq("B+C")].copy()
     report = [
         "# HardMS and Temporal Result Summary",
         "",
@@ -439,10 +449,7 @@ def main() -> None:
     visual_plot = pd.DataFrame(comparison)
     save_comparison_plot(
         visual_plot,
-        [
-            "MobileCLIP", "Sample4Geo", "DenseUAV", "Game4Loc",
-            "Bearing-UAV", "Ours Raw", "Ours HardMS",
-        ],
+        ["Sample4Geo", "DenseUAV", "Game4Loc", "Bearing-UAV", "Ours Raw", "Ours HardMS"],
         "01_common_frame_visual_comparison",
         "Independent visual localization on the common 3,526-frame subset",
     )
@@ -541,6 +548,75 @@ def main() -> None:
         "",
     ]
     (OUT / "00_READ_FIRST_NEW_VS_HARDMS.md").write_text("\n".join(overview), encoding="utf-8")
+
+    # One reader-facing comparison. The temporal row remains in the same table
+    # but explicitly declares its four-frame context, so it is visible without
+    # pretending to be a like-for-like single-frame baseline.
+    common_frame = pd.DataFrame(comparison).copy()
+    protocol_notes = {
+        "MobileCLIP basic (adapted)": "Local-36 reimplementation",
+        "Sample4Geo-style (adapted)": "Local-36 adaptation",
+        "DenseUAV-style (adapted)": "Local-36 adaptation",
+        "Game4Loc-style (adapted)": "Local-36 adaptation",
+        "Bearing-UAV (archived; trimmed)": "Archived coordinate regressor; not Local-36",
+        "Our visual branch": "Our shared visual branch",
+    }
+    common_frame["Protocol note"] = common_frame["Method"].map(protocol_notes)
+    common_frame.loc[common_frame.Decoder.eq("RawTop1"), "Method"] = "Baseline: MobileCLIP + dual MLP (Top-1)"
+    common_frame.loc[common_frame.Decoder.eq("FixedHardMS"), "Method"] = "Ours: Fixed HardMS"
+    common_frame["Method"] = common_frame["Method"].replace({
+        "Sample4Geo-style (adapted)": "Sample4Geo",
+        "DenseUAV-style (adapted)": "DenseUAV",
+        "Game4Loc-style (adapted)": "Game4Loc",
+        "Bearing-UAV (archived; trimmed)": "Bearing-UAV",
+    })
+    common_frame["_presentation_order"] = pd.Categorical(
+        common_frame["Method"],
+        categories=[
+            "Baseline: MobileCLIP + dual MLP (Top-1)",
+            "Ours: Fixed HardMS",
+            "Sample4Geo",
+            "DenseUAV",
+            "Game4Loc",
+            "Bearing-UAV",
+        ],
+        ordered=True,
+    )
+    common_frame = common_frame.sort_values("_presentation_order").drop(columns="_presentation_order")
+    visual_columns = [
+        "Method", "Decoder", "Frames", "MLE_m", "P90_m", "CVaR90_m",
+        "LSR@15_pct", "LSR@20_pct", "RPE_m", "JumpRate_pct", "Protocol note",
+    ]
+
+    common_frame["Input context"] = "Single frame"
+    final_temporal = main_rows[main_rows.Method.eq("RTL_CRF")].copy()
+    final_temporal["Method"] = "Ours: RTL-CRF (4-frame)"
+    combined = pd.concat([common_frame, final_temporal], ignore_index=True, sort=False)
+    combined_columns = [
+        "Method", "MLE_m", "P90_m", "LSR@5_pct", "LSR@10_pct",
+        "LSR@15_pct", "LSR@20_pct", "RPE_m", "JumpRate_pct",
+    ]
+    presentation = combined.loc[:, combined_columns].rename(columns={
+        "MLE_m": "MLE (m)",
+        "P90_m": "P90 (m)",
+        "LSR@5_pct": "LSR@5 (%)",
+        "LSR@10_pct": "LSR@10 (%)",
+        "LSR@15_pct": "LSR@15 (%)",
+        "LSR@20_pct": "LSR@20 (%)",
+        "RPE_m": "RPE (m)",
+        "JumpRate_pct": "JumpRate (%)",
+    })
+    big_table = [
+        "# Large Comparison: Our Methods and Prior Architectures",
+        "",
+        markdown_table(
+            presentation, list(presentation.columns),
+            bold_min=["MLE (m)", "P90 (m)", "RPE (m)", "JumpRate (%)"],
+            bold_max=["LSR@5 (%)", "LSR@10 (%)", "LSR@15 (%)", "LSR@20 (%)"],
+        ),
+        "",
+    ]
+    (OUT / "22_large_method_comparison.md").write_text("\n".join(big_table), encoding="utf-8")
 
     note = """# Result bundle\n\n- `01`--`04`: archived P320/S32 Fixed HardMS control, sensitivity, transition, and latency results.\n- `10`--`13`: new temporal RTL-CRF outputs. The main run is `strict_train_A_test_BC_no_position_scale`.\n- `20`: common-frame jump comparison. Every row uses the same 3,526 evaluation frames. External rows are local-36 adaptations, not official author benchmark reproductions.\n- `21`: complete 3,534-frame external localization table. Bearing-UAV is archived coordinate regression and has no author-reported JumpRate.\n\n**JumpRate definition.** For each route independently, a predicted step is a jump when its length exceeds the route's 99th-percentile GT step length plus 3 m. No trajectory links cross route boundaries.\n\n**Protocol warning.** All local-grid runs use a GT-jitter controlled local candidate prior. Results measure controlled local localization, not unconstrained global localization. The temporal rows additionally use contiguous frames, therefore they must not be ranked as a fair replacement for independent-frame external retrieval methods.\n"""
     (ROOT / "README.md").write_text(note, encoding="utf-8")

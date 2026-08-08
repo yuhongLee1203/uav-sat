@@ -1,0 +1,16 @@
+[
+  {
+    "segment": "straight",
+    "route": "route_B",
+    "first_frame": 1047,
+    "last_frame": 1098,
+    "frames": 52
+  },
+  {
+    "segment": "turn",
+    "route": "route_C",
+    "first_frame": 192,
+    "last_frame": 243,
+    "frames": 52
+  }
+]

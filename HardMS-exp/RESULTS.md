@@ -6,8 +6,7 @@ All values are archived experiment outputs or recomputed directly from their per
 | Method | N | MLE | MedLE | P90 | CVaR90 | LSR@10 | LSR@15 | LSR@20 | MaxLE |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Top-1 patch center | 3534 | 14.75 | 14.34 | 24.86 | 27.44 | 29.82 | 53.11 | 72.58 | 36.26 |
-| Fixed HardMS (continuous mode; diagnostic) | 3534 | **11.29** | 11.22 | **17.86** | **20.49** | **42.08** | **76.49** | **94.96** | 29.92 |
-| Fixed HardMS (snapped anchor) | 3534 | 11.46 | **11.20** | 18.23 | 20.89 | 41.14 | 73.46 | 93.80 | **29.91** |
+| Fixed HardMS (snapped anchor) | 3534 | **11.46** | **11.20** | **18.23** | **20.89** | **41.14** | **73.46** | **93.80** | **29.91** |
 
 ## 2. New temporal architecture final output (B+C, 3,526 frames)
 | Method | Frames | MLE_m | MedLE_m | P90_m | CVaR90_m | LSR@10_pct | LSR@15_pct | LSR@20_pct | RPE_m | JumpRate_pct |
@@ -19,13 +18,12 @@ All values are archived experiment outputs or recomputed directly from their per
 ## 3. Common-frame jump comparison (3,526 frames)
 | Method | Decoder | MLE_m | P90_m | CVaR90_m | LSR@15_pct | LSR@20_pct | RPE_m | JumpRate_pct |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MobileCLIP basic (adapted) | Raw Top-1 | 15.18 | 24.84 | 27.77 | 50.03 | 71.87 | 16.52 | 54.48 |
+| Our visual branch | RawTop1 | 14.70 | 23.73 | 26.25 | 53.80 | 77.03 | 13.88 | 46.23 |
+| Our visual branch | FixedHardMS | **10.13** | **16.81** | **19.40** | **83.01** | **96.74** | 11.54 | 42.96 |
 | Sample4Geo-style (adapted) | Raw Top-1 | 14.88 | 24.57 | 27.37 | 51.02 | 73.79 | 18.08 | 62.37 |
 | DenseUAV-style (adapted) | Raw Top-1 | 14.93 | 24.40 | 27.06 | 50.74 | 73.74 | 18.79 | 65.30 |
 | Game4Loc-style (adapted) | Raw Top-1 | 14.22 | 24.08 | 26.69 | 54.68 | 77.06 | 17.78 | 64.02 |
 | Bearing-UAV (archived; trimmed) | Coordinate regression | 17.31 | 28.06 | 31.64 | 41.55 | 64.52 | **9.30** | **16.20** |
-| Our visual branch | RawTop1 | 14.70 | 23.73 | 26.25 | 53.80 | 77.03 | 13.88 | 46.23 |
-| Our visual branch | FixedHardMS | **10.13** | **16.81** | **19.40** | **83.01** | **96.74** | 11.54 | 42.96 |
 
 `JumpRate`: a predicted adjacent-frame displacement greater than the route-specific 99th-percentile GT displacement plus 3 m. External rows are local-36 adaptations; Bearing-UAV's value is recomputed here from archived predictions, not copied from its paper.
 

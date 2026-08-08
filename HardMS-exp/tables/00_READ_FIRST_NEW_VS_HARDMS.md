@@ -6,8 +6,7 @@
 | Method | MLE | P90 | CVaR90 | LSR@10 | LSR@15 | LSR@20 | MaxLE |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Top-1 patch center | 14.75 | 24.86 | 27.44 | 29.82 | 53.11 | 72.58 | 36.26 |
-| Fixed HardMS (continuous mode; diagnostic) | **11.29** | **17.86** | **20.49** | **42.08** | **76.49** | **94.96** | 29.92 |
-| Fixed HardMS (snapped anchor) | 11.46 | 18.23 | 20.89 | 41.14 | 73.46 | 93.80 | **29.91** |
+| Fixed HardMS (snapped anchor) | **11.46** | **18.23** | **20.89** | **41.14** | **73.46** | **93.80** | **29.91** |
 
 ## 新架構：最終 RTL-CRF 輸出（B+C，3,526 frames）
 | Method | MLE_m | MedLE_m | P90_m | CVaR90_m | LSR@10_pct | LSR@15_pct | LSR@20_pct | RPE_m | JumpRate_pct |
