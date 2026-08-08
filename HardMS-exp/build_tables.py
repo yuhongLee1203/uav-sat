@@ -298,6 +298,31 @@ def main() -> None:
     ].copy()
     window_rows.to_csv(OUT / "13_t2only_window_ablation.csv", index=False)
 
+    # Compact T2-only comparison: all three runs already have saved per-frame
+    # predictions and RTX 3090 latency benchmarks, so no retraining is needed.
+    latency_rows = []
+    for window in (3, 4, 5):
+        run = f"strict_train_A_test_BC_t2only_w{window}"
+        metrics = window_rows[window_rows.Run.eq(run)].iloc[0].to_dict()
+        timing = json.loads(
+            (UAV_SAT / "outputs" / run / "inference_time_benchmark.json").read_text()
+        )
+        latency_rows.append({
+            "Window frames": window,
+            "Frames": int(metrics["Frames"]),
+            "MLE (m)": metrics["MLE_m"],
+            "P90 (m)": metrics["P90_m"],
+            "LSR@5 (%)": metrics["LSR@5_pct"],
+            "LSR@10 (%)": metrics["LSR@10_pct"],
+            "LSR@15 (%)": metrics["LSR@15_pct"],
+            "LSR@20 (%)": metrics["LSR@20_pct"],
+            "RPE (m)": metrics["RPE_m"],
+            "JumpRate (%)": metrics["JumpRate_pct"],
+            "Temporal head (ms)": timing["t2_only_rtl_crf_forward_only"]["mean_ms"],
+            "End-to-end (ms)": timing["steady_state_one_new_gps"]["preprocessed_uav_to_gps"]["mean_ms"],
+        })
+    pd.DataFrame(latency_rows).to_csv(OUT / "14_t2only_window_accuracy_latency.csv", index=False)
+
     # All methods below use their raw Top-1 prediction sequence. Limit every
     # method to exact 4-frame temporal evaluation IDs (3,526 frames), then
     # recompute JumpRate under one definition rather than copying unrelated
@@ -473,6 +498,7 @@ def main() -> None:
         "11_temporal_combined_metrics": "New Temporal Architecture: Combined Metrics",
         "12_new_architecture_main_comparison": "New Temporal Architecture: Main Comparison",
         "13_t2only_window_ablation": "New Temporal Architecture: Final RTL-CRF Window Ablation",
+        "14_t2only_window_accuracy_latency": "T2-only Window: Accuracy and Latency",
         "20_common_frame_jump_comparison": "Common-frame Jump Comparison",
         "21_external_full_localization_comparison": "Full External Localization Comparison",
     }
@@ -484,6 +510,10 @@ def main() -> None:
         "13_t2only_window_ablation": (
             ["MLE_m", "P90_m", "RPE_m", "JumpRate_pct"],
             ["LSR@15_pct"],
+        ),
+        "14_t2only_window_accuracy_latency": (
+            ["MLE (m)", "P90 (m)", "RPE (m)", "JumpRate (%)", "Temporal head (ms)", "End-to-end (ms)"],
+            ["LSR@5 (%)", "LSR@10 (%)", "LSR@15 (%)", "LSR@20 (%)"],
         ),
         "20_common_frame_jump_comparison": (
             ["MLE_m", "MedLE_m", "P90_m", "CVaR90_m", "RPE_m", "JumpRate_pct"],

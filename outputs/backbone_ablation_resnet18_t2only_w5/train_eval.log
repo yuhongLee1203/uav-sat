@@ -1,0 +1,325 @@
+BACKBONE ABLATION | backbone=resnet18 | feature_dim=512 | window=5
+============================================================================
+STRICT TRAIN-A / TEST-B+C EXPERIMENT
+visual train routes:      ['route_A']
+visual validation routes: ['route_A']
+temporal train routes:    ['route_A']
+temporal validation:      ['route_A']
+evaluation routes:        ['route_B', 'route_C']
+evaluation split:         all
+previous task checkpoint: DISALLOWED
+public backbone:          torchvision:ResNet18_IMAGENET1K_V1
+output directory:         /yh/study/uav-sat/outputs/backbone_ablation_resnet18_t2only_w5
+============================================================================
+satellite backbone cache: 64/95480
+satellite backbone cache: 1344/95480
+satellite backbone cache: 2624/95480
+satellite backbone cache: 3904/95480
+satellite backbone cache: 5184/95480
+satellite backbone cache: 6464/95480
+satellite backbone cache: 7744/95480
+satellite backbone cache: 9024/95480
+satellite backbone cache: 10304/95480
+satellite backbone cache: 11584/95480
+satellite backbone cache: 12864/95480
+satellite backbone cache: 14144/95480
+satellite backbone cache: 15424/95480
+satellite backbone cache: 16704/95480
+satellite backbone cache: 17984/95480
+satellite backbone cache: 19264/95480
+satellite backbone cache: 20544/95480
+satellite backbone cache: 21824/95480
+satellite backbone cache: 23104/95480
+satellite backbone cache: 24384/95480
+satellite backbone cache: 25664/95480
+satellite backbone cache: 26944/95480
+satellite backbone cache: 28224/95480
+satellite backbone cache: 29504/95480
+satellite backbone cache: 30784/95480
+satellite backbone cache: 32064/95480
+satellite backbone cache: 33344/95480
+satellite backbone cache: 34624/95480
+satellite backbone cache: 35904/95480
+satellite backbone cache: 37184/95480
+satellite backbone cache: 38464/95480
+satellite backbone cache: 39744/95480
+satellite backbone cache: 41024/95480
+satellite backbone cache: 42304/95480
+satellite backbone cache: 43584/95480
+satellite backbone cache: 44864/95480
+satellite backbone cache: 46144/95480
+satellite backbone cache: 47424/95480
+satellite backbone cache: 48704/95480
+satellite backbone cache: 49984/95480
+satellite backbone cache: 51264/95480
+satellite backbone cache: 52544/95480
+satellite backbone cache: 53824/95480
+satellite backbone cache: 55104/95480
+satellite backbone cache: 56384/95480
+satellite backbone cache: 57664/95480
+satellite backbone cache: 58944/95480
+satellite backbone cache: 60224/95480
+satellite backbone cache: 61504/95480
+satellite backbone cache: 62784/95480
+satellite backbone cache: 64064/95480
+satellite backbone cache: 65344/95480
+satellite backbone cache: 66624/95480
+satellite backbone cache: 67904/95480
+satellite backbone cache: 69184/95480
+satellite backbone cache: 70464/95480
+satellite backbone cache: 71744/95480
+satellite backbone cache: 73024/95480
+satellite backbone cache: 74304/95480
+satellite backbone cache: 75584/95480
+satellite backbone cache: 76864/95480
+satellite backbone cache: 78144/95480
+satellite backbone cache: 79424/95480
+satellite backbone cache: 80704/95480
+satellite backbone cache: 81984/95480
+satellite backbone cache: 83264/95480
+satellite backbone cache: 84544/95480
+satellite backbone cache: 85824/95480
+satellite backbone cache: 87104/95480
+satellite backbone cache: 88384/95480
+satellite backbone cache: 89664/95480
+satellite backbone cache: 90944/95480
+satellite backbone cache: 92224/95480
+satellite backbone cache: 93504/95480
+satellite backbone cache: 94784/95480
+satellite backbone cache: 95480/95480
+satellite gallery size=95480
+Route A backbone cache: 64/1732
+Route A backbone cache: 1344/1732
+Route A backbone cache: 1732/1732
+Route A visual candidate capture=100.00%
+visual epoch=001/30 loss=4.61509 val_hardms_mle=11.518m val_p90=18.489m val_lsr10=39.60%
+visual epoch=002/30 loss=4.03907 val_hardms_mle=11.087m val_p90=19.098m val_lsr10=45.20%
+visual epoch=003/30 loss=3.61101 val_hardms_mle=11.347m val_p90=19.697m val_lsr10=43.20%
+visual epoch=004/30 loss=3.24055 val_hardms_mle=10.441m val_p90=19.699m val_lsr10=52.40%
+visual epoch=005/30 loss=2.97715 val_hardms_mle=10.910m val_p90=19.066m val_lsr10=46.80%
+visual epoch=006/30 loss=2.76325 val_hardms_mle=11.265m val_p90=19.661m val_lsr10=43.20%
+visual epoch=007/30 loss=2.57888 val_hardms_mle=12.247m val_p90=20.921m val_lsr10=38.80%
+visual epoch=008/30 loss=2.40272 val_hardms_mle=11.556m val_p90=20.815m val_lsr10=42.40%
+visual epoch=009/30 loss=2.22657 val_hardms_mle=12.043m val_p90=21.020m val_lsr10=40.00%
+visual epoch=010/30 loss=2.08480 val_hardms_mle=12.414m val_p90=20.510m val_lsr10=38.40%
+visual epoch=011/30 loss=1.95211 val_hardms_mle=12.667m val_p90=21.375m val_lsr10=36.00%
+visual epoch=012/30 loss=1.88416 val_hardms_mle=12.182m val_p90=20.944m val_lsr10=40.00%
+visual early stopping: Route A validation stopped improving
+best Route A visual validation HardMS MLE=10.441m
+cached route_A: frames=1732 capture=100.00%
+epoch=001/40 loss=128.30255 val_mle=8.407m val_p90=14.838m val_jump=25.71% score=11.993
+epoch=002/40 loss=105.88643 val_mle=8.550m val_p90=15.471m val_jump=24.49% score=12.246
+epoch=003/40 loss=67.05850 val_mle=8.049m val_p90=14.768m val_jump=22.04% score=11.369
+epoch=004/40 loss=48.60193 val_mle=8.173m val_p90=14.862m val_jump=20.41% score=11.468
+epoch=005/40 loss=37.39596 val_mle=7.768m val_p90=13.589m val_jump=20.41% score=10.826
+epoch=006/40 loss=33.38621 val_mle=7.360m val_p90=12.973m val_jump=13.47% score=9.977
+epoch=007/40 loss=30.02211 val_mle=7.180m val_p90=12.563m val_jump=10.61% score=9.651
+epoch=008/40 loss=26.66178 val_mle=7.345m val_p90=12.829m val_jump=11.02% score=9.824
+epoch=009/40 loss=22.83137 val_mle=7.215m val_p90=12.536m val_jump=10.61% score=9.666
+epoch=010/40 loss=18.87367 val_mle=7.247m val_p90=13.052m val_jump=10.20% score=9.645
+epoch=011/40 loss=15.16248 val_mle=7.186m val_p90=12.941m val_jump=10.61% score=9.613
+epoch=012/40 loss=12.85447 val_mle=7.149m val_p90=12.974m val_jump=12.65% score=9.614
+epoch=013/40 loss=11.93144 val_mle=7.060m val_p90=12.679m val_jump=10.20% score=9.406
+epoch=014/40 loss=11.43124 val_mle=6.912m val_p90=12.655m val_jump=11.43% score=9.170
+epoch=015/40 loss=11.02986 val_mle=6.584m val_p90=11.557m val_jump=10.20% score=8.824
+epoch=016/40 loss=10.69694 val_mle=6.679m val_p90=12.194m val_jump=9.80% score=9.018
+epoch=017/40 loss=10.53887 val_mle=6.812m val_p90=12.242m val_jump=9.39% score=9.066
+epoch=018/40 loss=10.15943 val_mle=7.013m val_p90=12.529m val_jump=9.39% score=9.306
+epoch=019/40 loss=9.97015 val_mle=7.065m val_p90=12.760m val_jump=11.02% score=9.377
+epoch=020/40 loss=9.57769 val_mle=6.755m val_p90=12.220m val_jump=8.16% score=8.919
+epoch=021/40 loss=9.48202 val_mle=6.457m val_p90=11.945m val_jump=8.16% score=8.647
+epoch=022/40 loss=9.19773 val_mle=6.999m val_p90=12.277m val_jump=10.20% score=9.298
+epoch=023/40 loss=8.95643 val_mle=6.888m val_p90=13.080m val_jump=11.84% score=9.340
+epoch=024/40 loss=8.62833 val_mle=6.860m val_p90=12.264m val_jump=8.57% score=9.025
+epoch=025/40 loss=8.55437 val_mle=6.794m val_p90=12.272m val_jump=10.61% score=9.104
+epoch=026/40 loss=8.15992 val_mle=6.997m val_p90=12.513m val_jump=9.80% score=9.258
+epoch=027/40 loss=7.96381 val_mle=6.742m val_p90=12.301m val_jump=10.20% score=9.067
+epoch=028/40 loss=7.81381 val_mle=6.950m val_p90=12.747m val_jump=11.02% score=9.248
+epoch=029/40 loss=7.55320 val_mle=6.945m val_p90=12.693m val_jump=8.57% score=9.141
+epoch=030/40 loss=7.48328 val_mle=6.789m val_p90=12.622m val_jump=11.43% score=9.064
+epoch=031/40 loss=7.26156 val_mle=6.711m val_p90=12.189m val_jump=8.16% score=8.824
+epoch=032/40 loss=7.18685 val_mle=6.659m val_p90=12.436m val_jump=11.02% score=8.961
+epoch=033/40 loss=6.96604 val_mle=6.672m val_p90=12.204m val_jump=11.43% score=9.031
+early stopping: validation objective stopped improving
+best validation objective=8.647
+cached route_B: frames=2276 capture=100.00%
+cached route_C: frames=1258 capture=100.00%
+{
+  "method": "ResidualSecondOrderTemporalLatticeCRF",
+  "protocol": "Public frozen MobileCLIP backbone; randomly initialized retrieval heads trained/validated only on Route A; randomly initialized RTL-CRF trained/validated only on Route A; Route B/C used only after training for evaluation; GT+jitter controlled local prior",
+  "visual_train_routes": [
+    "route_A"
+  ],
+  "visual_validation_routes": [
+    "route_A"
+  ],
+  "temporal_train_routes": [
+    "route_A"
+  ],
+  "temporal_validation_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "eval_split": "all",
+  "previous_task_checkpoint_loaded": false,
+  "backbone_source": "torchvision:ResNet18_IMAGENET1K_V1",
+  "jitter_m": 12.0,
+  "visual_checkpoint": "/yh/study/uav-sat/outputs/backbone_ablation_resnet18_t2only_w5/checkpoints/visual_retrieval_A_only.pt",
+  "temporal_checkpoint": "/yh/study/uav-sat/outputs/backbone_ablation_resnet18_t2only_w5/checkpoints/rtl_crf_A_only.pt",
+  "routes": {
+    "route_B": {
+      "route": "route_B",
+      "split": "all",
+      "RawTop1": {
+        "MLE_m": 13.849174359575679,
+        "MedLE_m": 13.362781210439065,
+        "P90_m": 22.66292493706422,
+        "P95_m": 24.84643031943933,
+        "ATE_RMSE_m": 15.255851353729359,
+        "LSR@5_pct": 7.834507042253522,
+        "LSR@10_pct": 31.029929577464788,
+        "LSR@15_pct": 57.9225352112676,
+        "LSR@20_pct": 81.42605633802818,
+        "RPE_m": 13.887997780572556,
+        "JumpRate_pct": 49.9339498018494,
+        "JumpThreshold_m": 13.147056657233255,
+        "StationaryDriftP90_m": 30.07769392549692,
+        "PathLengthRatio": 4.465159516983605,
+        "MaxLE_m": 31.5351090131692
+      },
+      "FixedHardMS": {
+        "MLE_m": 12.043545949894662,
+        "MedLE_m": 11.300598154420877,
+        "P90_m": 20.52831163068612,
+        "P95_m": 22.95496398707286,
+        "ATE_RMSE_m": 13.496179529396327,
+        "LSR@5_pct": 12.852112676056338,
+        "LSR@10_pct": 41.41725352112676,
+        "LSR@15_pct": 69.23415492957746,
+        "LSR@20_pct": 88.51232394366197,
+        "RPE_m": 12.545962191110696,
+        "JumpRate_pct": 44.69396741523558,
+        "JumpThreshold_m": 13.147056657233255,
+        "StationaryDriftP90_m": 25.603454756091377,
+        "PathLengthRatio": 4.123341222645285,
+        "MaxLE_m": 29.494576207555262
+      },
+      "TemporalPathExpectation": {
+        "MLE_m": 7.242216887900989,
+        "MedLE_m": 6.792215113469727,
+        "P90_m": 12.67084695139525,
+        "P95_m": 14.468089062547282,
+        "ATE_RMSE_m": 8.24382492481771,
+        "LSR@5_pct": 33.186619718309856,
+        "LSR@10_pct": 77.06866197183099,
+        "LSR@15_pct": 95.81866197183099,
+        "LSR@20_pct": 99.82394366197182,
+        "RPE_m": 6.003552496289021,
+        "JumpRate_pct": 7.6177895200352275,
+        "JumpThreshold_m": 13.147056657233255,
+        "StationaryDriftP90_m": 10.826019026211664,
+        "PathLengthRatio": 1.994356195980298,
+        "MaxLE_m": 21.907481516596416
+      },
+      "RTL_CRF": {
+        "MLE_m": 7.352366009056009,
+        "MedLE_m": 6.967224973165674,
+        "P90_m": 12.872322223051484,
+        "P95_m": 14.77983571829252,
+        "ATE_RMSE_m": 8.365703355536448,
+        "LSR@5_pct": 31.778169014084508,
+        "LSR@10_pct": 75.74823943661971,
+        "LSR@15_pct": 95.46654929577466,
+        "LSR@20_pct": 99.6919014084507,
+        "RPE_m": 6.151222976363417,
+        "JumpRate_pct": 8.718626155878468,
+        "JumpThreshold_m": 13.147056657233255,
+        "StationaryDriftP90_m": 11.107782825688954,
+        "PathLengthRatio": 2.047940392472077,
+        "MaxLE_m": 22.560161736168784
+      },
+      "CandidateCaptureRate_pct": 100.0,
+      "MeanCorrectionGate": 0.8304645568919433,
+      "MeanPathEntropy": 0.2819907541501388
+    },
+    "route_C": {
+      "route": "route_C",
+      "split": "all",
+      "RawTop1": {
+        "MLE_m": 13.517756122481577,
+        "MedLE_m": 13.22202043426256,
+        "P90_m": 22.682824008529916,
+        "P95_m": 24.890536490842734,
+        "ATE_RMSE_m": 14.965802768851553,
+        "LSR@5_pct": 8.133971291866029,
+        "LSR@10_pct": 32.695374800637964,
+        "LSR@15_pct": 60.60606060606061,
+        "LSR@20_pct": 83.5725677830941,
+        "RPE_m": 12.846409705417809,
+        "JumpRate_pct": 44.37350359138069,
+        "JumpThreshold_m": 13.084796164778941,
+        "StationaryDriftP90_m": 28.784422489776965,
+        "PathLengthRatio": 5.879391482183499,
+        "MaxLE_m": 32.901235044357314
+      },
+      "FixedHardMS": {
+        "MLE_m": 11.264553759442451,
+        "MedLE_m": 10.520971922979065,
+        "P90_m": 19.561132789269028,
+        "P95_m": 21.902962071796303,
+        "ATE_RMSE_m": 12.671774354495529,
+        "LSR@5_pct": 12.440191387559809,
+        "LSR@10_pct": 46.01275917065391,
+        "LSR@15_pct": 75.75757575757575,
+        "LSR@20_pct": 91.30781499202551,
+        "RPE_m": 11.495591862105197,
+        "JumpRate_pct": 41.2609736632083,
+        "JumpThreshold_m": 13.084796164778941,
+        "StationaryDriftP90_m": 23.742176731293178,
+        "PathLengthRatio": 5.452902697427753,
+        "MaxLE_m": 32.901235044357314
+      },
+      "TemporalPathExpectation": {
+        "MLE_m": 7.058597073211644,
+        "MedLE_m": 6.341551600421033,
+        "P90_m": 12.597330626286258,
+        "P95_m": 14.337841757919978,
+        "ATE_RMSE_m": 8.056138081760519,
+        "LSR@5_pct": 33.09409888357257,
+        "LSR@10_pct": 78.94736842105263,
+        "LSR@15_pct": 96.17224880382776,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 5.879349633868284,
+        "JumpRate_pct": 7.581803671189145,
+        "JumpThreshold_m": 13.084796164778941,
+        "StationaryDriftP90_m": 10.561621628065636,
+        "PathLengthRatio": 2.8012406348840644,
+        "MaxLE_m": 19.860832822062232
+      },
+      "RTL_CRF": {
+        "MLE_m": 7.157161376336345,
+        "MedLE_m": 6.3986435873136465,
+        "P90_m": 12.763930540111238,
+        "P95_m": 14.632856005498061,
+        "ATE_RMSE_m": 8.157727901043307,
+        "LSR@5_pct": 32.057416267942585,
+        "LSR@10_pct": 77.91068580542266,
+        "LSR@15_pct": 96.09250398724083,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 6.024105390815798,
+        "JumpRate_pct": 7.741420590582601,
+        "JumpThreshold_m": 13.084796164778941,
+        "StationaryDriftP90_m": 11.019295757789536,
+        "PathLengthRatio": 2.8736377607597023,
+        "MaxLE_m": 19.87330842138916
+      },
+      "CandidateCaptureRate_pct": 100.0,
+      "MeanCorrectionGate": 0.8125422807021194,
+      "MeanPathEntropy": 0.3050943841757706
+    }
+  }
+}
+summary saved to /yh/study/uav-sat/outputs/backbone_ablation_resnet18_t2only_w5/robust_tracker_summary.json

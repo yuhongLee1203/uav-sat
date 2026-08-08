@@ -1,0 +1,181 @@
+nohup: ignoring input
+==============================================================
+BACKBONE ABLATION
+T2-only RTL-CRF | temporal window = 5
+VGG16             -> physical GPU 0
+ResNet18           -> physical GPU 5
+MobileNetV3-Small  -> physical GPU 6
+==============================================================
+
+Each backbone trains a FRESH Route-A-only visual head.
+No MobileCLIP task checkpoint is reused.
+
+Launching vgg16 on GPU 0 ...
+Launching resnet18 on GPU 5 ...
+Launching mobilenet_v3_small on GPU 6 ...
+
+Started:
+  vgg16 PID=1679967
+  resnet18 PID=1679969
+  mobilenet_v3_small PID=1679971
+
+[OK] vgg16 finished
+[OK] resnet18 finished
+[OK] mobilenet_v3_small finished
+
+==============================================================
+All accuracy experiments finished. Running speed benchmark...
+==============================================================
+
+Speed: mobileclip2_s2
+{
+  "backbone_key": "mobileclip2_s2",
+  "backbone_name": "hf-hub:timm/MobileCLIP2-S2-OpenCLIP",
+  "device": "cuda",
+  "backbone_parameters": 99243329,
+  "task_trainable_parameters": 1050625,
+  "uav_online_batch1": {
+    "batch": 1,
+    "input_hw": [
+      256,
+      256
+    ],
+    "iterations": 200,
+    "total_seconds": 10.178438653238118,
+    "ms_per_batch": 50.89219326619059,
+    "ms_per_image": 50.89219326619059,
+    "images_per_second": 19.64937912519353
+  },
+  "satellite_cache_batch": {
+    "batch": 64,
+    "input_hw": [
+      320,
+      320
+    ],
+    "iterations": 40,
+    "total_seconds": 10.794196479022503,
+    "ms_per_batch": 269.8549119755626,
+    "ms_per_image": 4.216482999618165,
+    "images_per_second": 237.16448046643558
+  },
+  "note": "Satellite backbone features are cached in the localization pipeline, so online frame-to-frame backbone cost is represented primarily by uav_online_batch1."
+}
+saved: outputs/backbone_speed/mobileclip2_s2.json
+
+Speed: vgg16
+{
+  "backbone_key": "vgg16",
+  "backbone_name": "torchvision:VGG16_IMAGENET1K_V1",
+  "device": "cuda",
+  "backbone_parameters": 14714688,
+  "task_trainable_parameters": 1050625,
+  "uav_online_batch1": {
+    "batch": 1,
+    "input_hw": [
+      256,
+      256
+    ],
+    "iterations": 200,
+    "total_seconds": 0.5428176186978817,
+    "ms_per_batch": 2.7140880934894085,
+    "ms_per_image": 2.7140880934894085,
+    "images_per_second": 368.44787846010365
+  },
+  "satellite_cache_batch": {
+    "batch": 64,
+    "input_hw": [
+      320,
+      320
+    ],
+    "iterations": 40,
+    "total_seconds": 3.2884174743667245,
+    "ms_per_batch": 82.21043685916811,
+    "ms_per_image": 1.2845380759245018,
+    "images_per_second": 778.4899636239156
+  },
+  "note": "Satellite backbone features are cached in the localization pipeline, so online frame-to-frame backbone cost is represented primarily by uav_online_batch1."
+}
+saved: outputs/backbone_speed/vgg16.json
+
+Speed: resnet18
+{
+  "backbone_key": "resnet18",
+  "backbone_name": "torchvision:ResNet18_IMAGENET1K_V1",
+  "device": "cuda",
+  "backbone_parameters": 11176512,
+  "task_trainable_parameters": 1050625,
+  "uav_online_batch1": {
+    "batch": 1,
+    "input_hw": [
+      256,
+      256
+    ],
+    "iterations": 200,
+    "total_seconds": 0.7953812731429935,
+    "ms_per_batch": 3.9769063657149673,
+    "ms_per_image": 3.9769063657149673,
+    "images_per_second": 251.45173359398927
+  },
+  "satellite_cache_batch": {
+    "batch": 64,
+    "input_hw": [
+      320,
+      320
+    ],
+    "iterations": 40,
+    "total_seconds": 0.576150931417942,
+    "ms_per_batch": 14.403773285448551,
+    "ms_per_image": 0.2250589575851336,
+    "images_per_second": 4443.280155253218
+  },
+  "note": "Satellite backbone features are cached in the localization pipeline, so online frame-to-frame backbone cost is represented primarily by uav_online_batch1."
+}
+saved: outputs/backbone_speed/resnet18.json
+
+Speed: mobilenet_v3_small
+{
+  "backbone_key": "mobilenet_v3_small",
+  "backbone_name": "torchvision:MobileNetV3-Small_IMAGENET1K_V1",
+  "device": "cuda",
+  "backbone_parameters": 927008,
+  "task_trainable_parameters": 1255553,
+  "uav_online_batch1": {
+    "batch": 1,
+    "input_hw": [
+      256,
+      256
+    ],
+    "iterations": 200,
+    "total_seconds": 1.4358864109963179,
+    "ms_per_batch": 7.179432054981589,
+    "ms_per_image": 7.179432054981589,
+    "images_per_second": 139.2867837374588
+  },
+  "satellite_cache_batch": {
+    "batch": 64,
+    "input_hw": [
+      320,
+      320
+    ],
+    "iterations": 40,
+    "total_seconds": 0.30149542540311813,
+    "ms_per_batch": 7.537385635077953,
+    "ms_per_image": 0.11777165054809302,
+    "images_per_second": 8491.007770937555
+  },
+  "note": "Satellite backbone features are cached in the localization pipeline, so online frame-to-frame backbone cost is represented primarily by uav_online_batch1."
+}
+saved: outputs/backbone_speed/mobilenet_v3_small.json
+
+==============================================================
+ACCURACY + SPEED SUMMARY
+==============================================================
+
+backbone                   B MLE     B RPE    B Jump%     C MLE     C RPE    C Jump%    UAV ms       FPS
+--------------------------------------------------------------------------------------------------------
+mobileclip2_s2             5.269     4.606      1.893     4.575     4.204      1.357    50.892      19.6
+vgg16                      6.903     5.569      5.989     6.499     5.336      4.150     2.714     368.4
+resnet18                   7.352     6.151      8.719     7.157     6.024      7.741     3.977     251.5
+mobilenet_v3_small         5.921     4.901      3.214     5.263     4.377      2.075     7.179     139.3
+
+saved: outputs/backbone_ablation_comparison.json
