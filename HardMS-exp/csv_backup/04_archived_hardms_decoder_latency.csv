@@ -1,0 +1,2 @@
+batch_size,num_candidates,top1_decoder_ms_per_batch,hardms_decoder_ms_per_batch,hardms_extra_ms_per_frame,hardms_iterations
+64,36,0.008111746981739998,1.065806812606752,0.01652648540039081,3

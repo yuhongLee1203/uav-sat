@@ -1,0 +1,8 @@
+{
+  "batch_size": 64,
+  "num_candidates": 36,
+  "top1_decoder_ms_per_batch": 0.008111746981739998,
+  "hardms_decoder_ms_per_batch": 1.065806812606752,
+  "hardms_extra_ms_per_frame": 0.01652648540039081,
+  "hardms_iterations": 3
+}

@@ -1,0 +1,72 @@
+[
+  {
+    "threshold_m": 15.0,
+    "transition": "Success -> Success",
+    "frame_count": 1767,
+    "fraction_percent": 50.0,
+    "mean_error_change_m": -0.7241369584015553
+  },
+  {
+    "threshold_m": 15.0,
+    "transition": "Failure -> Success",
+    "frame_count": 829,
+    "fraction_percent": 23.457838143746464,
+    "mean_error_change_m": -8.379757043032653
+  },
+  {
+    "threshold_m": 15.0,
+    "transition": "Success -> Failure",
+    "frame_count": 110,
+    "fraction_percent": 3.11262026032824,
+    "mean_error_change_m": 6.703585497899489
+  },
+  {
+    "threshold_m": 15.0,
+    "transition": "Failure -> Failure",
+    "frame_count": 828,
+    "fraction_percent": 23.429541595925297,
+    "mean_error_change_m": -5.0131673928044265
+  },
+  {
+    "threshold_m": 15.0,
+    "transition": "Far-error recovery rate",
+    "frame_count": 829,
+    "fraction_percent": 50.03017501508751,
+    "mean_error_change_m": -6.6974780868534305
+  },
+  {
+    "threshold_m": 20.0,
+    "transition": "Success -> Success",
+    "frame_count": 2549,
+    "fraction_percent": 72.12790039615167,
+    "mean_error_change_m": -1.6843583592016027
+  },
+  {
+    "threshold_m": 20.0,
+    "transition": "Failure -> Success",
+    "frame_count": 766,
+    "fraction_percent": 21.675155631013016,
+    "mean_error_change_m": -8.540004087101385
+  },
+  {
+    "threshold_m": 20.0,
+    "transition": "Success -> Failure",
+    "frame_count": 16,
+    "fraction_percent": 0.4527447651386531,
+    "mean_error_change_m": 4.60284249484539
+  },
+  {
+    "threshold_m": 20.0,
+    "transition": "Failure -> Failure",
+    "frame_count": 203,
+    "fraction_percent": 5.744199207696661,
+    "mean_error_change_m": -4.327338336136541
+  },
+  {
+    "threshold_m": 20.0,
+    "transition": "Far-error recovery rate",
+    "frame_count": 766,
+    "fraction_percent": 79.05056759545924,
+    "mean_error_change_m": -7.657474523173766
+  }
+]
