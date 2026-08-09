@@ -1,0 +1,281 @@
+{
+  "route": "route_B",
+  "source": "/yh/study/new_data_2/model_dataset_new_2_flight/sensor_with_yaw.json",
+  "waypoints": [
+    {
+      "waypoint_order": 0,
+      "role": "start",
+      "frame_index": 0,
+      "image": "vi_000000.jpg",
+      "timestamp_ns": 1782878154636936850,
+      "latitude": 23.4507646,
+      "longitude": 120.2858321,
+      "altitude_m": 95.37866522437024,
+      "local_x_m": 0.0,
+      "local_y_m": 0.0,
+      "turn_degrees": null
+    },
+    {
+      "waypoint_order": 1,
+      "role": "turn",
+      "frame_index": 217,
+      "image": "vi_000217.jpg",
+      "timestamp_ns": 1782878230173840679,
+      "latitude": 23.4514578,
+      "longitude": 120.2787309,
+      "altitude_m": 128.1407559968384,
+      "local_x_m": -725.2083937624499,
+      "local_y_m": 77.16667101796575,
+      "turn_degrees": -178.4646965259814
+    },
+    {
+      "waypoint_order": 2,
+      "role": "turn",
+      "frame_index": 396,
+      "image": "vi_000396.jpg",
+      "timestamp_ns": 1782878292266902518,
+      "latitude": 23.4511122,
+      "longitude": 120.282322,
+      "altitude_m": 127.74483565474337,
+      "local_x_m": -358.4681438274606,
+      "local_y_m": 38.69465499989059,
+      "turn_degrees": 179.062309813619
+    },
+    {
+      "waypoint_order": 3,
+      "role": "turn",
+      "frame_index": 676,
+      "image": "vi_000676.jpg",
+      "timestamp_ns": 1782878390241427293,
+      "latitude": 23.4521184,
+      "longitude": 120.2732933,
+      "altitude_m": 128.08442219264427,
+      "local_x_m": -1280.5220255319073,
+      "local_y_m": 150.70432663597882,
+      "turn_degrees": -90.79053649185414
+    },
+    {
+      "waypoint_order": 4,
+      "role": "turn",
+      "frame_index": 713,
+      "image": "vi_000713.jpg",
+      "timestamp_ns": 1782878403114238843,
+      "latitude": 23.4529938,
+      "longitude": 120.2734226,
+      "altitude_m": 127.78273455444563,
+      "local_x_m": -1267.3172931892339,
+      "local_y_m": 248.15340887660494,
+      "turn_degrees": -89.67453455054424
+    },
+    {
+      "waypoint_order": 5,
+      "role": "turn",
+      "frame_index": 939,
+      "image": "vi_000939.jpg",
+      "timestamp_ns": 1782878482145916727,
+      "latitude": 23.4520982,
+      "longitude": 120.2809481,
+      "altitude_m": 128.10310631252912,
+      "local_x_m": -498.7773608871048,
+      "local_y_m": 148.45567292177878,
+      "turn_degrees": 69.35574488813832
+    },
+    {
+      "waypoint_order": 6,
+      "role": "turn",
+      "frame_index": 982,
+      "image": "vi_000982.jpg",
+      "timestamp_ns": 1782878497187663230,
+      "latitude": 23.4529866,
+      "longitude": 120.2811013,
+      "altitude_m": 128.33150071091507,
+      "local_x_m": -483.1318466184861,
+      "local_y_m": 247.3519085426232,
+      "turn_degrees": 85.99647870292688
+    },
+    {
+      "waypoint_order": 7,
+      "role": "turn",
+      "frame_index": 1210,
+      "image": "vi_001210.jpg",
+      "timestamp_ns": 1782878577086660235,
+      "latitude": 23.4539051,
+      "longitude": 120.2735312,
+      "altitude_m": 127.9308088722488,
+      "local_x_m": -1256.2265435193874,
+      "local_y_m": 349.59886083634876,
+      "turn_degrees": -91.75055399652246
+    },
+    {
+      "waypoint_order": 8,
+      "role": "turn",
+      "frame_index": 1251,
+      "image": "vi_001251.jpg",
+      "timestamp_ns": 1782878591326422650,
+      "latitude": 23.4547867,
+      "longitude": 120.2736883,
+      "altitude_m": 128.11926645521274,
+      "local_x_m": -1240.1827426593525,
+      "local_y_m": 447.7381239196535,
+      "turn_degrees": -88.1317559339888
+    },
+    {
+      "waypoint_order": 9,
+      "role": "turn",
+      "frame_index": 1473,
+      "image": "vi_001473.jpg",
+      "timestamp_ns": 1782878669191599278,
+      "latitude": 23.4538931,
+      "longitude": 120.2811714,
+      "altitude_m": 128.11930288051812,
+      "local_x_m": -475.9729004679349,
+      "local_y_m": 348.26302694664275,
+      "turn_degrees": 64.3483388034333
+    },
+    {
+      "waypoint_order": 10,
+      "role": "turn",
+      "frame_index": 1516,
+      "image": "vi_001516.jpg",
+      "timestamp_ns": 1782878684198426713,
+      "latitude": 23.4547756,
+      "longitude": 120.2813455,
+      "altitude_m": 128.26783704737662,
+      "local_x_m": -458.19297857434844,
+      "local_y_m": 446.5024775720413,
+      "turn_degrees": 86.7482234284959
+    },
+    {
+      "waypoint_order": 11,
+      "role": "turn",
+      "frame_index": 1744,
+      "image": "vi_001744.jpg",
+      "timestamp_ns": 1782878763963889714,
+      "latitude": 23.4556944,
+      "longitude": 120.2737686,
+      "altitude_m": 127.94716253837738,
+      "local_x_m": -1231.9821238886705,
+      "local_y_m": 548.7828257126041,
+      "turn_degrees": -90.88522607287341
+    },
+    {
+      "waypoint_order": 12,
+      "role": "turn",
+      "frame_index": 1784,
+      "image": "vi_001784.jpg",
+      "timestamp_ns": 1782878777968898936,
+      "latitude": 23.4565781,
+      "longitude": 120.2739111,
+      "altitude_m": 128.00551135692226,
+      "local_x_m": -1217.4293446234371,
+      "local_y_m": 647.1558597269337,
+      "turn_degrees": -89.75250821331791
+    },
+    {
+      "waypoint_order": 13,
+      "role": "end",
+      "frame_index": 2274,
+      "image": "vi_002274.jpg",
+      "timestamp_ns": 1782878949204231354,
+      "latitude": 23.4507372,
+      "longitude": 120.286293,
+      "altitude_m": 120.52175991645518,
+      "local_x_m": 47.06930500347873,
+      "local_y_m": -3.050154047786328,
+      "turn_degrees": null
+    }
+  ],
+  "straight_legs": [
+    {
+      "leg": 1,
+      "start_waypoint_order": 0,
+      "end_waypoint_order": 1,
+      "start_frame_index": 0,
+      "end_frame_index": 217
+    },
+    {
+      "leg": 2,
+      "start_waypoint_order": 1,
+      "end_waypoint_order": 2,
+      "start_frame_index": 217,
+      "end_frame_index": 396
+    },
+    {
+      "leg": 3,
+      "start_waypoint_order": 2,
+      "end_waypoint_order": 3,
+      "start_frame_index": 396,
+      "end_frame_index": 676
+    },
+    {
+      "leg": 4,
+      "start_waypoint_order": 3,
+      "end_waypoint_order": 4,
+      "start_frame_index": 676,
+      "end_frame_index": 713
+    },
+    {
+      "leg": 5,
+      "start_waypoint_order": 4,
+      "end_waypoint_order": 5,
+      "start_frame_index": 713,
+      "end_frame_index": 939
+    },
+    {
+      "leg": 6,
+      "start_waypoint_order": 5,
+      "end_waypoint_order": 6,
+      "start_frame_index": 939,
+      "end_frame_index": 982
+    },
+    {
+      "leg": 7,
+      "start_waypoint_order": 6,
+      "end_waypoint_order": 7,
+      "start_frame_index": 982,
+      "end_frame_index": 1210
+    },
+    {
+      "leg": 8,
+      "start_waypoint_order": 7,
+      "end_waypoint_order": 8,
+      "start_frame_index": 1210,
+      "end_frame_index": 1251
+    },
+    {
+      "leg": 9,
+      "start_waypoint_order": 8,
+      "end_waypoint_order": 9,
+      "start_frame_index": 1251,
+      "end_frame_index": 1473
+    },
+    {
+      "leg": 10,
+      "start_waypoint_order": 9,
+      "end_waypoint_order": 10,
+      "start_frame_index": 1473,
+      "end_frame_index": 1516
+    },
+    {
+      "leg": 11,
+      "start_waypoint_order": 10,
+      "end_waypoint_order": 11,
+      "start_frame_index": 1516,
+      "end_frame_index": 1744
+    },
+    {
+      "leg": 12,
+      "start_waypoint_order": 11,
+      "end_waypoint_order": 12,
+      "start_frame_index": 1744,
+      "end_frame_index": 1784
+    },
+    {
+      "leg": 13,
+      "start_waypoint_order": 12,
+      "end_waypoint_order": 13,
+      "start_frame_index": 1784,
+      "end_frame_index": 2274
+    }
+  ]
+}
