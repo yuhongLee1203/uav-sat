@@ -137,7 +137,15 @@ def configure_experiment(args):
     # Force all repository modules imported below to see this ablation config.
     sys.modules["config"] = config
 
-    import visual_model_backbone as visual_model
+    # For MobileCLIP, use the exact production visual model rather than the
+    # backbone-ablation wrapper.  The wrapper is required for torchvision
+    # backbones, but even a thin wrapper changes the measured Python/model
+    # path and makes its latency incomparable with the archived T2-only
+    # production benchmark.
+    if args.backbone == "mobileclip2_s2":
+        import visual_model as visual_model
+    else:
+        import visual_model_backbone as visual_model
 
     # visual_localizer imports "visual_model" by this literal module name.
     sys.modules["visual_model"] = visual_model
@@ -391,7 +399,7 @@ def temporal_input_from_buffer(buffer, device):
     )
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def run_route(
     args,
     config,
