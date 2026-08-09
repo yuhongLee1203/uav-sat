@@ -1,36 +1,39 @@
 #!/usr/bin/env python3
 """
-Full end-to-end UAV localization latency benchmark.
+True streaming end-to-end latency benchmark for the UAV-SAT localization model.
 
-Main timed steady-state path:
-    prepared UAV image tensor
-        -> GPU transfer
-        -> visual backbone
-        -> UAV retrieval head
-        -> 36 local SAT candidate selection
-        -> SAT retrieval head from precomputed SAT backbone gallery
-        -> cosine retrieval scores / probability
-        -> Fixed Hard Mean-Shift
-        -> 5-frame T2-only RTL-CRF
-        -> correction gate / final local (x, y)
-        -> GPS latitude / longitude
+TIMED INTERVAL (steady state):
+    prepared UAV tensor
+      -> CPU->GPU transfer
+      -> visual backbone
+      -> UAV projection head
+      -> 6x6 satellite candidate selection from cached gallery
+      -> SAT projection head
+      -> cosine retrieval logits / probabilities
+      -> Fixed Hard Mean-Shift
+      -> append current frame to temporal buffer
+      -> T2-only RTL-CRF
+      -> Correction Gate / final XY
+      -> XY -> GPS latitude/longitude
+    = one final GPS output
 
-Excluded from the main "model_input_to_gps" latency:
-    - checkpoint/model loading
-    - satellite gallery loading / precomputation
-    - disk image read / PIL decode
-    - RouteDataset CPU transform
-    - camera waiting time
-    - controlled GT+jitter prior construction
+NOT INCLUDED:
+    - image file disk I/O
+    - PIL / torchvision image preprocessing
+    - model/checkpoint loading
+    - one-time satellite backbone-gallery creation
+
+The satellite gallery is already stored in the trained visual checkpoint and is
+loaded once at initialization. This matches the intended online deployment:
+static satellite features are cached; each new UAV frame is processed online.
 """
 
-from __future__ import annotations
-
 import argparse
-import importlib
+import csv
 import json
 import math
 import os
+import random
 import sys
 import time
 from collections import deque
@@ -42,30 +45,29 @@ import torch
 
 EARTH_RADIUS_M = 6378137.0
 
-SUPPORTED_BACKBONES = (
-    "mobileclip2_s2",
-    "vgg16",
-    "resnet18",
-    "mobilenet_v3_small",
-)
-
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Measure complete localization latency from one prepared UAV "
-            "image tensor entering the model to one final GPS coordinate."
+            "Measure true prepared-UAV-tensor -> final GPS latency and "
+            "localization accuracy for one trained backbone."
         )
     )
     parser.add_argument(
         "--backbone",
-        choices=SUPPORTED_BACKBONES,
+        choices=(
+            "mobileclip2_s2",
+            "vgg16",
+            "resnet18",
+            "mobilenet_v3_small",
+            "resnet50",
+        ),
         required=True,
     )
     parser.add_argument(
         "--route",
-        choices=("route_A", "route_B", "route_C"),
-        default="route_B",
+        choices=("route_B", "route_C"),
+        required=True,
     )
     parser.add_argument(
         "--window",
@@ -73,59 +75,82 @@ def parse_args():
         default=5,
         choices=(3, 4, 5),
     )
-    parser.add_argument("--warmup", type=int, default=30)
-    parser.add_argument("--samples", type=int, default=200)
-    parser.add_argument("--first-output-repeats", type=int, default=20)
-    parser.add_argument("--jitter-m", type=float, default=12.0)
-    parser.add_argument("--output", type=str, default="")
+    parser.add_argument(
+        "--jitter-m",
+        type=float,
+        default=12.0,
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=30,
+        help=(
+            "Number of valid GPS outputs excluded from steady-state latency "
+            "statistics. Accuracy still uses the complete route."
+        ),
+    )
+    parser.add_argument(
+        "--max-timed-outputs",
+        type=int,
+        default=0,
+        help=(
+            "0 = time every output after warm-up. Positive value = only keep "
+            "this many steady-state latency samples. Accuracy is always full route."
+        ),
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+    )
     return parser.parse_args()
 
 
-def configure_modules(backbone, window):
-    os.environ["RTL_TEMPORAL_WINDOW"] = str(int(window))
+def configure_experiment(args):
+    # config_backbone reads these at import time.
+    os.environ["RTL_BACKBONE"] = args.backbone
+    os.environ["RTL_TEMPORAL_WINDOW"] = str(args.window)
 
-    if backbone == "mobileclip2_s2":
-        config = importlib.import_module("config")
-        visual_model = importlib.import_module("visual_model")
-        return config, visual_model
+    import config_backbone as config
 
-    os.environ["RTL_BACKBONE"] = backbone
+    # The MobileCLIP2-S2 baseline was already trained in the original strict
+    # T2-only experiment rather than under backbone_ablation_mobileclip2_s2.
+    # Reuse that exact A-only checkpoint if the ablation checkpoint is absent.
+    if args.backbone == "mobileclip2_s2" and not config.VISUAL_CHECKPOINT.exists():
+        strict_output = (
+            config.PROJECT_ROOT
+            / "outputs"
+            / f"strict_train_A_test_BC_t2only_w{args.window}"
+        )
+        strict_ckpt = strict_output / "checkpoints"
+        visual_ckpt = strict_ckpt / "visual_retrieval_A_only.pt"
+        temporal_ckpt = strict_ckpt / "rtl_crf_A_only.pt"
 
-    config = importlib.import_module("config_backbone")
+        if visual_ckpt.exists() and temporal_ckpt.exists():
+            config.OUTPUT_DIR = strict_output
+            config.CHECKPOINT_DIR = strict_ckpt
+            config.VISUAL_CHECKPOINT = visual_ckpt
+            config.TEMPORAL_CHECKPOINT = temporal_ckpt
+
+    config.LOCAL_PRIOR_JITTER_M = float(args.jitter_m)
+
+    # Force all repository modules imported below to see this ablation config.
     sys.modules["config"] = config
 
-    visual_model = importlib.import_module("visual_model_backbone")
+    import visual_model_backbone as visual_model
+
+    # visual_localizer imports "visual_model" by this literal module name.
     sys.modules["visual_model"] = visual_model
 
     return config, visual_model
 
 
-def sync(device):
-    if device.type == "cuda":
-        torch.cuda.synchronize(device)
-
-
-def latency_summary_ms(values):
-    array = np.asarray(values, dtype=np.float64)
-    if array.size == 0:
-        return {}
-
-    mean_ms = float(array.mean())
-
-    return {
-        "count": int(array.size),
-        "mean_ms": mean_ms,
-        "median_ms": float(np.median(array)),
-        "std_ms": float(array.std()),
-        "min_ms": float(array.min()),
-        "p90_ms": float(np.percentile(array, 90)),
-        "p95_ms": float(np.percentile(array, 95)),
-        "p99_ms": float(np.percentile(array, 99)),
-        "max_ms": float(array.max()),
-        "gps_outputs_per_second": float(
-            1000.0 / max(mean_ms, 1e-12)
-        ),
-    }
+def set_seed(seed):
+    random.seed(int(seed))
+    np.random.seed(int(seed))
+    torch.manual_seed(int(seed))
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(int(seed))
 
 
 def deterministic_jitter(length, route_index, maximum_m, seed):
@@ -143,589 +168,265 @@ def deterministic_jitter(length, route_index, maximum_m, seed):
         torch.rand(length, 1, generator=generator)
         * (2.0 * math.pi)
     )
-
     return torch.cat(
-        [
-            radius * angle.cos(),
-            radius * angle.sin(),
-        ],
+        [radius * angle.cos(), radius * angle.sin()],
         dim=1,
     ).float()
 
 
-def local_xy_to_latlon(
-    x_meter,
-    y_meter,
-    origin_lat,
-    origin_lon,
-):
+def xy_to_latlon(x, y, origin_lat, origin_lon):
+    """Exact inverse of data.meters_from_latlon()'s local tangent formula."""
     origin_lat_rad = math.radians(float(origin_lat))
-
-    latitude = float(origin_lat) + math.degrees(
-        float(y_meter) / EARTH_RADIUS_M
-    )
-
-    longitude = float(origin_lon) + math.degrees(
-        float(x_meter)
-        / (
+    lat = float(origin_lat) + math.degrees(float(y) / EARTH_RADIUS_M)
+    lon = float(origin_lon) + math.degrees(
+        float(x) / (
             EARTH_RADIUS_M
             * max(abs(math.cos(origin_lat_rad)), 1e-12)
         )
     )
+    return float(lat), float(lon)
 
-    return latitude, longitude
 
+def metric_block(prediction, gt, jump_tolerance_m):
+    """
+    Same metric definitions as robust_tracker.py:
+      MLE, MedLE, P90/P95, ATE RMSE, LSR, RPE, JumpRate, etc.
+    """
+    prediction = np.asarray(prediction, dtype=np.float64)
+    gt = np.asarray(gt, dtype=np.float64)
 
-def route_info(config, route_name):
-    catalog = {
-        name: (index, Path(root))
-        for index, (name, root) in enumerate(
-            zip(config.ROUTE_NAMES, config.ROUTE_ROOTS)
+    error = np.linalg.norm(prediction - gt, axis=1)
+
+    if len(prediction) > 1:
+        predicted_step = np.diff(prediction, axis=0)
+        gt_step = np.diff(gt, axis=0)
+
+        rpe = np.linalg.norm(
+            predicted_step - gt_step,
+            axis=1,
         )
+
+        gt_step_length = np.linalg.norm(
+            gt_step,
+            axis=1,
+        )
+
+        jump_threshold = (
+            float(np.percentile(gt_step_length, 99))
+            + float(jump_tolerance_m)
+        )
+
+        predicted_step_length = np.linalg.norm(
+            predicted_step,
+            axis=1,
+        )
+
+        jump_rate = float(
+            (predicted_step_length > jump_threshold).mean()
+            * 100.0
+        )
+
+        stationary = gt_step_length < 1e-3
+        stationary_drift = predicted_step_length[stationary]
+
+        stationary_p90 = (
+            float(np.percentile(stationary_drift, 90))
+            if len(stationary_drift)
+            else 0.0
+        )
+
+        path_ratio = float(
+            predicted_step_length.sum()
+            / max(gt_step_length.sum(), 1e-8)
+        )
+    else:
+        rpe = np.zeros(1, dtype=np.float64)
+        jump_rate = 0.0
+        jump_threshold = 0.0
+        stationary_p90 = 0.0
+        path_ratio = 0.0
+
+    return {
+        "MLE_m": float(error.mean()),
+        "MedLE_m": float(np.median(error)),
+        "P90_m": float(np.percentile(error, 90)),
+        "P95_m": float(np.percentile(error, 95)),
+        "ATE_RMSE_m": float(
+            np.sqrt(np.mean(error ** 2))
+        ),
+        "LSR@5_pct": float(
+            (error <= 5.0).mean() * 100.0
+        ),
+        "LSR@10_pct": float(
+            (error <= 10.0).mean() * 100.0
+        ),
+        "LSR@15_pct": float(
+            (error <= 15.0).mean() * 100.0
+        ),
+        "LSR@20_pct": float(
+            (error <= 20.0).mean() * 100.0
+        ),
+        "RPE_m": float(rpe.mean()),
+        "JumpRate_pct": float(jump_rate),
+        "JumpThreshold_m": float(jump_threshold),
+        "StationaryDriftP90_m": float(stationary_p90),
+        "PathLengthRatio": float(path_ratio),
+        "MaxLE_m": float(error.max()),
     }
 
-    if route_name not in catalog:
-        raise ValueError(
-            "Unknown route {!r}; available={}".format(
-                route_name,
-                sorted(catalog),
-            )
-        )
 
-    return catalog[route_name]
+def latency_stats(values_ms):
+    values = np.asarray(values_ms, dtype=np.float64)
+
+    if values.size == 0:
+        return {
+            "samples": 0,
+            "mean_ms": None,
+            "median_ms": None,
+            "p90_ms": None,
+            "p95_ms": None,
+            "min_ms": None,
+            "max_ms": None,
+            "gps_outputs_per_second": None,
+        }
+
+    mean_ms = float(values.mean())
+
+    return {
+        "samples": int(values.size),
+        "mean_ms": mean_ms,
+        "median_ms": float(np.median(values)),
+        "p90_ms": float(np.percentile(values, 90)),
+        "p95_ms": float(np.percentile(values, 95)),
+        "min_ms": float(values.min()),
+        "max_ms": float(values.max()),
+        # Latency-based streaming FPS: one new frame -> one new GPS output.
+        "gps_outputs_per_second": float(
+            1000.0 / max(mean_ms, 1e-12)
+        ),
+    }
 
 
-def load_temporal_model(config, temporal_class, device):
-    checkpoint_path = Path(config.TEMPORAL_CHECKPOINT)
+def cuda_sync(device):
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
 
-    if not checkpoint_path.exists():
+
+def load_temporal_model(config, visual_model, device):
+    if not config.TEMPORAL_CHECKPOINT.exists():
         raise FileNotFoundError(
-            "Temporal checkpoint does not exist:\n  {}\n"
-            "Run the corresponding trained experiment first.".format(
-                checkpoint_path
-            )
+            "Missing temporal checkpoint: "
+            f"{config.TEMPORAL_CHECKPOINT}"
         )
 
-    model = temporal_class().to(device)
+    model = visual_model.TemporalLatticeCRF().to(device)
 
     checkpoint = torch.load(
-        checkpoint_path,
+        config.TEMPORAL_CHECKPOINT,
         map_location=device,
     )
 
-    state = checkpoint.get("best_model")
-    if state is None:
-        state = checkpoint.get("model")
+    state = (
+        checkpoint.get("best_model")
+        or checkpoint["model"]
+    )
 
-    if state is None:
-        raise RuntimeError(
-            "{} contains neither 'best_model' nor 'model'".format(
-                checkpoint_path
-            )
-        )
-
-    model.load_state_dict(state, strict=True)
+    model.load_state_dict(
+        state,
+        strict=True,
+    )
     model.eval()
 
     for parameter in model.parameters():
         parameter.requires_grad_(False)
 
-    return model
+    return model, checkpoint
 
 
-def candidate_record(candidate, frame_id):
-    device = candidate.z_uav.device
+def temporal_input_from_buffer(buffer, device):
+    z_uav = torch.stack(
+        [entry["z_uav"][0] for entry in buffer],
+        dim=0,
+    ).unsqueeze(0).to(device)
 
-    return {
-        "z_uav": candidate.z_uav[0],
-        "z_sat": candidate.z_sat[0],
-        "raw_logits": candidate.raw_logits[0],
-        "raw_prob": candidate.raw_prob[0],
-        "centers": candidate.centers[0],
-        "hardms": candidate.hardms_xy[0],
-        "frame_id": torch.tensor(
-            int(frame_id),
-            dtype=torch.long,
-            device=device,
-        ),
-    }
+    z_sat = torch.stack(
+        [entry["z_sat"][0] for entry in buffer],
+        dim=0,
+    ).unsqueeze(0).to(device)
 
+    centers = torch.stack(
+        [entry["centers"][0] for entry in buffer],
+        dim=0,
+    ).unsqueeze(0).to(device)
 
-def make_temporal_batch(history):
-    rows = list(history)
+    raw_logits = torch.stack(
+        [entry["raw_logits"][0] for entry in buffer],
+        dim=0,
+    ).unsqueeze(0).to(device)
 
-    return {
-        "z_uav": torch.stack(
-            [row["z_uav"] for row in rows],
-            dim=0,
-        ).unsqueeze(0),
-        "z_sat": torch.stack(
-            [row["z_sat"] for row in rows],
-            dim=0,
-        ).unsqueeze(0),
-        "raw_logits": torch.stack(
-            [row["raw_logits"] for row in rows],
-            dim=0,
-        ).unsqueeze(0),
-        "raw_prob": torch.stack(
-            [row["raw_prob"] for row in rows],
-            dim=0,
-        ).unsqueeze(0),
-        "centers": torch.stack(
-            [row["centers"] for row in rows],
-            dim=0,
-        ).unsqueeze(0),
-        "frame_ids": torch.stack(
-            [row["frame_id"] for row in rows],
-            dim=0,
-        ).unsqueeze(0),
-        "hardms": torch.stack(
-            [row["hardms"] for row in rows],
-            dim=0,
-        ).unsqueeze(0),
-    }
+    raw_prob = torch.stack(
+        [entry["raw_prob"][0] for entry in buffer],
+        dim=0,
+    ).unsqueeze(0).to(device)
 
+    hardms = torch.stack(
+        [entry["hardms"][0] for entry in buffer],
+        dim=0,
+    ).unsqueeze(0).to(device)
 
-@torch.inference_mode()
-def temporal_forward(model, batch):
-    return model(
-        batch["z_uav"],
-        batch["z_sat"],
-        batch["raw_logits"],
-        batch["raw_prob"],
-        batch["centers"],
-        batch["frame_ids"],
-        batch["hardms"],
-        target_index=None,
+    frame_ids = torch.tensor(
+        [[entry["frame_id"] for entry in buffer]],
+        dtype=torch.long,
+        device=device,
+    )
+
+    return (
+        z_uav,
+        z_sat,
+        raw_logits,
+        raw_prob,
+        centers,
+        frame_ids,
+        hardms,
     )
 
 
-def prepare_input(dataset, jitter, index):
-    """
-    Disk/PIL/CPU preprocessing is done BEFORE the timer starts.
-
-    The returned UAV tensor is exactly the object considered to be the
-    "model input" for the main benchmark.
-    """
-    item = dataset[index]
-
-    prior_xy = (
-        item["xy"].float()
-        + jitter[index]
-    ).unsqueeze(0)
-
-    frame_id = int(str(item["frame_id"]))
-
-    return {
-        "uav": item["uav"].unsqueeze(0),
-        "prior_xy": prior_xy,
-        "frame_id": frame_id,
-    }
-
-
-@torch.inference_mode()
-def visual_frame_forward(
-    visual,
-    prepared,
-    grid_size,
-):
-    uav_backbone_feature = visual.encode_uav_clip(
-        prepared["uav"]
-    )
-
-    candidate = visual.candidate_batch(
-        uav_backbone_feature,
-        prepared["prior_xy"].to(
-            visual.device,
-            non_blocking=True,
-        ),
-        grid_size=grid_size,
-    )
-
-    return candidate
-
-
-@torch.inference_mode()
-def process_prepared_frame(
-    visual,
-    temporal_model,
-    history,
-    prepared,
-    window,
-    grid_size,
-):
-    candidate = visual_frame_forward(
-        visual,
-        prepared,
-        grid_size,
-    )
-
-    history.append(
-        candidate_record(
-            candidate,
-            prepared["frame_id"],
-        )
-    )
-
-    if len(history) < window:
-        return None
-
-    temporal_batch = make_temporal_batch(history)
-
-    output = temporal_forward(
-        temporal_model,
-        temporal_batch,
-    )
-
-    final_xy = (
-        output.final_xy[0]
-        .detach()
-        .cpu()
-        .double()
-    )
-
-    latitude, longitude = local_xy_to_latlon(
-        float(final_xy[0].item()),
-        float(final_xy[1].item()),
-        visual.origin_lat,
-        visual.origin_lon,
-    )
-
-    return {
-        "latitude": float(latitude),
-        "longitude": float(longitude),
-        "x_meter": float(final_xy[0].item()),
-        "y_meter": float(final_xy[1].item()),
-    }
-
-
-def benchmark_first_gps(
-    visual,
-    temporal_model,
-    dataset,
-    jitter,
+@torch.no_grad()
+def run_route(
+    args,
+    config,
+    visual_model,
     device,
-    window,
-    grid_size,
-    start_index,
-    repeats,
 ):
-    """
-    Measure:
-        window prepared UAV tensors -> FIRST final GPS.
+    from data import RouteDataset
+    from visual_localizer import FrozenVisualLocalizer
 
-    Camera waiting and disk/PIL preprocessing are excluded.
-    """
-    latencies = []
-    example_gps = None
-
-    maximum_start = len(dataset) - window
-
-    if maximum_start < 0:
-        raise RuntimeError(
-            "Route is shorter than temporal window"
-        )
-
-    for repeat in range(repeats):
-        base = start_index + repeat * window
-
-        if base > maximum_start:
-            base = repeat % max(maximum_start + 1, 1)
-
-        prepared_window = [
-            prepare_input(
-                dataset,
-                jitter,
-                index,
-            )
-            for index in range(
-                base,
-                base + window,
-            )
-        ]
-
-        history = deque(maxlen=window)
-
-        sync(device)
-        start = time.perf_counter()
-
-        gps = None
-
-        for prepared in prepared_window:
-            gps = process_prepared_frame(
-                visual,
-                temporal_model,
-                history,
-                prepared,
-                window,
-                grid_size,
-            )
-
-        sync(device)
-
-        elapsed_ms = (
-            time.perf_counter() - start
-        ) * 1000.0
-
-        if gps is None:
-            raise RuntimeError(
-                "No GPS output was produced from a complete window"
-            )
-
-        latencies.append(elapsed_ms)
-        example_gps = gps
-
-    return latency_summary_ms(latencies), example_gps
-
-
-def benchmark_steady_state(
-    visual,
-    temporal_model,
-    dataset,
-    jitter,
-    device,
-    window,
-    grid_size,
-    warmup_outputs,
-    samples,
-):
-    """
-    Sliding-window benchmark:
-        ONE new prepared UAV tensor -> ONE final GPS.
-
-    Previous window-1 temporal states are already available.
-    """
-    history = deque(maxlen=window)
-
-    total_needed = (
-        (window - 1)
-        + warmup_outputs
-        + samples
-    )
-
-    if total_needed > len(dataset):
-        samples = (
-            len(dataset)
-            - (window - 1)
-            - warmup_outputs
-        )
-
-    if samples <= 0:
-        raise RuntimeError(
-            "Not enough route frames for requested warmup/samples"
-        )
-
-    timed_latencies = []
-    visual_latencies = []
-    temporal_gps_latencies = []
-    output_index = 0
-    last_gps = None
-
-    frame_count = (
-        (window - 1)
-        + warmup_outputs
-        + samples
-    )
-
-    for index in range(frame_count):
-        # Model input preparation is outside the timed region.
-        prepared = prepare_input(
-            dataset,
-            jitter,
-            index,
-        )
-
-        # Initial history-fill frames do not yet produce a GPS output.
-        if len(history) < window - 1:
-            candidate = visual_frame_forward(
-                visual,
-                prepared,
-                grid_size,
-            )
-
-            history.append(
-                candidate_record(
-                    candidate,
-                    prepared["frame_id"],
-                )
-            )
-            continue
-
-        is_timed = output_index >= warmup_outputs
-
-        if is_timed:
-            sync(device)
-            total_start = time.perf_counter()
-            visual_start = total_start
-
-        candidate = visual_frame_forward(
-            visual,
-            prepared,
-            grid_size,
-        )
-
-        history.append(
-            candidate_record(
-                candidate,
-                prepared["frame_id"],
-            )
-        )
-
-        if is_timed:
-            sync(device)
-
-            visual_ms = (
-                time.perf_counter()
-                - visual_start
-            ) * 1000.0
-
-            temporal_start = time.perf_counter()
-
-        temporal_batch = make_temporal_batch(history)
-
-        output = temporal_forward(
-            temporal_model,
-            temporal_batch,
-        )
-
-        final_xy = (
-            output.final_xy[0]
-            .detach()
-            .cpu()
-            .double()
-        )
-
-        latitude, longitude = local_xy_to_latlon(
-            float(final_xy[0].item()),
-            float(final_xy[1].item()),
-            visual.origin_lat,
-            visual.origin_lon,
-        )
-
-        last_gps = {
-            "latitude": float(latitude),
-            "longitude": float(longitude),
-            "x_meter": float(final_xy[0].item()),
-            "y_meter": float(final_xy[1].item()),
-        }
-
-        if is_timed:
-            sync(device)
-
-            temporal_gps_ms = (
-                time.perf_counter()
-                - temporal_start
-            ) * 1000.0
-
-            total_ms = (
-                time.perf_counter()
-                - total_start
-            ) * 1000.0
-
-            timed_latencies.append(total_ms)
-            visual_latencies.append(visual_ms)
-            temporal_gps_latencies.append(
-                temporal_gps_ms
-            )
-
-            if len(timed_latencies) >= samples:
-                break
-
-        output_index += 1
-
-    return {
-        "model_input_to_gps": latency_summary_ms(
-            timed_latencies
-        ),
-        "visual_stage": latency_summary_ms(
-            visual_latencies
-        ),
-        "temporal_plus_gps": latency_summary_ms(
-            temporal_gps_latencies
-        ),
-        "example_final_gps": last_gps,
+    route_map = {
+        "route_B": (1, Path(config.ROUTE_ROOTS[1])),
+        "route_C": (2, Path(config.ROUTE_ROOTS[2])),
     }
 
+    route_index, route_root = route_map[args.route]
 
-def main():
-    args = parse_args()
-
-    if not torch.cuda.is_available():
-        raise RuntimeError(
-            "CUDA is required for this latency benchmark"
+    if not config.VISUAL_CHECKPOINT.exists():
+        raise FileNotFoundError(
+            "Missing visual checkpoint: "
+            f"{config.VISUAL_CHECKPOINT}"
         )
 
-    config, visual_model = configure_modules(
-        args.backbone,
-        args.window,
-    )
-
-    # Import these only AFTER config/model routing above.
-    data_module = importlib.import_module("data")
-    visual_localizer_module = importlib.import_module(
-        "visual_localizer"
-    )
-
-    RouteDataset = data_module.RouteDataset
-    FrozenVisualLocalizer = (
-        visual_localizer_module.FrozenVisualLocalizer
-    )
-    TemporalLatticeCRF = (
-        visual_model.TemporalLatticeCRF
-    )
-
-    device = torch.device("cuda:0")
-    torch.backends.cudnn.benchmark = True
-
-    route_index, route_root = route_info(
-        config,
-        args.route,
-    )
-
-    print("=" * 96)
-    print("FULL UAV MODEL INPUT -> FINAL GPS LATENCY BENCHMARK")
-    print("=" * 96)
-    print("backbone            : {}".format(args.backbone))
     print(
-        "GPU                 : {}".format(
-            torch.cuda.get_device_name(device)
-        )
+        f"loading visual checkpoint: {config.VISUAL_CHECKPOINT}",
+        flush=True,
     )
-    print("temporal window     : {}".format(args.window))
-    print("route               : {}".format(args.route))
-    print(
-        "visual checkpoint   : {}".format(
-            config.VISUAL_CHECKPOINT
-        )
-    )
-    print(
-        "temporal checkpoint : {}".format(
-            config.TEMPORAL_CHECKPOINT
-        )
-    )
-    print(
-        "candidate count     : {}".format(
-            int(config.GRID_SIZE) ** 2
-        )
-    )
-    print("batch size          : 1")
-    print("-" * 96)
-    print(
-        "TIMED: prepared UAV tensor -> backbone -> retrieval -> HardMS -> "
-        "T2-only RTL-CRF -> final x/y -> GPS lat/lon"
-    )
-    print(
-        "NOT TIMED: model loading, satellite gallery loading/precompute, "
-        "disk/PIL read, dataset CPU transform, camera waiting"
-    )
-    print("=" * 96)
-
-    # Loading is intentionally outside the timed region.
     visual = FrozenVisualLocalizer(device)
 
-    temporal_model = load_temporal_model(
+    print(
+        f"loading temporal checkpoint: {config.TEMPORAL_CHECKPOINT}",
+        flush=True,
+    )
+    temporal, temporal_checkpoint = load_temporal_model(
         config,
-        TemporalLatticeCRF,
+        visual_model,
         device,
     )
 
@@ -738,166 +439,373 @@ def main():
 
     jitter = deterministic_jitter(
         len(dataset),
-        route_index,
-        args.jitter_m,
-        int(config.SEED),
+        route_index=route_index,
+        maximum_m=float(args.jitter_m),
+        seed=int(config.SEED),
     )
 
-    # GPU/kernel warm-up using real route inputs.
-    warm_history = deque(maxlen=args.window)
+    window = int(args.window)
+    buffer = deque(maxlen=window)
 
-    warm_frames = min(
-        len(dataset),
-        args.window - 1 + max(args.warmup, 10),
+    pred_xy_rows = []
+    gt_xy_rows = []
+    pred_latlon_rows = []
+    gt_latlon_rows = []
+    frame_rows = []
+    capture_rows = []
+    gate_rows = []
+    all_output_latency_ms = []
+    steady_latency_ms = []
+    first_frame_compute_ms = []
+    csv_rows = []
+
+    valid_output_count = 0
+    timed_output_count = 0
+
+    print(
+        f"route={args.route} frames={len(dataset)} "
+        f"window={window} backbone={args.backbone}",
+        flush=True,
     )
 
-    for index in range(warm_frames):
-        prepared = prepare_input(
-            dataset,
-            jitter,
-            index,
+    # ------------------------------------------------------------------
+    # Streaming evaluation.
+    #
+    # dataset[index] (disk I/O + image transform) happens BEFORE the timer.
+    # Timing begins with the prepared CPU UAV tensor entering the model.
+    # ------------------------------------------------------------------
+    for index in range(len(dataset)):
+        item = dataset[index]
+
+        # Prepared model input; disk I/O and preprocessing are not timed.
+        uav_cpu = item["uav"].unsqueeze(0)
+
+        gt_xy_cpu = item["xy"].float()
+        prior_xy_cpu = (
+            gt_xy_cpu
+            + jitter[index]
+        ).unsqueeze(0)
+
+        frame_id = int(item["frame_id"])
+
+        # Synchronize so previous asynchronous CUDA work cannot leak into
+        # this frame's measured interval.
+        cuda_sync(device)
+        start_time = time.perf_counter()
+
+        # 1) Current UAV tensor -> visual backbone.
+        uav_clip = visual.encode_uav_clip(
+            uav_cpu
         )
 
-        process_prepared_frame(
-            visual,
-            temporal_model,
-            warm_history,
-            prepared,
-            args.window,
-            int(config.GRID_SIZE),
+        # 2) Candidate selection + SAT head + retrieval + HardMS.
+        # Match the current evaluation protocol by moving the GT+jitter prior
+        # to the device before candidate_batch.
+        candidate = visual.candidate_batch(
+            uav_clip,
+            prior_xy_cpu.to(
+                device,
+                non_blocking=True,
+            ),
+            grid_size=int(config.GRID_SIZE),
         )
 
-    sync(device)
+        buffer.append(
+            {
+                "frame_id": frame_id,
+                "z_uav": candidate.z_uav,
+                "z_sat": candidate.z_sat,
+                "centers": candidate.centers,
+                "raw_logits": candidate.raw_logits,
+                "raw_prob": candidate.raw_prob,
+                "hardms": candidate.hardms_xy,
+            }
+        )
 
-    # Measure compute required for the very first GPS from a complete window.
-    first_start = min(
-        warm_frames,
-        max(
-            0,
-            len(dataset)
-            - args.window
-            - (
-                args.first_output_repeats
-                * args.window
+        final_xy = None
+        final_latlon = None
+        correction_gate = None
+
+        # 3) Once the temporal window is full:
+        #    T2-only RTL-CRF -> correction gate -> final XY -> GPS.
+        if len(buffer) == window:
+            (
+                z_uav,
+                z_sat,
+                raw_logits,
+                raw_prob,
+                centers,
+                frame_ids,
+                hardms,
+            ) = temporal_input_from_buffer(
+                buffer,
+                device,
             )
-            - 1,
+
+            output = temporal(
+                z_uav,
+                z_sat,
+                raw_logits,
+                raw_prob,
+                centers,
+                frame_ids,
+                hardms,
+                target_index=None,
+            )
+
+            final_xy_tensor = output.final_xy[0]
+
+            # GPU result -> CPU scalar values is part of producing an actual
+            # usable GPS result.
+            x_meter = float(
+                final_xy_tensor[0].item()
+            )
+            y_meter = float(
+                final_xy_tensor[1].item()
+            )
+
+            final_latlon = xy_to_latlon(
+                x_meter,
+                y_meter,
+                visual.origin_lat,
+                visual.origin_lon,
+            )
+            final_xy = (x_meter, y_meter)
+
+            correction_gate = float(
+                output.correction_gate[0].item()
+            )
+
+        cuda_sync(device)
+        end_time = time.perf_counter()
+
+        frame_compute_ms = (
+            (end_time - start_time) * 1000.0
+        )
+
+        # The first GPS requires WINDOW prepared UAV frames.
+        if index < window:
+            first_frame_compute_ms.append(
+                frame_compute_ms
+            )
+
+        if final_xy is None:
+            continue
+
+        valid_output_count += 1
+
+        # Current-frame model input -> current GPS output latency.
+        all_output_latency_ms.append(
+            frame_compute_ms
+        )
+
+        # Warm-up is excluded only from latency statistics, never accuracy.
+        after_warmup = (
+            valid_output_count
+            > int(args.warmup)
+        )
+
+        under_limit = (
+            int(args.max_timed_outputs) <= 0
+            or timed_output_count
+            < int(args.max_timed_outputs)
+        )
+
+        if after_warmup and under_limit:
+            steady_latency_ms.append(
+                frame_compute_ms
+            )
+            timed_output_count += 1
+
+        gt_xy = (
+            float(gt_xy_cpu[0].item()),
+            float(gt_xy_cpu[1].item()),
+        )
+
+        gt_latlon = (
+            float(item["latlon"][0].item()),
+            float(item["latlon"][1].item()),
+        )
+
+        capture = bool(
+            visual.candidate_contains_gt_anchor(
+                candidate.indices,
+                gt_xy_cpu.unsqueeze(0).to(device),
+            )[0].item()
+        )
+
+        error_m = math.hypot(
+            final_xy[0] - gt_xy[0],
+            final_xy[1] - gt_xy[1],
+        )
+
+        pred_xy_rows.append(final_xy)
+        gt_xy_rows.append(gt_xy)
+        pred_latlon_rows.append(final_latlon)
+        gt_latlon_rows.append(gt_latlon)
+        frame_rows.append(frame_id)
+        capture_rows.append(capture)
+        gate_rows.append(correction_gate)
+
+        csv_rows.append(
+            {
+                "frame_id": frame_id,
+                "gt_x_m": gt_xy[0],
+                "gt_y_m": gt_xy[1],
+                "pred_x_m": final_xy[0],
+                "pred_y_m": final_xy[1],
+                "gt_lat": gt_latlon[0],
+                "gt_lon": gt_latlon[1],
+                "pred_lat": final_latlon[0],
+                "pred_lon": final_latlon[1],
+                "error_m": error_m,
+                "latency_ms": frame_compute_ms,
+                "correction_gate": correction_gate,
+                "candidate_capture": int(capture),
+            }
+        )
+
+        if (
+            valid_output_count == 1
+            or valid_output_count % 250 == 0
+        ):
+            print(
+                f"{args.route}: output "
+                f"{valid_output_count}/"
+                f"{max(len(dataset) - window + 1, 0)} "
+                f"frame={frame_id} "
+                f"latency={frame_compute_ms:.3f} ms "
+                f"error={error_m:.3f} m",
+                flush=True,
+            )
+
+    if not pred_xy_rows:
+        raise RuntimeError(
+            "No valid temporal GPS outputs were produced."
+        )
+
+    accuracy = metric_block(
+        pred_xy_rows,
+        gt_xy_rows,
+        jump_tolerance_m=float(
+            config.JUMP_TOLERANCE_M
         ),
     )
 
-    first_gps, first_example = benchmark_first_gps(
-        visual,
-        temporal_model,
-        dataset,
-        jitter,
-        device,
-        args.window,
-        int(config.GRID_SIZE),
-        first_start,
-        args.first_output_repeats,
+    # Sum of the model-compute times of the first WINDOW prepared UAV tensors:
+    # input frame 1 ... input frame WINDOW -> first final GPS.
+    first_gps_ms = float(
+        sum(first_frame_compute_ms[:window])
     )
 
-    # Measure normal sliding-window operation.
-    steady = benchmark_steady_state(
-        visual,
-        temporal_model,
-        dataset,
-        jitter,
-        device,
-        args.window,
-        int(config.GRID_SIZE),
-        args.warmup,
-        args.samples,
+    output_latency = latency_stats(
+        all_output_latency_ms
+    )
+    steady = latency_stats(
+        steady_latency_ms
     )
 
     result = {
-        "benchmark_definition": (
-            "prepared UAV tensor entering full localization model "
-            "to final GPS latitude/longitude"
-        ),
         "backbone": args.backbone,
-        "backbone_name": str(
-            getattr(
-                config,
-                "BACKBONE_NAME",
-                args.backbone,
-            )
-        ),
-        "architecture": (
-            "T2-only ResidualSecondOrderTemporalLatticeCRF"
-        ),
-        "temporal_window": int(args.window),
+        "backbone_name": config.BACKBONE_NAME,
         "route": args.route,
-        "device": torch.cuda.get_device_name(device),
-        "candidate_count": int(config.GRID_SIZE) ** 2,
-        "batch_size": 1,
+        "temporal_window": window,
         "jitter_m": float(args.jitter_m),
+        "device": str(device),
         "checkpoints": {
-            "visual": str(config.VISUAL_CHECKPOINT),
+            "visual": str(
+                config.VISUAL_CHECKPOINT
+            ),
             "temporal": str(
                 config.TEMPORAL_CHECKPOINT
             ),
         },
-        "first_gps_output": {
-            "definition": (
-                "{} prepared UAV frames -> first final GPS"
-            ).format(args.window),
-            "camera_waiting_time_included": False,
-            "latency": first_gps,
-            "example_final_gps": first_example,
-        },
-        "steady_state": {
-            "definition": (
-                "one new prepared UAV frame -> one new final GPS; "
-                "previous temporal history already exists"
+        "timing_definition": {
+            "steady_state": (
+                "prepared UAV tensor -> CPU/GPU transfer -> visual backbone "
+                "-> retrieval heads -> 6x6 candidate selection -> cosine "
+                "retrieval -> Fixed HardMS -> T2-only RTL-CRF -> correction "
+                "gate -> final XY -> GPS latitude/longitude"
             ),
-            **steady,
+            "first_gps_output": (
+                f"sum of model-compute latency for the first {window} "
+                "prepared UAV tensors required to produce the first GPS output"
+            ),
+            "included": [
+                "CPU-to-GPU tensor transfer performed by the model path",
+                "visual backbone",
+                "UAV projection head",
+                "6x6 candidate selection",
+                "SAT projection head using cached satellite backbone features",
+                "cosine retrieval logits and probabilities",
+                "Fixed Hard Mean-Shift",
+                "T2-only RTL-CRF",
+                "Correction Gate",
+                "final XY to GPS latitude/longitude conversion",
+            ],
+            "excluded": [
+                "image disk I/O",
+                "PIL/torchvision preprocessing",
+                "checkpoint/model loading",
+                "one-time satellite backbone-gallery construction",
+            ],
         },
-        "included_operations": [
-            "CPU UAV tensor -> GPU transfer",
-            "visual backbone",
-            "UAV retrieval head",
-            "local 36-candidate selection",
-            "SAT retrieval head from precomputed backbone gallery",
-            "cosine retrieval scores",
-            "retrieval probability",
-            "Fixed Hard Mean-Shift",
-            "temporal-window tensor assembly",
-            "T2-only RTL-CRF",
-            "correction gate",
-            "final local x/y",
-            "local x/y -> GPS latitude/longitude",
-        ],
-        "excluded_operations": [
-            "checkpoint/model loading",
-            "satellite gallery loading",
-            "satellite backbone gallery precomputation",
-            "disk image read",
-            "PIL decode",
-            "RouteDataset CPU image transform",
-            "camera waiting time",
-            "controlled prior construction",
-        ],
+        "accuracy": accuracy,
+        "candidate_capture_rate_pct": float(
+            np.mean(capture_rows) * 100.0
+        ),
+        "mean_correction_gate": float(
+            np.mean(gate_rows)
+        ),
+        "latency": {
+            "first_gps_output_ms": first_gps_ms,
+            "all_valid_outputs": output_latency,
+            "steady_state_after_warmup": steady,
+            "warmup_outputs_excluded_from_latency": int(
+                args.warmup
+            ),
+        },
+        "counts": {
+            "route_frames": int(len(dataset)),
+            "gps_outputs": int(
+                len(pred_xy_rows)
+            ),
+            "timed_steady_state_outputs": int(
+                len(steady_latency_ms)
+            ),
+        },
+        "temporal_checkpoint_architecture": temporal_checkpoint.get(
+            "architecture",
+            "unknown",
+        ),
     }
 
-    if args.output:
-        output_path = Path(args.output)
-    else:
+    return result, csv_rows
+
+
+def write_outputs(args, result, csv_rows):
+    if args.output is None:
+        out_dir = Path(
+            "outputs/full_pipeline_latency"
+        )
+        out_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
         output_path = (
-            Path("outputs")
-            / "full_pipeline_latency"
+            out_dir
             / (
-                "{}_w{}_{}.json".format(
-                    args.backbone,
-                    args.window,
-                    args.route,
-                )
+                f"{args.backbone}_"
+                f"w{args.window}_"
+                f"{args.route}.json"
             )
         )
-
-    output_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    else:
+        output_path = args.output
+        output_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
     output_path.write_text(
         json.dumps(
@@ -908,101 +816,132 @@ def main():
         encoding="utf-8",
     )
 
-    steady_main = steady["model_input_to_gps"]
+    csv_path = output_path.with_suffix(
+        ".frames.csv"
+    )
+
+    with csv_path.open(
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as file:
+        fieldnames = list(
+            csv_rows[0].keys()
+        )
+        writer = csv.DictWriter(
+            file,
+            fieldnames=fieldnames,
+        )
+        writer.writeheader()
+        writer.writerows(csv_rows)
+
+    return output_path, csv_path
+
+
+def print_summary(result):
+    accuracy = result["accuracy"]
+    steady = result["latency"][
+        "steady_state_after_warmup"
+    ]
 
     print()
-    print("=" * 96)
-    print("RESULT: COMPLETE MODEL INPUT -> FINAL GPS")
-    print("=" * 96)
-
+    print("=" * 78)
+    print("TRUE END-TO-END UAV TENSOR -> FINAL GPS RESULT")
+    print("=" * 78)
     print(
-        "FIRST GPS from {} prepared UAV frames".format(
-            args.window
-        )
+        f"Backbone       : {result['backbone']}"
     )
     print(
-        "  mean   : {:.3f} ms".format(
-            first_gps["mean_ms"]
-        )
+        f"Route          : {result['route']}"
     )
     print(
-        "  median : {:.3f} ms".format(
-            first_gps["median_ms"]
-        )
+        f"Temporal window: {result['temporal_window']}"
     )
-    print(
-        "  P95    : {:.3f} ms".format(
-            first_gps["p95_ms"]
-        )
-    )
-
     print()
     print(
-        "STEADY STATE: one new UAV image -> one final GPS"
+        f"MLE            : {accuracy['MLE_m']:.4f} m"
     )
     print(
-        "  mean latency   : {:.3f} ms".format(
-            steady_main["mean_ms"]
-        )
+        f"P90            : {accuracy['P90_m']:.4f} m"
     )
     print(
-        "  median latency : {:.3f} ms".format(
-            steady_main["median_ms"]
-        )
+        f"RPE            : {accuracy['RPE_m']:.4f} m"
     )
     print(
-        "  P90 latency    : {:.3f} ms".format(
-            steady_main["p90_ms"]
-        )
+        f"JumpRate       : {accuracy['JumpRate_pct']:.4f} %"
     )
-    print(
-        "  P95 latency    : {:.3f} ms".format(
-            steady_main["p95_ms"]
-        )
-    )
-    print(
-        "  P99 latency    : {:.3f} ms".format(
-            steady_main["p99_ms"]
-        )
-    )
-    print(
-        "  GPS output FPS : {:.2f} outputs/s".format(
-            steady_main[
-                "gps_outputs_per_second"
-            ]
-        )
-    )
-
     print()
-    print("Diagnostic breakdown only:")
     print(
-        "  visual stage mean   : {:.3f} ms".format(
-            steady["visual_stage"]["mean_ms"]
-        )
-    )
-    print(
-        "  temporal + GPS mean : {:.3f} ms".format(
-            steady["temporal_plus_gps"][
-                "mean_ms"
-            ]
-        )
+        "First GPS      : "
+        f"{result['latency']['first_gps_output_ms']:.3f} ms "
+        f"({result['temporal_window']} input frames)"
     )
 
-    if steady["example_final_gps"] is not None:
-        gps = steady["example_final_gps"]
-
-        print()
+    if steady["mean_ms"] is not None:
         print(
-            "Example final GPS: "
-            "lat={:.9f}, lon={:.9f}".format(
-                gps["latitude"],
-                gps["longitude"],
-            )
+            f"E2E mean       : {steady['mean_ms']:.3f} ms / GPS"
+        )
+        print(
+            f"E2E median     : {steady['median_ms']:.3f} ms / GPS"
+        )
+        print(
+            f"E2E P95        : {steady['p95_ms']:.3f} ms / GPS"
+        )
+        print(
+            "Complete FPS   : "
+            f"{steady['gps_outputs_per_second']:.2f} GPS outputs/s"
+        )
+    else:
+        print(
+            "No steady-state samples remain after warm-up."
         )
 
-    print()
-    print("Saved JSON: {}".format(output_path))
-    print("=" * 96)
+    print("=" * 78)
+
+
+def main():
+    args = parse_args()
+
+    config, visual_model = configure_experiment(
+        args
+    )
+
+    set_seed(
+        int(config.SEED)
+    )
+
+    device = torch.device(
+        config.DEVICE
+        if torch.cuda.is_available()
+        else "cpu"
+    )
+
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True
+
+    result, csv_rows = run_route(
+        args,
+        config,
+        visual_model,
+        device,
+    )
+
+    output_path, csv_path = write_outputs(
+        args,
+        result,
+        csv_rows,
+    )
+
+    print_summary(result)
+
+    print(
+        f"JSON saved: {output_path}",
+        flush=True,
+    )
+    print(
+        f"Frame CSV saved: {csv_path}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

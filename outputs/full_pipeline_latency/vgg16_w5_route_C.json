@@ -1,7 +1,7 @@
 {
   "backbone": "vgg16",
   "backbone_name": "torchvision:VGG16_IMAGENET1K_V1",
-  "route": "route_B",
+  "route": "route_C",
   "temporal_window": 5,
   "jitter_m": 12.0,
   "device": "cuda",
@@ -32,52 +32,52 @@
     ]
   },
   "accuracy": {
-    "MLE_m": 6.903899015017826,
-    "MedLE_m": 6.442915616059353,
-    "P90_m": 12.114924047797395,
-    "P95_m": 13.741108663866534,
-    "ATE_RMSE_m": 7.864784658269809,
-    "LSR@5_pct": 35.34330985915493,
-    "LSR@10_pct": 80.28169014084507,
-    "LSR@15_pct": 97.00704225352112,
-    "LSR@20_pct": 99.82394366197182,
-    "RPE_m": 5.568685378167181,
-    "JumpRate_pct": 5.988551298987231,
-    "JumpThreshold_m": 13.147056657233255,
-    "StationaryDriftP90_m": 10.078622958479789,
-    "PathLengthRatio": 1.8856912515091198,
-    "MaxLE_m": 21.837667402918495
+    "MLE_m": 6.499450838657015,
+    "MedLE_m": 5.962135169615788,
+    "P90_m": 11.303441719434643,
+    "P95_m": 13.01243258873767,
+    "ATE_RMSE_m": 7.337130906903542,
+    "LSR@5_pct": 37.79904306220095,
+    "LSR@10_pct": 84.13078149920256,
+    "LSR@15_pct": 98.40510366826156,
+    "LSR@20_pct": 99.92025518341308,
+    "RPE_m": 5.3399397096235095,
+    "JumpRate_pct": 4.150039904229849,
+    "JumpThreshold_m": 13.084796164778941,
+    "StationaryDriftP90_m": 9.780926636030689,
+    "PathLengthRatio": 2.574013382560757,
+    "MaxLE_m": 20.223514329625168
   },
   "candidate_capture_rate_pct": 100.0,
-  "mean_correction_gate": 0.8487163779889824,
+  "mean_correction_gate": 0.8284585716906917,
   "latency": {
-    "first_gps_output_ms": 1968.4862224385142,
+    "first_gps_output_ms": 1960.453781299293,
     "all_valid_outputs": {
-      "samples": 2272,
-      "mean_ms": 10.725665751854482,
-      "median_ms": 10.662963148206472,
-      "p90_ms": 11.267009563744068,
-      "p95_ms": 11.487625911831856,
-      "min_ms": 9.727532975375652,
-      "max_ms": 17.176796682178974,
-      "gps_outputs_per_second": 93.23430574247558
+      "samples": 1254,
+      "mean_ms": 10.602802175588822,
+      "median_ms": 10.504122357815504,
+      "p90_ms": 11.181237548589706,
+      "p95_ms": 11.405140347778797,
+      "min_ms": 9.615659713745117,
+      "max_ms": 19.31231841444969,
+      "gps_outputs_per_second": 94.31468996963206
     },
     "steady_state_after_warmup": {
-      "samples": 2242,
-      "mean_ms": 10.7150816688452,
-      "median_ms": 10.655694175511599,
-      "p90_ms": 11.25715933740139,
-      "p95_ms": 11.452448135241866,
-      "min_ms": 9.727532975375652,
-      "max_ms": 16.531972214579582,
-      "gps_outputs_per_second": 93.32640019978246
+      "samples": 1224,
+      "mean_ms": 10.609571294694701,
+      "median_ms": 10.512806009501219,
+      "p90_ms": 11.184619832783937,
+      "p95_ms": 11.40736248344183,
+      "min_ms": 9.615659713745117,
+      "max_ms": 19.31231841444969,
+      "gps_outputs_per_second": 94.25451530732899
     },
     "warmup_outputs_excluded_from_latency": 30
   },
   "counts": {
-    "route_frames": 2276,
-    "gps_outputs": 2272,
-    "timed_steady_state_outputs": 2242
+    "route_frames": 1258,
+    "gps_outputs": 1254,
+    "timed_steady_state_outputs": 1224
   },
   "temporal_checkpoint_architecture": "ResidualSecondOrderTemporalLatticeCRF"
 }
