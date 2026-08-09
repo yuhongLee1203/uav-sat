@@ -424,13 +424,23 @@ def candidate_indices_forward(
         (predicted_xy - start) * unit
     ).sum()
 
-    min_along = max(
-        0.0,
-        float(accepted_progress_m),
+    # Mission progress is a coordinate ON the currently active straight leg.
+    # It must never grow beyond that leg's endpoint while the mission
+    # controller still reports the same active leg.  The previous version
+    # allowed Kalman overshoot (e.g. progress > leg_length) to become the hard
+    # search lower bound, which could make the legal candidate set empty.
+    leg_length_m = float(length.item())
+
+    min_along = min(
+        max(
+            0.0,
+            float(accepted_progress_m),
+        ),
+        leg_length_m,
     )
 
     max_along = min(
-        float(length.item())
+        leg_length_m
         + float(config.ROUTE_ENDPOINT_PADDING_M),
         max(
             min_along + 1.0,
@@ -485,7 +495,7 @@ def candidate_indices_forward(
             (along >= min_along)
             & (
                 along
-                <= float(length.item())
+                <= leg_length_m
                 + float(config.ROUTE_ENDPOINT_PADDING_M)
             )
         )
@@ -496,10 +506,48 @@ def candidate_indices_forward(
     ).flatten()
 
     if valid_indices.numel() == 0:
+        # Terminal-cap fallback.
+        #
+        # A discrete SAT-patch gallery does not necessarily contain a patch
+        # center whose along-track coordinate is >= the exact geometric
+        # waypoint coordinate.  When the active leg has already reached its
+        # endpoint, keep the search local to the endpoint support band instead
+        # of reopening the whole traversed route or crashing.
+        terminal_start = max(
+            0.0,
+            leg_length_m
+            - float(config.ROUTE_ENDPOINT_PADDING_M),
+        )
+
+        terminal_end = (
+            leg_length_m
+            + float(config.ROUTE_ENDPOINT_PADDING_M)
+        )
+
+        terminal_mask = (
+            (along >= terminal_start)
+            & (along <= terminal_end)
+            & (
+                cross.abs()
+                <= float(
+                    config.ROUTE_CORRIDOR_HALF_WIDTH_M
+                )
+                * 4.0
+            )
+        )
+
+        valid_indices = torch.nonzero(
+            terminal_mask,
+            as_tuple=False,
+        ).flatten()
+
+    if valid_indices.numel() == 0:
         raise RuntimeError(
-            "No satellite gallery patch remains in the "
-            f"forward route corridor: leg={leg.index}, "
-            f"progress={min_along:.2f}m"
+            "No satellite gallery patch exists even in the "
+            "terminal endpoint support band: "
+            f"leg={leg.index}, "
+            f"leg_length={leg_length_m:.2f}m, "
+            f"accepted_progress={float(accepted_progress_m):.2f}m"
         )
 
     valid_xy = gallery_xy[
@@ -659,16 +707,26 @@ def initial_state_tensor(
     start_xy,
     device,
 ):
-    state = torch.zeros(
+    # Build the initial state without any in-place slice assignment.
+    position = start_xy.to(
+        device=device,
+        dtype=torch.float32,
+    ).reshape(1, 2)
+
+    motion = torch.zeros(
         1,
-        6,
+        4,
         device=device,
         dtype=torch.float32,
     )
-    state[0, 0:2] = start_xy.to(
-        device
+
+    return torch.cat(
+        [
+            position,
+            motion,
+        ],
+        dim=1,
     )
-    return state
 
 
 def retarget_torch_state(
@@ -676,39 +734,85 @@ def retarget_torch_state(
     covariance,
     new_leg,
 ):
-    state = state.clone()
-    covariance = covariance.clone()
+    """
+    Align the carried velocity with the newly active mission leg.
+
+    IMPORTANT:
+    This function must be fully out-of-place because state/covariance can still
+    belong to the current truncated-BPTT autograd graph.  In-place writes such
+    as state[:, 2:4] = ... or covariance[:, 2, 2] += ... invalidate saved views
+    that backward() still needs.
+    """
+    position = state[:, 0:2]
+
+    old_velocity = state[:, 2:4]
 
     speed = torch.linalg.norm(
-        state[:, 2:4],
+        old_velocity,
         dim=1,
         keepdim=True,
     )
 
     unit = new_leg.unit.to(
-        state.device
+        device=state.device,
+        dtype=state.dtype,
     ).reshape(1, 2)
 
-    state[:, 2:4] = (
+    aligned_velocity = (
         speed * unit
     )
 
-    state[:, 4:6] = 0.0
-
-    covariance[:, 2, 2] += float(
-        config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
-    )
-    covariance[:, 3, 3] += float(
-        config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
-    )
-    covariance[:, 4, 4] += float(
-        config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
-    )
-    covariance[:, 5, 5] += float(
-        config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
+    zero_acceleration = torch.zeros_like(
+        state[:, 4:6]
     )
 
-    return state, covariance
+    new_state = torch.cat(
+        [
+            position,
+            aligned_velocity,
+            zero_acceleration,
+        ],
+        dim=1,
+    )
+
+    covariance_boost_diagonal = torch.tensor(
+        [
+            0.0,
+            0.0,
+            float(
+                config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
+            ),
+            float(
+                config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
+            ),
+            float(
+                config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
+            ),
+            float(
+                config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
+            ),
+        ],
+        device=covariance.device,
+        dtype=covariance.dtype,
+    )
+
+    covariance_boost = torch.diag(
+        covariance_boost_diagonal
+    ).unsqueeze(0).expand(
+        covariance.shape[0],
+        -1,
+        -1,
+    )
+
+    new_covariance = (
+        covariance
+        + covariance_boost
+    )
+
+    return (
+        new_state,
+        new_covariance,
+    )
 
 
 def filterpy_transition(dt):
@@ -1301,10 +1405,13 @@ def train_one_epoch(
             ].detach().cpu(),
             leg,
         )
-        accepted_progress = max(
-            accepted_progress,
-            along,
-            0.0,
+        accepted_progress = min(
+            max(
+                accepted_progress,
+                along,
+                0.0,
+            ),
+            float(leg.length),
         )
 
         previous_frame = frame_id
@@ -1580,10 +1687,13 @@ def evaluate_segment_filterpy(
             leg,
         )
 
-        accepted_progress = max(
-            accepted_progress,
-            along,
-            0.0,
+        accepted_progress = min(
+            max(
+                accepted_progress,
+                along,
+                0.0,
+            ),
+            float(leg.length),
         )
 
         capture = gt_candidate_captured(
@@ -2043,6 +2153,15 @@ def main():
         default=config.LOCAL_PRIOR_JITTER_M,
     )
 
+    parser.add_argument(
+        "--reuse-visual",
+        action="store_true",
+        help=(
+            "Reuse the already-trained visual_retrieval_A_only.pt and "
+            "restart only the GRU/Kalman temporal training from scratch."
+        ),
+    )
+
     args = parser.parse_args()
 
     set_seed(
@@ -2075,27 +2194,43 @@ def main():
         exist_ok=True,
     )
 
-    # Full retrain means delete only this experiment's own checkpoints.
+    # Training always restarts the NEW temporal model from scratch.
+    # Visual retrieval can either be fully retrained (default) or reused after
+    # a temporal-stage crash with --reuse-visual.
     if args.mode in (
         "train",
         "train_eval",
     ):
-        if config.VISUAL_CHECKPOINT.exists():
-            config.VISUAL_CHECKPOINT.unlink()
-
         if config.TEMPORAL_CHECKPOINT.exists():
             config.TEMPORAL_CHECKPOINT.unlink()
 
-        train_visual_retrieval_a_only(
-            device=device,
-            epochs=int(
-                args.visual_epochs
-            ),
-            jitter_m=float(
-                args.jitter_m
-            ),
-            resume=False,
-        )
+        if args.reuse_visual:
+            if not config.VISUAL_CHECKPOINT.exists():
+                raise FileNotFoundError(
+                    "--reuse-visual was requested but the visual checkpoint "
+                    f"does not exist: {config.VISUAL_CHECKPOINT}"
+                )
+
+            print(
+                "reuse visual checkpoint; restart GRU/Kalman temporal "
+                "training from scratch:",
+                config.VISUAL_CHECKPOINT,
+                flush=True,
+            )
+        else:
+            if config.VISUAL_CHECKPOINT.exists():
+                config.VISUAL_CHECKPOINT.unlink()
+
+            train_visual_retrieval_a_only(
+                device=device,
+                epochs=int(
+                    args.visual_epochs
+                ),
+                jitter_m=float(
+                    args.jitter_m
+                ),
+                resume=False,
+            )
 
     if not config.VISUAL_CHECKPOINT.exists():
         raise FileNotFoundError(

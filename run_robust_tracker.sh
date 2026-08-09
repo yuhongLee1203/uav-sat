@@ -7,6 +7,7 @@ GPU="${GPU:-0}"
 VISUAL_EPOCHS="${VISUAL_EPOCHS:-30}"
 TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-50}"
 JITTER_M="${JITTER_M:-12}"
+REUSE_VISUAL="${REUSE_VISUAL:-0}"
 
 mkdir -p outputs/route_rnn_filterpy_full_retrain
 
@@ -29,9 +30,17 @@ echo "GPU              : ${GPU}"
 echo "Visual epochs    : ${VISUAL_EPOCHS}"
 echo "Temporal epochs  : ${TEMPORAL_EPOCHS}"
 echo "Jitter           : ${JITTER_M} m"
+echo "Reuse visual     : ${REUSE_VISUAL}"
 echo
-echo "Visual retrieval will be trained FROM SCRATCH on Route A."
-echo "GRU temporal model will be trained FROM SCRATCH on Route A."
+if [[ "${REUSE_VISUAL}" == "1" ]]; then
+  echo "Visual retrieval checkpoint will be REUSED."
+  echo "GRU temporal model will restart FROM SCRATCH on Route A."
+  EXTRA_ARGS=(--reuse-visual)
+else
+  echo "Visual retrieval will be trained FROM SCRATCH on Route A."
+  echo "GRU temporal model will be trained FROM SCRATCH on Route A."
+  EXTRA_ARGS=()
+fi
 echo "Final evaluation will run on Route B and Route C."
 echo "================================================================================"
 
@@ -44,4 +53,5 @@ python3 robust_tracker.py \
   --mode train_eval \
   --visual-epochs "${VISUAL_EPOCHS}" \
   --epochs "${TEMPORAL_EPOCHS}" \
-  --jitter-m "${JITTER_M}"
+  --jitter-m "${JITTER_M}" \
+  "${EXTRA_ARGS[@]}"
