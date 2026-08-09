@@ -1,0 +1,48 @@
+{
+  "definition": "prepared UAV tensor entering full localization model to final GPS latitude/longitude",
+  "temporal_window": 5,
+  "route": "route_B",
+  "rows": [
+    {
+      "backbone": "mobileclip2_s2",
+      "first_gps_ms": 199.6784927789122,
+      "steady_mean_ms": 43.98926365189254,
+      "steady_median_ms": 43.97408291697502,
+      "steady_p95_ms": 45.49237946048379,
+      "gps_outputs_per_second": 22.732819715134678,
+      "visual_mean_ms": 39.85711792949587,
+      "temporal_gps_mean_ms": 4.130634809844196
+    },
+    {
+      "backbone": "vgg16",
+      "first_gps_ms": 32.6038537081331,
+      "steady_mean_ms": 10.08281095419079,
+      "steady_median_ms": 10.0252041593194,
+      "steady_p95_ms": 10.722868191078305,
+      "gps_outputs_per_second": 99.17869178974965,
+      "visual_mean_ms": 5.997584275901318,
+      "temporal_gps_mean_ms": 4.084042217582464
+    },
+    {
+      "backbone": "resnet18",
+      "first_gps_ms": 40.07314587943256,
+      "steady_mean_ms": 11.670126877725124,
+      "steady_median_ms": 11.485586874186993,
+      "steady_p95_ms": 13.245728425681591,
+      "gps_outputs_per_second": 85.68887129313984,
+      "visual_mean_ms": 7.571131782606244,
+      "temporal_gps_mean_ms": 4.097630530595779
+    },
+    {
+      "backbone": "mobilenet_v3_small",
+      "first_gps_ms": 53.24141848832369,
+      "steady_mean_ms": 14.178659110330045,
+      "steady_median_ms": 14.146034140139818,
+      "steady_p95_ms": 14.886044664308429,
+      "gps_outputs_per_second": 70.52853109864508,
+      "visual_mean_ms": 10.101925292983651,
+      "temporal_gps_mean_ms": 4.07537923194468
+    }
+  ],
+  "important": "gps_outputs_per_second is complete steady-state localization throughput, NOT backbone-only FPS."
+}

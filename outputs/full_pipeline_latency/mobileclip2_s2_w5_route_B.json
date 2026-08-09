@@ -1,0 +1,108 @@
+{
+  "benchmark_definition": "prepared UAV tensor entering full localization model to final GPS latitude/longitude",
+  "backbone": "mobileclip2_s2",
+  "backbone_name": "hf-hub:timm/MobileCLIP2-S2-OpenCLIP",
+  "architecture": "T2-only ResidualSecondOrderTemporalLatticeCRF",
+  "temporal_window": 5,
+  "route": "route_B",
+  "device": "NVIDIA GeForce RTX 3090",
+  "candidate_count": 36,
+  "batch_size": 1,
+  "jitter_m": 12.0,
+  "checkpoints": {
+    "visual": "/yh/study/uav-sat/outputs/strict_train_A_test_BC_t2only_w5/checkpoints/visual_retrieval_A_only.pt",
+    "temporal": "/yh/study/uav-sat/outputs/strict_train_A_test_BC_t2only_w5/checkpoints/rtl_crf_A_only.pt"
+  },
+  "first_gps_output": {
+    "definition": "5 prepared UAV frames -> first final GPS",
+    "camera_waiting_time_included": false,
+    "latency": {
+      "count": 20,
+      "mean_ms": 199.6784927789122,
+      "median_ms": 199.27110197022557,
+      "std_ms": 3.811384199150454,
+      "min_ms": 194.41834557801485,
+      "p90_ms": 205.22960172966123,
+      "p95_ms": 207.53640728071332,
+      "p99_ms": 208.34182584658265,
+      "max_ms": 208.54318048804998,
+      "gps_outputs_per_second": 5.008050622193042
+    },
+    "example_final_gps": {
+      "latitude": 23.451155877672548,
+      "longitude": 120.28139847439631,
+      "x_meter": -490.4159851074219,
+      "y_meter": 44.391727447509766
+    }
+  },
+  "steady_state": {
+    "definition": "one new prepared UAV frame -> one new final GPS; previous temporal history already exists",
+    "model_input_to_gps": {
+      "count": 200,
+      "mean_ms": 43.98926365189254,
+      "median_ms": 43.97408291697502,
+      "std_ms": 1.0462527563260426,
+      "min_ms": 41.94668959826231,
+      "p90_ms": 45.07067231461406,
+      "p95_ms": 45.49237946048379,
+      "p99_ms": 46.70953578315674,
+      "max_ms": 49.74174965173006,
+      "gps_outputs_per_second": 22.732819715134678
+    },
+    "visual_stage": {
+      "count": 200,
+      "mean_ms": 39.85711792949587,
+      "median_ms": 39.79266993701458,
+      "std_ms": 0.9804834532924797,
+      "min_ms": 38.126200437545776,
+      "p90_ms": 40.92405932024121,
+      "p95_ms": 41.18971871212125,
+      "p99_ms": 42.63113660737871,
+      "max_ms": 45.61524372547865,
+      "gps_outputs_per_second": 25.08962142643936
+    },
+    "temporal_plus_gps": {
+      "count": 200,
+      "mean_ms": 4.130634809844196,
+      "median_ms": 4.127152729779482,
+      "std_ms": 0.222269306335792,
+      "min_ms": 3.6918772384524345,
+      "p90_ms": 4.437564127147198,
+      "p95_ms": 4.463267419487238,
+      "p99_ms": 4.494317453354597,
+      "max_ms": 4.545948468148708,
+      "gps_outputs_per_second": 242.093539137564
+    },
+    "example_final_gps": {
+      "latitude": 23.451486263322103,
+      "longitude": 120.27892708295067,
+      "x_meter": -742.8062744140625,
+      "y_meter": 81.17008972167969
+    }
+  },
+  "included_operations": [
+    "CPU UAV tensor -> GPU transfer",
+    "visual backbone",
+    "UAV retrieval head",
+    "local 36-candidate selection",
+    "SAT retrieval head from precomputed backbone gallery",
+    "cosine retrieval scores",
+    "retrieval probability",
+    "Fixed Hard Mean-Shift",
+    "temporal-window tensor assembly",
+    "T2-only RTL-CRF",
+    "correction gate",
+    "final local x/y",
+    "local x/y -> GPS latitude/longitude"
+  ],
+  "excluded_operations": [
+    "checkpoint/model loading",
+    "satellite gallery loading",
+    "satellite backbone gallery precomputation",
+    "disk image read",
+    "PIL decode",
+    "RouteDataset CPU image transform",
+    "camera waiting time",
+    "controlled prior construction"
+  ]
+}
