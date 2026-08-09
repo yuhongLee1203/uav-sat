@@ -3,81 +3,97 @@ import csv
 import json
 import math
 import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
 import config
-from data import RouteDataset
+from data import (
+    RouteDataset,
+    meters_from_latlon,
+)
 from visual_localizer import (
+    CandidateBatch,
     FrozenVisualLocalizer,
+    hard_mean_shift,
     train_visual_retrieval_a_only,
 )
-from visual_model import RecurrentKalmanLocalizer
+from visual_model import (
+    RouteGRUMeasurementModel,
+    initial_covariance_torch,
+    kalman_predict_torch,
+    kalman_update_torch,
+)
+
+try:
+    from filterpy.kalman import KalmanFilter
+except ImportError:
+    KalmanFilter = None
 
 
-ARCHITECTURE_NAME = "RecurrentKalmanLocalizer"
+ARCHITECTURE_NAME = "RouteConditionedGRU_FilterPyKalman"
 
+
+# ============================================================================
+# Data structures
+# ============================================================================
 
 @dataclass
-class RouteCache:
-    name: str
+class BackboneCache:
+    route_name: str
     frame_ids: torch.Tensor
     gt_xy: torch.Tensor
-    z_uav: torch.Tensor
-    z_sat: torch.Tensor
-    centers: torch.Tensor
-    raw_logits: torch.Tensor
-    raw_prob: torch.Tensor
-    raw_top1: torch.Tensor
-    hardms: torch.Tensor
-    capture: torch.Tensor
+    uav_clip: torch.Tensor
 
     def __len__(self):
-        return int(
-            self.gt_xy.shape[0]
-        )
+        return int(self.gt_xy.shape[0])
 
 
 @dataclass
-class SplitRange:
-    start: int
-    end: int
+class RouteLeg:
+    index: int
+    start_frame: int
+    end_frame: int
+    start_xy: torch.Tensor
+    end_xy: torch.Tensor
+
+    @property
+    def vector(self):
+        return self.end_xy - self.start_xy
 
     @property
     def length(self):
-        return max(
-            0,
-            self.end - self.start,
+        return float(
+            torch.linalg.norm(self.vector).item()
         )
 
+    @property
+    def unit(self):
+        length = max(self.length, 1e-8)
+        return self.vector / length
+
+
+@dataclass
+class WaypointManifest:
+    route_name: str
+    legs: list
+
+
+# ============================================================================
+# Utilities
+# ============================================================================
 
 def set_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    random.seed(int(seed))
+    np.random.seed(int(seed))
+    torch.manual_seed(int(seed))
 
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(
-            seed
-        )
-
-
-def parse_frame_id(value):
-    if isinstance(
-        value,
-        torch.Tensor,
-    ):
-        return int(
-            value.item()
-        )
-    return int(
-        str(value)
-    )
+        torch.cuda.manual_seed_all(int(seed))
 
 
 def cache_dtype():
@@ -86,62 +102,200 @@ def cache_dtype():
     return torch.float32
 
 
-def deterministic_jitter(
-    length,
-    route_index,
-    maximum_m,
+def parse_frame_id(value):
+    if isinstance(value, torch.Tensor):
+        return int(value.item())
+    return int(str(value))
+
+
+def load_waypoint_manifest(
+    route_name,
+    origin_lat,
+    origin_lon,
 ):
-    if maximum_m <= 0:
-        return torch.zeros(
-            length,
-            2,
+    path = Path(
+        config.WAYPOINT_FILES[route_name]
+    )
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"waypoint manifest not found: {path}"
         )
 
-    generator = torch.Generator(
-        device="cpu"
-    )
-    generator.manual_seed(
-        int(config.SEED)
-        + 1009 * int(route_index)
+    payload = json.loads(
+        path.read_text(encoding="utf-8")
     )
 
-    radius = (
-        torch.sqrt(
-            torch.rand(
-                length,
-                1,
-                generator=generator,
+    waypoints = {
+        int(item["waypoint_order"]): item
+        for item in payload["waypoints"]
+    }
+
+    legs = []
+
+    for row in payload["straight_legs"]:
+        start_item = waypoints[
+            int(row["start_waypoint_order"])
+        ]
+        end_item = waypoints[
+            int(row["end_waypoint_order"])
+        ]
+
+        start_xy = torch.tensor(
+            meters_from_latlon(
+                start_item["latitude"],
+                start_item["longitude"],
+                origin_lat,
+                origin_lon,
+            ),
+            dtype=torch.float32,
+        )
+
+        end_xy = torch.tensor(
+            meters_from_latlon(
+                end_item["latitude"],
+                end_item["longitude"],
+                origin_lat,
+                origin_lon,
+            ),
+            dtype=torch.float32,
+        )
+
+        legs.append(
+            RouteLeg(
+                index=int(row["leg"]) - 1,
+                start_frame=int(row["start_frame_index"]),
+                end_frame=int(row["end_frame_index"]),
+                start_xy=start_xy,
+                end_xy=end_xy,
             )
         )
-        * float(maximum_m)
+
+    return WaypointManifest(
+        route_name=route_name,
+        legs=legs,
     )
 
-    angle = (
-        torch.rand(
-            length,
-            1,
-            generator=generator,
+
+def active_leg_for_frame(
+    manifest,
+    frame_id,
+):
+    frame_id = int(frame_id)
+
+    for leg_index, leg in enumerate(manifest.legs):
+        is_last = (
+            leg_index
+            == len(manifest.legs) - 1
         )
-        * (2.0 * math.pi)
+
+        if (
+            leg.start_frame <= frame_id < leg.end_frame
+            or (
+                is_last
+                and frame_id <= leg.end_frame
+            )
+        ):
+            return leg
+
+    if frame_id < manifest.legs[0].start_frame:
+        return manifest.legs[0]
+
+    return manifest.legs[-1]
+
+
+def project_to_leg(xy, leg):
+    xy = torch.as_tensor(
+        xy,
+        dtype=torch.float32,
+    )
+    relative = xy - leg.start_xy
+    unit = leg.unit
+    normal = torch.tensor(
+        [-unit[1], unit[0]],
+        dtype=torch.float32,
     )
 
-    return torch.cat(
-        [
-            radius * angle.cos(),
-            radius * angle.sin(),
-        ],
-        dim=1,
+    along = float(
+        torch.dot(relative, unit).item()
+    )
+    cross = float(
+        torch.dot(relative, normal).item()
     )
 
+    return along, cross
+
+
+def split_route_a_legs(manifest):
+    count = len(manifest.legs)
+
+    train_count = max(
+        1,
+        int(
+            count
+            * float(config.TEMPORAL_TRAIN_LEG_FRACTION)
+        ),
+    )
+
+    val_count = max(
+        1,
+        int(
+            count
+            * float(config.TEMPORAL_VAL_LEG_FRACTION)
+        ),
+    )
+
+    if train_count + val_count >= count:
+        val_count = max(
+            1,
+            count - train_count - 1,
+        )
+
+    train_legs = manifest.legs[
+        :train_count
+    ]
+    val_legs = manifest.legs[
+        train_count:train_count + val_count
+    ]
+    test_legs = manifest.legs[
+        train_count + val_count:
+    ]
+
+    return {
+        "train": (
+            train_legs[0].start_frame,
+            train_legs[-1].end_frame,
+        ),
+        "val": (
+            val_legs[0].start_frame,
+            val_legs[-1].end_frame,
+        ),
+        "test": (
+            test_legs[0].start_frame,
+            test_legs[-1].end_frame,
+        )
+        if test_legs
+        else (
+            val_legs[-1].end_frame,
+            val_legs[-1].end_frame,
+        ),
+    }
+
+
+# ============================================================================
+# Current-frame backbone cache
+# ============================================================================
+# The temporal model never receives multiple images.  This cache stores one
+# public-backbone descriptor for each independent UAV frame so recurrent
+# training does not repeatedly decode JPEGs / rerun MobileCLIP.
+# ============================================================================
 
 @torch.no_grad()
-def build_route_cache(
+def build_backbone_cache(
+    route_name,
     root,
-    name,
-    route_index,
     visual,
     device,
-    jitter_m,
 ):
     dataset = RouteDataset(
         Path(root),
@@ -150,25 +304,12 @@ def build_route_cache(
         origin_lon=visual.origin_lon,
     )
 
-    jitter = deterministic_jitter(
-        len(dataset),
-        route_index,
-        jitter_m,
-    )
-
-    frame_id_rows = []
+    frame_rows = []
     gt_rows = []
-    z_uav_rows = []
-    z_sat_rows = []
-    center_rows = []
-    logit_rows = []
-    probability_rows = []
-    top1_rows = []
-    hardms_rows = []
-    capture_rows = []
+    clip_rows = []
 
     batch_size = int(
-        config.EVAL_BATCH_SIZE
+        config.VISUAL_CACHE_BATCH_SIZE
     )
 
     for start in range(
@@ -183,506 +324,507 @@ def build_route_cache(
 
         items = [
             dataset[index]
-            for index in range(
-                start,
-                end,
-            )
+            for index in range(start, end)
         ]
 
+        # Batch is only a compute optimization.
+        # Each row is still an independent single-frame descriptor.
         uav = torch.stack(
-            [
-                item["uav"]
-                for item in items
-            ]
-        ).to(
-            device
-        )
+            [item["uav"] for item in items]
+        ).to(device)
 
-        gt_batch = torch.stack(
-            [
-                item["xy"].float()
-                for item in items
-            ]
-        )
+        clip = visual.encode_uav_clip(uav)
 
-        prior_batch = (
-            gt_batch
-            + jitter[start:end]
-        )
-
-        clip = visual.encode_uav_clip(
-            uav
-        )
-
-        candidate = visual.candidate_batch(
-            clip,
-            prior_batch.to(
-                device
-            ),
-            grid_size=config.GRID_SIZE,
-        )
-
-        capture = (
-            visual.candidate_contains_gt_anchor(
-                candidate.indices,
-                gt_batch.to(
-                    device
-                ),
+        clip_rows.append(
+            clip.detach().cpu().to(
+                cache_dtype()
             )
         )
 
-        frame_id_rows.extend(
-            parse_frame_id(
-                item["frame_id"]
+        gt_rows.append(
+            torch.stack(
+                [
+                    item["xy"].float()
+                    for item in items
+                ]
             )
+        )
+
+        frame_rows.extend(
+            parse_frame_id(item["frame_id"])
             for item in items
         )
 
-        gt_rows.extend(
-            value.cpu()
-            for value in gt_batch
-        )
-
-        z_uav_rows.append(
-            candidate.z_uav.cpu().to(
-                cache_dtype()
+        if (
+            start == 0
+            or end == len(dataset)
+            or (start // batch_size) % 20 == 0
+        ):
+            print(
+                f"{route_name} backbone cache: "
+                f"{end}/{len(dataset)}",
+                flush=True,
             )
-        )
 
-        z_sat_rows.append(
-            candidate.z_sat.cpu().to(
-                cache_dtype()
-            )
-        )
-
-        center_rows.append(
-            candidate.centers.cpu().float()
-        )
-
-        logit_rows.append(
-            candidate.raw_logits.cpu().float()
-        )
-
-        probability_rows.append(
-            candidate.raw_prob.cpu().float()
-        )
-
-        top1_rows.append(
-            candidate.raw_top1_xy.cpu().float()
-        )
-
-        hardms_rows.append(
-            candidate.hardms_xy.cpu().float()
-        )
-
-        capture_rows.append(
-            capture.cpu()
-        )
-
-    cache = RouteCache(
-        name=name,
+    return BackboneCache(
+        route_name=route_name,
         frame_ids=torch.tensor(
-            frame_id_rows,
+            frame_rows,
             dtype=torch.long,
         ),
-        gt_xy=torch.stack(
-            gt_rows
-        ).float(),
-        z_uav=torch.cat(
-            z_uav_rows
-        ),
-        z_sat=torch.cat(
-            z_sat_rows
-        ),
-        centers=torch.cat(
-            center_rows
-        ),
-        raw_logits=torch.cat(
-            logit_rows
-        ),
-        raw_prob=torch.cat(
-            probability_rows
-        ),
-        raw_top1=torch.cat(
-            top1_rows
-        ),
-        hardms=torch.cat(
-            hardms_rows
-        ),
-        capture=torch.cat(
-            capture_rows
-        ),
+        gt_xy=torch.cat(gt_rows).float(),
+        uav_clip=torch.cat(clip_rows),
     )
 
-    print(
-        f"cached {name}: "
-        f"frames={len(cache)} "
-        f"capture="
-        f"{cache.capture.float().mean().item() * 100:.2f}%",
-        flush=True,
-    )
 
-    return cache
+# ============================================================================
+# Forward-only route candidate search
+# ============================================================================
 
-
-def contiguous_splits(
-    length,
+def candidate_indices_forward(
+    visual,
+    predicted_xy,
+    leg,
+    accepted_progress_m,
 ):
-    guard = int(
-        config.SPLIT_GUARD_FRAMES
+    gallery_xy = visual.gallery["xy"]
+
+    start = leg.start_xy.to(
+        gallery_xy.device
+    )
+    end = leg.end_xy.to(
+        gallery_xy.device
     )
 
-    train_end = int(
-        length
-        * float(
-            config.TRAIN_FRACTION
-        )
+    vector = end - start
+    length = torch.linalg.norm(
+        vector
+    ).clamp_min(1e-6)
+    unit = vector / length
+
+    normal = torch.stack(
+        [-unit[1], unit[0]]
     )
 
-    val_end = int(
-        length
-        * (
-            float(
-                config.TRAIN_FRACTION
-            )
-            + float(
-                config.VAL_FRACTION
-            )
-        )
+    relative = gallery_xy - start[None, :]
+
+    along = (
+        relative * unit[None, :]
+    ).sum(dim=1)
+
+    cross = (
+        relative * normal[None, :]
+    ).sum(dim=1)
+
+    predicted_xy = predicted_xy.to(
+        gallery_xy.device
+    ).reshape(2)
+
+    predicted_along = (
+        (predicted_xy - start) * unit
+    ).sum()
+
+    min_along = max(
+        0.0,
+        float(accepted_progress_m),
     )
 
-    train = SplitRange(
-        0,
+    max_along = min(
+        float(length.item())
+        + float(config.ROUTE_ENDPOINT_PADDING_M),
         max(
-            0,
-            train_end - guard,
+            min_along + 1.0,
+            float(predicted_along.item())
+            + float(config.ROUTE_FORWARD_HORIZON_M),
         ),
     )
 
-    val_start = min(
-        length,
-        train_end + guard,
+    count = int(
+        config.ROUTE_CANDIDATE_COUNT
     )
 
-    val = SplitRange(
-        val_start,
-        max(
-            val_start,
-            val_end - guard,
-        ),
-    )
+    chosen_mask = None
 
-    test_start = min(
-        length,
-        val_end + guard,
-    )
-
-    return {
-        "train": train,
-        "val": val,
-        "test": SplitRange(
-            test_start,
-            length,
-        ),
-        "all": SplitRange(
-            0,
-            length,
-        ),
-    }
-
-
-def make_sequences(
-    caches,
-    split_name,
-):
-    sequence_length = int(
-        config.RNN_SEQUENCE_LENGTH
-    )
-
-    stride = int(
-        config.WINDOW_STRIDE
-    )
-
-    rows = []
-
-    for route_index, cache in enumerate(
-        caches
+    # Widen only sideways / forward range. Never intentionally open the
+    # accepted-progress floor toward already traversed route.
+    for width_scale, forward_scale in (
+        (1.0, 1.0),
+        (1.5, 1.5),
+        (2.0, 2.0),
+        (4.0, 3.0),
     ):
-        segment = contiguous_splits(
-            len(cache)
-        )[split_name]
-
-        stop = (
-            segment.end
-            - sequence_length
-            + 1
+        current_max = min(
+            float(length.item())
+            + float(config.ROUTE_ENDPOINT_PADDING_M),
+            max(
+                min_along + 1.0,
+                float(predicted_along.item())
+                + float(config.ROUTE_FORWARD_HORIZON_M)
+                * forward_scale,
+            ),
         )
 
-        for start in range(
-            segment.start,
-            max(
-                segment.start,
-                stop,
-            ),
-            stride,
-        ):
-            end = (
-                start
-                + sequence_length
-            )
-
-            if end > segment.end:
-                continue
-
-            # Keep the same strict training policy as the previous code:
-            # train only where every GT location is representable by the
-            # controlled local candidate lattice.
-            if bool(
-                cache.capture[
-                    start:end
-                ].all()
-            ):
-                rows.append(
-                    (
-                        route_index,
-                        start,
-                    )
+        mask = (
+            (along >= min_along)
+            & (along <= current_max)
+            & (
+                cross.abs()
+                <= float(
+                    config.ROUTE_CORRIDOR_HALF_WIDTH_M
                 )
+                * width_scale
+            )
+        )
 
-    return rows
+        if int(mask.sum().item()) >= count:
+            chosen_mask = mask
+            break
+
+    if chosen_mask is None:
+        chosen_mask = (
+            (along >= min_along)
+            & (
+                along
+                <= float(length.item())
+                + float(config.ROUTE_ENDPOINT_PADDING_M)
+            )
+        )
+
+    valid_indices = torch.nonzero(
+        chosen_mask,
+        as_tuple=False,
+    ).flatten()
+
+    if valid_indices.numel() == 0:
+        raise RuntimeError(
+            "No satellite gallery patch remains in the "
+            f"forward route corridor: leg={leg.index}, "
+            f"progress={min_along:.2f}m"
+        )
+
+    valid_xy = gallery_xy[
+        valid_indices
+    ]
+
+    distance2 = (
+        valid_xy - predicted_xy[None, :]
+    ).square().sum(dim=1)
+
+    valid_cross = cross[
+        valid_indices
+    ]
+
+    ranking_cost = (
+        distance2
+        + float(config.ROUTE_CROSS_TRACK_COST)
+        * valid_cross.square()
+    )
+
+    actual_count = min(
+        count,
+        int(valid_indices.numel()),
+    )
+
+    order = torch.topk(
+        ranking_cost,
+        k=actual_count,
+        largest=False,
+    ).indices
+
+    selected = valid_indices[
+        order
+    ]
+
+    # Near an endpoint the legal forward set can be smaller than 36.
+    # Pad by repeating the furthest legal selected patch rather than opening
+    # the search backward into already traversed route.
+    if selected.numel() < count:
+        pad_value = selected[-1]
+        padding = pad_value.repeat(
+            count - selected.numel()
+        )
+        selected = torch.cat(
+            [selected, padding],
+            dim=0,
+        )
+
+    return selected.reshape(1, -1)
 
 
-def gather_batch(
-    caches,
-    sequences,
+@torch.no_grad()
+def candidate_batch_from_indices(
+    visual,
+    uav_clip,
+    indices,
+):
+    device = visual.device
+    indices = indices.to(device)
+
+    centers = visual.gallery["xy"][
+        indices
+    ]
+
+    satellite_clip = visual.gallery[
+        "clip_feat"
+    ][indices]
+
+    z_uav = visual.model.encode_uav_from_clip(
+        uav_clip
+    )
+
+    z_sat = visual.model.encode_sat_from_clip(
+        satellite_clip.reshape(
+            -1,
+            satellite_clip.shape[-1],
+        ),
+        centers.reshape(-1, 2),
+    ).reshape(
+        centers.shape[0],
+        centers.shape[1],
+        -1,
+    )
+
+    raw_logits = (
+        visual.model.logit_scale.exp().clamp(
+            max=100.0
+        )
+        * (
+            z_uav[:, None]
+            * z_sat
+        ).sum(dim=2)
+    )
+
+    raw_prob = torch.softmax(
+        raw_logits
+        / float(config.MEANSHIFT_SCORE_TAU),
+        dim=1,
+    )
+
+    raw_index = raw_logits.argmax(dim=1)
+
+    raw_top1_xy = centers[
+        torch.arange(
+            centers.shape[0],
+            device=device,
+        ),
+        raw_index,
+    ]
+
+    hardms_xy, hardms_support = hard_mean_shift(
+        raw_logits,
+        centers,
+        config.MEANSHIFT_SCORE_TAU,
+        config.MEANSHIFT_BANDWIDTH_M,
+        config.MEANSHIFT_ITERATIONS,
+    )
+
+    return CandidateBatch(
+        indices=indices,
+        centers=centers,
+        z_uav=z_uav,
+        z_sat=z_sat,
+        raw_logits=raw_logits,
+        raw_prob=raw_prob,
+        raw_top1_xy=raw_top1_xy,
+        hardms_xy=hardms_xy,
+        hardms_support=hardms_support,
+    )
+
+
+def gt_candidate_captured(
+    candidate,
+    gt_xy,
+):
+    distance = torch.linalg.norm(
+        candidate.centers[0]
+        - gt_xy.to(
+            candidate.centers.device
+        )[None, :],
+        dim=1,
+    )
+
+    return bool(
+        distance.min().item()
+        <= float(
+            config.CANDIDATE_CAPTURE_RADIUS_M
+        )
+    )
+
+
+# ============================================================================
+# Kalman helpers
+# ============================================================================
+
+def initial_state_tensor(
+    start_xy,
     device,
 ):
-    length = int(
-        config.RNN_SEQUENCE_LENGTH
+    state = torch.zeros(
+        1,
+        6,
+        device=device,
+        dtype=torch.float32,
     )
-
-    def stack_field(
-        field,
-    ):
-        return torch.stack(
-            [
-                getattr(
-                    caches[route_index],
-                    field,
-                )[
-                    start:start + length
-                ]
-                for route_index, start
-                in sequences
-            ]
-        )
-
-    return {
-        "z_uav": stack_field(
-            "z_uav"
-        ).to(
-            device
-        ).float(),
-        "z_sat": stack_field(
-            "z_sat"
-        ).to(
-            device
-        ).float(),
-        "centers": stack_field(
-            "centers"
-        ).to(
-            device
-        ).float(),
-        "raw_logits": stack_field(
-            "raw_logits"
-        ).to(
-            device
-        ).float(),
-        "raw_prob": stack_field(
-            "raw_prob"
-        ).to(
-            device
-        ).float(),
-        "hardms": stack_field(
-            "hardms"
-        ).to(
-            device
-        ).float(),
-        "frame_ids": stack_field(
-            "frame_ids"
-        ).to(
-            device
-        ).long(),
-        "gt": stack_field(
-            "gt_xy"
-        ).to(
-            device
-        ).float(),
-    }
+    state[0, 0:2] = start_xy.to(
+        device
+    )
+    return state
 
 
-def gt_motion_targets(
-    gt,
-    frame_ids,
+def retarget_torch_state(
+    state,
+    covariance,
+    new_leg,
 ):
-    dt = (
-        frame_ids[:, 1:]
-        - frame_ids[:, :-1]
-    ).float().clamp_min(
-        1.0
+    state = state.clone()
+    covariance = covariance.clone()
+
+    speed = torch.linalg.norm(
+        state[:, 2:4],
+        dim=1,
+        keepdim=True,
     )
 
-    velocity = (
-        gt[:, 1:]
-        - gt[:, :-1]
-    ) / dt.unsqueeze(
-        -1
+    unit = new_leg.unit.to(
+        state.device
+    ).reshape(1, 2)
+
+    state[:, 2:4] = (
+        speed * unit
     )
 
-    if velocity.shape[1] > 1:
-        acceleration = (
-            velocity[:, 1:]
-            - velocity[:, :-1]
-        ) / dt[:, 1:].unsqueeze(
-            -1
+    state[:, 4:6] = 0.0
+
+    covariance[:, 2, 2] += float(
+        config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
+    )
+    covariance[:, 3, 3] += float(
+        config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
+    )
+    covariance[:, 4, 4] += float(
+        config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
+    )
+    covariance[:, 5, 5] += float(
+        config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
+    )
+
+    return state, covariance
+
+
+def filterpy_transition(dt):
+    dt = float(max(dt, 1.0))
+    half_dt2 = 0.5 * dt * dt
+
+    return np.array(
+        [
+            [1, 0, dt, 0, half_dt2, 0],
+            [0, 1, 0, dt, 0, half_dt2],
+            [0, 0, 1, 0, dt, 0],
+            [0, 0, 0, 1, 0, dt],
+            [0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 1],
+        ],
+        dtype=np.float64,
+    )
+
+
+def filterpy_process_covariance(dt):
+    dt = float(max(dt, 1.0))
+
+    diagonal = np.array(
+        [
+            config.KALMAN_Q_POSITION,
+            config.KALMAN_Q_POSITION,
+            config.KALMAN_Q_VELOCITY,
+            config.KALMAN_Q_VELOCITY,
+            config.KALMAN_Q_ACCELERATION,
+            config.KALMAN_Q_ACCELERATION,
+        ],
+        dtype=np.float64,
+    ) * dt
+
+    return np.diag(diagonal)
+
+
+def make_filterpy_filter(start_xy):
+    if KalmanFilter is None:
+        raise ImportError(
+            "FilterPy is required for evaluation/inference. "
+            "Install it with: pip install filterpy"
         )
-    else:
-        acceleration = velocity[
-            :,
-            0:0,
+
+    kf = KalmanFilter(
+        dim_x=6,
+        dim_z=2,
+    )
+
+    kf.x = np.array(
+        [
+            float(start_xy[0]),
+            float(start_xy[1]),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        ],
+        dtype=np.float64,
+    )
+
+    kf.H = np.array(
+        [
+            [1, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0],
+        ],
+        dtype=np.float64,
+    )
+
+    kf.P = np.diag(
+        [
+            config.KALMAN_INIT_POSITION_VAR,
+            config.KALMAN_INIT_POSITION_VAR,
+            config.KALMAN_INIT_VELOCITY_VAR,
+            config.KALMAN_INIT_VELOCITY_VAR,
+            config.KALMAN_INIT_ACCELERATION_VAR,
+            config.KALMAN_INIT_ACCELERATION_VAR,
         ]
+    ).astype(np.float64)
 
-    return (
-        velocity,
-        acceleration,
-    )
+    return kf
 
 
-def model_loss(
-    model,
-    batch,
+def retarget_filterpy_state(
+    kf,
+    new_leg,
 ):
-    output = model(
-        batch["z_uav"],
-        batch["z_sat"],
-        batch["raw_logits"],
-        batch["raw_prob"],
-        batch["centers"],
-        batch["frame_ids"],
-        batch["hardms"],
+    speed = math.hypot(
+        float(kf.x[2]),
+        float(kf.x[3]),
     )
 
-    gt = batch["gt"]
+    unit = new_leg.unit.numpy()
 
-    final_position = F.smooth_l1_loss(
-        output.filtered_xy,
-        gt,
+    kf.x[2] = speed * float(unit[0])
+    kf.x[3] = speed * float(unit[1])
+    kf.x[4] = 0.0
+    kf.x[5] = 0.0
+
+    kf.P[2, 2] += float(
+        config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
+    )
+    kf.P[3, 3] += float(
+        config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
+    )
+    kf.P[4, 4] += float(
+        config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
+    )
+    kf.P[5, 5] += float(
+        config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
     )
 
-    measurement_nll = F.gaussian_nll_loss(
-        output.measurement_xy,
-        gt,
-        output.measurement_variance,
-        full=False,
-        reduction="mean",
-    )
 
-    if gt.shape[1] > 1:
-        prediction_position = F.smooth_l1_loss(
-            output.prediction_xy[:, 1:],
-            gt[:, 1:],
-        )
-    else:
-        prediction_position = (
-            final_position
-            * 0.0
-        )
-
-    (
-        target_velocity,
-        target_acceleration,
-    ) = gt_motion_targets(
-        gt,
-        batch["frame_ids"],
-    )
-
-    if target_velocity.numel() > 0:
-        velocity = F.smooth_l1_loss(
-            output.kinematic_state[
-                :,
-                1:,
-                2:4,
-            ],
-            target_velocity,
-        )
-    else:
-        velocity = (
-            final_position
-            * 0.0
-        )
-
-    if target_acceleration.numel() > 0:
-        acceleration = F.smooth_l1_loss(
-            output.kinematic_state[
-                :,
-                2:,
-                4:6,
-            ],
-            target_acceleration,
-        )
-    else:
-        acceleration = (
-            final_position
-            * 0.0
-        )
-
-    loss = (
-        float(
-            config.LOSS_FINAL_POSITION
-        )
-        * final_position
-        + float(
-            config.LOSS_MEASUREMENT_GAUSSIAN_NLL
-        )
-        * measurement_nll
-        + float(
-            config.LOSS_PREDICTION_POSITION
-        )
-        * prediction_position
-        + float(
-            config.LOSS_VELOCITY
-        )
-        * velocity
-        + float(
-            config.LOSS_ACCELERATION
-        )
-        * acceleration
-    )
-
-    terms = {
-        "final": float(
-            final_position.detach().cpu()
-        ),
-        "measurement_nll": float(
-            measurement_nll.detach().cpu()
-        ),
-        "prediction": float(
-            prediction_position.detach().cpu()
-        ),
-        "velocity": float(
-            velocity.detach().cpu()
-        ),
-        "acceleration": float(
-            acceleration.detach().cpu()
-        ),
-    }
-
-    return (
-        loss,
-        output,
-        terms,
-    )
-
+# ============================================================================
+# Metrics
+# ============================================================================
 
 def metric_block(
     prediction,
@@ -692,7 +834,6 @@ def metric_block(
         prediction,
         dtype=np.float64,
     )
-
     gt = np.asarray(
         gt,
         dtype=np.float64,
@@ -703,9 +844,7 @@ def metric_block(
         axis=1,
     )
 
-    if len(
-        prediction
-    ) > 1:
+    if len(prediction) > 1:
         predicted_step = np.diff(
             prediction,
             axis=0,
@@ -716,16 +855,13 @@ def metric_block(
         )
 
         rpe = np.linalg.norm(
-            predicted_step
-            - gt_step,
+            predicted_step - gt_step,
             axis=1,
         )
 
-        gt_step_length = (
-            np.linalg.norm(
-                gt_step,
-                axis=1,
-            )
+        gt_step_length = np.linalg.norm(
+            gt_step,
+            axis=1,
         )
 
         jump_threshold = (
@@ -735,16 +871,12 @@ def metric_block(
                     99,
                 )
             )
-            + float(
-                config.JUMP_TOLERANCE_M
-            )
+            + float(config.JUMP_TOLERANCE_M)
         )
 
-        predicted_step_length = (
-            np.linalg.norm(
-                predicted_step,
-                axis=1,
-            )
+        predicted_step_length = np.linalg.norm(
+            predicted_step,
+            axis=1,
         )
 
         jump_rate = float(
@@ -754,98 +886,29 @@ def metric_block(
             ).mean()
             * 100.0
         )
-
-        stationary = (
-            gt_step_length
-            < 1e-3
-        )
-
-        stationary_drift = (
-            predicted_step_length[
-                stationary
-            ]
-        )
-
-        stationary_p90 = (
-            float(
-                np.percentile(
-                    stationary_drift,
-                    90,
-                )
-            )
-            if len(
-                stationary_drift
-            )
-            else 0.0
-        )
-
-        path_ratio = float(
-            predicted_step_length.sum()
-            / max(
-                gt_step_length.sum(),
-                1e-8,
-            )
-        )
     else:
         rpe = np.zeros(
-            1
+            1,
+            dtype=np.float64,
         )
-        jump_rate = 0.0
-        stationary_p90 = 0.0
-        path_ratio = 0.0
         jump_threshold = 0.0
+        jump_rate = 0.0
 
     return {
-        "MLE_m": float(
-            error.mean()
-        ),
+        "MLE_m": float(error.mean()),
         "MedLE_m": float(
-            np.median(
-                error
-            )
+            np.median(error)
         ),
         "P90_m": float(
-            np.percentile(
-                error,
-                90,
-            )
+            np.percentile(error, 90)
         ),
         "P95_m": float(
-            np.percentile(
-                error,
-                95,
-            )
+            np.percentile(error, 95)
         ),
         "ATE_RMSE_m": float(
             np.sqrt(
-                np.mean(
-                    error ** 2
-                )
+                np.mean(error ** 2)
             )
-        ),
-        "LSR@5_pct": float(
-            (
-                error <= 5.0
-            ).mean()
-            * 100.0
-        ),
-        "LSR@10_pct": float(
-            (
-                error <= 10.0
-            ).mean()
-            * 100.0
-        ),
-        "LSR@15_pct": float(
-            (
-                error <= 15.0
-            ).mean()
-            * 100.0
-        ),
-        "LSR@20_pct": float(
-            (
-                error <= 20.0
-            ).mean()
-            * 100.0
         ),
         "RPE_m": float(
             rpe.mean()
@@ -856,11 +919,21 @@ def metric_block(
         "JumpThreshold_m": float(
             jump_threshold
         ),
-        "StationaryDriftP90_m": float(
-            stationary_p90
+        "LSR@5_pct": float(
+            (error <= 5.0).mean()
+            * 100.0
         ),
-        "PathLengthRatio": float(
-            path_ratio
+        "LSR@10_pct": float(
+            (error <= 10.0).mean()
+            * 100.0
+        ),
+        "LSR@15_pct": float(
+            (error <= 15.0).mean()
+            * 100.0
+        ),
+        "LSR@20_pct": float(
+            (error <= 20.0).mean()
+            * 100.0
         ),
         "MaxLE_m": float(
             error.max()
@@ -868,695 +941,990 @@ def metric_block(
     }
 
 
-def cache_frame_to_device(
-    cache,
-    index,
-    device,
-):
+# ============================================================================
+# Training
+# ============================================================================
+
+def teacher_search_ratio(epoch):
+    horizon = max(
+        1,
+        int(config.TEACHER_SEARCH_EPOCHS),
+    )
+
+    if epoch >= horizon:
+        return 0.0
+
+    return float(
+        1.0
+        - epoch / float(horizon)
+    )
+
+
+def frame_position_lookup(cache):
     return {
-        "z_uav": cache.z_uav[
-            index:index + 1
-        ].to(
-            device
-        ).float(),
-        "z_sat": cache.z_sat[
-            index:index + 1
-        ].to(
-            device
-        ).float(),
-        "centers": cache.centers[
-            index:index + 1
-        ].to(
-            device
-        ).float(),
-        "raw_logits": cache.raw_logits[
-            index:index + 1
-        ].to(
-            device
-        ).float(),
-        "raw_prob": cache.raw_prob[
-            index:index + 1
-        ].to(
-            device
-        ).float(),
-        "hardms": cache.hardms[
-            index:index + 1
-        ].to(
-            device
-        ).float(),
-        "frame_id": cache.frame_ids[
-            index:index + 1
-        ].to(
-            device
-        ).long(),
+        int(frame_id): index
+        for index, frame_id
+        in enumerate(
+            cache.frame_ids.tolist()
+        )
     }
 
 
-@torch.no_grad()
-def predict_split(
-    model,
-    caches,
-    split_name,
-    device,
-    save_rows=False,
+def route_frame_range_indices(
+    cache,
+    start_frame,
+    end_frame,
 ):
-    model.eval()
+    frame_ids = cache.frame_ids.numpy()
 
-    route_outputs = []
+    mask = (
+        (frame_ids >= int(start_frame))
+        & (frame_ids <= int(end_frame))
+    )
 
-    for cache in caches:
-        segment = contiguous_splits(
-            len(cache)
-        )[split_name]
+    return np.nonzero(mask)[0].tolist()
 
-        recurrent_state = None
-        rows = []
 
-        # IMPORTANT:
-        # Unlike the old 5-frame sliding CRF, the recurrent state is not reset
-        # every window.  It survives continuously through the complete segment.
-        for index in range(
-            segment.start,
-            segment.end,
-        ):
-            frame = cache_frame_to_device(
-                cache,
-                index,
-                device,
+def compute_motion_targets(
+    current_gt,
+    previous_gt,
+    previous_velocity,
+    dt,
+):
+    if previous_gt is None:
+        velocity = torch.zeros_like(
+            current_gt
+        )
+        acceleration = torch.zeros_like(
+            current_gt
+        )
+        return velocity, acceleration
+
+    dt_value = float(max(dt, 1.0))
+
+    velocity = (
+        current_gt - previous_gt
+    ) / dt_value
+
+    if previous_velocity is None:
+        acceleration = torch.zeros_like(
+            velocity
+        )
+    else:
+        acceleration = (
+            velocity - previous_velocity
+        ) / dt_value
+
+    return velocity, acceleration
+
+
+def train_one_epoch(
+    model,
+    optimizer,
+    visual,
+    cache,
+    manifest,
+    train_range,
+    device,
+    epoch,
+):
+    model.train()
+
+    indices = route_frame_range_indices(
+        cache,
+        train_range[0],
+        train_range[1],
+    )
+
+    if not indices:
+        raise RuntimeError(
+            "Temporal Route-A training range is empty"
+        )
+
+    first_frame = int(
+        cache.frame_ids[indices[0]].item()
+    )
+    current_leg = active_leg_for_frame(
+        manifest,
+        first_frame,
+    )
+
+    state = initial_state_tensor(
+        current_leg.start_xy,
+        device,
+    )
+    covariance = initial_covariance_torch(
+        1,
+        device,
+        torch.float32,
+    )
+    hidden = model.initial_hidden(
+        1,
+        device,
+        torch.float32,
+    )
+
+    accepted_progress = 0.0
+    previous_frame = first_frame - 1
+    previous_gt = None
+    previous_gt_velocity = None
+    previous_leg_index = current_leg.index
+
+    optimizer.zero_grad(
+        set_to_none=True
+    )
+
+    loss_accumulator = None
+    chunk_steps = 0
+    loss_rows = []
+    capture_rows = []
+
+    ratio = teacher_search_ratio(
+        epoch
+    )
+
+    for sequence_step, index in enumerate(
+        indices
+    ):
+        frame_id = int(
+            cache.frame_ids[index].item()
+        )
+
+        gt_xy = cache.gt_xy[
+            index
+        ].to(
+            device
+        ).float()
+
+        leg = active_leg_for_frame(
+            manifest,
+            frame_id,
+        )
+
+        leg_changed = (
+            leg.index
+            != previous_leg_index
+        )
+
+        if leg_changed:
+            state, covariance = retarget_torch_state(
+                state,
+                covariance,
+                leg,
             )
+            accepted_progress = 0.0
 
-            result = model.step(
-                frame["z_uav"],
-                frame["z_sat"],
-                frame["raw_prob"],
-                frame["centers"],
-                frame["hardms"],
-                frame["frame_id"],
-                recurrent_state=recurrent_state,
-            )
+        dt = max(
+            frame_id - previous_frame,
+            1,
+        )
 
-            recurrent_state = result[
-                "state"
-            ]
-
-            kinematic = (
-                recurrent_state.kinematic[
-                    0
-                ].cpu()
-            )
-
-            measurement_variance = (
-                result[
-                    "measurement_variance"
-                ][0].cpu()
-            )
-
-            rows.append(
-                {
-                    "frame_id": int(
-                        cache.frame_ids[
-                            index
-                        ]
-                    ),
-                    "gt": cache.gt_xy[
-                        index
-                    ].tolist(),
-                    "raw_top1": cache.raw_top1[
-                        index
-                    ].tolist(),
-                    "hardms": cache.hardms[
-                        index
-                    ].tolist(),
-                    "visual_expectation": result[
-                        "visual_expectation"
-                    ][0].cpu().tolist(),
-                    "rnn_measurement": result[
-                        "measurement_xy"
-                    ][0].cpu().tolist(),
-                    "motion_prediction": result[
-                        "prediction_xy"
-                    ][0].cpu().tolist(),
-                    "final": result[
-                        "filtered_xy"
-                    ][0].cpu().tolist(),
-                    "vx": float(
-                        kinematic[2]
-                    ),
-                    "vy": float(
-                        kinematic[3]
-                    ),
-                    "ax": float(
-                        kinematic[4]
-                    ),
-                    "ay": float(
-                        kinematic[5]
-                    ),
-                    "measurement_var_x": float(
-                        measurement_variance[
-                            0
-                        ]
-                    ),
-                    "measurement_var_y": float(
-                        measurement_variance[
-                            1
-                        ]
-                    ),
-                    "kalman_gain_x": float(
-                        result[
-                            "kalman_position_gain"
-                        ][0, 0].cpu()
-                    ),
-                    "kalman_gain_y": float(
-                        result[
-                            "kalman_position_gain"
-                        ][0, 1].cpu()
-                    ),
-                    "capture": bool(
-                        cache.capture[
-                            index
-                        ]
-                    ),
-                }
-            )
-
-        if not rows:
-            continue
-
-        gt = [
-            row["gt"]
-            for row in rows
-        ]
-
-        summary = {
-            "route": cache.name,
-            "split": split_name,
-            "RawTop1": metric_block(
-                [
-                    row["raw_top1"]
-                    for row in rows
-                ],
-                gt,
-            ),
-            "FixedHardMS": metric_block(
-                [
-                    row["hardms"]
-                    for row in rows
-                ],
-                gt,
-            ),
-            "RNNMeasurement": metric_block(
-                [
-                    row["rnn_measurement"]
-                    for row in rows
-                ],
-                gt,
-            ),
-            "MotionPrediction": metric_block(
-                [
-                    row["motion_prediction"]
-                    for row in rows
-                ],
-                gt,
-            ),
-            "RNN_Kalman": metric_block(
-                [
-                    row["final"]
-                    for row in rows
-                ],
-                gt,
-            ),
-            "CandidateCaptureRate_pct": float(
-                cache.capture[
-                    segment.start:segment.end
-                ].float().mean().item()
-                * 100.0
-            ),
-            "MeanMeasurementVariance": float(
-                np.mean(
-                    [
-                        0.5
-                        * (
-                            row[
-                                "measurement_var_x"
-                            ]
-                            + row[
-                                "measurement_var_y"
-                            ]
-                        )
-                        for row in rows
-                    ]
-                )
-            ),
-            "MeanKalmanGain": float(
-                np.mean(
-                    [
-                        0.5
-                        * (
-                            row[
-                                "kalman_gain_x"
-                            ]
-                            + row[
-                                "kalman_gain_y"
-                            ]
-                        )
-                        for row in rows
-                    ]
-                )
-            ),
-        }
-
-        route_outputs.append(
-            (
-                cache.name,
-                summary,
-                rows,
+        predicted_state, predicted_covariance = (
+            kalman_predict_torch(
+                state,
+                covariance,
+                torch.tensor(
+                    [dt],
+                    device=device,
+                    dtype=torch.float32,
+                ),
             )
         )
 
-        if save_rows:
-            config.OUTPUT_DIR.mkdir(
-                parents=True,
-                exist_ok=True,
+        predicted_xy = predicted_state[
+            0,
+            0:2,
+        ]
+
+        # Training-only curriculum for candidate search center.
+        # By the end of the curriculum ratio=0 and search is fully closed-loop.
+        search_xy = (
+            ratio * gt_xy.detach()
+            + (1.0 - ratio)
+            * predicted_xy.detach()
+        )
+
+        indices_forward = candidate_indices_forward(
+            visual,
+            search_xy,
+            leg,
+            accepted_progress,
+        )
+
+        uav_clip = cache.uav_clip[
+            index:index + 1
+        ].to(
+            device
+        ).float()
+
+        candidate = candidate_batch_from_indices(
+            visual,
+            uav_clip,
+            indices_forward,
+        )
+
+        capture_rows.append(
+            gt_candidate_captured(
+                candidate,
+                gt_xy.detach().cpu(),
+            )
+        )
+
+        measurement = model.forward_step(
+            candidate.z_uav,
+            candidate.z_sat,
+            candidate.raw_prob,
+            candidate.centers,
+            candidate.hardms_xy,
+            candidate.hardms_support,
+            predicted_state,
+            leg.start_xy.to(
+                device
+            ).reshape(1, 2),
+            leg.end_xy.to(
+                device
+            ).reshape(1, 2),
+            torch.tensor(
+                [leg_changed],
+                device=device,
+            ),
+            hidden,
+        )
+
+        updated_state, updated_covariance, _ = (
+            kalman_update_torch(
+                predicted_state,
+                predicted_covariance,
+                measurement.measurement_xy,
+                measurement.measurement_variance,
+            )
+        )
+
+        velocity_target, acceleration_target = (
+            compute_motion_targets(
+                gt_xy,
+                previous_gt,
+                previous_gt_velocity,
+                dt,
+            )
+        )
+
+        final_loss = F.smooth_l1_loss(
+            updated_state[:, 0:2],
+            gt_xy.reshape(1, 2),
+        )
+
+        measurement_nll = F.gaussian_nll_loss(
+            measurement.measurement_xy,
+            gt_xy.reshape(1, 2),
+            measurement.measurement_variance,
+            full=False,
+            reduction="mean",
+        )
+
+        prediction_loss = F.smooth_l1_loss(
+            predicted_state[:, 0:2],
+            gt_xy.reshape(1, 2),
+        )
+
+        velocity_loss = F.smooth_l1_loss(
+            updated_state[:, 2:4],
+            velocity_target.reshape(1, 2),
+        )
+
+        acceleration_loss = F.smooth_l1_loss(
+            updated_state[:, 4:6],
+            acceleration_target.reshape(1, 2),
+        )
+
+        loss = (
+            float(config.LOSS_FINAL_SMOOTH_L1)
+            * final_loss
+            + float(
+                config.LOSS_MEASUREMENT_GAUSSIAN_NLL
+            )
+            * measurement_nll
+            + float(
+                config.LOSS_PREDICTION_SMOOTH_L1
+            )
+            * prediction_loss
+            + float(
+                config.LOSS_VELOCITY_SMOOTH_L1
+            )
+            * velocity_loss
+            + float(
+                config.LOSS_ACCELERATION_SMOOTH_L1
+            )
+            * acceleration_loss
+        )
+
+        if loss_accumulator is None:
+            loss_accumulator = loss
+        else:
+            loss_accumulator = (
+                loss_accumulator + loss
             )
 
-            path = (
-                config.OUTPUT_DIR
-                / f"{cache.name}_rnn_kalman_frames.csv"
+        chunk_steps += 1
+
+        loss_rows.append(
+            {
+                "total": float(
+                    loss.detach().cpu()
+                ),
+                "final": float(
+                    final_loss.detach().cpu()
+                ),
+                "nll": float(
+                    measurement_nll.detach().cpu()
+                ),
+                "prediction": float(
+                    prediction_loss.detach().cpu()
+                ),
+                "velocity": float(
+                    velocity_loss.detach().cpu()
+                ),
+                "acceleration": float(
+                    acceleration_loss.detach().cpu()
+                ),
+            }
+        )
+
+        state = updated_state
+        covariance = updated_covariance
+        hidden = measurement.hidden
+
+        along, _ = project_to_leg(
+            state[
+                0,
+                0:2,
+            ].detach().cpu(),
+            leg,
+        )
+        accepted_progress = max(
+            accepted_progress,
+            along,
+            0.0,
+        )
+
+        previous_frame = frame_id
+        previous_gt = gt_xy.detach()
+        previous_gt_velocity = (
+            velocity_target.detach()
+        )
+        previous_leg_index = leg.index
+
+        is_chunk_end = (
+            chunk_steps
+            >= int(config.TBPTT_STEPS)
+            or sequence_step
+            == len(indices) - 1
+        )
+
+        if is_chunk_end:
+            normalized = (
+                loss_accumulator
+                / float(chunk_steps)
             )
 
-            with path.open(
-                "w",
-                newline="",
-                encoding="utf-8",
-            ) as file:
-                writer = csv.writer(
-                    file
+            if not torch.isfinite(
+                normalized
+            ):
+                raise FloatingPointError(
+                    "non-finite temporal loss"
                 )
 
-                writer.writerow(
-                    [
-                        "frame_id",
-                        "gt_x",
-                        "gt_y",
-                        "raw_top1_x",
-                        "raw_top1_y",
-                        "hardms_x",
-                        "hardms_y",
-                        "visual_expectation_x",
-                        "visual_expectation_y",
-                        "rnn_measurement_x",
-                        "rnn_measurement_y",
-                        "motion_prediction_x",
-                        "motion_prediction_y",
-                        "final_x",
-                        "final_y",
-                        "vx",
-                        "vy",
-                        "ax",
-                        "ay",
-                        "measurement_var_x",
-                        "measurement_var_y",
-                        "kalman_gain_x",
-                        "kalman_gain_y",
-                        "candidate_capture",
-                    ]
-                )
+            normalized.backward()
 
-                for row in rows:
-                    writer.writerow(
-                        [
-                            row["frame_id"],
-                            *row["gt"],
-                            *row["raw_top1"],
-                            *row["hardms"],
-                            *row[
-                                "visual_expectation"
-                            ],
-                            *row[
-                                "rnn_measurement"
-                            ],
-                            *row[
-                                "motion_prediction"
-                            ],
-                            *row["final"],
-                            row["vx"],
-                            row["vy"],
-                            row["ax"],
-                            row["ay"],
-                            row[
-                                "measurement_var_x"
-                            ],
-                            row[
-                                "measurement_var_y"
-                            ],
-                            row[
-                                "kalman_gain_x"
-                            ],
-                            row[
-                                "kalman_gain_y"
-                            ],
-                            int(
-                                row[
-                                    "capture"
-                                ]
-                            ),
-                        ]
-                    )
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(),
+                float(config.GRAD_CLIP_NORM),
+            )
 
-    return route_outputs
+            optimizer.step()
+            optimizer.zero_grad(
+                set_to_none=True
+            )
+
+            # Truncated BPTT: state values persist, graph does not.
+            state = state.detach()
+            covariance = covariance.detach()
+            hidden = hidden.detach()
+
+            loss_accumulator = None
+            chunk_steps = 0
+
+    means = {
+        key: float(
+            np.mean(
+                [row[key] for row in loss_rows]
+            )
+        )
+        for key in loss_rows[0]
+    }
+
+    means["capture_pct"] = (
+        float(
+            np.mean(capture_rows)
+            * 100.0
+        )
+        if capture_rows
+        else 0.0
+    )
+    means["teacher_search_ratio"] = ratio
+
+    return means
 
 
-def validation_objective(
-    summary,
+# ============================================================================
+# FilterPy evaluation / inference
+# ============================================================================
+
+@torch.no_grad()
+def evaluate_segment_filterpy(
+    model,
+    visual,
+    cache,
+    manifest,
+    device,
+    start_frame,
+    end_frame,
+    save_csv_path=None,
 ):
+    if KalmanFilter is None:
+        raise ImportError(
+            "FilterPy is required. "
+            "Run: pip install filterpy"
+        )
+
+    model.eval()
+
+    indices = route_frame_range_indices(
+        cache,
+        start_frame,
+        end_frame,
+    )
+
+    if not indices:
+        raise RuntimeError(
+            f"empty evaluation segment "
+            f"{start_frame}..{end_frame}"
+        )
+
+    first_frame_id = int(
+        cache.frame_ids[
+            indices[0]
+        ].item()
+    )
+
+    current_leg = active_leg_for_frame(
+        manifest,
+        first_frame_id,
+    )
+
+    kf = make_filterpy_filter(
+        current_leg.start_xy.numpy()
+    )
+
+    hidden = model.initial_hidden(
+        1,
+        device,
+        torch.float32,
+    )
+
+    accepted_progress = 0.0
+    previous_frame = first_frame_id - 1
+    previous_leg_index = current_leg.index
+
+    rows = []
+
+    for index in indices:
+        frame_id = int(
+            cache.frame_ids[
+                index
+            ].item()
+        )
+
+        gt_xy = cache.gt_xy[
+            index
+        ]
+
+        leg = active_leg_for_frame(
+            manifest,
+            frame_id,
+        )
+
+        leg_changed = (
+            leg.index
+            != previous_leg_index
+        )
+
+        if leg_changed:
+            retarget_filterpy_state(
+                kf,
+                leg,
+            )
+            accepted_progress = 0.0
+
+        dt = max(
+            frame_id - previous_frame,
+            1,
+        )
+
+        # Standard FilterPy predict step.
+        kf.F = filterpy_transition(
+            dt
+        )
+        kf.Q = filterpy_process_covariance(
+            dt
+        )
+        kf.predict()
+
+        predicted_state_np = np.asarray(
+            kf.x,
+            dtype=np.float64,
+        ).reshape(6)
+
+        predicted_state = torch.tensor(
+            predicted_state_np,
+            device=device,
+            dtype=torch.float32,
+        ).reshape(1, 6)
+
+        predicted_xy = torch.tensor(
+            predicted_state_np[0:2],
+            dtype=torch.float32,
+        )
+
+        candidate_indices = candidate_indices_forward(
+            visual,
+            predicted_xy,
+            leg,
+            accepted_progress,
+        )
+
+        uav_clip = cache.uav_clip[
+            index:index + 1
+        ].to(
+            device
+        ).float()
+
+        candidate = candidate_batch_from_indices(
+            visual,
+            uav_clip,
+            candidate_indices,
+        )
+
+        measurement = model.forward_step(
+            candidate.z_uav,
+            candidate.z_sat,
+            candidate.raw_prob,
+            candidate.centers,
+            candidate.hardms_xy,
+            candidate.hardms_support,
+            predicted_state,
+            leg.start_xy.to(
+                device
+            ).reshape(1, 2),
+            leg.end_xy.to(
+                device
+            ).reshape(1, 2),
+            torch.tensor(
+                [leg_changed],
+                device=device,
+            ),
+            hidden,
+        )
+
+        hidden = measurement.hidden
+
+        measurement_xy = (
+            measurement.measurement_xy[
+                0
+            ].cpu().numpy()
+        )
+
+        measurement_variance = (
+            measurement.measurement_variance[
+                0
+            ].cpu().numpy()
+        )
+
+        # Standard FilterPy update step.
+        kf.R = np.diag(
+            measurement_variance.astype(
+                np.float64
+            )
+        )
+
+        kf.update(
+            measurement_xy.astype(
+                np.float64
+            )
+        )
+
+        final_state = np.asarray(
+            kf.x,
+            dtype=np.float64,
+        ).reshape(6)
+
+        final_xy = final_state[
+            0:2
+        ]
+
+        along, cross = project_to_leg(
+            torch.tensor(
+                final_xy,
+                dtype=torch.float32,
+            ),
+            leg,
+        )
+
+        accepted_progress = max(
+            accepted_progress,
+            along,
+            0.0,
+        )
+
+        capture = gt_candidate_captured(
+            candidate,
+            gt_xy,
+        )
+
+        rows.append(
+            {
+                "frame_id": frame_id,
+                "leg_index": leg.index,
+                "leg_changed": int(
+                    leg_changed
+                ),
+                "gt_x": float(gt_xy[0]),
+                "gt_y": float(gt_xy[1]),
+                "prediction_x": float(
+                    predicted_state_np[0]
+                ),
+                "prediction_y": float(
+                    predicted_state_np[1]
+                ),
+                "raw_top1_x": float(
+                    candidate.raw_top1_xy[
+                        0,
+                        0,
+                    ].cpu()
+                ),
+                "raw_top1_y": float(
+                    candidate.raw_top1_xy[
+                        0,
+                        1,
+                    ].cpu()
+                ),
+                "hardms_x": float(
+                    candidate.hardms_xy[
+                        0,
+                        0,
+                    ].cpu()
+                ),
+                "hardms_y": float(
+                    candidate.hardms_xy[
+                        0,
+                        1,
+                    ].cpu()
+                ),
+                "measurement_x": float(
+                    measurement_xy[0]
+                ),
+                "measurement_y": float(
+                    measurement_xy[1]
+                ),
+                "measurement_var_x": float(
+                    measurement_variance[0]
+                ),
+                "measurement_var_y": float(
+                    measurement_variance[1]
+                ),
+                "final_x": float(
+                    final_xy[0]
+                ),
+                "final_y": float(
+                    final_xy[1]
+                ),
+                "vx": float(
+                    final_state[2]
+                ),
+                "vy": float(
+                    final_state[3]
+                ),
+                "ax": float(
+                    final_state[4]
+                ),
+                "ay": float(
+                    final_state[5]
+                ),
+                "accepted_progress_m": float(
+                    accepted_progress
+                ),
+                "cross_track_m": float(
+                    cross
+                ),
+                "candidate_capture": int(
+                    capture
+                ),
+            }
+        )
+
+        previous_frame = frame_id
+        previous_leg_index = leg.index
+
+    gt = [
+        [row["gt_x"], row["gt_y"]]
+        for row in rows
+    ]
+
+    summary = {
+        "MotionPrediction": metric_block(
+            [
+                [
+                    row["prediction_x"],
+                    row["prediction_y"],
+                ]
+                for row in rows
+            ],
+            gt,
+        ),
+        "RawTop1": metric_block(
+            [
+                [
+                    row["raw_top1_x"],
+                    row["raw_top1_y"],
+                ]
+                for row in rows
+            ],
+            gt,
+        ),
+        "FixedHardMS": metric_block(
+            [
+                [
+                    row["hardms_x"],
+                    row["hardms_y"],
+                ]
+                for row in rows
+            ],
+            gt,
+        ),
+        "RNNMeasurement": metric_block(
+            [
+                [
+                    row["measurement_x"],
+                    row["measurement_y"],
+                ]
+                for row in rows
+            ],
+            gt,
+        ),
+        "FilterPyKalmanFinal": metric_block(
+            [
+                [
+                    row["final_x"],
+                    row["final_y"],
+                ]
+                for row in rows
+            ],
+            gt,
+        ),
+        "CandidateCaptureRate_pct": float(
+            np.mean(
+                [
+                    row["candidate_capture"]
+                    for row in rows
+                ]
+            )
+            * 100.0
+        ),
+        "MeanMeasurementVariance": float(
+            np.mean(
+                [
+                    0.5
+                    * (
+                        row["measurement_var_x"]
+                        + row["measurement_var_y"]
+                    )
+                    for row in rows
+                ]
+            )
+        ),
+    }
+
+    if save_csv_path is not None:
+        save_csv_path = Path(
+            save_csv_path
+        )
+        save_csv_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        with save_csv_path.open(
+            "w",
+            newline="",
+            encoding="utf-8",
+        ) as file:
+            writer = csv.DictWriter(
+                file,
+                fieldnames=list(
+                    rows[0].keys()
+                ),
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
+    return summary, rows
+
+
+def validation_score(summary):
     metric = summary[
-        "RNN_Kalman"
+        "FilterPyKalmanFinal"
     ]
 
     return (
         metric["MLE_m"]
-        + float(
-            config.VAL_RPE_WEIGHT
-        )
+        + float(config.VAL_RPE_WEIGHT)
         * metric["RPE_m"]
-        + float(
-            config.VAL_JUMP_WEIGHT
-        )
+        + float(config.VAL_JUMP_WEIGHT)
         * metric["JumpRate_pct"]
-        + float(
-            config.VAL_STATIONARY_WEIGHT
-        )
-        * metric[
-            "StationaryDriftP90_m"
-        ]
     )
 
 
-def train_model(
+def train_temporal(
     model,
-    caches,
+    visual,
+    cache,
+    manifest,
     device,
     epochs,
-    resume=False,
 ):
-    sequences = make_sequences(
-        caches,
-        "train",
+    split = split_route_a_legs(
+        manifest
     )
 
-    if not sequences:
-        raise RuntimeError(
-            "No valid recurrent training sequences; "
-            "check candidate capture and sequence length"
-        )
+    print(
+        "Route A temporal leg split:",
+        split,
+        flush=True,
+    )
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=float(
-            config.LR
-        ),
+        lr=float(config.LR),
         weight_decay=float(
             config.WEIGHT_DECAY
         ),
     )
 
-    start_epoch = 0
-    best_score = float(
-        "inf"
-    )
+    best_score = float("inf")
     best_state = None
     patience = 0
-
-    if (
-        resume
-        and config.TEMPORAL_CHECKPOINT.exists()
-    ):
-        checkpoint = torch.load(
-            config.TEMPORAL_CHECKPOINT,
-            map_location=device,
-        )
-
-        if checkpoint.get(
-            "architecture"
-        ) == ARCHITECTURE_NAME:
-            model.load_state_dict(
-                checkpoint["model"],
-                strict=True,
-            )
-
-            if "optimizer" in checkpoint:
-                optimizer.load_state_dict(
-                    checkpoint[
-                        "optimizer"
-                    ]
-                )
-
-            start_epoch = int(
-                checkpoint.get(
-                    "epoch",
-                    0,
-                )
-            )
-
-            best_score = float(
-                checkpoint.get(
-                    "best_score",
-                    float("inf"),
-                )
-            )
-
-            best_state = checkpoint.get(
-                "best_model"
-            )
-
-            print(
-                "resume recurrent Kalman "
-                f"from epoch {start_epoch}",
-                flush=True,
-            )
 
     config.CHECKPOINT_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    batch_size = int(
-        config.TRAIN_BATCH_SIZE
-    )
-
     for epoch in range(
-        start_epoch,
-        int(epochs),
+        int(epochs)
     ):
-        model.train()
-        random.shuffle(
-            sequences
-        )
-
-        losses = []
-        term_rows = []
-
-        for offset in range(
-            0,
-            len(sequences),
-            batch_size,
-        ):
-            selected = sequences[
-                offset:offset
-                + batch_size
-            ]
-
-            batch = gather_batch(
-                caches,
-                selected,
-                device,
-            )
-
-            optimizer.zero_grad(
-                set_to_none=True
-            )
-
-            (
-                loss,
-                _,
-                terms,
-            ) = model_loss(
-                model,
-                batch,
-            )
-
-            if not torch.isfinite(
-                loss
-            ):
-                raise FloatingPointError(
-                    "non-finite recurrent "
-                    f"loss at epoch {epoch + 1}"
-                )
-
-            loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(
-                model.parameters(),
-                float(
-                    config.GRAD_CLIP_NORM
-                ),
-            )
-
-            optimizer.step()
-
-            losses.append(
-                float(
-                    loss.detach().cpu()
-                )
-            )
-
-            term_rows.append(
-                terms
-            )
-
-        validation = predict_split(
+        training = train_one_epoch(
             model,
-            caches,
-            "val",
+            optimizer,
+            visual,
+            cache,
+            manifest,
+            split["train"],
             device,
-            save_rows=False,
+            epoch,
         )
 
-        if not validation:
-            raise RuntimeError(
-                "No validation predictions"
-            )
-
-        scores = [
-            validation_objective(
-                summary
-            )
-            for _, summary, _
-            in validation
-        ]
-
-        score = float(
-            np.mean(
-                scores
-            )
+        validation, _ = evaluate_segment_filterpy(
+            model,
+            visual,
+            cache,
+            manifest,
+            device,
+            split["val"][0],
+            split["val"][1],
+            save_csv_path=None,
         )
 
-        val_mle = float(
-            np.mean(
-                [
-                    summary[
-                        "RNN_Kalman"
-                    ][
-                        "MLE_m"
-                    ]
-                    for _, summary, _
-                    in validation
-                ]
-            )
-        )
-
-        val_p90 = float(
-            np.mean(
-                [
-                    summary[
-                        "RNN_Kalman"
-                    ][
-                        "P90_m"
-                    ]
-                    for _, summary, _
-                    in validation
-                ]
-            )
-        )
-
-        val_rpe = float(
-            np.mean(
-                [
-                    summary[
-                        "RNN_Kalman"
-                    ][
-                        "RPE_m"
-                    ]
-                    for _, summary, _
-                    in validation
-                ]
-            )
-        )
-
-        val_jump = float(
-            np.mean(
-                [
-                    summary[
-                        "RNN_Kalman"
-                    ][
-                        "JumpRate_pct"
-                    ]
-                    for _, summary, _
-                    in validation
-                ]
-            )
+        score = validation_score(
+            validation
         )
 
         improved = (
-            score
-            < best_score
+            score < best_score
         )
 
         if improved:
             best_score = score
-
             best_state = {
                 key: value.detach().cpu().clone()
                 for key, value
                 in model.state_dict().items()
             }
-
             patience = 0
         else:
             patience += 1
 
         torch.save(
             {
+                "architecture": ARCHITECTURE_NAME,
                 "model": model.state_dict(),
                 "best_model": best_state,
-                "optimizer": optimizer.state_dict(),
                 "epoch": epoch + 1,
                 "best_score": best_score,
-                "architecture": ARCHITECTURE_NAME,
-                "sequence_length": int(
-                    config.RNN_SEQUENCE_LENGTH
+                "temporal_train_routes": [
+                    "route_A"
+                ],
+                "temporal_validation_routes": [
+                    "route_A"
+                ],
+                "temporal_eval_routes": [
+                    "route_B",
+                    "route_C",
+                ],
+                "uses_mission_waypoints": True,
+                "waypoint_source_note": (
+                    "Current route_waypoints are GPS-derived "
+                    "mission-waypoint proxies."
                 ),
-                "jitter_m": float(
-                    config.LOCAL_PRIOR_JITTER_M
-                ),
+                "filterpy_used_for_validation_and_inference": True,
+                "state_definition": [
+                    "x",
+                    "y",
+                    "vx",
+                    "vy",
+                    "ax",
+                    "ay",
+                ],
             },
             config.TEMPORAL_CHECKPOINT,
         )
 
-        mean_terms = {
-            key: float(
-                np.mean(
-                    [
-                        row[key]
-                        for row in term_rows
-                    ]
-                )
-            )
-            for key in term_rows[0]
-        }
+        final_metric = validation[
+            "FilterPyKalmanFinal"
+        ]
 
         print(
             f"epoch={epoch + 1:03d}/{epochs} "
-            f"loss={np.mean(losses):.5f} "
-            f"final={mean_terms['final']:.4f} "
-            f"nll={mean_terms['measurement_nll']:.4f} "
-            f"pred={mean_terms['prediction']:.4f} "
-            f"vel={mean_terms['velocity']:.4f} "
-            f"acc={mean_terms['acceleration']:.4f} "
-            f"val_mle={val_mle:.3f}m "
-            f"val_p90={val_p90:.3f}m "
-            f"val_rpe={val_rpe:.3f}m "
-            f"val_jump={val_jump:.3f}% "
+            f"loss={training['total']:.5f} "
+            f"final={training['final']:.4f} "
+            f"nll={training['nll']:.4f} "
+            f"pred={training['prediction']:.4f} "
+            f"vel={training['velocity']:.4f} "
+            f"acc={training['acceleration']:.4f} "
+            f"capture={training['capture_pct']:.2f}% "
+            f"teacher={training['teacher_search_ratio']:.3f} "
+            f"val_mle={final_metric['MLE_m']:.3f}m "
+            f"val_rpe={final_metric['RPE_m']:.3f}m "
+            f"val_jump={final_metric['JumpRate_pct']:.3f}% "
             f"score={score:.3f}",
             flush=True,
         )
@@ -1565,52 +1933,43 @@ def train_model(
             config.EARLY_STOPPING_PATIENCE
         ):
             print(
-                "early stopping: validation "
-                "objective stopped improving",
+                "temporal early stopping",
                 flush=True,
             )
             break
 
-    if best_state is not None:
-        model.load_state_dict(
-            best_state,
-            strict=True,
+    if best_state is None:
+        raise RuntimeError(
+            "Temporal training did not produce a checkpoint"
         )
 
-        checkpoint = torch.load(
-            config.TEMPORAL_CHECKPOINT,
-            map_location="cpu",
-        )
-
-        checkpoint["model"] = (
-            best_state
-        )
-
-        checkpoint["best_model"] = (
-            best_state
-        )
-
-        torch.save(
-            checkpoint,
-            config.TEMPORAL_CHECKPOINT,
-        )
-
-    print(
-        "best validation objective="
-        f"{best_score:.3f}",
-        flush=True,
+    model.load_state_dict(
+        best_state,
+        strict=True,
     )
 
+    checkpoint = torch.load(
+        config.TEMPORAL_CHECKPOINT,
+        map_location="cpu",
+    )
+    checkpoint["model"] = best_state
+    checkpoint["best_model"] = best_state
 
-def load_checkpoint(
+    torch.save(
+        checkpoint,
+        config.TEMPORAL_CHECKPOINT,
+    )
+
+    return split
+
+
+def load_temporal_checkpoint(
     model,
     device,
 ):
     if not config.TEMPORAL_CHECKPOINT.exists():
         raise FileNotFoundError(
-            "checkpoint not found: "
-            f"{config.TEMPORAL_CHECKPOINT}; "
-            "run train_eval"
+            config.TEMPORAL_CHECKPOINT
         )
 
     checkpoint = torch.load(
@@ -1622,14 +1981,11 @@ def load_checkpoint(
         "architecture"
     ) != ARCHITECTURE_NAME:
         raise RuntimeError(
-            "checkpoint architecture mismatch: "
-            f"{checkpoint.get('architecture')}"
+            "Temporal checkpoint architecture mismatch"
         )
 
     state = (
-        checkpoint.get(
-            "best_model"
-        )
+        checkpoint.get("best_model")
         or checkpoint["model"]
     )
 
@@ -1641,159 +1997,23 @@ def load_checkpoint(
     return checkpoint
 
 
+# ============================================================================
+# Main
+# ============================================================================
+
 def route_catalog():
     return {
-        name: (
-            index,
-            Path(root),
-        )
-        for index, (
-            name,
-            root,
-        )
-        in enumerate(
-            zip(
-                config.ROUTE_NAMES,
-                config.ROUTE_ROOTS,
-            )
+        name: Path(root)
+        for name, root
+        in zip(
+            config.ROUTE_NAMES,
+            config.ROUTE_ROOTS,
         )
     }
 
 
-def route_record(
-    name,
-):
-    catalog = route_catalog()
-
-    if name not in catalog:
-        raise ValueError(
-            f"unknown route {name}; "
-            f"valid routes={list(catalog)}"
-        )
-
-    index, root = catalog[
-        name
-    ]
-
-    return (
-        index,
-        root,
-        name,
-    )
-
-
-def remove_temporal_outputs():
-    config.CHECKPOINT_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    # Do NOT remove the visual checkpoint.  It is intentionally reused because
-    # the visual retrieval architecture has not changed.
-    for path in (
-        config.TEMPORAL_CHECKPOINT,
-        config.OUTPUT_DIR
-        / "robust_tracker_summary.json",
-        config.OUTPUT_DIR
-        / "route_B_rnn_kalman_frames.csv",
-        config.OUTPUT_DIR
-        / "route_C_rnn_kalman_frames.csv",
-    ):
-        if path.exists():
-            path.unlink()
-
-
-def write_temporal_provenance():
-    checkpoint = torch.load(
-        config.TEMPORAL_CHECKPOINT,
-        map_location="cpu",
-    )
-
-    checkpoint.update(
-        {
-            "architecture": ARCHITECTURE_NAME,
-            "temporal_train_routes": [
-                "route_A"
-            ],
-            "temporal_validation_routes": [
-                "route_A"
-            ],
-            "temporal_eval_routes": [
-                "route_B",
-                "route_C",
-            ],
-            "visual_checkpoint": str(
-                config.VISUAL_CHECKPOINT
-            ),
-            "visual_train_routes": [
-                "route_A"
-            ],
-            "previous_task_checkpoint_loaded": False,
-            "state_definition": [
-                "x",
-                "y",
-                "vx",
-                "vy",
-                "ax",
-                "ay",
-            ],
-            "rnn_hidden_dim": int(
-                config.RNN_HIDDEN_DIM
-            ),
-            "sequence_length_train": int(
-                config.RNN_SEQUENCE_LENGTH
-            ),
-            "inference_state_reset_policy": (
-                "reset once at route/segment start; "
-                "carry recurrent + Kalman state continuously thereafter"
-            ),
-        }
-    )
-
-    torch.save(
-        checkpoint,
-        config.TEMPORAL_CHECKPOINT,
-    )
-
-
-def validate_temporal_provenance(
-    checkpoint,
-):
-    if checkpoint.get(
-        "temporal_train_routes"
-    ) != [
-        "route_A"
-    ]:
-        raise RuntimeError(
-            "Temporal checkpoint is not Route-A-only"
-        )
-
-    if checkpoint.get(
-        "visual_train_routes"
-    ) != [
-        "route_A"
-    ]:
-        raise RuntimeError(
-            "Visual checkpoint provenance "
-            "is not Route-A-only"
-        )
-
-    if checkpoint.get(
-        "previous_task_checkpoint_loaded"
-    ) is not False:
-        raise RuntimeError(
-            "Temporal checkpoint provenance "
-            "does not prove a fresh temporal model"
-        )
-
-
 def main():
-    parser = argparse.ArgumentParser(
-        description=(
-            "Strict Route-A-only recurrent motion-state + "
-            "Kalman localization training, then unseen B/C evaluation."
-        )
-    )
+    parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--mode",
@@ -1808,27 +2028,13 @@ def main():
     parser.add_argument(
         "--visual-epochs",
         type=int,
-        default=0,
-        help=(
-            "0 = reuse the existing Route-A-only visual checkpoint. "
-            "Positive value retrains visual retrieval in the new output dir."
-        ),
+        default=config.VISUAL_EPOCHS,
     )
 
     parser.add_argument(
         "--epochs",
         type=int,
         default=config.EPOCHS,
-        help="Recurrent Kalman epochs",
-    )
-
-    parser.add_argument(
-        "--eval-split",
-        choices=(
-            "test",
-            "all",
-        ),
-        default="all",
     )
 
     parser.add_argument(
@@ -1837,22 +2043,10 @@ def main():
         default=config.LOCAL_PRIOR_JITTER_M,
     )
 
-    parser.add_argument(
-        "--resume",
-        action="store_true",
-        help="resume recurrent Kalman temporal checkpoint if it exists",
-    )
-
     args = parser.parse_args()
 
-    config.LOCAL_PRIOR_JITTER_M = float(
-        args.jitter_m
-    )
-
     set_seed(
-        int(
-            config.SEED
-        )
+        config.SEED
     )
 
     device = torch.device(
@@ -1861,80 +2055,37 @@ def main():
         else "cpu"
     )
 
-    print(
-        "=" * 82,
-        flush=True,
-    )
-    print(
-        "RECURRENT MOTION STATE + DIFFERENTIABLE KALMAN FILTER",
-        flush=True,
-    )
-    print(
-        "visual train/validation: Route A only",
-        flush=True,
-    )
-    print(
-        "temporal train/validation: Route A only",
-        flush=True,
-    )
-    print(
-        "evaluation: Route B + Route C only",
-        flush=True,
-    )
-    print(
-        "state: [x,y,vx,vy,ax,ay] + GRU hidden state",
-        flush=True,
-    )
-    print(
-        "motion: constant-acceleration polynomial prediction",
-        flush=True,
-    )
-    print(
-        "measurement: GRU visual coordinate + learned Gaussian variance",
-        flush=True,
-    )
-    print(
-        "final output: Kalman-filtered coordinate",
-        flush=True,
-    )
-    print(
-        f"training sequence length: {config.RNN_SEQUENCE_LENGTH}",
-        flush=True,
-    )
-    print(
-        f"output directory: {config.OUTPUT_DIR}",
-        flush=True,
-    )
-    print(
-        "=" * 82,
-        flush=True,
-    )
+    print("=" * 88)
+    print("ROUTE-CONDITIONED SINGLE-FRAME GRU + FILTERPY KALMAN")
+    print("=" * 88)
+    print("Temporal input per step : ONE current UAV retrieval result")
+    print("Persistent RNN state    : GRU h_t")
+    print("Physical state          : [x,y,vx,vy,ax,ay]")
+    print("Motion prediction       : constant-acceleration polynomial")
+    print("Search                  : only forward current-leg SAT corridor")
+    print("Mission prior           : known current leg start/end waypoint")
+    print("Final inference filter  : FilterPy KalmanFilter")
+    print("Visual training         : Route A from scratch")
+    print("Temporal training       : Route A from scratch")
+    print("Final testing           : Route B + Route C")
+    print("=" * 88)
 
     config.CHECKPOINT_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    if (
-        args.mode
-        in (
-            "train",
-            "train_eval",
-        )
-        and not args.resume
+    # Full retrain means delete only this experiment's own checkpoints.
+    if args.mode in (
+        "train",
+        "train_eval",
     ):
-        remove_temporal_outputs()
+        if config.VISUAL_CHECKPOINT.exists():
+            config.VISUAL_CHECKPOINT.unlink()
 
-    if (
-        args.mode
-        in (
-            "train",
-            "train_eval",
-        )
-        and int(
-            args.visual_epochs
-        ) > 0
-    ):
+        if config.TEMPORAL_CHECKPOINT.exists():
+            config.TEMPORAL_CHECKPOINT.unlink()
+
         train_visual_retrieval_a_only(
             device=device,
             epochs=int(
@@ -1945,156 +2096,166 @@ def main():
             ),
             resume=False,
         )
-    elif not config.VISUAL_CHECKPOINT.exists():
+
+    if not config.VISUAL_CHECKPOINT.exists():
         raise FileNotFoundError(
-            "Missing Route-A-only visual checkpoint: "
-            f"{config.VISUAL_CHECKPOINT}\n"
-            "Copy the archived visual_retrieval_A_only.pt "
-            "into this path or rerun with --visual-epochs 30."
+            "Visual checkpoint missing. "
+            "Run --mode train_eval for full retraining."
         )
 
     visual = FrozenVisualLocalizer(
         device
     )
 
-    model = RecurrentKalmanLocalizer().to(
+    model = RouteGRUMeasurementModel().to(
         device
+    )
+
+    catalog = route_catalog()
+
+    route_a_manifest = load_waypoint_manifest(
+        "route_A",
+        visual.origin_lat,
+        visual.origin_lon,
     )
 
     if args.mode in (
         "train",
         "train_eval",
     ):
-        (
-            a_index,
-            a_root,
-            a_name,
-        ) = route_record(
-            "route_A"
-        )
-
-        train_cache = build_route_cache(
-            a_root,
-            a_name,
-            a_index,
+        route_a_cache = build_backbone_cache(
+            "route_A",
+            catalog["route_A"],
             visual,
             device,
-            args.jitter_m,
         )
 
-        train_capture = float(
-            train_cache.capture.float().mean().item()
-        )
-
-        if train_capture < float(
-            config.MIN_TRAIN_CAPTURE_RATE
-        ):
-            raise RuntimeError(
-                "Route A candidate capture is below "
-                f"{100.0 * float(config.MIN_TRAIN_CAPTURE_RATE):.1f}%"
-            )
-
-        train_model(
+        temporal_split = train_temporal(
             model,
-            [
-                train_cache
-            ],
+            visual,
+            route_a_cache,
+            route_a_manifest,
             device,
-            int(
-                args.epochs
-            ),
-            resume=bool(
-                args.resume
-            ),
+            int(args.epochs),
         )
-
-        write_temporal_provenance()
+    else:
+        load_temporal_checkpoint(
+            model,
+            device,
+        )
+        temporal_split = split_route_a_legs(
+            route_a_manifest
+        )
 
     if args.mode in (
         "eval",
         "train_eval",
     ):
+        # If train_model returned the best state, it is already loaded.
         if args.mode == "eval":
-            checkpoint = load_checkpoint(
+            load_temporal_checkpoint(
                 model,
                 device,
             )
 
-            validate_temporal_provenance(
-                checkpoint
-            )
-        else:
-            # train_model loaded the best state before returning.
-            checkpoint = torch.load(
-                config.TEMPORAL_CHECKPOINT,
-                map_location=device,
-            )
-
-            validate_temporal_provenance(
-                checkpoint
-            )
-
-        eval_caches = []
+        route_results = {}
 
         for route_name in (
             "route_B",
             "route_C",
         ):
-            (
-                route_index,
-                root,
-                name,
-            ) = route_record(
-                route_name
+            manifest = load_waypoint_manifest(
+                route_name,
+                visual.origin_lat,
+                visual.origin_lon,
             )
 
-            cache = build_route_cache(
-                root,
-                name,
-                route_index,
+            cache = build_backbone_cache(
+                route_name,
+                catalog[route_name],
                 visual,
                 device,
-                args.jitter_m,
             )
 
-            eval_caches.append(
-                cache
+            start_frame = manifest.legs[
+                0
+            ].start_frame
+
+            end_frame = manifest.legs[
+                -1
+            ].end_frame
+
+            csv_path = (
+                config.OUTPUT_DIR
+                / f"{route_name}_route_rnn_filterpy_frames.csv"
             )
 
-        outputs = predict_split(
-            model,
-            eval_caches,
-            args.eval_split,
-            device,
-            save_rows=True,
-        )
+            summary, _ = evaluate_segment_filterpy(
+                model,
+                visual,
+                cache,
+                manifest,
+                device,
+                start_frame,
+                end_frame,
+                save_csv_path=csv_path,
+            )
 
-        visual_checkpoint = torch.load(
-            config.VISUAL_CHECKPOINT,
-            map_location="cpu",
-        )
+            route_results[
+                route_name
+            ] = summary
 
-        temporal_checkpoint = torch.load(
-            config.TEMPORAL_CHECKPOINT,
-            map_location="cpu",
-        )
+            metric = summary[
+                "FilterPyKalmanFinal"
+            ]
 
-        validate_temporal_provenance(
-            temporal_checkpoint
-        )
+            print(
+                f"{route_name}: "
+                f"MLE={metric['MLE_m']:.3f}m "
+                f"P90={metric['P90_m']:.3f}m "
+                f"RPE={metric['RPE_m']:.3f}m "
+                f"Jump={metric['JumpRate_pct']:.3f}% "
+                f"capture={summary['CandidateCaptureRate_pct']:.2f}%",
+                flush=True,
+            )
 
-        summary = {
-            "method": ARCHITECTURE_NAME,
-            "protocol": (
-                "Frozen MobileCLIP visual retrieval; Route-A-only "
-                "recurrent/Kalman temporal training; unseen B/C evaluation; "
-                "GT+jitter controlled local prior"
-            ),
-            "state": {
-                "recurrent": (
-                    f"GRU hidden state h_t, dim={config.RNN_HIDDEN_DIM}"
+        result = {
+            "architecture": ARCHITECTURE_NAME,
+            "protocol": {
+                "visual_train": [
+                    "route_A"
+                ],
+                "temporal_train": [
+                    "route_A"
+                ],
+                "eval": [
+                    "route_B",
+                    "route_C",
+                ],
+                "single_frame_streaming": True,
+                "mission_waypoint_prior": True,
+                "waypoint_switch_emulation": (
+                    "Offline evaluation uses the annotated "
+                    "straight-leg frame boundaries as a proxy for "
+                    "the mission controller's active waypoint index."
                 ),
-                "physical": [
+                "important_waypoint_note": (
+                    "The current route_waypoints manifests were "
+                    "geometrically derived from GPS telemetry. "
+                    "They are not asserted PX4 mission-item coordinates."
+                ),
+                "filter": (
+                    "filterpy.kalman.KalmanFilter"
+                ),
+                "candidate_search": (
+                    "forward-only current mission leg"
+                ),
+            },
+            "state": {
+                "gru_hidden_dim": int(
+                    config.RNN_HIDDEN_DIM
+                ),
+                "kalman_state": [
                     "x",
                     "y",
                     "vx",
@@ -2103,44 +2264,8 @@ def main():
                     "ay",
                 ],
             },
-            "motion_prediction": (
-                "constant acceleration: "
-                "p'=p+v*dt+0.5*a*dt^2, v'=v+a*dt"
-            ),
-            "kalman_measurement": (
-                "GRU visual coordinate with learned diagonal Gaussian variance"
-            ),
-            "visual_train_routes": visual_checkpoint.get(
-                "visual_train_routes",
-                [
-                    "route_A"
-                ],
-            ),
-            "temporal_train_routes": temporal_checkpoint[
-                "temporal_train_routes"
-            ],
-            "temporal_validation_routes": temporal_checkpoint[
-                "temporal_validation_routes"
-            ],
-            "eval_routes": [
-                "route_B",
-                "route_C",
-            ],
-            "eval_split": args.eval_split,
-            "jitter_m": float(
-                args.jitter_m
-            ),
-            "visual_checkpoint": str(
-                config.VISUAL_CHECKPOINT
-            ),
-            "temporal_checkpoint": str(
-                config.TEMPORAL_CHECKPOINT
-            ),
-            "routes": {
-                name: route_summary
-                for name, route_summary, _
-                in outputs
-            },
+            "route_A_temporal_split": temporal_split,
+            "routes": route_results,
         }
 
         config.OUTPUT_DIR.mkdir(
@@ -2153,20 +2278,18 @@ def main():
             / "robust_tracker_summary.json"
         )
 
-        with summary_path.open(
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                summary,
-                file,
+        summary_path.write_text(
+            json.dumps(
+                result,
                 ensure_ascii=False,
                 indent=2,
-            )
+            ),
+            encoding="utf-8",
+        )
 
         print(
             json.dumps(
-                summary,
+                result,
                 ensure_ascii=False,
                 indent=2,
             ),
@@ -2174,7 +2297,7 @@ def main():
         )
 
         print(
-            f"summary saved to {summary_path}",
+            f"summary saved: {summary_path}",
             flush=True,
         )
 

@@ -1,0 +1,18 @@
+nohup: ignoring input
+FilterPy: 1.4.5
+================================================================================
+FULL RETRAIN: SINGLE-FRAME GRU + FORWARD ROUTE SEARCH + FILTERPY KALMAN
+================================================================================
+GPU              : 0
+Visual epochs    : 30
+Temporal epochs  : 50
+Jitter           : 12 m
+
+Visual retrieval will be trained FROM SCRATCH on Route A.
+GRU temporal model will be trained FROM SCRATCH on Route A.
+Final evaluation will run on Route B and Route C.
+================================================================================
+Traceback (most recent call last):
+  File "robust_tracker.py", line 15, in <module>
+    from data import (
+ModuleNotFoundError: No module named 'data'
