@@ -155,6 +155,8 @@ class AllMapGeoCLIP(nn.Module):
 class PureVisualLSTMOutput:
     refined_logits: torch.Tensor
     measurement_variance: torch.Tensor
+    next_delta_xy: torch.Tensor
+    local_visual_offset: torch.Tensor
     hidden: torch.Tensor
     cell: torch.Tensor
 
@@ -168,10 +170,12 @@ class PureVisualLSTM(nn.Module):
       z_sat      : current SAT image embeddings
       raw_logits : image-image similarity scores
       raw_prob   : softmax image-image probabilities
+      relative_offsets: translation-invariant 6x6 lattice offsets only
+      previous_motion: model-predicted displacement from the prior frame
       hidden/cell: previous recurrent visual state
 
     It does NOT accept:
-      waypoint, XY, candidate centers, velocity, previous position,
+      waypoint, absolute XY/GPS, velocity, previous position,
       Kalman state, GPS, timestamp, route direction, frame boundary.
     """
 
@@ -201,7 +205,29 @@ class PureVisualLSTM(nn.Module):
             nn.LayerNorm(feature_dim // 2),
         )
 
-        lstm_input_dim = feature_dim + feature_dim + feature_dim // 2
+        # Relative 6x6 lattice geometry: this encodes only where a candidate
+        # sits *within the current local grid* (not global XY/GPS). It lets the
+        # recurrent state interpret a high visual response as left/right or
+        # forward/backward evidence for its next-frame displacement.
+        self.local_offset_projection = nn.Sequential(
+            nn.Linear(2, feature_dim // 2),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim // 2),
+        )
+
+        self.motion_state_projection = nn.Sequential(
+            nn.Linear(2, feature_dim // 2),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim // 2),
+        )
+
+        lstm_input_dim = (
+            feature_dim
+            + feature_dim
+            + feature_dim // 2
+            + feature_dim // 2
+            + feature_dim // 2
+        )
 
         self.lstm = nn.LSTMCell(
             lstm_input_dim,
@@ -235,6 +261,16 @@ class PureVisualLSTM(nn.Module):
 
         nn.init.zeros_(self.variance_head[-1].weight)
         nn.init.constant_(self.variance_head[-1].bias, inverse_softplus)
+
+        # Predict visual displacement to the next image from only RNN state.
+        # Zero initialization starts conservatively, without forced motion.
+        self.motion_head = nn.Sequential(
+            nn.Linear(hidden_dim + 2, hidden_dim // 2),
+            nn.GELU(),
+            nn.Linear(hidden_dim // 2, 2),
+        )
+        nn.init.zeros_(self.motion_head[-1].weight)
+        nn.init.zeros_(self.motion_head[-1].bias)
 
     def initial_state(self, batch_size, device, dtype):
         hidden = torch.zeros(
@@ -276,6 +312,8 @@ class PureVisualLSTM(nn.Module):
         z_sat,
         raw_logits,
         raw_prob,
+        relative_offsets,
+        previous_motion,
         hidden,
         cell,
     ):
@@ -293,6 +331,34 @@ class PureVisualLSTM(nn.Module):
             * z_sat
         ).sum(dim=1)
 
+        if relative_offsets is None:
+            relative_offsets = torch.zeros(
+                z_sat.shape[0],
+                z_sat.shape[1],
+                2,
+                device=z_sat.device,
+                dtype=z_sat.dtype,
+            )
+
+        if previous_motion is None:
+            previous_motion = torch.zeros(
+                z_sat.shape[0],
+                2,
+                device=z_sat.device,
+                dtype=z_sat.dtype,
+            )
+
+        # Normalize by the local grid extent, so the geometry is invariant to
+        # map origin and expressed purely as a relative directional signal.
+        offset_scale = relative_offsets.abs().amax(
+            dim=(1, 2),
+            keepdim=True,
+        ).clamp_min(1e-5)
+        normalized_offsets = relative_offsets / offset_scale
+        local_visual_offset = (
+            raw_prob.unsqueeze(-1) * normalized_offsets
+        ).sum(dim=1)
+
         stats = self.visual_stats(
             raw_logits,
             raw_prob,
@@ -303,6 +369,10 @@ class PureVisualLSTM(nn.Module):
                 self.uav_projection(z_uav),
                 self.sat_context_projection(sat_context),
                 self.visual_stats_projection(stats),
+                self.local_offset_projection(local_visual_offset),
+                self.motion_state_projection(
+                    previous_motion / float(config.RNN_MAX_NEXT_DISPLACEMENT_M)
+                ),
             ],
             dim=1,
         )
@@ -367,9 +437,17 @@ class PureVisualLSTM(nn.Module):
             max=float(config.MAX_MEASUREMENT_VARIANCE)
         )
 
+        next_delta_xy = torch.tanh(
+            self.motion_head(
+                torch.cat([head_hidden, local_visual_offset], dim=1)
+            )
+        ) * float(config.RNN_MAX_NEXT_DISPLACEMENT_M)
+
         return PureVisualLSTMOutput(
             refined_logits=refined_logits,
             measurement_variance=measurement_variance,
+            next_delta_xy=next_delta_xy,
+            local_visual_offset=local_visual_offset,
             hidden=hidden,
             cell=cell,
         )

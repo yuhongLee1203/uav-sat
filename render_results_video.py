@@ -314,7 +314,7 @@ def render_overview(
         final[:, 1],
         color="tab:orange",
         linewidth=1.8,
-        label="Final Kalman",
+        label="Recurrent Fixed HardMS",
     )
 
     sample_stride = max(
@@ -394,7 +394,7 @@ def render_overview(
 
     ax.set_title(
         (
-            f"{route_name}: Fixed HardMS + waypoint-inertial filtering\n"
+            f"{route_name}: recurrent visual Fixed HardMS\n"
             "Final trajectory with source-frame labels"
         )
     )
@@ -495,7 +495,7 @@ def render_process_frames(
                 "tab:green",
                 "o",
             ),
-            "Prediction": (
+                "Previous recurrent output": (
                 float(row["prediction_x"]),
                 float(row["prediction_y"]),
                 "tab:cyan",
@@ -629,7 +629,7 @@ def render_process_frames(
     fig.suptitle(
         (
             f"{route_name}: localization process "
-            "(Kalman prediction -> Fixed HardMS measurement -> Final)"
+            "(previous recurrent output -> current recurrent Fixed HardMS output)"
         ),
         fontsize=14,
     )
@@ -1029,10 +1029,10 @@ def render_video(
 
             legend_lines = [
                 "Green cross: timestamp-aligned GT (evaluation only)",
-                "Cyan square: Kalman prediction",
-                "Purple diamond: Fixed HardMS measurement",
-                "Orange star: final Kalman output",
-                "Yellow X: inference-only mission waypoint",
+                "Cyan square: previous recurrent output / current search center",
+                "Purple diamond: current recurrent Fixed HardMS output",
+                "Orange star: final recurrent output (same XY as purple diamond)",
+                "Yellow X: initialization waypoint only",
                 "All markers use this exact source-frame timestamp.",
             ]
 

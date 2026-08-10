@@ -27,7 +27,7 @@ except ImportError:
     KalmanFilter = None
 
 
-ARCHITECTURE_NAME = "WaypointInertial_FixedHardMS_FilterPyKalman"
+ARCHITECTURE_NAME = "RecurrentVisualFixedHardMS"
 
 
 @dataclass
@@ -565,11 +565,21 @@ def nearest_gt_label(
     )
 
 
+def local_grid_relative_offsets(centers):
+    """Return translation-invariant candidate offsets for the current grid.
+
+    These are local lattice coordinates only. Absolute map coordinates, GT,
+    GPS, and waypoints remain outside the RNN input.
+    """
+    return centers - centers.mean(dim=1, keepdim=True)
+
+
 # =============================================================================
 # PURE-VISUAL temporal training.
 #
 # NO waypoint loader is called.
-# NO coordinate/candidate center enters the LSTM.
+# Only translation-invariant local lattice offsets enter the LSTM; no absolute
+# coordinate/candidate center enters it.
 # GT XY is supervision only.
 # =============================================================================
 
@@ -589,6 +599,7 @@ def train_one_epoch(
         device,
         torch.float32,
     )
+    previous_motion = torch.zeros(1, 2, device=device)
 
     optimizer.zero_grad(
         set_to_none=True
@@ -640,12 +651,15 @@ def train_one_epoch(
             candidate.z_sat,
             candidate.raw_logits,
             candidate.raw_prob,
+            local_grid_relative_offsets(candidate.centers),
+            previous_motion,
             hidden,
             cell,
         )
 
         hidden = output.hidden
         cell = output.cell
+        previous_motion = output.next_delta_xy
 
         gt_xy = gt_xy_cpu.to(
             device
@@ -656,6 +670,8 @@ def train_one_epoch(
             gt_xy,
         )
 
+        # Weak differentiable coordinate stabilizer. Classification remains the
+        # primary objective because deployment uses Fixed HardMS.
         measurement_xy, _ = decode_visual_xy(
             output.refined_logits,
             candidate.centers,
@@ -682,6 +698,17 @@ def train_one_epoch(
             reduction="mean",
         )
 
+        # GT is a Route-A training target only. The RNN itself never receives
+        # a coordinate; it learns the visual displacement to the next frame.
+        if index + 1 < int(end_index):
+            next_gt_xy = cache.gt_xy[index + 1].to(device).reshape(1, 2)
+            motion_loss = F.smooth_l1_loss(
+                output.next_delta_xy,
+                next_gt_xy - gt_xy,
+            )
+        else:
+            motion_loss = output.next_delta_xy.new_zeros(())
+
         loss = (
             float(config.LOSS_CE)
             * ce_loss
@@ -693,6 +720,8 @@ def train_one_epoch(
                 config.LOSS_GAUSSIAN_NLL
             )
             * nll_loss
+            + float(config.LOSS_MOTION_SMOOTH_L1)
+            * motion_loss
         )
 
         if loss_accumulator is None:
@@ -736,6 +765,9 @@ def train_one_epoch(
                 "nll": float(
                     nll_loss.detach().cpu()
                 ),
+                "motion": float(
+                    motion_loss.detach().cpu()
+                ),
             }
         )
 
@@ -776,6 +808,7 @@ def train_one_epoch(
 
             hidden = hidden.detach()
             cell = cell.detach()
+            previous_motion = previous_motion.detach()
 
             loss_accumulator = None
             chunk_steps = 0
@@ -816,6 +849,7 @@ def evaluate_visual_local_sequence(
         device,
         torch.float32,
     )
+    previous_motion = torch.zeros(1, 2, device=device)
 
     predictions = []
     gt_rows = []
@@ -856,16 +890,23 @@ def evaluate_visual_local_sequence(
             candidate.z_sat,
             candidate.raw_logits,
             candidate.raw_prob,
+            local_grid_relative_offsets(candidate.centers),
+            previous_motion,
             hidden,
             cell,
         )
 
         hidden = output.hidden
         cell = output.cell
+        previous_motion = output.next_delta_xy
 
-        measurement_xy, _ = decode_visual_xy(
+        # Validation must use the exact decoder deployed at inference.
+        measurement_xy, _ = hard_mean_shift(
             output.refined_logits,
             candidate.centers,
+            config.MEANSHIFT_SCORE_TAU,
+            config.MEANSHIFT_BANDWIDTH_M,
+            config.MEANSHIFT_ITERATIONS,
         )
 
         predictions.append(
@@ -932,14 +973,14 @@ def train_temporal_model(
     )
 
     print(
-        "  LSTM INPUT = UAV image embedding + SAT image embeddings "
-        "+ visual similarity + previous hidden/cell ONLY",
+        "  LSTM INPUT = UAV/SAT image embeddings + visual similarity + "
+        "relative 6x6 lattice offsets + previous hidden/cell",
         flush=True,
     )
 
     print(
-        "  NO waypoint / XY / candidate center / velocity / previous position "
-        "/ Kalman state / GPS / timestamp enters LSTM",
+        "  NO waypoint / absolute XY / GPS / velocity / previous position "
+        "/ Kalman state / timestamp enters LSTM",
         flush=True,
     )
 
@@ -1023,13 +1064,22 @@ def train_temporal_model(
                     "satellite_image_embeddings",
                     "visual_similarity_logits",
                     "visual_similarity_probabilities",
+                    "relative_local_lattice_offsets",
+                    "previous_model_predicted_displacement",
                     "previous_lstm_hidden",
                     "previous_lstm_cell",
                 ],
+                "recurrent_output": [
+                    "refined_visual_logits",
+                    "next_frame_visual_displacement_xy",
+                ],
+                "motion_supervision": (
+                    "Route-A consecutive GT displacement target only"
+                ),
                 "explicitly_not_network_inputs": [
                     "waypoint",
                     "xy_coordinate",
-                    "candidate_center",
+                    "absolute_candidate_center",
                     "velocity",
                     "previous_position",
                     "kalman_state",
@@ -1049,6 +1099,7 @@ def train_temporal_model(
             f"ce={training['ce']:.4f} "
             f"coord={training['coord']:.4f} "
             f"nll={training['nll']:.4f} "
+            f"motion={training['motion']:.4f} "
             f"capture={training['capture_pct']:.2f}% "
             f"val_mle={validation['MLE_m']:.3f}m "
             f"val_p90={validation['P90_m']:.3f}m",
@@ -1542,6 +1593,191 @@ def metric_block(
         ),
         "MaxLE_m": float(error.max()),
     }
+
+
+@torch.no_grad()
+def run_recurrent_visual_inference(
+    model,
+    visual,
+    cache,
+    route,
+    device,
+    csv_path,
+):
+    """Causal visual RNN: predict next lattice, correct with current image.
+
+    ``current_xy`` is external candidate-search state; hidden/cell are the
+    learned recurrent state. At frame t, only visual inputs produce a next
+    displacement for t+1. There is no Kalman, waypoint direction, test GPS,
+    timestamp, or route geometry used to move the localization state.
+    """
+    model.eval()
+    hidden, cell = model.initial_state(1, device, torch.float32)
+    current_xy = route.waypoints[0].xy.detach().cpu().numpy().astype(np.float64)
+    # Continuous search state retains sub-anchor motion. ``current_xy`` stays
+    # a discrete Fixed-HardMS anchor for evaluation/output, but must not erase
+    # a valid 1--4 m RNN displacement every frame.
+    search_xy = current_xy.copy()
+    next_delta_xy = np.zeros(2, dtype=np.float64)
+    previous_motion = torch.zeros(1, 2, device=device)
+    previous_xy = current_xy.copy()
+    previous_timestamp_ns = None
+    rows = []
+
+    for sequence_index in range(len(cache)):
+        timestamp_ns = int(cache.timestamps_ns[sequence_index].item())
+        if previous_timestamp_ns is None:
+            dt_seconds = 1.0 / 3.0
+        else:
+            dt_seconds = max(
+                1e-3,
+                (timestamp_ns - previous_timestamp_ns) / 1_000_000_000.0,
+            )
+        previous_timestamp_ns = timestamp_ns
+        # ``search_xy`` already contains the previous frame's predicted motion
+        # and visual correction. Keeping it continuous prevents 4.48 m anchor
+        # quantization from making a 2--3 m/frame UAV look stationary.
+        prediction_xy = search_xy.copy()
+
+        candidate_indices = regular_grid_indices(
+            visual.gallery["xy"],
+            visual.gallery["pixel"],
+            visual.pixel_index,
+            torch.as_tensor(prediction_xy, dtype=torch.float32).reshape(1, 2),
+            config.GRID_SIZE,
+            config.SAT_STRIDE,
+            visual.device,
+        )
+        uav_clip = cache.uav_clip[sequence_index:sequence_index + 1].to(device).float()
+        candidate = build_candidate_batch(visual, uav_clip, candidate_indices)
+        output = model.forward_step(
+            candidate.z_uav,
+            candidate.z_sat,
+            candidate.raw_logits,
+            candidate.raw_prob,
+            local_grid_relative_offsets(candidate.centers),
+            previous_motion,
+            hidden,
+            cell,
+        )
+        hidden, cell = output.hidden, output.cell
+        previous_motion = output.next_delta_xy
+
+        refined_xy, refined_support = hard_mean_shift(
+            output.refined_logits,
+            candidate.centers,
+            config.MEANSHIFT_SCORE_TAU,
+            config.MEANSHIFT_BANDWIDTH_M,
+            config.MEANSHIFT_ITERATIONS,
+        )
+        current_xy = refined_xy[0].detach().cpu().numpy().astype(np.float64)
+        next_delta_xy = (
+            output.next_delta_xy[0]
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float64)
+        )
+        raw_top1 = candidate.raw_top1_xy[0].detach().cpu().numpy().astype(np.float64)
+        raw_hardms = candidate.hardms_xy[0].detach().cpu().numpy().astype(np.float64)
+
+        # Correct the continuous prior by the *relative* anchor selected by
+        # Fixed HardMS, then add the RNN's learned displacement for t+1. If a
+        # UAV hovers and the visual selection remains at the prior anchor, the
+        # correction is zero; no waypoint/Kalman force can move it.
+        reference_index = torch.linalg.norm(
+            candidate.centers[0]
+            - torch.as_tensor(
+                prediction_xy,
+                dtype=candidate.centers.dtype,
+                device=candidate.centers.device,
+            ).reshape(1, 2),
+            dim=1,
+        ).argmin()
+        reference_xy = (
+            candidate.centers[0, reference_index]
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float64)
+        )
+        visual_correction_xy = current_xy - reference_xy
+        search_xy = prediction_xy + visual_correction_xy + next_delta_xy
+        velocity = (current_xy - previous_xy) / dt_seconds
+        visual_innovation = float(np.linalg.norm(current_xy - prediction_xy))
+        previous_xy = current_xy.copy()
+
+        # Evaluation labels are read only after the recurrent visual output is
+        # fixed; neither candidate construction nor forward_step receives them.
+        gt_xy = cache.gt_xy[sequence_index].numpy()
+        raw_gt_xy = cache.raw_gt_xy[sequence_index].numpy()
+        measurement_variance = output.measurement_variance[0].detach().cpu().numpy()
+
+        rows.append(
+            {
+                "sequence_index": int(sequence_index),
+                "frame_id": int(cache.frame_ids[sequence_index].item()),
+                "timestamp_ns": timestamp_ns,
+                "dt_seconds": float(dt_seconds),
+                "image_path": cache.image_paths[sequence_index],
+                "active_waypoint_from": int(route.waypoints[0].order),
+                "active_waypoint_to": int(route.waypoints[1].order),
+                "waypoint_switched_after_frame": 0,
+                "gt_x": float(gt_xy[0]),
+                "gt_y": float(gt_xy[1]),
+                "raw_gps_x": float(raw_gt_xy[0]),
+                "raw_gps_y": float(raw_gt_xy[1]),
+                "prediction_x": float(prediction_xy[0]),
+                "prediction_y": float(prediction_xy[1]),
+                "motion_pred_x": float(next_delta_xy[0]),
+                "motion_pred_y": float(next_delta_xy[1]),
+                "visual_correction_x": float(visual_correction_xy[0]),
+                "visual_correction_y": float(visual_correction_xy[1]),
+                "raw_top1_x": float(raw_top1[0]),
+                "raw_top1_y": float(raw_top1[1]),
+                "hardms_x": float(raw_hardms[0]),
+                "hardms_y": float(raw_hardms[1]),
+                "visual_measurement_x": float(current_xy[0]),
+                "visual_measurement_y": float(current_xy[1]),
+                "gated_measurement_x": float(current_xy[0]),
+                "gated_measurement_y": float(current_xy[1]),
+                "visual_innovation_m": visual_innovation,
+                "measurement_var_x": float(measurement_variance[0]),
+                "measurement_var_y": float(measurement_variance[1]),
+                "hardms_support": float(refined_support[0].cpu().item()),
+                "recovery_proposal_index": 0,
+                "recovery_proposal_score": 0.0,
+                "recovery_center_x": float(prediction_xy[0]),
+                "recovery_center_y": float(prediction_xy[1]),
+                "final_x": float(current_xy[0]),
+                "final_y": float(current_xy[1]),
+                "vx": float(velocity[0]),
+                "vy": float(velocity[1]),
+                "waypoint_confirmation_count": 0,
+                "error_m": float(np.linalg.norm(current_xy - gt_xy)),
+            }
+        )
+
+    gt = np.asarray([[row["gt_x"], row["gt_y"]] for row in rows], dtype=np.float64)
+    summary = {
+        "RawTop1": metric_block(
+            [[row["raw_top1_x"], row["raw_top1_y"]] for row in rows], gt
+        ),
+        "FixedHardMS": metric_block(
+            [[row["hardms_x"], row["hardms_y"]] for row in rows], gt
+        ),
+        "RecurrentFixedHardMS": metric_block(
+            [[row["final_x"], row["final_y"]] for row in rows], gt
+        ),
+        "WaypointSwitchCount": 0,
+    }
+    csv_path = Path(csv_path)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    return summary, rows
 
 
 @torch.no_grad()
@@ -2041,7 +2277,7 @@ def main():
     )
 
     print(
-        "VISUAL FIXED-HARDMS + WAYPOINT-INERTIAL FILTERPY KALMAN",
+        "RECURRENT VISUAL FIXED-HARDMS LOCALIZATION",
         flush=True,
     )
 
@@ -2051,18 +2287,18 @@ def main():
     )
 
     print(
-        "TRAINING NETWORK INPUT: UAV/SAT images and image embeddings ONLY",
+        "RNN INPUT: UAV/SAT image embeddings, visual logits, relative 6x6 offsets, prior motion, and RNN state",
         flush=True,
     )
 
     print(
-        "NO waypoint / XY / velocity / GPS / timestamp / Kalman state "
+        "NO waypoint / absolute XY / velocity / GPS / timestamp / Kalman state "
         "enters the visual retrieval network",
         flush=True,
     )
 
     print(
-        "Waypoint is loaded only during B/C inference as a motion prior",
+        "Waypoint is loaded only to initialize the first local search lattice",
         flush=True,
     )
 
@@ -2131,8 +2367,9 @@ def main():
     )
 
     catalog = route_catalog()
+    model = PureVisualLSTM().to(device)
 
-    split = "not_applicable: no learned temporal network"
+    split = None
     nominal_speed_mps = float(config.KALMAN_DEFAULT_NOMINAL_SPEED_MPS)
 
     if args.mode in (
@@ -2140,8 +2377,23 @@ def main():
         "train_eval",
     ):
         print(
-            "[STAGE 3/4] Fixed-HardMS uses no learned temporal head",
+            "[STAGE 3/4] train recurrent visual decoder on Route A",
             flush=True,
+        )
+        # This version adds a learned motion head. Never silently retain an
+        # incompatible checkpoint if a run is interrupted before epoch one.
+        if config.TEMPORAL_CHECKPOINT.exists():
+            config.TEMPORAL_CHECKPOINT.unlink()
+        route_a_cache = build_route_cache(
+            "route_A", catalog["route_A"], visual, device
+        )
+        split, nominal_speed_mps = train_temporal_model(
+            model, visual, route_a_cache, device, int(args.temporal_epochs)
+        )
+    else:
+        checkpoint = load_temporal_model(model, device)
+        nominal_speed_mps = float(
+            checkpoint.get("nominal_speed_mps", config.KALMAN_DEFAULT_NOMINAL_SPEED_MPS)
         )
 
     if args.mode in (
@@ -2190,14 +2442,13 @@ def main():
             )
 
             summary, _ = (
-                run_waypoint_inference(
-                    None,
+                run_recurrent_visual_inference(
+                    model,
                     visual,
                     cache,
                     route,
                     device,
                     csv_path,
-                    nominal_speed_mps,
                 )
             )
 
@@ -2205,9 +2456,7 @@ def main():
                 route_name
             ] = summary
 
-            metric = summary[
-                "FinalKalman"
-            ]
+            metric = summary["RecurrentFixedHardMS"]
 
             print(
                 f"{route_name}: "
@@ -2215,7 +2464,7 @@ def main():
                 f"P90={metric['P90_m']:.3f}m "
                 f"RPE={metric['RPE_m']:.3f}m "
                 f"Jump={metric['JumpRate_pct']:.3f}% "
-                f"WaypointSwitches={summary['WaypointSwitchCount']}",
+                "RNN state=carried frame-to-frame",
                 flush=True,
             )
 
@@ -2225,14 +2474,14 @@ def main():
             ),
             "training": {
                 "route": "route_A",
-                    "network_input_is_image_only": True,
+                "network_input_is_recurrent_visual_only": True,
                 "waypoint_used": False,
                 "coordinate_used_as_network_input": False,
                 "gps_used_as_network_input": False,
                 "gt_xy_role": (
                     "supervised target / candidate-label construction only"
                 ),
-                    "temporal_training": split,
+                "temporal_split": split,
             },
             "inference": {
                 "routes": [
@@ -2241,7 +2490,7 @@ def main():
                 ],
                 "waypoint_used": True,
                 "waypoint_role": (
-                    "external SAT candidate-search direction/order only"
+                    "first 6x6 lattice only; no waypoint-driven motion or turning"
                 ),
                 "waypoint_frame_index_used": False,
                 "waypoint_timestamp_used": False,
@@ -2249,10 +2498,7 @@ def main():
                 "test_gt_role": (
                     "metrics and visualization only"
                 ),
-                "filter": (
-                    "filterpy.kalman.KalmanFilter"
-                ),
-                "nominal_speed_mps": nominal_speed_mps,
+                "filter": "none; final XY is Recurrent Fixed HardMS",
             },
             "waypoint_counts": (
                 waypoint_counts

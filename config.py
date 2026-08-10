@@ -71,7 +71,7 @@ LSTM_FEATURE_DIM = 128
 LSTM_DROPOUT = 0.10
 
 TEMPORAL_EPOCHS = 50
-TEMPORAL_LR = 2e-4
+TEMPORAL_LR = 3e-4
 TEMPORAL_WEIGHT_DECAY = 1e-3
 TBPTT_STEPS = 32
 GRAD_CLIP_NORM = 5.0
@@ -82,8 +82,15 @@ TEMPORAL_VAL_FRACTION = 0.15
 TRAIN_CANDIDATE_JITTER_M = 12.0
 
 LOSS_CE = 1.00
-LOSS_COORD_SMOOTH_L1 = 0.30
-LOSS_GAUSSIAN_NLL = 0.10
+# Final deployment selects a discrete Fixed-HardMS anchor.  Cross-entropy is
+# therefore primary; the centroid term is only a weak training stabilizer and
+# does not define the deployed coordinate.
+LOSS_COORD_SMOOTH_L1 = 0.05
+LOSS_GAUSSIAN_NLL = 0.00
+# Learned next-frame visual displacement. It moves the next local lattice;
+# the current image still selects the final Fixed-HardMS anchor.
+LOSS_MOTION_SMOOTH_L1 = 1.00
+RNN_MAX_NEXT_DISPLACEMENT_M = 6.0
 
 MIN_MEASUREMENT_VARIANCE = 1e-3
 MAX_MEASUREMENT_VARIANCE = 225.0

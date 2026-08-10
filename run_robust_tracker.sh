@@ -14,20 +14,20 @@ VISUAL_CKPT="${OUTPUT_DIR}/checkpoints/visual_retrieval_A_only.pt"
 mkdir -p "${OUTPUT_DIR}/checkpoints"
 
 echo "================================================================================"
-echo "VISUAL FIXED-HARDMS + WAYPOINT-INERTIAL KALMAN LOCALIZATION"
+echo "RECURRENT VISUAL FIXED-HARDMS LOCALIZATION"
 echo "================================================================================"
 echo "GPU             : ${GPU}"
 echo "Visual epochs   : ${VISUAL_EPOCHS}"
-echo "Temporal epochs : not used (the legacy LSTM decoder is disabled)"
+echo "Recurrent epochs: ${TEMPORAL_EPOCHS}"
 echo "Reuse visual    : ${REUSE_VISUAL}"
 echo
 echo "TRAINING:"
-echo "  Network input = UAV/SAT image embeddings only"
-echo "  NO waypoint / XY / GPS / velocity / Kalman state / timestamp enters retrieval"
+echo "  RNN input = visual embeddings/logits + relative 6x6 offsets + prior model motion/state"
+echo "  NO waypoint / absolute XY / GPS / velocity / Kalman state / timestamp enters the RNN"
 echo
 echo "INFERENCE:"
-echo "  A fixed nominal speed initializes the filter; B/C GT is never read by inference"
-echo "  waypoint coordinates/order initialize and sequence the inertial motion only"
+echo "  B/C GT is never read by inference"
+echo "  waypoint W0 initializes only the first local lattice; it does not drive motion"
 echo "  waypoint frame_index/timestamp are ignored"
 echo "  test GT/GPS is metrics/visualization only"
 echo "================================================================================"
@@ -75,7 +75,7 @@ if [[ "${REUSE_VISUAL}" == "1" ]]; then
 fi
 
 echo
-echo "[1/2] TRAIN VISUAL RETRIEVAL + B/C WAYPOINT-INERTIAL INFERENCE"
+echo "[1/2] TRAIN VISUAL RETRIEVAL + RECURRENT VISUAL DECODER"
 
 PYTHONUNBUFFERED=1 \
 CUDA_VISIBLE_DEVICES="${GPU}" \
