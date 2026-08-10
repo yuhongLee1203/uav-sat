@@ -1,0 +1,248 @@
+{
+  "architecture": "RouteConditionedInertialLSTM_v4",
+  "training": {
+    "route": "route_A",
+    "waypoint_start_end_used": true,
+    "raw_absolute_current_gt_is_network_input": false,
+    "raw_gps_is_network_input": false,
+    "network_position_representation": "translation-invariant route-relative context + local candidate offsets",
+    "gt_role": "supervised labels/relative motion targets only",
+    "scheduled_sampling": "candidate center uses previous-frame GT only during early training; final epochs are fully closed-loop",
+    "leg_split": {
+      "train": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          7,
+          8
+        ],
+        [
+          8,
+          9
+        ],
+        [
+          9,
+          10
+        ],
+        [
+          10,
+          11
+        ],
+        [
+          11,
+          12
+        ]
+      ],
+      "val": [
+        [
+          12,
+          13
+        ],
+        [
+          13,
+          14
+        ]
+      ],
+      "test": [
+        [
+          14,
+          15
+        ],
+        [
+          15,
+          16
+        ],
+        [
+          16,
+          17
+        ],
+        [
+          17,
+          18
+        ]
+      ]
+    }
+  },
+  "model": {
+    "recurrent_state": "LSTM hidden/cell",
+    "explicit_motion_state": [
+      "v_parallel",
+      "v_cross",
+      "a_parallel",
+      "a_cross"
+    ],
+    "polynomial": "delta = v + 0.5*a",
+    "polynomial_role": "soft candidate-score prior only",
+    "current_position_source": "continuous current-image candidate probability expectation"
+  },
+  "inference": {
+    "waypoint_coordinates_order_used": true,
+    "waypoint_frame_index_used_for_switching": false,
+    "test_gt_used_by_inference": false,
+    "next_search_center": "previous image-derived visual measurement",
+    "kalman_controls_search": false,
+    "kalman_role": "final output smoother only"
+  },
+  "waypoint_counts": {
+    "route_B": 16,
+    "route_C": 12
+  },
+  "routes": {
+    "route_B": {
+      "RawTop1": {
+        "MLE_m": 146.1252944252627,
+        "MedLE_m": 161.72598032385037,
+        "P90_m": 215.77707379996815,
+        "P95_m": 228.05902479444077,
+        "ATE_RMSE_m": 158.64111484695047,
+        "RPE_m": 6.317014471026204,
+        "JumpRate_pct": 21.494505494505496,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.13181019332161686,
+        "LSR@10_pct": 0.8787346221441126,
+        "LSR@15_pct": 1.7574692442882252,
+        "LSR@20_pct": 2.8119507908611596,
+        "MaxLE_m": 286.02735656042165
+      },
+      "RawFixedHardMS": {
+        "MLE_m": 145.706733251214,
+        "MedLE_m": 163.11362893064188,
+        "P90_m": 214.64858821310662,
+        "P95_m": 229.39040019800706,
+        "ATE_RMSE_m": 158.39639317010966,
+        "RPE_m": 4.375876013825491,
+        "JumpRate_pct": 13.802197802197803,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.35149384885764495,
+        "LSR@10_pct": 0.7029876977152899,
+        "LSR@15_pct": 1.845342706502636,
+        "LSR@20_pct": 3.0755711775043935,
+        "MaxLE_m": 273.5669899009615
+      },
+      "RecurrentVisualMeasurement": {
+        "MLE_m": 148.16472363661913,
+        "MedLE_m": 166.5221362290489,
+        "P90_m": 216.43864420116813,
+        "P95_m": 231.2579476716624,
+        "ATE_RMSE_m": 161.10644883048923,
+        "RPE_m": 1.6159203183266704,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.04393673110720562,
+        "LSR@10_pct": 1.1862917398945518,
+        "LSR@15_pct": 2.680140597539543,
+        "LSR@20_pct": 4.8769771528998245,
+        "MaxLE_m": 281.3379335737118
+      },
+      "FinalKalman": {
+        "MLE_m": 148.2113857456689,
+        "MedLE_m": 166.5016967262077,
+        "P90_m": 216.45969230589395,
+        "P95_m": 231.12190717606575,
+        "ATE_RMSE_m": 161.14215610762614,
+        "RPE_m": 1.615593050775044,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.04393673110720562,
+        "LSR@10_pct": 1.1862917398945518,
+        "LSR@15_pct": 2.680140597539543,
+        "LSR@20_pct": 4.8769771528998245,
+        "MaxLE_m": 281.26793008949596
+      },
+      "WaypointSwitchCount": 14,
+      "MeanInertiaStrength": 0.797951372179918,
+      "MeanPolynomialSigma_m": 2.8869835700846305
+    },
+    "route_C": {
+      "RawTop1": {
+        "MLE_m": 316.8292806707679,
+        "MedLE_m": 151.722345536694,
+        "P90_m": 900.2168848221953,
+        "P95_m": 937.5318854548461,
+        "ATE_RMSE_m": 454.9985275778702,
+        "RPE_m": 5.429981393014965,
+        "JumpRate_pct": 18.138424821002385,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 1.4308426073131957,
+        "LSR@10_pct": 4.133545310015898,
+        "LSR@15_pct": 6.677265500794912,
+        "LSR@20_pct": 10.01589825119237,
+        "MaxLE_m": 979.8910722866115
+      },
+      "RawFixedHardMS": {
+        "MLE_m": 315.41860633347204,
+        "MedLE_m": 158.9028043113774,
+        "P90_m": 896.116208919214,
+        "P95_m": 931.5993869341647,
+        "ATE_RMSE_m": 452.9779354284668,
+        "RPE_m": 3.9757162680666123,
+        "JumpRate_pct": 9.228321400159109,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 1.7488076311605723,
+        "LSR@10_pct": 3.97456279809221,
+        "LSR@15_pct": 6.359300476947535,
+        "LSR@20_pct": 9.85691573926868,
+        "MaxLE_m": 969.9159921375192
+      },
+      "RecurrentVisualMeasurement": {
+        "MLE_m": 319.13718028824877,
+        "MedLE_m": 164.98735027707386,
+        "P90_m": 905.9041889888573,
+        "P95_m": 939.4861402379328,
+        "ATE_RMSE_m": 457.71142443803114,
+        "RPE_m": 2.646858330828262,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.6359300476947536,
+        "LSR@10_pct": 5.961844197138315,
+        "LSR@15_pct": 6.836248012718602,
+        "LSR@20_pct": 9.936406995230525,
+        "MaxLE_m": 979.4620080689571
+      },
+      "FinalKalman": {
+        "MLE_m": 319.188552124455,
+        "MedLE_m": 164.837027371263,
+        "P90_m": 905.8626861149233,
+        "P95_m": 939.5568613215255,
+        "ATE_RMSE_m": 457.7426131420421,
+        "RPE_m": 2.658608230067507,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.6359300476947536,
+        "LSR@10_pct": 5.961844197138315,
+        "LSR@15_pct": 6.836248012718602,
+        "LSR@20_pct": 9.936406995230525,
+        "MaxLE_m": 980.0027600082265
+      },
+      "WaypointSwitchCount": 10,
+      "MeanInertiaStrength": 0.7954651041042256,
+      "MeanPolynomialSigma_m": 2.90095712479044
+    }
+  }
+}
