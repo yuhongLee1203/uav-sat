@@ -1,0 +1,264 @@
+{
+  "architecture": "VisualMotionGatedRouteLSTM_v5",
+  "why_v4_failed": {
+    "mean_inertia_stayed_high": true,
+    "free_running_motion_state_removed": true,
+    "constant_velocity_kalman_removed": true,
+    "early_progress_waypoint_switch_removed": true
+  },
+  "training": {
+    "route": "route_A",
+    "waypoint_start_end_used": true,
+    "absolute_current_gt_network_input": false,
+    "raw_gps_network_input": false,
+    "gt_role": "supervision only",
+    "image_pair_motion": "previous/current UAV images + ECC image registration cue",
+    "phase_classes": [
+      "stationary",
+      "translation",
+      "rotation"
+    ],
+    "leg_split": {
+      "train": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          7,
+          8
+        ],
+        [
+          8,
+          9
+        ],
+        [
+          9,
+          10
+        ],
+        [
+          10,
+          11
+        ],
+        [
+          11,
+          12
+        ]
+      ],
+      "val": [
+        [
+          12,
+          13
+        ],
+        [
+          13,
+          14
+        ]
+      ],
+      "test": [
+        [
+          14,
+          15
+        ],
+        [
+          15,
+          16
+        ],
+        [
+          16,
+          17
+        ],
+        [
+          17,
+          18
+        ]
+      ]
+    }
+  },
+  "model": {
+    "fixed_speed": false,
+    "nominal_speed": false,
+    "free_running_velocity_prediction": false,
+    "observed_motion_state": [
+      "previous visual delta parallel",
+      "previous visual delta cross",
+      "observed acceleration parallel",
+      "observed acceleration cross"
+    ],
+    "polynomial": "observed_delta + 0.5 * observed_acceleration",
+    "polynomial_role": "translation-gated score prior only",
+    "current_position_source": "current image proposal gated by image-derived translation probability"
+  },
+  "inference": {
+    "waypoint_frame_index_switching": false,
+    "endpoint_switch_rule": "actual image-derived position must be within endpoint radius",
+    "terminal_lock": true,
+    "kalman_state": "[x,y] only",
+    "kalman_constant_velocity": false,
+    "test_gt_used_by_inference": false
+  },
+  "waypoint_counts": {
+    "route_B": 16,
+    "route_C": 12
+  },
+  "routes": {
+    "route_B": {
+      "RawTop1": {
+        "MLE_m": 693.4794553278872,
+        "MedLE_m": 704.1243832188817,
+        "P90_m": 1096.25074280898,
+        "P95_m": 1384.5701898248992,
+        "ATE_RMSE_m": 788.0163280558328,
+        "RPE_m": 4.0530145112725515,
+        "JumpRate_pct": 4.43956043956044,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.26362038664323373,
+        "LSR@10_pct": 2.0650263620386644,
+        "LSR@15_pct": 3.690685413005272,
+        "LSR@20_pct": 5.008787346221441,
+        "MaxLE_m": 1572.9285219721983
+      },
+      "RawHardMS": {
+        "MLE_m": 687.9923660852612,
+        "MedLE_m": 693.4656941884057,
+        "P90_m": 1086.2833816758005,
+        "P95_m": 1375.6788082950368,
+        "ATE_RMSE_m": 783.1345543574996,
+        "RPE_m": 4.519357019766249,
+        "JumpRate_pct": 10.68131868131868,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.35149384885764495,
+        "LSR@10_pct": 2.0650263620386644,
+        "LSR@15_pct": 4.173989455184534,
+        "LSR@20_pct": 6.063268892794376,
+        "MaxLE_m": 1573.3867713801878
+      },
+      "VisualMotionGatedMeasurement": {
+        "MLE_m": 691.0049011651995,
+        "MedLE_m": 699.9415500921971,
+        "P90_m": 1093.9683801159294,
+        "P95_m": 1384.4935256957622,
+        "ATE_RMSE_m": 786.5800965411164,
+        "RPE_m": 3.0727825250637175,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.04393673110720562,
+        "LSR@10_pct": 2.3725834797891037,
+        "LSR@15_pct": 5.492091388400703,
+        "LSR@20_pct": 6.195079086115992,
+        "MaxLE_m": 1578.8711900909823
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 690.7043807328477,
+        "MedLE_m": 698.1511197767973,
+        "P90_m": 1093.9751409124433,
+        "P95_m": 1384.463439836115,
+        "ATE_RMSE_m": 785.3521366918357,
+        "RPE_m": 3.06340168538867,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.04393673110720562,
+        "LSR@10_pct": 0.08787346221441124,
+        "LSR@15_pct": 0.39543057996485065,
+        "LSR@20_pct": 0.7029876977152899,
+        "MaxLE_m": 1578.8752525669195
+      },
+      "WaypointSwitchCount": 0,
+      "TerminalLockFrame": null,
+      "MeanTranslationProbability": 0.8417484514899748,
+      "MeanStationaryProbability": 0.1494472826878509,
+      "MeanRotationProbability": 0.008804266512482338
+    },
+    "route_C": {
+      "RawTop1": {
+        "MLE_m": 945.404560562794,
+        "MedLE_m": 1178.5656778376538,
+        "P90_m": 1409.5385961544566,
+        "P95_m": 1521.4176864184558,
+        "ATE_RMSE_m": 1083.548944079623,
+        "RPE_m": 3.6981595185836156,
+        "JumpRate_pct": 9.14876690533015,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.9538950715421303,
+        "LSR@10_pct": 4.848966613672496,
+        "LSR@15_pct": 10.731319554848968,
+        "LSR@20_pct": 15.421303656597773,
+        "MaxLE_m": 1562.9599383842487
+      },
+      "RawHardMS": {
+        "MLE_m": 945.8083537702128,
+        "MedLE_m": 1181.580312724983,
+        "P90_m": 1414.1694123724492,
+        "P95_m": 1521.4176864184558,
+        "ATE_RMSE_m": 1084.951845343895,
+        "RPE_m": 3.510669480783289,
+        "JumpRate_pct": 3.659506762132061,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 5.087440381558029,
+        "LSR@10_pct": 11.685214626391097,
+        "LSR@15_pct": 15.580286168521463,
+        "LSR@20_pct": 17.56756756756757,
+        "MaxLE_m": 1562.9599383842487
+      },
+      "VisualMotionGatedMeasurement": {
+        "MLE_m": 950.1278583694636,
+        "MedLE_m": 1185.9084936559998,
+        "P90_m": 1418.8970899005387,
+        "P95_m": 1530.968844307135,
+        "ATE_RMSE_m": 1090.2511390420113,
+        "RPE_m": 2.2725954555083554,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 7.074721780604134,
+        "LSR@10_pct": 13.831478537360889,
+        "LSR@15_pct": 16.05723370429253,
+        "LSR@20_pct": 17.40858505564388,
+        "MaxLE_m": 1572.6299314194696
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 948.3432292806239,
+        "MedLE_m": 1184.0684476399088,
+        "P90_m": 1418.8979954121266,
+        "P95_m": 1530.967202420732,
+        "ATE_RMSE_m": 1088.5394611469794,
+        "RPE_m": 2.2739227658880306,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.0794912559618442,
+        "LSR@10_pct": 5.325914149443562,
+        "LSR@15_pct": 11.446740858505565,
+        "LSR@20_pct": 17.726550079491258,
+        "MaxLE_m": 1572.6325327884504
+      },
+      "WaypointSwitchCount": 0,
+      "TerminalLockFrame": null,
+      "MeanTranslationProbability": 0.8377238694454036,
+      "MeanStationaryProbability": 0.15316581541290344,
+      "MeanRotationProbability": 0.00911031464567861
+    }
+  }
+}

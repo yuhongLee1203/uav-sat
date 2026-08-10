@@ -5,10 +5,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # =============================================================================
 # Experiment
 # =============================================================================
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "route_conditioned_inertial_lstm_v4"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "visual_motion_gated_route_lstm_v5"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "route_inertial_lstm_A_only.pt"
+TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "visual_motion_route_lstm_A_only.pt"
 
 ROUTE_ROOTS = [
     Path("/yh/study/new_data_2/model_dataset_new_1_flight"),
@@ -34,7 +34,7 @@ SAT_JSON = Path(
 )
 
 # =============================================================================
-# Frozen public backbone + task-specific visual retrieval heads
+# Existing single-frame visual retrieval
 # =============================================================================
 BACKBONE_NAME = "hf-hub:timm/MobileCLIP2-S2-OpenCLIP"
 CLIP_DIM = 512
@@ -79,38 +79,48 @@ TEST_FRACTION = 0.15
 SPLIT_GUARD_FRAMES = 16
 
 # =============================================================================
-# Route-conditioned recurrent model
+# v5 temporal model
 # =============================================================================
-# The temporal network NEVER receives absolute GPS/XY.
+# NO fixed/nominal speed exists in v5.
 #
-# It receives:
-#   - current UAV/SAT visual embeddings and similarity
-#   - relative candidate offsets around the previous VISUAL state
-#   - route-relative start/end context (unit direction, remaining ratio,
-#     normalized cross-track)
-#   - previous model motion state [v_parallel, v_cross, a_parallel, a_cross]
-#   - previous LSTM hidden/cell
+# Previous motion state is OBSERVED from previous IMAGE-derived localization:
+#   [delta_parallel, delta_cross, acceleration_parallel, acceleration_cross]
 #
-# Start/end waypoint coordinates are converted to this translation-invariant
-# route frame BEFORE entering the network.
-# =============================================================================
+# The neural network is not allowed to invent a free-running velocity.
 LSTM_HIDDEN_DIM = 256
 LSTM_FEATURE_DIM = 128
 LSTM_DROPOUT = 0.10
 
-# Previous motion state is in metres per image step, not global coordinates.
-MOTION_STATE_DIM = 4
-MOTION_MAX_V_M_PER_FRAME = 6.0
-MOTION_MAX_A_M_PER_FRAME2 = 3.0
+OBSERVED_MOTION_STATE_DIM = 4
+OBSERVED_MOTION_NORMALIZE_M = 8.0
 
-# Polynomial prior:
-#   delta_poly = v_(t-1) + 0.5 * a_(t-1)
-# It is only a SOFT SCORE PRIOR inside the current 6x6 candidate lattice.
-# It NEVER moves the localization state by itself.
+# Explicit image-pair motion cue from consecutive UAV frames.
+# cv2.findTransformECC(EUCLIDEAN) produces:
+#   center_dx_norm, center_dy_norm, sin(rotation), 1-cos(rotation), correlation
+IMAGE_MOTION_CUE_DIM = 5
+ECC_IMAGE_SIZE = 160
+ECC_ITERATIONS = 35
+ECC_EPSILON = 1e-5
+
+# Soft pseudo-target calibration used only to train the 3-state phase head.
+# These are NOT flight speed limits and never move the localization state.
+ECC_TRANSLATION_GAIN = 28.0
+ECC_ROTATION_SCALE_DEG = 18.0
+GT_TRANSLATION_SOFT_SCALE_M = 2.0
+
+# Phase classes.
+PHASE_STATIONARY = 0
+PHASE_TRANSLATION = 1
+PHASE_ROTATION = 2
+PHASE_COUNT = 3
+
+# Polynomial is built only from OBSERVED image-derived previous steps:
+#   delta_poly = previous_delta + 0.5 * previous_acceleration
+# It is only a soft score prior.
 POLY_SIGMA_MIN_M = 2.0
 POLY_SIGMA_MAX_M = 12.0
 
-# Translation-invariant route context normalization.
+# Route-relative start/end context.
 ROUTE_CROSS_TRACK_SCALE_M = 30.0
 ROUTE_LENGTH_LOG_SCALE_M = 1000.0
 
@@ -124,46 +134,37 @@ TBPTT_STEPS = 32
 GRAD_CLIP_NORM = 5.0
 EARLY_STOPPING_PATIENCE = 10
 
-# Split by complete Route-A waypoint legs, not arbitrary frames.
 TEMPORAL_TRAIN_LEG_FRACTION = 0.70
 TEMPORAL_VAL_LEG_FRACTION = 0.15
 
-# Scheduled closed-loop candidate-center training:
-# epoch 0 starts teacher-centered; by epoch 12 the center is fully model-driven.
-# The FINAL majority of training therefore exactly matches inference.
-TEACHER_CENTER_END_EPOCH = 12
+# Early scheduled sampling only; after this epoch the sequence is fully closed-loop.
+TEACHER_CENTER_END_EPOCH = 10
 
-# Standard losses.
 LOSS_RETRIEVAL_CE = 1.00
-# Relative offset loss: target is GT - current search center, never absolute XY.
-LOSS_RELATIVE_OFFSET = 0.30
-# Supervise the recurrent velocity state with next-frame relative displacement.
-LOSS_VELOCITY = 0.35
-# Supervise second-order acceleration state.
-LOSS_ACCELERATION = 0.10
+LOSS_CURRENT_RELATIVE_POSITION = 0.45
+LOSS_PHASE_SOFT_CE = 0.35
+LOSS_STEP_DISPLACEMENT = 0.30
 
 # =============================================================================
-# Inference waypoint use
+# Waypoint inference
 # =============================================================================
-# Inference uses mission waypoint coordinates/order only.
-# waypoint frame_index/timestamp are NOT used for switching.
-#
-# The current 6x6 lattice is ALWAYS centered on the previous visual measurement,
-# never on the polynomial prediction or Kalman prediction. This is the key
-# anti-runaway design.
-INFER_WAYPOINT_REACHED_RADIUS_M = 14.0
+# Switching requires actual current image-derived localization to enter the
+# endpoint radius. v4's early "progress >= length-radius" shortcut is removed.
+INFER_WAYPOINT_REACHED_RADIUS_M = 8.0
+
+# At the FINAL mission waypoint we freeze the terminal IMAGE-derived state.
+# This is a mission-end constraint, not a speed model.
+TERMINAL_LOCK_ENABLED = True
 
 # =============================================================================
-# Final output smoother: FilterPy Kalman
+# Final FilterPy smoother
 # =============================================================================
-# RNN visual state drives search. Kalman is only the FINAL smoother.
-# Kalman prediction NEVER controls the next SAT candidate center.
+# Position-only random-walk Kalman.
+# There is NO vx/vy and NO constant-velocity prediction in v5.
+KALMAN_Q_POSITION = 0.30
 KALMAN_INIT_POSITION_VAR = 9.0
-KALMAN_INIT_VELOCITY_VAR = 16.0
-KALMAN_Q_POSITION = 0.40
-KALMAN_Q_VELOCITY = 0.80
 KALMAN_R_MIN_VAR = 1.0
-KALMAN_R_MAX_VAR = 36.0
+KALMAN_R_MAX_VAR = 25.0
 
 # =============================================================================
 # Evaluation / visualization

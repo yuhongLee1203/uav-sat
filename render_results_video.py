@@ -14,13 +14,11 @@ import config
 from data import RouteDataset, meters_from_latlon
 
 
-# BGR video colors.
-GT_COLOR = (60, 210, 80)          # green
-VISUAL_COLOR = (210, 80, 220)     # purple
-FINAL_COLOR = (20, 140, 255)      # orange
-POLY_COLOR = (255, 210, 60)       # cyan/light blue
-HARDMS_COLOR = (190, 100, 230)
-WAYPOINT_COLOR = (0, 220, 255)    # yellow
+GT_COLOR = (60, 210, 80)
+VISUAL_COLOR = (210, 80, 220)
+FINAL_COLOR = (20, 140, 255)
+POLY_COLOR = (255, 210, 60)
+WAYPOINT_COLOR = (0, 220, 255)
 TEXT_COLOR = (245, 245, 245)
 BLACK = (0, 0, 0)
 
@@ -30,19 +28,17 @@ def load_waypoints(
     origin_lat,
     origin_lon,
 ):
-    path = Path(
-        config.WAYPOINT_FILES[
-            route_name
-        ]
-    )
-
     payload = json.loads(
-        path.read_text(
+        Path(
+            config.WAYPOINT_FILES[
+                route_name
+            ]
+        ).read_text(
             encoding="utf-8"
         )
     )
 
-    raw = sorted(
+    rows = sorted(
         payload[
             "waypoints"
         ],
@@ -55,16 +51,18 @@ def load_waypoints(
 
     result = []
 
-    for item in raw:
-        x_meter, y_meter = meters_from_latlon(
-            item[
-                "latitude"
-            ],
-            item[
-                "longitude"
-            ],
-            origin_lat,
-            origin_lon,
+    for item in rows:
+        x_meter, y_meter = (
+            meters_from_latlon(
+                item[
+                    "latitude"
+                ],
+                item[
+                    "longitude"
+                ],
+                origin_lat,
+                origin_lon,
+            )
         )
 
         result.append(
@@ -92,7 +90,7 @@ def meters_to_latlon(
     origin_lat,
     origin_lon,
 ):
-    earth_radius_m = 6378137.0
+    radius = 6378137.0
 
     latitude = (
         float(
@@ -102,12 +100,12 @@ def meters_to_latlon(
             float(
                 y_meter
             )
-            / earth_radius_m
+            / radius
         )
     )
 
     longitude_scale = (
-        earth_radius_m
+        radius
         * math.cos(
             math.radians(
                 float(
@@ -147,11 +145,13 @@ def xy_to_source_pixels(
         xy,
         dtype=np.float64,
     ):
-        latitude, longitude = meters_to_latlon(
-            x_meter,
-            y_meter,
-            origin_lat,
-            origin_lon,
+        latitude, longitude = (
+            meters_to_latlon(
+                x_meter,
+                y_meter,
+                origin_lat,
+                origin_lon,
+            )
         )
 
         pixel_x, pixel_y = (
@@ -232,7 +232,8 @@ def contain_image(
         ),
         interpolation=(
             cv2.INTER_AREA
-            if scale <= 1.0
+            if scale
+            <= 1.0
             else cv2.INTER_LINEAR
         ),
     )
@@ -341,6 +342,31 @@ def draw_history(
     )
 
 
+def phase_name(
+    value,
+):
+    value = int(
+        value
+    )
+
+    if value == int(
+        config.PHASE_STATIONARY
+    ):
+        return "STATIONARY"
+
+    if value == int(
+        config.PHASE_TRANSLATION
+    ):
+        return "TRANSLATION"
+
+    if value == int(
+        config.PHASE_ROTATION
+    ):
+        return "ROTATION"
+
+    return "UNKNOWN"
+
+
 def render_overview(
     route_name,
     rows,
@@ -415,7 +441,7 @@ def render_overview(
         ],
         color="tab:purple",
         linewidth=1.5,
-        label="RNN visual state",
+        label="Image-motion-gated visual state",
     )
 
     ax.plot(
@@ -429,7 +455,7 @@ def render_overview(
         ],
         color="tab:orange",
         linewidth=1.8,
-        label="Final Kalman",
+        label="Final position-only Kalman",
     )
 
     stride = max(
@@ -443,16 +469,16 @@ def render_overview(
     ax.scatter(
         polynomial[
             ::stride,
-            0,
+            0
         ],
         polynomial[
             ::stride,
-            1,
+            1
         ],
         s=8,
-        alpha=0.35,
+        alpha=0.30,
         color="tab:cyan",
-        label="Polynomial soft prior",
+        label="Observed-motion polynomial prior",
     )
 
     for waypoint in waypoints:
@@ -519,11 +545,11 @@ def render_overview(
             (
                 final[
                     index,
-                    0,
+                    0
                 ],
                 final[
                     index,
-                    1,
+                    1
                 ],
             ),
             xytext=(
@@ -535,10 +561,51 @@ def render_overview(
             color="tab:orange",
         )
 
+    terminal_rows = rows[
+        rows[
+            "terminal_locked"
+        ]
+        > 0
+    ]
+
+    if len(
+        terminal_rows
+    ) > 0:
+        first_terminal = (
+            terminal_rows.iloc[
+                0
+            ]
+        )
+
+        ax.scatter(
+            [
+                float(
+                    first_terminal[
+                        "visual_measurement_x"
+                    ]
+                )
+            ],
+            [
+                float(
+                    first_terminal[
+                        "visual_measurement_y"
+                    ]
+                )
+            ],
+            s=150,
+            facecolors="none",
+            edgecolors="black",
+            linewidths=2.0,
+            label=(
+                "Terminal lock "
+                f"f{int(first_terminal['frame_id'])}"
+            ),
+        )
+
     ax.set_title(
         (
-            f"{route_name}: Route-conditioned Inertial LSTM\n"
-            "frame-labelled synchronized localization"
+            f"{route_name}: Visual-Motion-Gated Route LSTM v5\n"
+            "No fixed speed; current/previous images decide motion phase"
         )
     )
 
@@ -678,6 +745,20 @@ def render_process_snapshots(
                 "0.45",
                 "s",
             ),
+            "Proposal": (
+                float(
+                    row[
+                        "proposal_x"
+                    ]
+                ),
+                float(
+                    row[
+                        "proposal_y"
+                    ]
+                ),
+                "tab:blue",
+                "x",
+            ),
             "Polynomial": (
                 float(
                     row[
@@ -692,7 +773,7 @@ def render_process_snapshots(
                 "tab:cyan",
                 "^",
             ),
-            "RNN visual": (
+            "Gated visual": (
                 float(
                     row[
                         "visual_measurement_x"
@@ -741,7 +822,7 @@ def render_process_snapshots(
                     120
                     if label
                     == "Final"
-                    else 70
+                    else 65
                 ),
                 label=label,
             )
@@ -820,16 +901,24 @@ def render_process_snapshots(
             alpha=0.25,
         )
 
+        phase = phase_name(
+            row[
+                "predicted_phase"
+            ]
+        )
+
         ax.set_title(
             (
                 f"frame {int(row['frame_id'])} | "
                 f"W{int(row['active_waypoint_from'])}"
                 f"->W{int(row['active_waypoint_to'])}\n"
+                f"{phase} | move={float(row['translation_probability']):.2f} "
+                f"stop={float(row['stationary_probability']):.2f} "
+                f"rot={float(row['rotation_probability']):.2f}\n"
                 f"visual err={float(row['error_visual_m']):.1f}m | "
-                f"final err={float(row['error_final_m']):.1f}m | "
-                f"inertia={float(row['inertia_strength']):.2f}"
+                f"final err={float(row['error_final_m']):.1f}m"
             ),
-            fontsize=9,
+            fontsize=8.5,
         )
 
         if plot_index == 0:
@@ -853,9 +942,9 @@ def render_process_snapshots(
 
     fig.suptitle(
         (
-            f"{route_name}: localization process\n"
-            "previous visual state -> polynomial soft prior -> current image "
-            "measurement -> final Kalman"
+            f"{route_name}: current-image localization process\n"
+            "image pair motion state -> visual proposal -> translation gate "
+            "-> synchronized visual state -> position Kalman"
         ),
         fontsize=14,
     )
@@ -1042,6 +1131,15 @@ def render_video(
         dtype=float
     )
 
+    proposal_xy = rows[
+        [
+            "proposal_x",
+            "proposal_y",
+        ]
+    ].to_numpy(
+        dtype=float
+    )
+
     waypoint_xy = np.asarray(
         [
             [
@@ -1072,6 +1170,10 @@ def render_video(
 
     polynomial_canvas = xy_to_canvas(
         polynomial_xy
+    )
+
+    proposal_canvas = xy_to_canvas(
+        proposal_xy
     )
 
     waypoint_canvas = xy_to_canvas(
@@ -1223,6 +1325,21 @@ def render_video(
 
             draw_marker(
                 canvas,
+                proposal_canvas[
+                    row_index
+                ],
+                (
+                    255,
+                    160,
+                    70,
+                ),
+                cv2.MARKER_SQUARE,
+                15,
+                2,
+            )
+
+            draw_marker(
+                canvas,
                 polynomial_canvas[
                     row_index
                 ],
@@ -1272,6 +1389,12 @@ def render_video(
                 ]
             )
 
+            phase = phase_name(
+                row[
+                    "predicted_phase"
+                ]
+            )
+
             cv2.rectangle(
                 canvas,
                 (
@@ -1280,19 +1403,19 @@ def render_video(
                 ),
                 (
                     width,
-                    48,
+                    58,
                 ),
                 BLACK,
                 -1,
             )
 
             top_text = (
-                f"{route_name.upper()} | "
-                f"source frame={frame_id} | "
-                f"active W{active_from}->W{active_to} | "
-                f"visual error={float(row['error_visual_m']):.1f}m | "
-                f"final error={float(row['error_final_m']):.1f}m | "
-                f"inertia={float(row['inertia_strength']):.2f}"
+                f"{route_name.upper()} | frame={frame_id} | "
+                f"W{active_from}->W{active_to} | {phase} | "
+                f"move={float(row['translation_probability']):.2f} "
+                f"stop={float(row['stationary_probability']):.2f} "
+                f"rot={float(row['rotation_probability']):.2f} | "
+                f"err={float(row['error_final_m']):.1f}m"
             )
 
             cv2.putText(
@@ -1300,26 +1423,46 @@ def render_video(
                 top_text,
                 (
                     14,
-                    31,
+                    34,
                 ),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.56,
+                0.54,
                 TEXT_COLOR,
                 1,
                 cv2.LINE_AA,
             )
 
-            legend = [
-                "Green cross: GT (evaluation only)",
-                "Purple diamond: current IMAGE-derived RNN state",
-                "Cyan triangle: polynomial SOFT prior (does not move state)",
-                "Orange star: final FilterPy Kalman output",
-                "Yellow X: mission waypoint start/end",
+            status_lines = [
+                (
+                    "LEFT = exact current UAV frame; "
+                    "RIGHT = synchronized localization"
+                ),
+                (
+                    f"ECC shift={float(row['ecc_center_shift_norm']):.4f} "
+                    f"rot={float(row['ecc_rotation_deg']):.1f}deg "
+                    f"corr={float(row['ecc_correlation']):.2f}"
+                ),
+                (
+                    f"observed step parallel="
+                    f"{float(row['observed_delta_parallel']):.2f}m "
+                    f"cross={float(row['observed_delta_cross']):.2f}m"
+                ),
+                (
+                    "Purple = current IMAGE-gated localization; "
+                    "cyan = polynomial prior only"
+                ),
+                (
+                    "Orange = position-only Kalman; "
+                    "no velocity state / no fixed speed"
+                ),
+                (
+                    f"terminal_locked={int(row['terminal_locked'])}"
+                ),
             ]
 
             box_y = (
                 height
-                - 175
+                - 205
             )
 
             cv2.rectangle(
@@ -1339,7 +1482,7 @@ def render_video(
             )
 
             for line_index, line in enumerate(
-                legend
+                status_lines
             ):
                 cv2.putText(
                     canvas,
@@ -1349,10 +1492,10 @@ def render_video(
                         box_y
                         + 27
                         + line_index
-                        * 27,
+                        * 28,
                     ),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.46,
+                    0.44,
                     TEXT_COLOR,
                     1,
                     cv2.LINE_AA,
@@ -1371,6 +1514,7 @@ def render_video(
                     f"{row_index + 1}/{len(rows)}",
                     flush=True,
                 )
+
     finally:
         writer.release()
 
@@ -1407,7 +1551,7 @@ def render_route(
         config.OUTPUT_DIR
         / (
             f"{route_name}_"
-            "route_inertial_lstm_frames.csv"
+            "visual_motion_lstm_frames.csv"
         )
     )
 

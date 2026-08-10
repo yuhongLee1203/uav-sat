@@ -6,6 +6,7 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -17,7 +18,7 @@ from visual_localizer import (
     hard_mean_shift,
     train_visual_retrieval_a_only,
 )
-from visual_model import RouteInertialLSTM
+from visual_model import VisualMotionRouteLSTM
 
 try:
     from filterpy.kalman import KalmanFilter
@@ -25,7 +26,7 @@ except ImportError:
     KalmanFilter = None
 
 
-ARCHITECTURE_NAME = "RouteConditionedInertialLSTM_v4"
+ARCHITECTURE_NAME = "VisualMotionGatedRouteLSTM_v5"
 
 
 # =============================================================================
@@ -37,7 +38,9 @@ class RouteCache:
     route_name: str
     frame_ids: torch.Tensor
     gt_xy: torch.Tensor
+    raw_gt_xy: torch.Tensor
     uav_clip: torch.Tensor
+    image_motion_cues: torch.Tensor
     image_paths: list
 
     def __len__(self):
@@ -88,25 +91,33 @@ class MissionRoute:
 
 
 # =============================================================================
-# General utilities
+# General
 # =============================================================================
 
 def set_seed(seed):
     random.seed(
-        int(seed)
+        int(
+            seed
+        )
     )
 
     np.random.seed(
-        int(seed)
+        int(
+            seed
+        )
     )
 
     torch.manual_seed(
-        int(seed)
+        int(
+            seed
+        )
     )
 
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(
-            int(seed)
+            int(
+                seed
+            )
         )
 
 
@@ -130,21 +141,14 @@ def parse_frame_id(value):
         )
 
     return int(
-        str(value)
+        str(
+            value
+        )
     )
 
 
 # =============================================================================
-# Waypoint / route loader
-#
-# TRAINING:
-#   Route A uses waypoint frame boundaries only to know which images belong to
-#   a start->end training leg. The NETWORK receives only a translation-invariant
-#   route context derived from that start/end pair.
-#
-# INFERENCE:
-#   B/C uses waypoint coordinate/order. frame_index is loaded for diagnostics
-#   but is NEVER used to switch legs.
+# Mission route
 # =============================================================================
 
 def load_mission_route(
@@ -183,15 +187,17 @@ def load_mission_route(
     waypoints = []
 
     for item in raw_waypoints:
-        x_meter, y_meter = meters_from_latlon(
-            item[
-                "latitude"
-            ],
-            item[
-                "longitude"
-            ],
-            origin_lat,
-            origin_lon,
+        x_meter, y_meter = (
+            meters_from_latlon(
+                item[
+                    "latitude"
+                ],
+                item[
+                    "longitude"
+                ],
+                origin_lat,
+                origin_lon,
+            )
         )
 
         waypoints.append(
@@ -224,11 +230,13 @@ def load_mission_route(
             f"{route_name}: fewer than two waypoints"
         )
 
-    # Use every adjacent waypoint pair. This avoids stale straight_legs metadata.
     legs = []
 
     for index in range(
-        len(waypoints) - 1
+        len(
+            waypoints
+        )
+        - 1
     ):
         legs.append(
             MissionLeg(
@@ -237,7 +245,8 @@ def load_mission_route(
                     index
                 ],
                 end=waypoints[
-                    index + 1
+                    index
+                    + 1
                 ],
             )
         )
@@ -245,7 +254,7 @@ def load_mission_route(
     print(
         f"{route_name}: "
         f"{len(waypoints)} waypoints -> "
-        f"{len(legs)} start/end legs",
+        f"{len(legs)} adjacent start/end legs",
         flush=True,
     )
 
@@ -272,7 +281,251 @@ def load_mission_route(
 
 
 # =============================================================================
-# Frozen UAV feature cache
+# Pure-image pair motion cue
+# =============================================================================
+
+def _read_motion_gray(path):
+    image = cv2.imread(
+        str(
+            path
+        ),
+        cv2.IMREAD_GRAYSCALE,
+    )
+
+    if image is None:
+        raise FileNotFoundError(
+            path
+        )
+
+    size = int(
+        config.ECC_IMAGE_SIZE
+    )
+
+    image = cv2.resize(
+        image,
+        (
+            size,
+            size,
+        ),
+        interpolation=cv2.INTER_AREA,
+    )
+
+    return (
+        image.astype(
+            np.float32
+        )
+        / 255.0
+    )
+
+
+def estimate_image_pair_motion(
+    previous_path,
+    current_path,
+):
+    """
+    Image-only motion evidence.
+
+    The cue is NOT converted to metres and does not move the localization.
+    It only helps the LSTM distinguish:
+      stationary / translation / in-place rotation.
+    """
+    if previous_path is None:
+        return np.asarray(
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            dtype=np.float32,
+        )
+
+    previous = _read_motion_gray(
+        previous_path
+    )
+
+    current = _read_motion_gray(
+        current_path
+    )
+
+    size = float(
+        config.ECC_IMAGE_SIZE
+    )
+
+    warp = np.eye(
+        2,
+        3,
+        dtype=np.float32,
+    )
+
+    criteria = (
+        cv2.TERM_CRITERIA_EPS
+        | cv2.TERM_CRITERIA_COUNT,
+        int(
+            config.ECC_ITERATIONS
+        ),
+        float(
+            config.ECC_EPSILON
+        ),
+    )
+
+    correlation = 0.0
+
+    try:
+        correlation, warp = (
+            cv2.findTransformECC(
+                previous,
+                current,
+                warp,
+                cv2.MOTION_EUCLIDEAN,
+                criteria,
+                None,
+                1,
+            )
+        )
+
+        center = np.asarray(
+            [
+                size
+                * 0.5,
+                size
+                * 0.5,
+                1.0,
+            ],
+            dtype=np.float32,
+        )
+
+        mapped_center = (
+            warp
+            @ center
+        )
+
+        center_shift = (
+            mapped_center
+            - center[
+                :2
+            ]
+        )
+
+        theta = math.atan2(
+            float(
+                warp[
+                    1,
+                    0
+                ]
+            ),
+            float(
+                warp[
+                    0,
+                    0
+                ]
+            ),
+        )
+
+        dx_norm = float(
+            center_shift[
+                0
+            ]
+            / size
+        )
+
+        dy_norm = float(
+            center_shift[
+                1
+            ]
+            / size
+        )
+
+        cue = np.asarray(
+            [
+                dx_norm,
+                dy_norm,
+                math.sin(
+                    theta
+                ),
+                1.0
+                - math.cos(
+                    theta
+                ),
+                float(
+                    np.clip(
+                        correlation,
+                        0.0,
+                        1.0,
+                    )
+                ),
+            ],
+            dtype=np.float32,
+        )
+
+        if np.all(
+            np.isfinite(
+                cue
+            )
+        ):
+            return cue
+
+    except cv2.error:
+        pass
+
+    # Fallback: translation-only phase correlation.
+    try:
+        (
+            shift_x_y,
+            response,
+        ) = cv2.phaseCorrelate(
+            previous,
+            current,
+        )
+
+        cue = np.asarray(
+            [
+                float(
+                    shift_x_y[
+                        0
+                    ]
+                    / size
+                ),
+                float(
+                    shift_x_y[
+                        1
+                    ]
+                    / size
+                ),
+                0.0,
+                0.0,
+                float(
+                    np.clip(
+                        response,
+                        0.0,
+                        1.0,
+                    )
+                ),
+            ],
+            dtype=np.float32,
+        )
+
+        if np.all(
+            np.isfinite(
+                cue
+            )
+        ):
+            return cue
+
+    except cv2.error:
+        pass
+
+    return np.zeros(
+        int(
+            config.IMAGE_MOTION_CUE_DIM
+        ),
+        dtype=np.float32,
+    )
+
+
+# =============================================================================
+# Route cache
 # =============================================================================
 
 @torch.no_grad()
@@ -296,6 +549,12 @@ def build_route_cache(
         "mtime_ns": int(
             checkpoint_stat.st_mtime_ns
         ),
+        "ecc_size": int(
+            config.ECC_IMAGE_SIZE
+        ),
+        "ecc_iterations": int(
+            config.ECC_ITERATIONS
+        ),
     }
 
     cache_path = (
@@ -303,7 +562,7 @@ def build_route_cache(
         / "feature_cache"
         / (
             f"{route_name}_"
-            "uav_clip.pt"
+            "visual_motion_cache.pt"
         )
     )
 
@@ -321,7 +580,7 @@ def build_route_cache(
         ):
             print(
                 f"{route_name}: "
-                "reuse cached frozen UAV embeddings",
+                "reuse cached UAV embeddings + image-pair motion cues",
                 flush=True,
             )
 
@@ -333,8 +592,14 @@ def build_route_cache(
                 gt_xy=payload[
                     "gt_xy"
                 ],
+                raw_gt_xy=payload[
+                    "raw_gt_xy"
+                ],
                 uav_clip=payload[
                     "uav_clip"
+                ],
+                image_motion_cues=payload[
+                    "image_motion_cues"
                 ],
                 image_paths=payload[
                     "image_paths"
@@ -342,7 +607,9 @@ def build_route_cache(
             )
 
     dataset = RouteDataset(
-        Path(root),
+        Path(
+            root
+        ),
         train=False,
         origin_lat=visual.origin_lat,
         origin_lon=visual.origin_lon,
@@ -350,6 +617,7 @@ def build_route_cache(
 
     frame_rows = []
     gt_rows = []
+    raw_gt_rows = []
     clip_rows = []
     image_paths = []
 
@@ -359,17 +627,23 @@ def build_route_cache(
 
     for start in range(
         0,
-        len(dataset),
+        len(
+            dataset
+        ),
         batch_size,
     ):
         end = min(
             start
             + batch_size,
-            len(dataset),
+            len(
+                dataset
+            ),
         )
 
         items = [
-            dataset[index]
+            dataset[
+                index
+            ]
             for index
             in range(
                 start,
@@ -389,10 +663,8 @@ def build_route_cache(
             device
         )
 
-        clip = (
-            visual.encode_uav_clip(
-                uav
-            )
+        clip = visual.encode_uav_clip(
+            uav
         )
 
         clip_rows.append(
@@ -408,6 +680,18 @@ def build_route_cache(
                 [
                     item[
                         "xy"
+                    ].float()
+                    for item
+                    in items
+                ]
+            )
+        )
+
+        raw_gt_rows.append(
+            torch.stack(
+                [
+                    item[
+                        "raw_xy"
                     ].float()
                     for item
                     in items
@@ -433,19 +717,63 @@ def build_route_cache(
             )
 
         if (
-            start == 0
+            start
+            == 0
             or end
-            == len(dataset)
+            == len(
+                dataset
+            )
             or (
                 start
                 // batch_size
             )
-            % 20
+            % 10
             == 0
         ):
             print(
-                f"{route_name} visual cache: "
+                f"{route_name} backbone cache: "
                 f"{end}/{len(dataset)}",
+                flush=True,
+            )
+
+    motion_cues = []
+
+    previous_path = None
+
+    for index, image_path in enumerate(
+        image_paths
+    ):
+        cue = estimate_image_pair_motion(
+            previous_path,
+            image_path,
+        )
+
+        motion_cues.append(
+            cue
+        )
+
+        previous_path = (
+            image_path
+        )
+
+        if (
+            index
+            == 0
+            or index
+            + 1
+            == len(
+                image_paths
+            )
+            or (
+                index
+                + 1
+            )
+            % 250
+            == 0
+        ):
+            print(
+                f"{route_name} image-pair motion cue: "
+                f"{index + 1}/{len(image_paths)}",
                 flush=True,
             )
 
@@ -458,8 +786,17 @@ def build_route_cache(
         gt_xy=torch.cat(
             gt_rows
         ).float(),
+        raw_gt_xy=torch.cat(
+            raw_gt_rows
+        ).float(),
         uav_clip=torch.cat(
             clip_rows
+        ),
+        image_motion_cues=torch.tensor(
+            np.asarray(
+                motion_cues
+            ),
+            dtype=torch.float32,
         ),
         image_paths=image_paths,
     )
@@ -480,8 +817,14 @@ def build_route_cache(
             "gt_xy": (
                 result.gt_xy
             ),
+            "raw_gt_xy": (
+                result.raw_gt_xy
+            ),
             "uav_clip": (
                 result.uav_clip
+            ),
+            "image_motion_cues": (
+                result.image_motion_cues
             ),
             "image_paths": (
                 result.image_paths
@@ -491,8 +834,8 @@ def build_route_cache(
     )
 
     print(
-        f"{route_name}: "
-        f"cached frozen UAV embeddings -> {cache_path}",
+        f"{route_name}: cache saved -> "
+        f"{cache_path}",
         flush=True,
     )
 
@@ -500,10 +843,7 @@ def build_route_cache(
 
 
 # =============================================================================
-# Route geometry.
-#
-# Absolute waypoint coordinates stay outside the neural network.
-# The model receives only route-relative quantities.
+# Route geometry
 # =============================================================================
 
 def leg_geometry(
@@ -512,7 +852,6 @@ def leg_geometry(
     dtype=torch.float32,
 ):
     start = leg.start_xy
-
     end = leg.end_xy
 
     if device is not None:
@@ -527,7 +866,8 @@ def leg_geometry(
         )
 
     vector = (
-        end - start
+        end
+        - start
     )
 
     length = torch.linalg.norm(
@@ -543,8 +883,12 @@ def leg_geometry(
 
     normal = torch.stack(
         [
-            -unit[1],
-            unit[0],
+            -unit[
+                1
+            ],
+            unit[
+                0
+            ],
         ]
     )
 
@@ -664,6 +1008,7 @@ def candidate_offsets_in_leg_frame(
 def route_context_tensor(
     search_center,
     leg,
+    final_leg,
 ):
     (
         start,
@@ -741,27 +1086,31 @@ def route_context_tensor(
         remaining_ratio
     )
 
+    final_leg_tensor = torch.full_like(
+        remaining_ratio,
+        1.0
+        if final_leg
+        else 0.0,
+    )
+
     return torch.stack(
         [
             remaining_ratio,
             normalized_cross,
             normalized_log_length,
+            final_leg_tensor,
         ],
         dim=1,
     )
 
 
-def rotate_motion_state(
-    motion_state,
+def rotate_observed_motion_state(
+    state,
     old_leg,
     new_leg,
 ):
-    """
-    Rotate [v_parallel, v_cross, a_parallel, a_cross] from the old leg frame
-    into the new leg frame. No GPS/GT is involved.
-    """
-    device = motion_state.device
-    dtype = motion_state.dtype
+    device = state.device
+    dtype = state.dtype
 
     (
         _,
@@ -788,7 +1137,7 @@ def rotate_motion_state(
     )
 
     velocity_xy = (
-        motion_state[
+        state[
             :,
             0:1
         ]
@@ -796,7 +1145,7 @@ def rotate_motion_state(
             1,
             2,
         )
-        + motion_state[
+        + state[
             :,
             1:2
         ]
@@ -807,7 +1156,7 @@ def rotate_motion_state(
     )
 
     acceleration_xy = (
-        motion_state[
+        state[
             :,
             2:3
         ]
@@ -815,7 +1164,7 @@ def rotate_motion_state(
             1,
             2,
         )
-        + motion_state[
+        + state[
             :,
             3:4
         ]
@@ -883,15 +1232,10 @@ def rotate_motion_state(
 
 
 # =============================================================================
-# Visual decoding.
-#
-# CRITICAL DIFFERENCE FROM THE FAILED VERSION:
-# The recurrent state is NOT snapped to a Fixed-HardMS anchor.
-# The current synchronized visual state is a continuous expectation over the
-# current image-conditioned candidate distribution.
+# Visual proposal + gated synchronized state
 # =============================================================================
 
-def decode_continuous_measurement(
+def decode_visual_proposal(
     refined_logits,
     centers,
 ):
@@ -900,7 +1244,7 @@ def decode_continuous_measurement(
         dim=1,
     )
 
-    measurement_xy = (
+    proposal_xy = (
         probability.unsqueeze(
             -1
         )
@@ -910,8 +1254,23 @@ def decode_continuous_measurement(
     )
 
     return (
-        measurement_xy,
+        proposal_xy,
         probability,
+    )
+
+
+def apply_translation_gate(
+    previous_visual_xy,
+    proposal_xy,
+    translation_gate,
+):
+    return (
+        previous_visual_xy
+        + translation_gate
+        * (
+            proposal_xy
+            - previous_visual_xy
+        )
     )
 
 
@@ -934,8 +1293,245 @@ def nearest_candidate_label(
     )
 
 
+def update_observed_motion_state(
+    previous_state,
+    previous_visual_xy,
+    current_visual_xy,
+    leg,
+):
+    (
+        _,
+        _,
+        unit,
+        normal,
+        _,
+    ) = leg_geometry(
+        leg,
+        device=current_visual_xy.device,
+        dtype=current_visual_xy.dtype,
+    )
+
+    delta_xy = (
+        current_visual_xy
+        - previous_visual_xy
+    )
+
+    current_velocity = (
+        xy_vector_to_leg_frame(
+            delta_xy,
+            unit,
+            normal,
+        )
+    )
+
+    previous_velocity = (
+        previous_state[
+            :,
+            0:2
+        ]
+    )
+
+    current_acceleration = (
+        current_velocity
+        - previous_velocity
+    )
+
+    return torch.cat(
+        [
+            current_velocity,
+            current_acceleration,
+        ],
+        dim=1,
+    )
+
+
 # =============================================================================
-# Route-A leg split.
+# Image-motion phase soft supervision
+# =============================================================================
+
+def phase_soft_target(
+    image_motion_cue,
+    current_gt,
+    previous_gt,
+):
+    """
+    Soft 3-state target:
+      stationary / translation / rotation
+
+    This is training supervision only.
+
+    High-quality ECC alignment dominates when correlation is high.
+    If ECC is unreliable, the target falls back toward supervised GT step
+    magnitude. Neither quantity is ever a network input as a position/speed.
+    """
+    cue = image_motion_cue
+
+    shift_norm = torch.sqrt(
+        cue[
+            :,
+            0
+        ].square()
+        + cue[
+            :,
+            1
+        ].square()
+        + 1e-12
+    )
+
+    ecc_translation = (
+        1.0
+        - torch.exp(
+            -float(
+                config.ECC_TRANSLATION_GAIN
+            )
+            * shift_norm
+        )
+    ).clamp(
+        0.0,
+        1.0,
+    )
+
+    sin_theta = cue[
+        :,
+        2
+    ]
+
+    cos_theta = (
+        1.0
+        - cue[
+            :,
+            3
+        ]
+    )
+
+    rotation_angle = torch.atan2(
+        sin_theta.abs(),
+        cos_theta.clamp(
+            min=-1.0,
+            max=1.0,
+        ),
+    )
+
+    rotation_scale = math.radians(
+        float(
+            config.ECC_ROTATION_SCALE_DEG
+        )
+    )
+
+    rotation_strength = (
+        rotation_angle
+        / max(
+            rotation_scale,
+            1e-6,
+        )
+    ).clamp(
+        0.0,
+        1.0,
+    )
+
+    if previous_gt is None:
+        gt_translation = torch.zeros_like(
+            ecc_translation
+        )
+    else:
+        gt_step = torch.linalg.norm(
+            current_gt
+            - previous_gt,
+            dim=1,
+        )
+
+        gt_translation = (
+            1.0
+            - torch.exp(
+                -gt_step
+                / float(
+                    config.GT_TRANSLATION_SOFT_SCALE_M
+                )
+            )
+        ).clamp(
+            0.0,
+            1.0,
+        )
+
+    reliability = cue[
+        :,
+        4
+    ].clamp(
+        0.0,
+        1.0,
+    )
+
+    translation = (
+        reliability
+        * ecc_translation
+        + (
+            1.0
+            - reliability
+        )
+        * gt_translation
+    ).clamp(
+        0.0,
+        1.0,
+    )
+
+    rotation = (
+        (
+            1.0
+            - translation
+        )
+        * reliability
+        * rotation_strength
+    ).clamp(
+        0.0,
+        1.0,
+    )
+
+    stationary = (
+        1.0
+        - translation
+        - rotation
+    ).clamp(
+        0.0,
+        1.0,
+    )
+
+    target = torch.stack(
+        [
+            stationary,
+            translation,
+            rotation,
+        ],
+        dim=1,
+    )
+
+    return (
+        target
+        / target.sum(
+            dim=1,
+            keepdim=True,
+        ).clamp_min(
+            1e-6
+        )
+    )
+
+
+def soft_cross_entropy(
+    logits,
+    target_probability,
+):
+    return -(
+        target_probability
+        * torch.log_softmax(
+            logits,
+            dim=1,
+        )
+    ).sum(
+        dim=1
+    ).mean()
+
+
+# =============================================================================
+# Route-A leg split
 # =============================================================================
 
 def split_training_legs(
@@ -1043,7 +1639,7 @@ def indices_for_leg(
     if not indices:
         raise RuntimeError(
             "No frames found for "
-            f"leg W{leg.start.order}->W{leg.end.order}"
+            f"W{leg.start.order}->W{leg.end.order}"
         )
 
     return indices
@@ -1056,10 +1652,12 @@ def teacher_center_ratio(
         config.TEACHER_CENTER_END_EPOCH
     )
 
-    if end_epoch <= 0:
-        return 0.0
-
-    if epoch_index >= end_epoch:
+    if (
+        end_epoch
+        <= 0
+        or epoch_index
+        >= end_epoch
+    ):
         return 0.0
 
     return max(
@@ -1075,92 +1673,7 @@ def teacher_center_ratio(
 
 
 # =============================================================================
-# Training target construction.
-#
-# GT is used as SUPERVISION, never as a network input.
-#
-# Why GT exists:
-#   1. tell CE which current satellite patch is correct;
-#   2. supervise relative current visual offset;
-#   3. supervise next-frame velocity/acceleration state.
-#
-# No loss asks the LSTM to memorize absolute global coordinates.
-# =============================================================================
-
-def motion_targets(
-    cache,
-    current_index,
-    next_index,
-    previous_velocity_target,
-    leg,
-    device,
-):
-    if next_index is None:
-        velocity_target = torch.zeros(
-            1,
-            2,
-            device=device,
-            dtype=torch.float32,
-        )
-    else:
-        current_gt = cache.gt_xy[
-            current_index
-        ].to(
-            device
-        )
-
-        next_gt = cache.gt_xy[
-            next_index
-        ].to(
-            device
-        )
-
-        delta_xy = (
-            next_gt
-            - current_gt
-        )
-
-        (
-            _,
-            _,
-            unit,
-            normal,
-            _,
-        ) = leg_geometry(
-            leg,
-            device=device,
-            dtype=torch.float32,
-        )
-
-        velocity_target = (
-            xy_vector_to_leg_frame(
-                delta_xy.reshape(
-                    1,
-                    2,
-                ),
-                unit,
-                normal,
-            )
-        )
-
-    if previous_velocity_target is None:
-        acceleration_target = torch.zeros_like(
-            velocity_target
-        )
-    else:
-        acceleration_target = (
-            velocity_target
-            - previous_velocity_target
-        )
-
-    return (
-        velocity_target,
-        acceleration_target,
-    )
-
-
-# =============================================================================
-# One epoch of Route-A recurrent training.
+# Training
 # =============================================================================
 
 def train_one_epoch(
@@ -1178,7 +1691,7 @@ def train_one_epoch(
     (
         hidden,
         cell,
-        motion_state,
+        observed_motion,
     ) = model.initial_state(
         1,
         device,
@@ -1189,21 +1702,21 @@ def train_one_epoch(
         set_to_none=True
     )
 
-    accumulated_loss = None
-    accumulated_steps = 0
-
-    logs = []
-
     teacher_ratio = (
         teacher_center_ratio(
             epoch_index
         )
     )
 
+    accumulated_loss = None
+    accumulated_steps = 0
+
+    logs = []
+
     previous_leg = None
-    model_search_center = None
-    previous_teacher_gt = None
-    previous_velocity_target = None
+    previous_visual_xy = None
+    previous_gt = None
+    previous_z_uav = None
 
     for leg_position, leg in enumerate(
         train_legs
@@ -1221,8 +1734,8 @@ def train_one_epoch(
             is_last_route_leg,
         )
 
-        if previous_leg is None:
-            model_search_center = (
+        if previous_visual_xy is None:
+            previous_visual_xy = (
                 leg.start_xy.to(
                     device
                 ).reshape(
@@ -1231,34 +1744,29 @@ def train_one_epoch(
                 )
             )
 
-            previous_teacher_gt = (
-                model_search_center.detach()
+            previous_gt = (
+                previous_visual_xy.detach()
             )
-        else:
-            motion_state = rotate_motion_state(
-                motion_state,
-                previous_leg,
-                leg,
-            )
-
-            # Do not teleport the model state to the waypoint.
-            # Keep the previous model visual estimate.
-            # Teacher scheduled sampling can still stabilize early epochs.
-            previous_teacher_gt = (
-                leg.start_xy.to(
-                    device
-                ).reshape(
-                    1,
-                    2,
+        elif previous_leg is not None:
+            observed_motion = (
+                rotate_observed_motion_state(
+                    observed_motion,
+                    previous_leg,
+                    leg,
                 )
             )
 
-        previous_velocity_target = None
+        final_leg = (
+            leg.index
+            == all_route_legs[
+                -1
+            ].index
+        )
 
         for local_index, cache_index in enumerate(
             leg_indices
         ):
-            gt_xy = cache.gt_xy[
+            current_gt = cache.gt_xy[
                 cache_index
             ].to(
                 device
@@ -1267,20 +1775,20 @@ def train_one_epoch(
                 2,
             )
 
-            # Causal teacher center:
-            # teacher uses PREVIOUS-frame GT, never current-frame GT.
-            candidate_center = (
+            # Causal teacher center only.
+            # It uses PREVIOUS GT, never current GT.
+            search_center = (
                 float(
                     teacher_ratio
                 )
-                * previous_teacher_gt
+                * previous_gt
                 + (
                     1.0
                     - float(
                         teacher_ratio
                     )
                 )
-                * model_search_center
+                * previous_visual_xy
             )
 
             uav_clip = cache.uav_clip[
@@ -1294,52 +1802,73 @@ def train_one_epoch(
             candidate = (
                 visual.candidate_batch(
                     uav_clip,
-                    candidate_center,
+                    search_center,
                     grid_size=(
                         config.GRID_SIZE
                     ),
                 )
             )
 
-            candidate_offsets_route = (
+            offsets_route = (
                 candidate_offsets_in_leg_frame(
                     candidate.centers,
-                    candidate_center,
+                    search_center,
                     leg,
                 )
             )
 
             route_context = (
                 route_context_tensor(
-                    candidate_center,
+                    search_center,
                     leg,
+                    final_leg,
                 )
+            )
+
+            image_motion_cue = (
+                cache.image_motion_cues[
+                    cache_index:
+                    cache_index
+                    + 1
+                ].to(
+                    device
+                ).float()
             )
 
             output = model.forward_step(
                 candidate.z_uav,
+                previous_z_uav,
                 candidate.z_sat,
                 candidate.raw_logits,
                 candidate.raw_prob,
-                candidate_offsets_route,
+                offsets_route,
                 route_context,
-                motion_state,
+                image_motion_cue,
+                observed_motion,
                 hidden,
                 cell,
             )
 
             (
-                measurement_xy,
+                proposal_xy,
                 refined_probability,
-            ) = decode_continuous_measurement(
+            ) = decode_visual_proposal(
                 output.refined_logits,
                 candidate.centers,
+            )
+
+            current_visual_xy = (
+                apply_translation_gate(
+                    previous_visual_xy,
+                    proposal_xy,
+                    output.translation_gate,
+                )
             )
 
             target_index = (
                 nearest_candidate_label(
                     candidate.centers,
-                    gt_xy,
+                    current_gt,
                 )
             )
 
@@ -1351,7 +1880,6 @@ def train_one_epoch(
                 ),
             )
 
-            # Relative current localization target.
             (
                 _,
                 _,
@@ -1364,77 +1892,68 @@ def train_one_epoch(
                 dtype=torch.float32,
             )
 
-            target_offset_route = (
+            target_relative_route = (
                 xy_vector_to_leg_frame(
-                    gt_xy
-                    - candidate_center,
+                    current_gt
+                    - search_center,
                     unit,
                     normal,
                 )
             )
 
-            predicted_offset_route = (
-                refined_probability.unsqueeze(
-                    -1
+            predicted_relative_route = (
+                xy_vector_to_leg_frame(
+                    current_visual_xy
+                    - search_center,
+                    unit,
+                    normal,
                 )
-                * candidate_offsets_route
-            ).sum(
-                dim=1
             )
 
-            offset_loss = (
+            relative_position_loss = (
                 F.smooth_l1_loss(
-                    predicted_offset_route,
-                    target_offset_route,
+                    predicted_relative_route,
+                    target_relative_route,
                 )
             )
 
-            next_cache_index = None
-
-            if (
-                local_index
-                + 1
-                < len(
-                    leg_indices
-                )
-            ):
-                next_cache_index = (
-                    leg_indices[
-                        local_index
-                        + 1
-                    ]
-                )
-
-            (
-                velocity_target,
-                acceleration_target,
-            ) = motion_targets(
-                cache,
-                cache_index,
-                next_cache_index,
-                previous_velocity_target,
-                leg,
-                device,
+            phase_target = phase_soft_target(
+                image_motion_cue,
+                current_gt,
+                previous_gt,
             )
 
-            velocity_loss = (
-                F.smooth_l1_loss(
-                    output.next_motion_state[
-                        :,
-                        0:2
-                    ],
-                    velocity_target,
+            phase_loss = soft_cross_entropy(
+                output.phase_logits,
+                phase_target,
+            )
+
+            if previous_gt is None:
+                target_step_route = torch.zeros_like(
+                    predicted_relative_route
+                )
+            else:
+                target_step_route = (
+                    xy_vector_to_leg_frame(
+                        current_gt
+                        - previous_gt,
+                        unit,
+                        normal,
+                    )
+                )
+
+            predicted_step_route = (
+                xy_vector_to_leg_frame(
+                    current_visual_xy
+                    - previous_visual_xy,
+                    unit,
+                    normal,
                 )
             )
 
-            acceleration_loss = (
-                F.smooth_l1_loss(
-                    output.next_motion_state[
-                        :,
-                        2:4
-                    ],
-                    acceleration_target,
-                )
+            step_loss = F.smooth_l1_loss(
+                predicted_step_route,
+                target_step_route,
             )
 
             loss = (
@@ -1443,17 +1962,17 @@ def train_one_epoch(
                 )
                 * ce_loss
                 + float(
-                    config.LOSS_RELATIVE_OFFSET
+                    config.LOSS_CURRENT_RELATIVE_POSITION
                 )
-                * offset_loss
+                * relative_position_loss
                 + float(
-                    config.LOSS_VELOCITY
+                    config.LOSS_PHASE_SOFT_CE
                 )
-                * velocity_loss
+                * phase_loss
                 + float(
-                    config.LOSS_ACCELERATION
+                    config.LOSS_STEP_DISPLACEMENT
                 )
-                * acceleration_loss
+                * step_loss
             )
 
             if accumulated_loss is None:
@@ -1471,7 +1990,7 @@ def train_one_epoch(
                     candidate.centers[
                         0
                     ]
-                    - gt_xy[
+                    - current_gt[
                         0
                     ].reshape(
                         1,
@@ -1479,6 +1998,30 @@ def train_one_epoch(
                     ),
                     dim=1,
                 ).min()
+            )
+
+            predicted_phase = int(
+                output.phase_probability[
+                    0
+                ].argmax()
+                .detach()
+                .cpu()
+                .item()
+            )
+
+            cue_shift = float(
+                torch.sqrt(
+                    image_motion_cue[
+                        0,
+                        0
+                    ].square()
+                    + image_motion_cue[
+                        0,
+                        1
+                    ].square()
+                ).detach()
+                .cpu()
+                .item()
             )
 
             logs.append(
@@ -1491,16 +2034,16 @@ def train_one_epoch(
                         ce_loss.detach()
                         .cpu()
                     ),
-                    "offset": float(
-                        offset_loss.detach()
+                    "relative": float(
+                        relative_position_loss.detach()
                         .cpu()
                     ),
-                    "velocity": float(
-                        velocity_loss.detach()
+                    "phase": float(
+                        phase_loss.detach()
                         .cpu()
                     ),
-                    "acceleration": float(
-                        acceleration_loss.detach()
+                    "step": float(
+                        step_loss.detach()
                         .cpu()
                     ),
                     "capture": float(
@@ -1509,49 +2052,59 @@ def train_one_epoch(
                             config.CANDIDATE_CAPTURE_RADIUS_M
                         )
                     ),
-                    "inertia": float(
-                        output.inertia_strength.mean()
+                    "gate": float(
+                        output.translation_gate.mean()
                         .detach()
                         .cpu()
                     ),
-                    "sigma": float(
-                        output.polynomial_sigma.mean()
+                    "stationary": float(
+                        output.stationary_probability.mean()
                         .detach()
                         .cpu()
                     ),
+                    "rotation": float(
+                        output.rotation_probability.mean()
+                        .detach()
+                        .cpu()
+                    ),
+                    "phase_class": float(
+                        predicted_phase
+                    ),
+                    "ecc_shift": cue_shift,
                 }
             )
 
-            # ----------------------------------------------------------
-            # Recurrent state carried to NEXT frame.
-            #
-            # IMPORTANT:
-            # The search center is the CURRENT VISUAL MEASUREMENT.
-            # Polynomial/Kalman are not allowed to advance it.
-            # ----------------------------------------------------------
-            model_search_center = (
-                measurement_xy.detach()
-            )
-
-            previous_teacher_gt = (
-                gt_xy.detach()
-            )
-
-            previous_velocity_target = (
-                velocity_target.detach()
-            )
-
-            hidden = output.hidden
-            cell = output.cell
-            motion_state = (
-                output.next_motion_state
-            )
-
-            chunk_end = (
-                accumulated_steps
-                >= int(
-                    config.TBPTT_STEPS
+            new_observed_motion = (
+                update_observed_motion_state(
+                    observed_motion,
+                    previous_visual_xy,
+                    current_visual_xy,
+                    leg,
                 )
+            )
+
+            hidden = (
+                output.hidden
+            )
+
+            cell = (
+                output.cell
+            )
+
+            observed_motion = (
+                new_observed_motion
+            )
+
+            previous_z_uav = (
+                candidate.z_uav.detach()
+            )
+
+            previous_visual_xy = (
+                current_visual_xy
+            )
+
+            previous_gt = (
+                current_gt.detach()
             )
 
             final_training_step = (
@@ -1568,7 +2121,10 @@ def train_one_epoch(
             )
 
             if (
-                chunk_end
+                accumulated_steps
+                >= int(
+                    config.TBPTT_STEPS
+                )
                 or final_training_step
             ):
                 normalized_loss = (
@@ -1608,12 +2164,16 @@ def train_one_epoch(
                     cell.detach()
                 )
 
-                motion_state = (
-                    motion_state.detach()
+                observed_motion = (
+                    observed_motion.detach()
                 )
 
-                model_search_center = (
-                    model_search_center.detach()
+                previous_visual_xy = (
+                    previous_visual_xy.detach()
+                )
+
+                previous_z_uav = (
+                    previous_z_uav.detach()
                 )
 
                 accumulated_loss = None
@@ -1626,19 +2186,21 @@ def train_one_epoch(
             "Temporal training produced no steps"
         )
 
-    means = {}
+    result = {}
 
     for key in (
         "loss",
         "ce",
-        "offset",
-        "velocity",
-        "acceleration",
+        "relative",
+        "phase",
+        "step",
         "capture",
-        "inertia",
-        "sigma",
+        "gate",
+        "stationary",
+        "rotation",
+        "ecc_shift",
     ):
-        means[
+        result[
             key
         ] = float(
             np.mean(
@@ -1652,30 +2214,26 @@ def train_one_epoch(
             )
         )
 
-    means[
+    result[
         "capture_pct"
     ] = (
-        means[
+        result[
             "capture"
         ]
         * 100.0
     )
 
-    means[
+    result[
         "teacher_ratio"
     ] = float(
         teacher_ratio
     )
 
-    return means
+    return result
 
 
 # =============================================================================
-# Closed-loop validation.
-#
-# No teacher center is used.
-# Each validation leg begins from its known start waypoint and then advances
-# only through current image evidence.
+# Closed-loop Route-A validation
 # =============================================================================
 
 @torch.no_grad()
@@ -1696,14 +2254,14 @@ def evaluate_closed_loop_legs(
         (
             hidden,
             cell,
-            motion_state,
+            observed_motion,
         ) = model.initial_state(
             1,
             device,
             torch.float32,
         )
 
-        search_center = (
+        visual_xy = (
             leg.start_xy.to(
                 device
             ).reshape(
@@ -1711,6 +2269,8 @@ def evaluate_closed_loop_legs(
                 2,
             )
         )
+
+        previous_z_uav = None
 
         leg_indices = indices_for_leg(
             cache,
@@ -1723,7 +2283,18 @@ def evaluate_closed_loop_legs(
             ),
         )
 
+        final_leg = (
+            leg.index
+            == all_route_legs[
+                -1
+            ].index
+        )
+
         for cache_index in leg_indices:
+            search_center = (
+                visual_xy
+            )
+
             uav_clip = cache.uav_clip[
                 cache_index:
                 cache_index
@@ -1753,30 +2324,51 @@ def evaluate_closed_loop_legs(
             context = route_context_tensor(
                 search_center,
                 leg,
+                final_leg,
+            )
+
+            image_motion_cue = (
+                cache.image_motion_cues[
+                    cache_index:
+                    cache_index
+                    + 1
+                ].to(
+                    device
+                ).float()
             )
 
             output = model.forward_step(
                 candidate.z_uav,
+                previous_z_uav,
                 candidate.z_sat,
                 candidate.raw_logits,
                 candidate.raw_prob,
                 offsets_route,
                 context,
-                motion_state,
+                image_motion_cue,
+                observed_motion,
                 hidden,
                 cell,
             )
 
             (
-                measurement_xy,
+                proposal_xy,
                 _,
-            ) = decode_continuous_measurement(
+            ) = decode_visual_proposal(
                 output.refined_logits,
                 candidate.centers,
             )
 
+            new_visual_xy = (
+                apply_translation_gate(
+                    visual_xy,
+                    proposal_xy,
+                    output.translation_gate,
+                )
+            )
+
             prediction_rows.append(
-                measurement_xy[
+                new_visual_xy[
                     0
                 ].cpu()
                 .numpy()
@@ -1788,15 +2380,25 @@ def evaluate_closed_loop_legs(
                 ].numpy()
             )
 
-            search_center = (
-                measurement_xy
+            observed_motion = (
+                update_observed_motion_state(
+                    observed_motion,
+                    visual_xy,
+                    new_visual_xy,
+                    leg,
+                )
+            )
+
+            visual_xy = (
+                new_visual_xy
+            )
+
+            previous_z_uav = (
+                candidate.z_uav
             )
 
             hidden = output.hidden
             cell = output.cell
-            motion_state = (
-                output.next_motion_state
-            )
 
     prediction = np.asarray(
         prediction_rows,
@@ -1848,7 +2450,7 @@ def evaluate_closed_loop_legs(
 
 
 # =============================================================================
-# Temporal training driver
+# Temporal driver
 # =============================================================================
 
 def train_temporal_model(
@@ -1881,33 +2483,29 @@ def train_temporal_model(
     )
 
     print(
-        "TRAINING INPUT AUDIT:",
+        "v5 MOTION RULE:",
         flush=True,
     )
 
     print(
-        "  network gets current UAV/SAT visual evidence",
+        "  NO fixed speed / nominal speed / learned free-running velocity head",
         flush=True,
     )
 
     print(
-        "  network gets START/END only as route-relative context",
+        "  previous motion = displacement actually observed from previous "
+        "IMAGE-derived localizations",
         flush=True,
     )
 
     print(
-        "  network gets previous recurrent motion "
-        "[v_parallel,v_cross,a_parallel,a_cross]",
+        "  current-vs-previous UAV image pair predicts "
+        "stationary / translation / rotation",
         flush=True,
     )
 
     print(
-        "  polynomial = v + 0.5*a, used ONLY as a soft candidate-score prior",
-        flush=True,
-    )
-
-    print(
-        "  NO absolute current GT/GPS coordinate is a network input",
+        "  polynomial is disabled automatically when translation probability is low",
         flush=True,
     )
 
@@ -2014,37 +2612,31 @@ def train_temporal_model(
                 "training_route": (
                     "route_A"
                 ),
-                "network_inputs": [
-                    "uav_visual_embedding",
-                    "sat_visual_embeddings",
-                    "visual_similarity",
-                    "candidate_relative_offsets_in_leg_frame",
-                    "start_end_route_relative_context",
-                    "previous_model_motion_state",
-                    "previous_lstm_hidden",
-                    "previous_lstm_cell",
+                "fixed_speed_used": False,
+                "nominal_speed_used": False,
+                "free_running_velocity_head": False,
+                "previous_motion_state_source": (
+                    "previous image-derived localization differences"
+                ),
+                "image_pair_motion_cue": (
+                    "ECC Euclidean registration + previous/current UAV embeddings"
+                ),
+                "phase_classes": [
+                    "stationary",
+                    "translation",
+                    "rotation",
                 ],
-                "network_not_given": [
-                    "absolute_current_gt_xy",
-                    "absolute_current_gps",
-                    "waypoint_frame_index",
-                    "waypoint_timestamp",
-                    "kalman_state",
-                ],
-                "gt_supervision_only": [
-                    "current_candidate_class_label",
-                    "relative_visual_offset_target",
-                    "next_relative_velocity_target",
-                    "next_relative_acceleration_target",
-                    "early_scheduled_previous_gt_center",
-                ],
+                "polynomial": (
+                    "observed_delta + 0.5 * observed_acceleration"
+                ),
+                "polynomial_role": (
+                    "translation-gated soft candidate-score prior only"
+                ),
+                "absolute_current_gt_network_input": False,
+                "raw_gps_network_input": False,
+                "waypoint_frame_index_inference_switch": False,
                 "teacher_center_end_epoch": int(
                     config.TEACHER_CENTER_END_EPOCH
-                ),
-                "final_training_is_closed_loop": True,
-                "polynomial_role": (
-                    "soft candidate-score prior only; "
-                    "never advances localization state directly"
                 ),
             },
             config.TEMPORAL_CHECKPOINT,
@@ -2054,13 +2646,14 @@ def train_temporal_model(
             f"epoch={epoch_index + 1:03d}/{epochs} "
             f"loss={training['loss']:.4f} "
             f"ce={training['ce']:.4f} "
-            f"offset={training['offset']:.4f} "
-            f"vel={training['velocity']:.4f} "
-            f"acc={training['acceleration']:.4f} "
+            f"rel={training['relative']:.4f} "
+            f"phase={training['phase']:.4f} "
+            f"step={training['step']:.4f} "
             f"capture={training['capture_pct']:.2f}% "
-            f"teacher={training['teacher_ratio']:.3f} "
-            f"inertia={training['inertia']:.3f} "
-            f"sigma={training['sigma']:.2f}m "
+            f"teacher={training['teacher_ratio']:.2f} "
+            f"move_gate={training['gate']:.3f} "
+            f"stop={training['stationary']:.3f} "
+            f"rotate={training['rotation']:.3f} "
             f"val_mle={validation['MLE_m']:.3f}m "
             f"val_rpe={validation['RPE_m']:.3f}m",
             flush=True,
@@ -2149,70 +2742,54 @@ def load_temporal_model(
 
 
 # =============================================================================
-# Inference leg switching.
-#
-# frame_index is NOT consulted.
-# The current synchronized VISUAL state decides when the endpoint is reached.
+# Endpoint / terminal handling
 # =============================================================================
 
-def reached_leg_endpoint(
+def endpoint_distance(
     visual_xy,
     leg,
 ):
-    (
-        start,
-        end,
-        unit,
-        _,
-        length,
-    ) = leg_geometry(
-        leg,
+    endpoint = leg.end_xy.to(
         device=visual_xy.device,
         dtype=visual_xy.dtype,
+    ).reshape(
+        1,
+        2,
     )
 
-    position = visual_xy[
-        0
-    ]
-
-    distance = torch.linalg.norm(
-        position
-        - end
+    return float(
+        torch.linalg.norm(
+            visual_xy
+            - endpoint,
+            dim=1,
+        )[
+            0
+        ].item()
     )
 
-    progress = torch.dot(
-        position
-        - start,
-        unit,
-    )
 
-    radius = float(
-        config.INFER_WAYPOINT_REACHED_RADIUS_M
-    )
-
-    return bool(
-        (
-            distance
-            <= radius
-        ).item()
-        or (
-            progress
-            >= (
-                length
-                - radius
-            )
-        ).item()
+def endpoint_reached(
+    visual_xy,
+    leg,
+):
+    # v4's progress >= length-radius shortcut is deliberately removed.
+    # The image-derived location must actually enter the endpoint neighborhood.
+    return (
+        endpoint_distance(
+            visual_xy,
+            leg,
+        )
+        <= float(
+            config.INFER_WAYPOINT_REACHED_RADIUS_M
+        )
     )
 
 
 # =============================================================================
-# Final-output Kalman.
-#
-# It smooths the RNN visual measurement.
-# Its prediction is NEVER used to center the next candidate lattice.
+# Position-only FilterPy Kalman
 # =============================================================================
 
-def make_kalman_filter(
+def make_position_kalman(
     initial_xy,
 ):
     if KalmanFilter is None:
@@ -2221,7 +2798,7 @@ def make_kalman_filter(
         )
 
     kf = KalmanFilter(
-        dim_x=4,
+        dim_x=2,
         dim_z=2,
     )
 
@@ -2237,80 +2814,39 @@ def make_kalman_filter(
                     1
                 ]
             ),
-            0.0,
-            0.0,
         ],
         dtype=np.float64,
     )
 
-    kf.F = np.asarray(
-        [
-            [
-                1.0,
-                0.0,
-                1.0,
-                0.0,
-            ],
-            [
-                0.0,
-                1.0,
-                0.0,
-                1.0,
-            ],
-            [
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-            ],
-            [
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-            ],
-        ],
+    # Random-walk position state. NO velocity.
+    kf.F = np.eye(
+        2,
         dtype=np.float64,
     )
 
-    kf.H = np.asarray(
-        [
-            [
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-            ],
-            [
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-            ],
-        ],
+    kf.H = np.eye(
+        2,
         dtype=np.float64,
     )
 
-    kf.P = np.diag(
-        [
-            config.KALMAN_INIT_POSITION_VAR,
-            config.KALMAN_INIT_POSITION_VAR,
-            config.KALMAN_INIT_VELOCITY_VAR,
-            config.KALMAN_INIT_VELOCITY_VAR,
-        ]
-    ).astype(
-        np.float64
+    kf.P = (
+        np.eye(
+            2,
+            dtype=np.float64,
+        )
+        * float(
+            config.KALMAN_INIT_POSITION_VAR
+        )
     )
 
-    kf.Q = np.diag(
-        [
-            config.KALMAN_Q_POSITION,
-            config.KALMAN_Q_POSITION,
-            config.KALMAN_Q_VELOCITY,
-            config.KALMAN_Q_VELOCITY,
-        ]
-    ).astype(
-        np.float64
+    kf.Q = (
+        np.eye(
+            2,
+            dtype=np.float64,
+        )
+        * float(
+            config.KALMAN_Q_POSITION
+        )
     )
 
     return kf
@@ -2359,9 +2895,11 @@ def metric_block(
             axis=1,
         )
 
-        gt_step_length = np.linalg.norm(
-            gt_step,
-            axis=1,
+        gt_step_length = (
+            np.linalg.norm(
+                gt_step,
+                axis=1,
+            )
         )
 
         jump_threshold = (
@@ -2472,7 +3010,7 @@ def metric_block(
 
 
 # =============================================================================
-# B/C inference.
+# B/C inference
 # =============================================================================
 
 @torch.no_grad()
@@ -2489,7 +3027,7 @@ def run_inference(
     (
         hidden,
         cell,
-        motion_state,
+        observed_motion,
     ) = model.initial_state(
         1,
         device,
@@ -2502,8 +3040,7 @@ def run_inference(
         active_leg_index
     ]
 
-    # Known mission start.
-    visual_state_xy = (
+    visual_xy = (
         active_leg.start_xy.to(
             device
         ).reshape(
@@ -2512,19 +3049,24 @@ def run_inference(
         )
     )
 
-    kf = make_kalman_filter(
-        visual_state_xy[
+    previous_z_uav = None
+
+    kf = make_position_kalman(
+        visual_xy[
             0
         ].cpu()
         .numpy()
     )
 
+    terminal_locked = False
+    terminal_lock_frame = None
+
     rows = []
 
-    previous_leg = active_leg
-
     for sequence_index in range(
-        len(cache)
+        len(
+            cache
+        )
     ):
         frame_id = int(
             cache.frame_ids[
@@ -2536,8 +3078,16 @@ def run_inference(
             active_leg_index
         ]
 
+        final_leg = (
+            active_leg_index
+            == len(
+                route.legs
+            )
+            - 1
+        )
+
         search_center = (
-            visual_state_xy
+            visual_xy
         )
 
         uav_clip = cache.uav_clip[
@@ -2566,51 +3116,69 @@ def run_inference(
             )
         )
 
-        context = route_context_tensor(
-            search_center,
-            active_leg,
+        route_context = (
+            route_context_tensor(
+                search_center,
+                active_leg,
+                final_leg,
+            )
+        )
+
+        image_motion_cue = (
+            cache.image_motion_cues[
+                sequence_index:
+                sequence_index
+                + 1
+            ].to(
+                device
+            ).float()
         )
 
         output = model.forward_step(
             candidate.z_uav,
+            previous_z_uav,
             candidate.z_sat,
             candidate.raw_logits,
             candidate.raw_prob,
             offsets_route,
-            context,
-            motion_state,
+            route_context,
+            image_motion_cue,
+            observed_motion,
             hidden,
             cell,
         )
 
         (
-            visual_measurement_xy,
+            proposal_xy,
             refined_probability,
-        ) = decode_continuous_measurement(
+        ) = decode_visual_proposal(
             output.refined_logits,
             candidate.centers,
         )
 
-        # Baselines / diagnostics only.
-        raw_top1 = candidate.raw_top1_xy[
-            0
-        ]
-
-        raw_hardms = candidate.hardms_xy[
-            0
-        ]
-
-        refined_hardms, refined_support = (
-            hard_mean_shift(
-                output.refined_logits,
-                candidate.centers,
-                1.0,
-                config.MEANSHIFT_BANDWIDTH_M,
-                config.MEANSHIFT_ITERATIONS,
+        if terminal_locked:
+            # Mission is finished. Keep the last IMAGE-derived terminal state.
+            # No fixed speed / polynomial / Kalman velocity exists.
+            current_visual_xy = (
+                visual_xy
             )
-        )
 
-        # Polynomial visualization only.
+            effective_translation_gate = torch.zeros_like(
+                output.translation_gate
+            )
+        else:
+            current_visual_xy = (
+                apply_translation_gate(
+                    visual_xy,
+                    proposal_xy,
+                    output.translation_gate,
+                )
+            )
+
+            effective_translation_gate = (
+                output.translation_gate
+            )
+
         (
             _,
             _,
@@ -2625,29 +3193,28 @@ def run_inference(
 
         polynomial_delta_xy = (
             leg_frame_vector_to_xy(
-                output.polynomial_delta,
+                output.polynomial_delta_route,
                 unit,
                 normal,
             )
         )
 
         polynomial_xy = (
-            search_center
+            visual_xy
             + polynomial_delta_xy
         )
 
-        # --------------------------------------------------------------
-        # Synchronization guarantee by architecture:
-        # NEXT search center is the current IMAGE-derived measurement.
-        # Neither waypoint, polynomial nor Kalman prediction moves it.
-        # --------------------------------------------------------------
-        visual_state_xy = (
-            visual_measurement_xy
+        new_observed_motion = (
+            update_observed_motion_state(
+                observed_motion,
+                visual_xy,
+                current_visual_xy,
+                active_leg,
+            )
         )
 
-        # Final smoother only.
-        if sequence_index > 0:
-            kf.predict()
+        # Position-only Kalman: predict does not advance XY.
+        kf.predict()
 
         measurement_variance = (
             output.measurement_variance[
@@ -2664,7 +3231,7 @@ def run_inference(
         )
 
         kf.update(
-            visual_measurement_xy[
+            current_visual_xy[
                 0
             ].cpu()
             .numpy()
@@ -2674,57 +3241,52 @@ def run_inference(
         )
 
         final_xy = np.asarray(
-            kf.x[
-                0:2
-            ],
+            kf.x,
             dtype=np.float64,
+        ).reshape(
+            2
         )
 
-        # Update recurrent state.
-        hidden = output.hidden
-        cell = output.cell
-        motion_state = (
-            output.next_motion_state
+        raw_top1 = (
+            candidate.raw_top1_xy[
+                0
+            ].cpu()
+            .numpy()
         )
 
-        switched = False
+        raw_hardms = (
+            candidate.hardms_xy[
+                0
+            ].cpu()
+            .numpy()
+        )
 
-        if (
-            active_leg_index
-            < len(
-                route.legs
+        refined_hardms, refined_support = (
+            hard_mean_shift(
+                output.refined_logits,
+                candidate.centers,
+                1.0,
+                config.MEANSHIFT_BANDWIDTH_M,
+                config.MEANSHIFT_ITERATIONS,
             )
-            - 1
-            and reached_leg_endpoint(
-                visual_state_xy,
-                active_leg,
-            )
-        ):
-            old_leg = (
-                active_leg
-            )
+        )
 
-            active_leg_index += 1
+        refined_hardms_np = (
+            refined_hardms[
+                0
+            ].cpu()
+            .numpy()
+        )
 
-            new_leg = route.legs[
-                active_leg_index
-            ]
+        proposal_np = (
+            proposal_xy[
+                0
+            ].cpu()
+            .numpy()
+        )
 
-            motion_state = rotate_motion_state(
-                motion_state,
-                old_leg,
-                new_leg,
-            )
-
-            previous_leg = old_leg
-            switched = True
-
-        gt_xy = cache.gt_xy[
-            sequence_index
-        ].numpy()
-
-        visual_np = (
-            visual_measurement_xy[
+        current_visual_np = (
+            current_visual_xy[
                 0
             ].cpu()
             .numpy()
@@ -2737,29 +3299,119 @@ def run_inference(
             .numpy()
         )
 
-        raw_top1_np = (
-            raw_top1.cpu()
-            .numpy()
-        )
+        gt_xy = cache.gt_xy[
+            sequence_index
+        ].numpy()
 
-        raw_hardms_np = (
-            raw_hardms.cpu()
-            .numpy()
-        )
-
-        refined_hardms_np = (
-            refined_hardms[
+        phase_probability = (
+            output.phase_probability[
                 0
             ].cpu()
             .numpy()
         )
 
-        current_leg_for_log = route.legs[
-            active_leg_index
-            - 1
-            if switched
-            else active_leg_index
-        ]
+        predicted_phase = int(
+            np.argmax(
+                phase_probability
+            )
+        )
+
+        cue_np = (
+            image_motion_cue[
+                0
+            ].cpu()
+            .numpy()
+        )
+
+        ecc_shift_norm = float(
+            math.sqrt(
+                float(
+                    cue_np[
+                        0
+                    ]
+                    ** 2
+                )
+                + float(
+                    cue_np[
+                        1
+                    ]
+                    ** 2
+                )
+            )
+        )
+
+        ecc_rotation_deg = math.degrees(
+            math.atan2(
+                abs(
+                    float(
+                        cue_np[
+                            2
+                        ]
+                    )
+                ),
+                max(
+                    -1.0,
+                    min(
+                        1.0,
+                        1.0
+                        - float(
+                            cue_np[
+                                3
+                            ]
+                        ),
+                    ),
+                ),
+            )
+        )
+
+        switched = False
+        reached_now = False
+
+        if (
+            not terminal_locked
+            and endpoint_reached(
+                current_visual_xy,
+                active_leg,
+            )
+        ):
+            reached_now = True
+
+            if final_leg:
+                if bool(
+                    config.TERMINAL_LOCK_ENABLED
+                ):
+                    terminal_locked = True
+                    terminal_lock_frame = (
+                        frame_id
+                    )
+
+                    new_observed_motion = torch.zeros_like(
+                        new_observed_motion
+                    )
+            else:
+                old_leg = (
+                    active_leg
+                )
+
+                active_leg_index += 1
+
+                new_leg = route.legs[
+                    active_leg_index
+                ]
+
+                new_observed_motion = (
+                    rotate_observed_motion_state(
+                        new_observed_motion,
+                        old_leg,
+                        new_leg,
+                    )
+                )
+
+                switched = True
+
+        current_leg_for_log = (
+            active_leg
+        )
 
         rows.append(
             {
@@ -2780,8 +3432,14 @@ def run_inference(
                 "active_waypoint_to": int(
                     current_leg_for_log.end.order
                 ),
+                "waypoint_reached_this_frame": int(
+                    reached_now
+                ),
                 "waypoint_switched_after_frame": int(
                     switched
+                ),
+                "terminal_locked": int(
+                    terminal_locked
                 ),
                 "gt_x": float(
                     gt_xy[
@@ -2808,22 +3466,22 @@ def run_inference(
                     .item()
                 ),
                 "raw_top1_x": float(
-                    raw_top1_np[
+                    raw_top1[
                         0
                     ]
                 ),
                 "raw_top1_y": float(
-                    raw_top1_np[
+                    raw_top1[
                         1
                     ]
                 ),
                 "raw_hardms_x": float(
-                    raw_hardms_np[
+                    raw_hardms[
                         0
                     ]
                 ),
                 "raw_hardms_y": float(
-                    raw_hardms_np[
+                    raw_hardms[
                         1
                     ]
                 ),
@@ -2837,13 +3495,23 @@ def run_inference(
                         1
                     ]
                 ),
+                "proposal_x": float(
+                    proposal_np[
+                        0
+                    ]
+                ),
+                "proposal_y": float(
+                    proposal_np[
+                        1
+                    ]
+                ),
                 "visual_measurement_x": float(
-                    visual_np[
+                    current_visual_np[
                         0
                     ]
                 ),
                 "visual_measurement_y": float(
-                    visual_np[
+                    current_visual_np[
                         1
                     ]
                 ),
@@ -2857,29 +3525,65 @@ def run_inference(
                         1
                     ]
                 ),
-                "poly_v_parallel": float(
-                    motion_state[
+                "translation_probability": float(
+                    phase_probability[
+                        config.PHASE_TRANSLATION
+                    ]
+                ),
+                "stationary_probability": float(
+                    phase_probability[
+                        config.PHASE_STATIONARY
+                    ]
+                ),
+                "rotation_probability": float(
+                    phase_probability[
+                        config.PHASE_ROTATION
+                    ]
+                ),
+                "predicted_phase": int(
+                    predicted_phase
+                ),
+                "effective_translation_gate": float(
+                    effective_translation_gate[
                         0,
                         0
                     ].cpu()
                     .item()
                 ),
-                "poly_v_cross": float(
-                    motion_state[
+                "ecc_center_shift_norm": float(
+                    ecc_shift_norm
+                ),
+                "ecc_rotation_deg": float(
+                    ecc_rotation_deg
+                ),
+                "ecc_correlation": float(
+                    cue_np[
+                        4
+                    ]
+                ),
+                "observed_delta_parallel": float(
+                    new_observed_motion[
+                        0,
+                        0
+                    ].cpu()
+                    .item()
+                ),
+                "observed_delta_cross": float(
+                    new_observed_motion[
                         0,
                         1
                     ].cpu()
                     .item()
                 ),
-                "poly_a_parallel": float(
-                    motion_state[
+                "observed_acc_parallel": float(
+                    new_observed_motion[
                         0,
                         2
                     ].cpu()
                     .item()
                 ),
-                "poly_a_cross": float(
-                    motion_state[
+                "observed_acc_cross": float(
+                    new_observed_motion[
                         0,
                         3
                     ].cpu()
@@ -2925,19 +3629,9 @@ def run_inference(
                         1
                     ]
                 ),
-                "kf_vx": float(
-                    kf.x[
-                        2
-                    ]
-                ),
-                "kf_vy": float(
-                    kf.x[
-                        3
-                    ]
-                ),
                 "error_visual_m": float(
                     np.linalg.norm(
-                        visual_np
+                        current_visual_np
                         - gt_xy
                     )
                 ),
@@ -2948,6 +3642,26 @@ def run_inference(
                     )
                 ),
             }
+        )
+
+        hidden = (
+            output.hidden
+        )
+
+        cell = (
+            output.cell
+        )
+
+        observed_motion = (
+            new_observed_motion
+        )
+
+        previous_z_uav = (
+            candidate.z_uav
+        )
+
+        visual_xy = (
+            current_visual_xy
         )
 
     gt = np.asarray(
@@ -2982,7 +3696,7 @@ def run_inference(
             ],
             gt,
         ),
-        "RawFixedHardMS": metric_block(
+        "RawHardMS": metric_block(
             [
                 [
                     row[
@@ -2997,7 +3711,7 @@ def run_inference(
             ],
             gt,
         ),
-        "RecurrentVisualMeasurement": metric_block(
+        "VisualMotionGatedMeasurement": metric_block(
             [
                 [
                     row[
@@ -3012,7 +3726,7 @@ def run_inference(
             ],
             gt,
         ),
-        "FinalKalman": metric_block(
+        "FinalPositionKalman": metric_block(
             [
                 [
                     row[
@@ -3036,22 +3750,41 @@ def run_inference(
                 in rows
             )
         ),
-        "MeanInertiaStrength": float(
+        "TerminalLockFrame": (
+            None
+            if terminal_lock_frame
+            is None
+            else int(
+                terminal_lock_frame
+            )
+        ),
+        "MeanTranslationProbability": float(
             np.mean(
                 [
                     row[
-                        "inertia_strength"
+                        "translation_probability"
                     ]
                     for row
                     in rows
                 ]
             )
         ),
-        "MeanPolynomialSigma_m": float(
+        "MeanStationaryProbability": float(
             np.mean(
                 [
                     row[
-                        "polynomial_sigma_m"
+                        "stationary_probability"
+                    ]
+                    for row
+                    in rows
+                ]
+            )
+        ),
+        "MeanRotationProbability": float(
+            np.mean(
+                [
+                    row[
+                        "rotation_probability"
                     ]
                     for row
                     in rows
@@ -3160,51 +3893,51 @@ def main():
 
     print(
         "="
-        * 96,
+        * 100,
         flush=True,
     )
 
     print(
-        "ROUTE-CONDITIONED INERTIAL LSTM",
-        flush=True,
-    )
-
-    print(
-        "="
-        * 96,
-        flush=True,
-    )
-
-    print(
-        "CURRENT IMAGE determines CURRENT visual position.",
-        flush=True,
-    )
-
-    print(
-        "Previous RNN motion state supplies a second-order polynomial SOFT prior.",
-        flush=True,
-    )
-
-    print(
-        "Waypoint START/END is converted to relative route context; "
-        "raw absolute current GT/GPS is not a network input.",
-        flush=True,
-    )
-
-    print(
-        "Next SAT grid center = previous IMAGE-derived visual state, "
-        "never polynomial/Kalman prediction.",
-        flush=True,
-    )
-
-    print(
-        "FilterPy Kalman is final-output smoothing only.",
+        "VISUAL-MOTION-GATED ROUTE LSTM v5",
         flush=True,
     )
 
     print(
         "="
-        * 96,
+        * 100,
+        flush=True,
+    )
+
+    print(
+        "NO fixed speed. NO nominal speed. NO learned free-running velocity.",
+        flush=True,
+    )
+
+    print(
+        "Current+previous UAV images explicitly classify "
+        "STATIONARY / TRANSLATION / ROTATION.",
+        flush=True,
+    )
+
+    print(
+        "Previous v/a state is reconstructed only from previous "
+        "IMAGE-derived localization differences.",
+        flush=True,
+    )
+
+    print(
+        "Polynomial is translation-gated and can never move the state by itself.",
+        flush=True,
+    )
+
+    print(
+        "Final FilterPy Kalman is position-only; it has no vx/vy state.",
+        flush=True,
+    )
+
+    print(
+        "="
+        * 100,
         flush=True,
     )
 
@@ -3262,7 +3995,7 @@ def main():
         device
     )
 
-    model = RouteInertialLSTM().to(
+    model = VisualMotionRouteLSTM().to(
         device
     )
 
@@ -3284,7 +4017,7 @@ def main():
             config.TEMPORAL_CHECKPOINT.unlink()
 
         print(
-            "[STAGE 3/4] train recurrent model on Route-A start/end legs",
+            "[STAGE 3/4] train image-motion-gated recurrent model on Route A",
             flush=True,
         )
 
@@ -3320,6 +4053,7 @@ def main():
             for key, value
             in split.items()
         }
+
     else:
         load_temporal_model(
             model,
@@ -3337,7 +4071,7 @@ def main():
             )
 
         print(
-            "[STAGE 4/4] Route-B / Route-C closed-loop inference",
+            "[STAGE 4/4] B/C closed-loop inference",
             flush=True,
         )
 
@@ -3373,7 +4107,7 @@ def main():
                 config.OUTPUT_DIR
                 / (
                     f"{route_name}_"
-                    "route_inertial_lstm_frames.csv"
+                    "visual_motion_lstm_frames.csv"
                 )
             )
 
@@ -3394,11 +4128,11 @@ def main():
             ] = summary
 
             visual_metric = summary[
-                "RecurrentVisualMeasurement"
+                "VisualMotionGatedMeasurement"
             ]
 
             final_metric = summary[
-                "FinalKalman"
+                "FinalPositionKalman"
             ]
 
             print(
@@ -3408,7 +4142,8 @@ def main():
                 f"| Final MLE={final_metric['MLE_m']:.3f}m "
                 f"Final P90={final_metric['P90_m']:.3f}m "
                 f"Final Jump={final_metric['JumpRate_pct']:.3f}% "
-                f"| waypoint switches={summary['WaypointSwitchCount']}",
+                f"| switches={summary['WaypointSwitchCount']} "
+                f"terminal={summary['TerminalLockFrame']}",
                 flush=True,
             )
 
@@ -3416,59 +4151,67 @@ def main():
             "architecture": (
                 ARCHITECTURE_NAME
             ),
+            "why_v4_failed": {
+                "mean_inertia_stayed_high": True,
+                "free_running_motion_state_removed": True,
+                "constant_velocity_kalman_removed": True,
+                "early_progress_waypoint_switch_removed": True,
+            },
             "training": {
                 "route": (
                     "route_A"
                 ),
                 "waypoint_start_end_used": True,
-                "raw_absolute_current_gt_is_network_input": False,
-                "raw_gps_is_network_input": False,
-                "network_position_representation": (
-                    "translation-invariant route-relative context + "
-                    "local candidate offsets"
-                ),
+                "absolute_current_gt_network_input": False,
+                "raw_gps_network_input": False,
                 "gt_role": (
-                    "supervised labels/relative motion targets only"
+                    "supervision only"
                 ),
-                "scheduled_sampling": (
-                    "candidate center uses previous-frame GT only during "
-                    "early training; final epochs are fully closed-loop"
+                "image_pair_motion": (
+                    "previous/current UAV images + ECC image registration cue"
                 ),
+                "phase_classes": [
+                    "stationary",
+                    "translation",
+                    "rotation",
+                ],
                 "leg_split": (
                     split_description
                 ),
             },
             "model": {
-                "recurrent_state": (
-                    "LSTM hidden/cell"
-                ),
-                "explicit_motion_state": [
-                    "v_parallel",
-                    "v_cross",
-                    "a_parallel",
-                    "a_cross",
+                "fixed_speed": False,
+                "nominal_speed": False,
+                "free_running_velocity_prediction": False,
+                "observed_motion_state": [
+                    "previous visual delta parallel",
+                    "previous visual delta cross",
+                    "observed acceleration parallel",
+                    "observed acceleration cross",
                 ],
                 "polynomial": (
-                    "delta = v + 0.5*a"
+                    "observed_delta + 0.5 * observed_acceleration"
                 ),
                 "polynomial_role": (
-                    "soft candidate-score prior only"
+                    "translation-gated score prior only"
                 ),
                 "current_position_source": (
-                    "continuous current-image candidate probability expectation"
+                    "current image proposal gated by image-derived translation probability"
                 ),
             },
             "inference": {
-                "waypoint_coordinates_order_used": True,
-                "waypoint_frame_index_used_for_switching": False,
+                "waypoint_frame_index_switching": False,
+                "endpoint_switch_rule": (
+                    "actual image-derived position must be within endpoint radius"
+                ),
+                "terminal_lock": bool(
+                    config.TERMINAL_LOCK_ENABLED
+                ),
+                "kalman_state": (
+                    "[x,y] only"
+                ),
+                "kalman_constant_velocity": False,
                 "test_gt_used_by_inference": False,
-                "next_search_center": (
-                    "previous image-derived visual measurement"
-                ),
-                "kalman_controls_search": False,
-                "kalman_role": (
-                    "final output smoother only"
-                ),
             },
             "waypoint_counts": (
                 waypoint_counts
