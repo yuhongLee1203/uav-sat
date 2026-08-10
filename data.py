@@ -51,6 +51,49 @@ def timestamps_from_sensor(path):
     return timestamps
 
 
+def interpolate_sampled_gps(timestamps):
+    """Interpolate low-rate GPS fixes at every camera timestamp.
+
+    Camera frames arrive about three times faster than GPS fixes. Repeated GPS
+    rows therefore describe a sample-and-hold logger, rather than a stationary
+    UAV. Original fixes are retained separately as raw metadata.
+    """
+    if not timestamps:
+        return []
+
+    aligned = [
+        (float(item["latitude"]), float(item["longitude"]))
+        for item in timestamps
+    ]
+    fix_indices = [0]
+    for index in range(1, len(timestamps)):
+        previous = timestamps[index - 1]
+        current = timestamps[index]
+        if (
+            float(previous["latitude"]) != float(current["latitude"])
+            or float(previous["longitude"]) != float(current["longitude"])
+        ):
+            fix_indices.append(index)
+
+    for left, right in zip(fix_indices[:-1], fix_indices[1:]):
+        left_time = int(timestamps[left]["timestamp_ns"])
+        right_time = int(timestamps[right]["timestamp_ns"])
+        if right_time <= left_time:
+            continue
+        left_lat, left_lon = aligned[left]
+        right_lat, right_lon = aligned[right]
+        for index in range(left + 1, right):
+            alpha = (
+                int(timestamps[index]["timestamp_ns"]) - left_time
+            ) / float(right_time - left_time)
+            aligned[index] = (
+                left_lat + alpha * (right_lat - left_lat),
+                left_lon + alpha * (right_lon - left_lon),
+            )
+
+    return aligned
+
+
 def bearing_degrees(lat1, lon1, lat2, lon2):
     lat1 = math.radians(float(lat1))
     lat2 = math.radians(float(lat2))
@@ -272,6 +315,7 @@ class RouteDataset(Dataset):
         if not self.vi_dir.exists():
             self.vi_dir = self.root / "images"
         self.timestamps = timestamps_from_sensor(sensor_path(self.root))
+        self.synchronized_latlon = interpolate_sampled_gps(self.timestamps)
         self.origin_lat = float(origin_lat if origin_lat is not None else self.timestamps[0]["latitude"])
         self.origin_lon = float(origin_lon if origin_lon is not None else self.timestamps[0]["longitude"])
         self.mapper = SatGeoMapper(sat_json_path, sat_image_path)
@@ -311,22 +355,34 @@ class RouteDataset(Dataset):
             if self.min_altitude_m is not None:
                 if altitude is None or altitude < float(self.min_altitude_m):
                     continue
-            lat = float(item["latitude"])
-            lon = float(item["longitude"])
+            raw_lat = float(item["latitude"])
+            raw_lon = float(item["longitude"])
+            lat, lon = self.synchronized_latlon[idx]
             pixel_x, pixel_y = self.mapper.latlon_to_pixel(lat, lon)
             if pixel_x < 0 or pixel_x >= self.mapper.width or pixel_y < 0 or pixel_y >= self.mapper.height:
                 continue
             x_meter, y_meter = meters_from_latlon(lat, lon, self.origin_lat, self.origin_lon)
+            raw_x_meter, raw_y_meter = meters_from_latlon(
+                raw_lat,
+                raw_lon,
+                self.origin_lat,
+                self.origin_lon,
+            )
             samples.append(
                 {
                     "image_path": str(path),
                     "frame_id": idx,
                     "lat": lat,
                     "lon": lon,
+                    "raw_lat": raw_lat,
+                    "raw_lon": raw_lon,
                     "yaw": self._yaw_for_index(idx),
                     "altitude": altitude,
                     "x_meter": x_meter,
                     "y_meter": y_meter,
+                    "raw_x_meter": raw_x_meter,
+                    "raw_y_meter": raw_y_meter,
+                    "timestamp_ns": int(item["timestamp_ns"]),
                     "pixel_x": pixel_x,
                     "pixel_y": pixel_y,
                 }
@@ -344,11 +400,13 @@ class RouteDataset(Dataset):
         return {
             "uav": self.transform(uav),
             "xy": torch.tensor([sample["x_meter"], sample["y_meter"]], dtype=torch.float32),
+            "raw_xy": torch.tensor([sample["raw_x_meter"], sample["raw_y_meter"]], dtype=torch.float32),
             "latlon": torch.tensor([sample["lat"], sample["lon"]], dtype=torch.float32),
             "pixel": torch.tensor([sample["pixel_x"], sample["pixel_y"]], dtype=torch.float32),
             "yaw": torch.tensor(sample["yaw"], dtype=torch.float32),
             "altitude": torch.tensor(float(sample["altitude"]) if sample["altitude"] is not None else float("nan"), dtype=torch.float32),
             "frame_id": str(sample["frame_id"]),
+            "timestamp_ns": torch.tensor(sample["timestamp_ns"], dtype=torch.long),
             "image_path": sample["image_path"],
         }
 
