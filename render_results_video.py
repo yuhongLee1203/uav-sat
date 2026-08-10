@@ -4,23 +4,39 @@ import math
 from pathlib import Path
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
-import matplotlib.pyplot as plt
 
 import config
 from data import RouteDataset, meters_from_latlon
 
 
 GT_COLOR = (60, 210, 80)
-VISUAL_COLOR = (210, 80, 220)
+HOLD_COLOR = (170, 170, 170)
+LOCAL_COLOR = (255, 150, 50)
+RECOVERY_COLOR = (220, 80, 220)
+WAYPOINT_BRANCH_COLOR = (0, 220, 255)
+VISUAL_COLOR = (190, 80, 255)
 FINAL_COLOR = (20, 140, 255)
 POLY_COLOR = (255, 210, 60)
-WAYPOINT_COLOR = (0, 220, 255)
 TEXT_COLOR = (245, 245, 245)
 BLACK = (0, 0, 0)
+
+
+def branch_name(value):
+    value = int(value)
+
+    names = {
+        int(config.HYPOTHESIS_HOLD): "HOLD",
+        int(config.HYPOTHESIS_LOCAL): "LOCAL",
+        int(config.HYPOTHESIS_RECOVERY): "RECOVERY",
+        int(config.HYPOTHESIS_WAYPOINT): "WAYPOINT",
+    }
+
+    return names.get(value, "UNKNOWN")
 
 
 def load_waypoints(
@@ -38,46 +54,30 @@ def load_waypoints(
         )
     )
 
-    rows = sorted(
-        payload[
-            "waypoints"
-        ],
+    raw = sorted(
+        payload["waypoints"],
         key=lambda item: int(
-            item[
-                "waypoint_order"
-            ]
+            item["waypoint_order"]
         ),
     )
 
     result = []
 
-    for item in rows:
-        x_meter, y_meter = (
-            meters_from_latlon(
-                item[
-                    "latitude"
-                ],
-                item[
-                    "longitude"
-                ],
-                origin_lat,
-                origin_lon,
-            )
+    for item in raw:
+        x_m, y_m = meters_from_latlon(
+            item["latitude"],
+            item["longitude"],
+            origin_lat,
+            origin_lon,
         )
 
         result.append(
             {
                 "order": int(
-                    item[
-                        "waypoint_order"
-                    ]
+                    item["waypoint_order"]
                 ),
-                "x": float(
-                    x_meter
-                ),
-                "y": float(
-                    y_meter
-                ),
+                "x": float(x_m),
+                "y": float(y_m),
             }
         )
 
@@ -93,14 +93,9 @@ def meters_to_latlon(
     radius = 6378137.0
 
     latitude = (
-        float(
-            origin_lat
-        )
+        float(origin_lat)
         + math.degrees(
-            float(
-                y_meter
-            )
-            / radius
+            float(y_meter) / radius
         )
     )
 
@@ -108,29 +103,20 @@ def meters_to_latlon(
         radius
         * math.cos(
             math.radians(
-                float(
-                    origin_lat
-                )
+                float(origin_lat)
             )
         )
     )
 
     longitude = (
-        float(
-            origin_lon
-        )
+        float(origin_lon)
         + math.degrees(
-            float(
-                x_meter
-            )
+            float(x_meter)
             / longitude_scale
         )
     )
 
-    return (
-        latitude,
-        longitude,
-    )
+    return latitude, longitude
 
 
 def xy_to_source_pixels(
@@ -145,30 +131,24 @@ def xy_to_source_pixels(
         xy,
         dtype=np.float64,
     ):
-        latitude, longitude = (
-            meters_to_latlon(
-                x_meter,
-                y_meter,
-                origin_lat,
-                origin_lon,
-            )
+        lat, lon = meters_to_latlon(
+            x_meter,
+            y_meter,
+            origin_lat,
+            origin_lon,
         )
 
         pixel_x, pixel_y = (
             dataset.mapper.latlon_to_pixel(
-                latitude,
-                longitude,
+                lat,
+                lon,
             )
         )
 
         points.append(
             [
-                float(
-                    pixel_x
-                ),
-                float(
-                    pixel_y
-                ),
+                float(pixel_x),
+                float(pixel_y),
             ]
         )
 
@@ -184,32 +164,21 @@ def contain_image(
     height,
 ):
     source_height, source_width = (
-        image.shape[
-            :2
-        ]
+        image.shape[:2]
     )
 
     scale = min(
-        float(
-            width
-        )
-        / float(
-            source_width
-        ),
-        float(
-            height
-        )
-        / float(
-            source_height
-        ),
+        float(width)
+        / float(source_width),
+        float(height)
+        / float(source_height),
     )
 
     destination_width = max(
         1,
         int(
             round(
-                source_width
-                * scale
+                source_width * scale
             )
         ),
     )
@@ -218,8 +187,7 @@ def contain_image(
         1,
         int(
             round(
-                source_height
-                * scale
+                source_height * scale
             )
         ),
     )
@@ -232,8 +200,7 @@ def contain_image(
         ),
         interpolation=(
             cv2.INTER_AREA
-            if scale
-            <= 1.0
+            if scale <= 1.0
             else cv2.INTER_LINEAR
         ),
     )
@@ -248,22 +215,18 @@ def contain_image(
     )
 
     offset_x = (
-        width
-        - destination_width
+        width - destination_width
     ) // 2
 
     offset_y = (
-        height
-        - destination_height
+        height - destination_height
     ) // 2
 
     panel[
         offset_y:
-        offset_y
-        + destination_height,
+        offset_y + destination_height,
         offset_x:
-        offset_x
-        + destination_width,
+        offset_x + destination_width,
     ] = resized
 
     return panel
@@ -280,29 +243,13 @@ def draw_marker(
     cv2.drawMarker(
         canvas,
         (
-            int(
-                round(
-                    point[
-                        0
-                    ]
-                )
-            ),
-            int(
-                round(
-                    point[
-                        1
-                    ]
-                )
-            ),
+            int(round(point[0])),
+            int(round(point[1])),
         ),
         color,
         marker_type,
-        int(
-            size
-        ),
-        int(
-            thickness
-        ),
+        int(size),
+        int(thickness),
         cv2.LINE_AA,
     )
 
@@ -313,16 +260,12 @@ def draw_history(
     color,
     thickness,
 ):
-    if len(
-        points
-    ) < 2:
+    if len(points) < 2:
         return
 
     integer_points = np.round(
         points
-    ).astype(
-        np.int32
-    )
+    ).astype(np.int32)
 
     cv2.polylines(
         canvas,
@@ -335,36 +278,9 @@ def draw_history(
         ],
         False,
         color,
-        int(
-            thickness
-        ),
+        int(thickness),
         cv2.LINE_AA,
     )
-
-
-def phase_name(
-    value,
-):
-    value = int(
-        value
-    )
-
-    if value == int(
-        config.PHASE_STATIONARY
-    ):
-        return "STATIONARY"
-
-    if value == int(
-        config.PHASE_TRANSLATION
-    ):
-        return "TRANSLATION"
-
-    if value == int(
-        config.PHASE_ROTATION
-    ):
-        return "ROTATION"
-
-    return "UNKNOWN"
 
 
 def render_overview(
@@ -374,125 +290,49 @@ def render_overview(
     output_dir,
 ):
     gt = rows[
-        [
-            "gt_x",
-            "gt_y",
-        ]
-    ].to_numpy(
-        dtype=float
-    )
+        ["gt_x", "gt_y"]
+    ].to_numpy(dtype=float)
 
     visual = rows[
-        [
-            "visual_measurement_x",
-            "visual_measurement_y",
-        ]
-    ].to_numpy(
-        dtype=float
-    )
+        ["visual_x", "visual_y"]
+    ].to_numpy(dtype=float)
 
     final = rows[
-        [
-            "final_x",
-            "final_y",
-        ]
-    ].to_numpy(
-        dtype=float
-    )
-
-    polynomial = rows[
-        [
-            "polynomial_x",
-            "polynomial_y",
-        ]
-    ].to_numpy(
-        dtype=float
-    )
+        ["final_x", "final_y"]
+    ].to_numpy(dtype=float)
 
     fig, ax = plt.subplots(
-        figsize=(
-            14,
-            9,
-        )
+        figsize=(14, 9)
     )
 
     ax.plot(
-        gt[
-            :,
-            0
-        ],
-        gt[
-            :,
-            1
-        ],
+        gt[:, 0],
+        gt[:, 1],
         color="tab:green",
         linewidth=2.0,
         label="GT (evaluation only)",
     )
 
     ax.plot(
-        visual[
-            :,
-            0
-        ],
-        visual[
-            :,
-            1
-        ],
+        visual[:, 0],
+        visual[:, 1],
         color="tab:purple",
-        linewidth=1.5,
-        label="Image-motion-gated visual state",
+        linewidth=1.6,
+        label="Route-bounded recurrent visual",
     )
 
     ax.plot(
-        final[
-            :,
-            0
-        ],
-        final[
-            :,
-            1
-        ],
+        final[:, 0],
+        final[:, 1],
         color="tab:orange",
         linewidth=1.8,
         label="Final position-only Kalman",
     )
 
-    stride = max(
-        1,
-        len(
-            polynomial
-        )
-        // 180,
-    )
-
-    ax.scatter(
-        polynomial[
-            ::stride,
-            0
-        ],
-        polynomial[
-            ::stride,
-            1
-        ],
-        s=8,
-        alpha=0.30,
-        color="tab:cyan",
-        label="Observed-motion polynomial prior",
-    )
-
     for waypoint in waypoints:
         ax.scatter(
-            [
-                waypoint[
-                    "x"
-                ]
-            ],
-            [
-                waypoint[
-                    "y"
-                ]
-            ],
+            [waypoint["x"]],
+            [waypoint["y"]],
             marker="X",
             s=90,
             color="gold",
@@ -503,129 +343,67 @@ def render_overview(
         ax.annotate(
             f"W{waypoint['order']}",
             (
-                waypoint[
-                    "x"
-                ],
-                waypoint[
-                    "y"
-                ],
+                waypoint["x"],
+                waypoint["y"],
             ),
-            xytext=(
-                5,
-                5,
-            ),
+            xytext=(5, 5),
             textcoords="offset points",
             fontsize=8,
         )
 
     interval = max(
         1,
-        int(
-            config.FRAME_LABEL_INTERVAL
-        ),
+        int(config.FRAME_LABEL_INTERVAL),
     )
 
     for index in range(
         0,
-        len(
-            rows
-        ),
+        len(rows),
         interval,
     ):
         frame_id = int(
-            rows.iloc[
-                index
-            ][
-                "frame_id"
-            ]
+            rows.iloc[index]["frame_id"]
         )
 
         ax.annotate(
             f"f{frame_id}",
             (
-                final[
-                    index,
-                    0
-                ],
-                final[
-                    index,
-                    1
-                ],
+                final[index, 0],
+                final[index, 1],
             ),
-            xytext=(
-                4,
-                -12,
-            ),
+            xytext=(4, -12),
             textcoords="offset points",
             fontsize=7,
             color="tab:orange",
         )
 
-    terminal_rows = rows[
+    switched = rows[
         rows[
-            "terminal_locked"
-        ]
-        > 0
+            "waypoint_switched_after_frame"
+        ] > 0
     ]
 
-    if len(
-        terminal_rows
-    ) > 0:
-        first_terminal = (
-            terminal_rows.iloc[
-                0
-            ]
-        )
-
+    for _, row in switched.iterrows():
         ax.scatter(
-            [
-                float(
-                    first_terminal[
-                        "visual_measurement_x"
-                    ]
-                )
-            ],
-            [
-                float(
-                    first_terminal[
-                        "visual_measurement_y"
-                    ]
-                )
-            ],
-            s=150,
+            [float(row["visual_x"])],
+            [float(row["visual_y"])],
             facecolors="none",
             edgecolors="black",
-            linewidths=2.0,
-            label=(
-                "Terminal lock "
-                f"f{int(first_terminal['frame_id'])}"
-            ),
+            s=100,
+            linewidths=1.6,
         )
 
     ax.set_title(
         (
-            f"{route_name}: Visual-Motion-Gated Route LSTM v5\n"
-            "No fixed speed; current/previous images decide motion phase"
+            f"{route_name}: Route-Bounded Hypothesis LSTM v6\n"
+            "HOLD / LOCAL / RECOVERY / WAYPOINT"
         )
     )
 
-    ax.set_xlabel(
-        "Local X (m)"
-    )
-
-    ax.set_ylabel(
-        "Local Y (m)"
-    )
-
-    ax.axis(
-        "equal"
-    )
-
-    ax.grid(
-        True,
-        alpha=0.25,
-    )
-
+    ax.set_xlabel("Local X (m)")
+    ax.set_ylabel("Local Y (m)")
+    ax.axis("equal")
+    ax.grid(True, alpha=0.25)
     ax.legend()
 
     fig.tight_layout()
@@ -640,52 +418,35 @@ def render_overview(
         dpi=200,
     )
 
-    plt.close(
-        fig
-    )
+    plt.close(fig)
 
     return path
 
 
-def render_process_snapshots(
+def render_process(
     route_name,
     rows,
     output_dir,
 ):
     count = min(
-        int(
-            config.PROCESS_SNAPSHOT_COUNT
-        ),
-        len(
-            rows
-        ),
+        int(config.PROCESS_SNAPSHOT_COUNT),
+        len(rows),
     )
 
     indices = np.unique(
         np.linspace(
             0,
-            len(
-                rows
-            )
-            - 1,
+            len(rows) - 1,
             count,
-        )
-        .round()
-        .astype(
-            int
-        )
+        ).round().astype(int)
     )
 
     columns = 3
 
     row_count = int(
         math.ceil(
-            len(
-                indices
-            )
-            / float(
-                columns
-            )
+            len(indices)
+            / float(columns)
         )
     )
 
@@ -694,110 +455,66 @@ def render_process_snapshots(
         columns,
         figsize=(
             16,
-            4.8
-            * row_count,
+            4.8 * row_count,
         ),
     )
 
     axes = np.asarray(
         axes
-    ).reshape(
-        -1
-    )
+    ).reshape(-1)
 
-    for plot_index, row_index in enumerate(
+    for plot_index, data_index in enumerate(
         indices
     ):
-        row = rows.iloc[
-            row_index
-        ]
-
-        ax = axes[
-            plot_index
-        ]
+        row = rows.iloc[data_index]
+        ax = axes[plot_index]
 
         points = {
             "GT": (
-                float(
-                    row[
-                        "gt_x"
-                    ]
-                ),
-                float(
-                    row[
-                        "gt_y"
-                    ]
-                ),
+                row["gt_x"],
+                row["gt_y"],
                 "tab:green",
                 "o",
             ),
-            "Search center": (
-                float(
-                    row[
-                        "search_center_x"
-                    ]
-                ),
-                float(
-                    row[
-                        "search_center_y"
-                    ]
-                ),
+            "HOLD": (
+                row["hold_x"],
+                row["hold_y"],
                 "0.45",
                 "s",
             ),
-            "Proposal": (
-                float(
-                    row[
-                        "proposal_x"
-                    ]
-                ),
-                float(
-                    row[
-                        "proposal_y"
-                    ]
-                ),
+            "LOCAL": (
+                row["local_x"],
+                row["local_y"],
                 "tab:blue",
-                "x",
-            ),
-            "Polynomial": (
-                float(
-                    row[
-                        "polynomial_x"
-                    ]
-                ),
-                float(
-                    row[
-                        "polynomial_y"
-                    ]
-                ),
-                "tab:cyan",
-                "^",
-            ),
-            "Gated visual": (
-                float(
-                    row[
-                        "visual_measurement_x"
-                    ]
-                ),
-                float(
-                    row[
-                        "visual_measurement_y"
-                    ]
-                ),
-                "tab:purple",
                 "D",
             ),
-            "Final": (
-                float(
-                    row[
-                        "final_x"
-                    ]
-                ),
-                float(
-                    row[
-                        "final_y"
-                    ]
-                ),
+            "RECOVERY": (
+                row["recovery_x"],
+                row["recovery_y"],
+                "tab:pink",
+                "^",
+            ),
+            "WAYPOINT": (
+                row["waypoint_x"],
+                row["waypoint_y"],
+                "goldenrod",
+                "X",
+            ),
+            "POLY": (
+                row["polynomial_x"],
+                row["polynomial_y"],
+                "tab:cyan",
+                "x",
+            ),
+            "VISUAL": (
+                row["visual_x"],
+                row["visual_y"],
+                "tab:purple",
+                "P",
+            ),
+            "FINAL": (
+                row["final_x"],
+                row["final_y"],
                 "tab:orange",
                 "*",
             ),
@@ -810,85 +527,47 @@ def render_process_snapshots(
             marker,
         ) in points.items():
             ax.scatter(
-                [
-                    x_value
-                ],
-                [
-                    y_value
-                ],
+                [float(x_value)],
+                [float(y_value)],
                 color=color,
                 marker=marker,
                 s=(
                     120
-                    if label
-                    == "Final"
+                    if label == "FINAL"
                     else 65
                 ),
                 label=label,
             )
 
-        all_xy = np.asarray(
+        xy = np.asarray(
             [
                 [
-                    item[
-                        0
-                    ],
-                    item[
-                        1
-                    ],
+                    float(item[0]),
+                    float(item[1]),
                 ]
                 for item
                 in points.values()
-            ],
-            dtype=float,
+            ]
         )
 
-        center = np.mean(
-            all_xy,
-            axis=0,
-        )
+        center = xy.mean(axis=0)
 
         span = max(
-            np.ptp(
-                all_xy[
-                    :,
-                    0
-                ]
-            ),
-            np.ptp(
-                all_xy[
-                    :,
-                    1
-                ]
-            ),
+            np.ptp(xy[:, 0]),
+            np.ptp(xy[:, 1]),
             45.0,
         )
 
-        margin = (
-            0.70
-            * span
-        )
+        margin = 0.7 * span
 
         ax.set_xlim(
-            center[
-                0
-            ]
-            - margin,
-            center[
-                0
-            ]
-            + margin,
+            center[0] - margin,
+            center[0] + margin,
         )
 
         ax.set_ylim(
-            center[
-                1
-            ]
-            - margin,
-            center[
-                1
-            ]
-            + margin,
+            center[1] - margin,
+            center[1] + margin,
         )
 
         ax.set_aspect(
@@ -896,55 +575,41 @@ def render_process_snapshots(
             adjustable="box",
         )
 
-        ax.grid(
-            True,
-            alpha=0.25,
-        )
+        ax.grid(True, alpha=0.25)
 
-        phase = phase_name(
-            row[
-                "predicted_phase"
-            ]
+        selected = branch_name(
+            row["selected_branch"]
         )
 
         ax.set_title(
             (
-                f"frame {int(row['frame_id'])} | "
+                f"frame {int(row['frame_id'])} "
                 f"W{int(row['active_waypoint_from'])}"
                 f"->W{int(row['active_waypoint_to'])}\n"
-                f"{phase} | move={float(row['translation_probability']):.2f} "
-                f"stop={float(row['stationary_probability']):.2f} "
-                f"rot={float(row['rotation_probability']):.2f}\n"
+                f"{selected} | "
+                f"H={float(row['branch_hold']):.2f} "
+                f"L={float(row['branch_local']):.2f} "
+                f"R={float(row['branch_recovery']):.2f} "
+                f"W={float(row['branch_waypoint']):.2f}\n"
                 f"visual err={float(row['error_visual_m']):.1f}m | "
                 f"final err={float(row['error_final_m']):.1f}m"
             ),
-            fontsize=8.5,
+            fontsize=8,
         )
 
         if plot_index == 0:
-            ax.legend(
-                fontsize=7,
-            )
+            ax.legend(fontsize=6)
 
     for index in range(
-        len(
-            indices
-        ),
-        len(
-            axes
-        ),
+        len(indices),
+        len(axes),
     ):
-        axes[
-            index
-        ].axis(
-            "off"
-        )
+        axes[index].axis("off")
 
     fig.suptitle(
         (
-            f"{route_name}: current-image localization process\n"
-            "image pair motion state -> visual proposal -> translation gate "
-            "-> synchronized visual state -> position Kalman"
+            f"{route_name}: current-frame hypothesis process\n"
+            "HOLD vs LOCAL vs active-route RECOVERY vs WAYPOINT transition"
         ),
         fontsize=14,
     )
@@ -961,9 +626,7 @@ def render_process_snapshots(
         dpi=190,
     )
 
-    plt.close(
-        fig
-    )
+    plt.close(fig)
 
     return path
 
@@ -993,25 +656,18 @@ def render_video(
                 round(
                     source_width
                     * (
-                        float(
-                            map_height
-                        )
-                        / float(
-                            source_height
-                        )
+                        float(map_height)
+                        / float(source_height)
                     )
                 )
             ),
             int(
-                config.VIDEO_WIDTH
-                * 0.63
+                config.VIDEO_WIDTH * 0.63
             ),
         )
 
         map_rgb = np.asarray(
-            image.convert(
-                "RGB"
-            ).resize(
+            image.convert("RGB").resize(
                 (
                     map_width,
                     map_height,
@@ -1025,40 +681,21 @@ def render_video(
         cv2.COLOR_RGB2BGR,
     )
 
-    width = int(
-        config.VIDEO_WIDTH
-    )
-
-    height = int(
-        config.VIDEO_HEIGHT
-    )
-
-    uav_width = (
-        width
-        - map_width
-    )
+    width = int(config.VIDEO_WIDTH)
+    height = int(config.VIDEO_HEIGHT)
+    uav_width = width - map_width
 
     scale_x = (
-        float(
-            map_width
-        )
-        / float(
-            source_width
-        )
+        float(map_width)
+        / float(source_width)
     )
 
     scale_y = (
-        float(
-            map_height
-        )
-        / float(
-            source_height
-        )
+        float(map_height)
+        / float(source_height)
     )
 
-    def xy_to_canvas(
-        xy,
-    ):
+    def xy_to_canvas(xy):
         source = xy_to_source_pixels(
             xy,
             dataset,
@@ -1066,118 +703,81 @@ def render_video(
             origin_lon,
         )
 
-        result = np.empty_like(
-            source
-        )
+        result = np.empty_like(source)
 
-        result[
-            :,
-            0
-        ] = (
-            source[
-                :,
-                0
-            ]
+        result[:, 0] = (
+            source[:, 0]
             * scale_x
             + uav_width
         )
 
-        result[
-            :,
-            1
-        ] = (
-            source[
-                :,
-                1
-            ]
+        result[:, 1] = (
+            source[:, 1]
             * scale_y
         )
 
         return result
 
-    gt_xy = rows[
-        [
-            "gt_x",
-            "gt_y",
-        ]
-    ].to_numpy(
-        dtype=float
+    def canvas_points(x_name, y_name):
+        return xy_to_canvas(
+            rows[
+                [x_name, y_name]
+            ].to_numpy(dtype=float)
+        )
+
+    gt_canvas = canvas_points(
+        "gt_x",
+        "gt_y",
     )
 
-    visual_xy = rows[
-        [
-            "visual_measurement_x",
-            "visual_measurement_y",
-        ]
-    ].to_numpy(
-        dtype=float
+    hold_canvas = canvas_points(
+        "hold_x",
+        "hold_y",
     )
 
-    final_xy = rows[
-        [
-            "final_x",
-            "final_y",
-        ]
-    ].to_numpy(
-        dtype=float
+    local_canvas = canvas_points(
+        "local_x",
+        "local_y",
     )
 
-    polynomial_xy = rows[
-        [
-            "polynomial_x",
-            "polynomial_y",
-        ]
-    ].to_numpy(
-        dtype=float
+    recovery_canvas = canvas_points(
+        "recovery_x",
+        "recovery_y",
     )
 
-    proposal_xy = rows[
-        [
-            "proposal_x",
-            "proposal_y",
-        ]
-    ].to_numpy(
-        dtype=float
+    waypoint_hypothesis_canvas = (
+        canvas_points(
+            "waypoint_x",
+            "waypoint_y",
+        )
     )
 
-    waypoint_xy = np.asarray(
-        [
-            [
-                waypoint[
-                    "x"
-                ],
-                waypoint[
-                    "y"
-                ],
-            ]
-            for waypoint
-            in waypoints
-        ],
-        dtype=float,
+    visual_canvas = canvas_points(
+        "visual_x",
+        "visual_y",
     )
 
-    gt_canvas = xy_to_canvas(
-        gt_xy
+    final_canvas = canvas_points(
+        "final_x",
+        "final_y",
     )
 
-    visual_canvas = xy_to_canvas(
-        visual_xy
-    )
-
-    final_canvas = xy_to_canvas(
-        final_xy
-    )
-
-    polynomial_canvas = xy_to_canvas(
-        polynomial_xy
-    )
-
-    proposal_canvas = xy_to_canvas(
-        proposal_xy
+    polynomial_canvas = canvas_points(
+        "polynomial_x",
+        "polynomial_y",
     )
 
     waypoint_canvas = xy_to_canvas(
-        waypoint_xy
+        np.asarray(
+            [
+                [
+                    wp["x"],
+                    wp["y"],
+                ]
+                for wp in waypoints
+            ],
+            dtype=float,
+        )
     )
 
     output_path = (
@@ -1186,15 +786,11 @@ def render_video(
     )
 
     writer = cv2.VideoWriter(
-        str(
-            output_path
-        ),
+        str(output_path),
         cv2.VideoWriter_fourcc(
             *"mp4v"
         ),
-        float(
-            config.VIDEO_FPS
-        ),
+        float(config.VIDEO_FPS),
         (
             width,
             height,
@@ -1203,7 +799,7 @@ def render_video(
 
     if not writer.isOpened():
         raise RuntimeError(
-            f"Cannot open video writer: {output_path}"
+            f"Cannot create video: {output_path}"
         )
 
     try:
@@ -1223,11 +819,7 @@ def render_video(
             ] = map_panel
 
             image = cv2.imread(
-                str(
-                    row[
-                        "image_path"
-                    ]
-                ),
+                str(row["image_path"]),
                 cv2.IMREAD_COLOR,
             )
 
@@ -1247,7 +839,7 @@ def render_video(
                 draw_marker(
                     canvas,
                     point,
-                    WAYPOINT_COLOR,
+                    WAYPOINT_BRANCH_COLOR,
                     cv2.MARKER_TILTED_CROSS,
                     14,
                     2,
@@ -1255,68 +847,44 @@ def render_video(
 
                 cv2.putText(
                     canvas,
+                    f"W{waypoints[waypoint_index]['order']}",
                     (
-                        f"W"
-                        f"{waypoints[waypoint_index]['order']}"
-                    ),
-                    (
-                        int(
-                            point[
-                                0
-                            ]
-                        )
-                        + 5,
-                        int(
-                            point[
-                                1
-                            ]
-                        )
-                        - 5,
+                        int(point[0]) + 5,
+                        int(point[1]) - 5,
                     ),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.40,
-                    WAYPOINT_COLOR,
+                    WAYPOINT_BRANCH_COLOR,
                     1,
                     cv2.LINE_AA,
                 )
 
-            end_index = (
-                row_index
-                + 1
-            )
+            end_index = row_index + 1
 
             draw_history(
                 canvas,
-                gt_canvas[
-                    :end_index
-                ],
+                gt_canvas[:end_index],
                 GT_COLOR,
                 2,
             )
 
             draw_history(
                 canvas,
-                visual_canvas[
-                    :end_index
-                ],
+                visual_canvas[:end_index],
                 VISUAL_COLOR,
                 2,
             )
 
             draw_history(
                 canvas,
-                final_canvas[
-                    :end_index
-                ],
+                final_canvas[:end_index],
                 FINAL_COLOR,
                 3,
             )
 
             draw_marker(
                 canvas,
-                gt_canvas[
-                    row_index
-                ],
+                gt_canvas[row_index],
                 GT_COLOR,
                 cv2.MARKER_CROSS,
                 21,
@@ -1325,25 +893,26 @@ def render_video(
 
             draw_marker(
                 canvas,
-                proposal_canvas[
-                    row_index
-                ],
-                (
-                    255,
-                    160,
-                    70,
-                ),
+                hold_canvas[row_index],
+                HOLD_COLOR,
                 cv2.MARKER_SQUARE,
-                15,
+                14,
                 2,
             )
 
             draw_marker(
                 canvas,
-                polynomial_canvas[
-                    row_index
-                ],
-                POLY_COLOR,
+                local_canvas[row_index],
+                LOCAL_COLOR,
+                cv2.MARKER_DIAMOND,
+                17,
+                2,
+            )
+
+            draw_marker(
+                canvas,
+                recovery_canvas[row_index],
+                RECOVERY_COLOR,
                 cv2.MARKER_TRIANGLE_UP,
                 18,
                 2,
@@ -1351,138 +920,106 @@ def render_video(
 
             draw_marker(
                 canvas,
-                visual_canvas[
+                waypoint_hypothesis_canvas[
                     row_index
                 ],
-                VISUAL_COLOR,
-                cv2.MARKER_DIAMOND,
+                WAYPOINT_BRANCH_COLOR,
+                cv2.MARKER_TILTED_CROSS,
                 20,
                 3,
             )
 
             draw_marker(
                 canvas,
-                final_canvas[
-                    row_index
-                ],
-                FINAL_COLOR,
+                polynomial_canvas[row_index],
+                POLY_COLOR,
+                cv2.MARKER_CROSS,
+                13,
+                2,
+            )
+
+            draw_marker(
+                canvas,
+                visual_canvas[row_index],
+                VISUAL_COLOR,
                 cv2.MARKER_STAR,
-                25,
+                23,
                 3,
             )
 
-            frame_id = int(
-                row[
-                    "frame_id"
-                ]
+            draw_marker(
+                canvas,
+                final_canvas[row_index],
+                FINAL_COLOR,
+                cv2.MARKER_STAR,
+                28,
+                3,
             )
 
-            active_from = int(
-                row[
-                    "active_waypoint_from"
-                ]
-            )
-
-            active_to = int(
-                row[
-                    "active_waypoint_to"
-                ]
-            )
-
-            phase = phase_name(
-                row[
-                    "predicted_phase"
-                ]
+            branch = branch_name(
+                row["selected_branch"]
             )
 
             cv2.rectangle(
                 canvas,
-                (
-                    0,
-                    0,
-                ),
-                (
-                    width,
-                    58,
-                ),
+                (0, 0),
+                (width, 58),
                 BLACK,
                 -1,
             )
 
             top_text = (
-                f"{route_name.upper()} | frame={frame_id} | "
-                f"W{active_from}->W{active_to} | {phase} | "
-                f"move={float(row['translation_probability']):.2f} "
-                f"stop={float(row['stationary_probability']):.2f} "
-                f"rot={float(row['rotation_probability']):.2f} | "
+                f"{route_name.upper()} | frame={int(row['frame_id'])} | "
+                f"W{int(row['active_waypoint_from'])}"
+                f"->W{int(row['active_waypoint_to'])} | "
+                f"{branch} | "
+                f"H={float(row['branch_hold']):.2f} "
+                f"L={float(row['branch_local']):.2f} "
+                f"R={float(row['branch_recovery']):.2f} "
+                f"W={float(row['branch_waypoint']):.2f} | "
                 f"err={float(row['error_final_m']):.1f}m"
             )
 
             cv2.putText(
                 canvas,
                 top_text,
-                (
-                    14,
-                    34,
-                ),
+                (14, 34),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.54,
+                0.52,
                 TEXT_COLOR,
                 1,
                 cv2.LINE_AA,
             )
 
-            status_lines = [
+            info = [
+                "LEFT = exact current UAV frame",
+                "GRAY HOLD = keep previous image-derived position",
+                "BLUE LOCAL = current image in previous 6x6 neighborhood",
+                "MAGENTA RECOVERY = current image over active Start->End corridor",
+                "YELLOW WAYPOINT = current image in endpoint transition neighborhood",
+                "PURPLE = recurrent visual; ORANGE = position-only Kalman",
                 (
-                    "LEFT = exact current UAV frame; "
-                    "RIGHT = synchronized localization"
-                ),
-                (
-                    f"ECC shift={float(row['ecc_center_shift_norm']):.4f} "
-                    f"rot={float(row['ecc_rotation_deg']):.1f}deg "
-                    f"corr={float(row['ecc_correlation']):.2f}"
-                ),
-                (
-                    f"observed step parallel="
-                    f"{float(row['observed_delta_parallel']):.2f}m "
-                    f"cross={float(row['observed_delta_cross']):.2f}m"
-                ),
-                (
-                    "Purple = current IMAGE-gated localization; "
-                    "cyan = polynomial prior only"
-                ),
-                (
-                    "Orange = position-only Kalman; "
-                    "no velocity state / no fixed speed"
-                ),
-                (
-                    f"terminal_locked={int(row['terminal_locked'])}"
+                    f"waypoint_selected={int(row['waypoint_branch_selected'])} "
+                    f"switch={int(row['waypoint_switched_after_frame'])} "
+                    f"mission_complete={int(row['mission_complete'])}"
                 ),
             ]
 
-            box_y = (
-                height
-                - 205
-            )
+            box_y = height - 230
 
             cv2.rectangle(
                 canvas,
+                (10, box_y),
                 (
-                    10,
-                    box_y,
-                ),
-                (
-                    uav_width
-                    - 10,
-                    height
-                    - 10,
+                    uav_width - 10,
+                    height - 10,
                 ),
                 BLACK,
                 -1,
             )
 
             for line_index, line in enumerate(
-                status_lines
+                info
             ):
                 cv2.putText(
                     canvas,
@@ -1491,23 +1028,19 @@ def render_video(
                         20,
                         box_y
                         + 27
-                        + line_index
-                        * 28,
+                        + line_index * 28,
                     ),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.44,
+                    0.42,
                     TEXT_COLOR,
                     1,
                     cv2.LINE_AA,
                 )
 
-            writer.write(
-                canvas
-            )
+            writer.write(canvas)
 
             if (
-                row_index
-                + 1
+                row_index + 1
             ) % 250 == 0:
                 print(
                     f"render {route_name}: "
@@ -1526,17 +1059,13 @@ def route_dataset(
     origin_lat,
     origin_lon,
 ):
-    route_index = (
-        config.ROUTE_NAMES.index(
-            route_name
-        )
+    index = config.ROUTE_NAMES.index(
+        route_name
     )
 
     return RouteDataset(
         Path(
-            config.ROUTE_ROOTS[
-                route_index
-            ]
+            config.ROUTE_ROOTS[index]
         ),
         train=False,
         origin_lat=origin_lat,
@@ -1544,25 +1073,43 @@ def route_dataset(
     )
 
 
-def render_route(
-    route_name,
-):
+def render_route(route_name):
     csv_path = (
         config.OUTPUT_DIR
         / (
             f"{route_name}_"
-            "visual_motion_lstm_frames.csv"
+            "route_hypothesis_lstm_frames.csv"
         )
     )
 
     if not csv_path.exists():
-        raise FileNotFoundError(
-            csv_path
+        available = sorted(
+            str(path)
+            for path in config.OUTPUT_DIR.glob("*frames.csv")
         )
 
-    rows = pd.read_csv(
-        csv_path
-    )
+        message = [
+            f"Missing inference CSV: {csv_path}",
+            "",
+            "The visualization step cannot run before robust_tracker.py --mode eval",
+            "has generated the Route-B/Route-C per-frame CSV files.",
+            "",
+            "Available *frames.csv files in this experiment directory:",
+        ]
+
+        if available:
+            message.extend(
+                f"  {path}"
+                for path in available
+            )
+        else:
+            message.append("  <none>")
+
+        raise FileNotFoundError(
+            "\n".join(message)
+        )
+
+    rows = pd.read_csv(csv_path)
 
     checkpoint = torch.load(
         config.VISUAL_CHECKPOINT,
@@ -1570,15 +1117,11 @@ def render_route(
     )
 
     origin_lat = float(
-        checkpoint[
-            "origin_lat"
-        ]
+        checkpoint["origin_lat"]
     )
 
     origin_lon = float(
-        checkpoint[
-            "origin_lon"
-        ]
+        checkpoint["origin_lon"]
     )
 
     waypoints = load_waypoints(
@@ -1610,7 +1153,7 @@ def render_route(
         output_dir,
     )
 
-    process = render_process_snapshots(
+    process = render_process(
         route_name,
         rows,
         output_dir,
@@ -1626,23 +1169,9 @@ def render_route(
         output_dir,
     )
 
-    print(
-        "overview:",
-        overview,
-        flush=True,
-    )
-
-    print(
-        "process:",
-        process,
-        flush=True,
-    )
-
-    print(
-        "video:",
-        video,
-        flush=True,
-    )
+    print("overview:", overview, flush=True)
+    print("process:", process, flush=True)
+    print("video:", video, flush=True)
 
 
 def main():
@@ -1661,21 +1190,13 @@ def main():
     args = parser.parse_args()
 
     routes = (
-        [
-            "route_B",
-            "route_C",
-        ]
-        if args.route
-        == "all"
-        else [
-            args.route
-        ]
+        ["route_B", "route_C"]
+        if args.route == "all"
+        else [args.route]
     )
 
     for route_name in routes:
-        render_route(
-            route_name
-        )
+        render_route(route_name)
 
 
 if __name__ == "__main__":

@@ -10,8 +10,8 @@ import config
 
 
 # =============================================================================
-# Existing single-frame visual retrieval model.
-# Keep parameter names compatible with visual_localizer.py.
+# Existing single-frame visual model.
+# Parameter names remain compatible with visual_localizer.py checkpoints.
 # =============================================================================
 
 class FourierCoordEncoder(nn.Module):
@@ -23,129 +23,70 @@ class FourierCoordEncoder(nn.Module):
             math.log10(max_freq),
             steps=num_bands,
         )
+        self.register_buffer("freqs", freqs)
 
-        self.register_buffer(
-            "freqs",
-            freqs,
-        )
-
-        in_dim = (
-            2
-            + 2
-            * 2
-            * num_bands
-        )
+        in_dim = 2 + 2 * 2 * num_bands
 
         self.mlp = nn.Sequential(
-            nn.Linear(
-                in_dim,
-                512,
-            ),
+            nn.Linear(in_dim, 512),
             nn.GELU(),
-            nn.Linear(
-                512,
-                512,
-            ),
+            nn.Linear(512, 512),
             nn.GELU(),
-            nn.Linear(
-                512,
-                config.EMBED_DIM,
-            ),
+            nn.Linear(512, config.EMBED_DIM),
         )
 
     def forward(self, xy):
-        xy = (
-            xy.float()
-            / 1000.0
-        )
+        xy = xy.float() / 1000.0
 
         angles = (
-            xy[
-                :,
-                :,
-                None,
-            ]
-            * self.freqs[
-                None,
-                None,
-                :,
-            ]
+            xy[:, :, None]
+            * self.freqs[None, None, :]
             * math.pi
         )
 
         encoded = torch.cat(
             [
                 xy,
-                angles.sin().flatten(
-                    1
-                ),
-                angles.cos().flatten(
-                    1
-                ),
+                angles.sin().flatten(1),
+                angles.cos().flatten(1),
             ],
             dim=1,
         )
 
-        return self.mlp(
-            encoded
-        )
+        return self.mlp(encoded)
 
 
 class AllMapGeoCLIP(nn.Module):
     def __init__(self):
         super().__init__()
 
-        (
-            self.clip,
-            _,
-        ) = (
-            open_clip.create_model_from_pretrained(
-                config.BACKBONE_NAME
-            )
+        self.clip, _ = open_clip.create_model_from_pretrained(
+            config.BACKBONE_NAME
         )
 
         for parameter in self.clip.parameters():
-            parameter.requires_grad_(
-                False
-            )
+            parameter.requires_grad_(False)
 
         self.use_coord_encoder = bool(
-            getattr(
-                config,
-                "USE_COORD_ENCODER",
-                False,
-            )
+            getattr(config, "USE_COORD_ENCODER", False)
         )
 
         self.uav_head = nn.Sequential(
-            nn.Linear(
-                config.CLIP_DIM,
-                config.CLIP_DIM,
-            ),
+            nn.Linear(config.CLIP_DIM, config.CLIP_DIM),
             nn.GELU(),
-            nn.Dropout(
-                0.1
-            ),
-            nn.Linear(
-                config.CLIP_DIM,
-                config.EMBED_DIM,
-            ),
+            nn.Dropout(0.1),
+            nn.Linear(config.CLIP_DIM, config.EMBED_DIM),
         )
 
         if self.use_coord_encoder:
-            self.coord_encoder = (
-                FourierCoordEncoder()
-            )
-
+            self.coord_encoder = FourierCoordEncoder()
             sat_head_in_dim = (
                 config.CLIP_DIM
                 + config.EMBED_DIM
             )
         else:
             self.coord_encoder = None
-            sat_head_in_dim = (
-                config.CLIP_DIM
-            )
+            sat_head_in_dim = config.CLIP_DIM
 
         self.sat_head = nn.Sequential(
             nn.Linear(
@@ -153,9 +94,7 @@ class AllMapGeoCLIP(nn.Module):
                 config.CLIP_DIM,
             ),
             nn.GELU(),
-            nn.Dropout(
-                0.1
-            ),
+            nn.Dropout(0.1),
             nn.Linear(
                 config.CLIP_DIM,
                 config.EMBED_DIM,
@@ -179,20 +118,16 @@ class AllMapGeoCLIP(nn.Module):
                 )
             )
 
-            self.qah_relation_head = (
-                nn.Sequential(
-                    nn.Linear(
-                        config.EMBED_DIM
-                        * 2
-                        + 1,
-                        256,
-                    ),
-                    nn.GELU(),
-                    nn.Linear(
-                        256,
-                        relation_dim,
-                    ),
-                )
+            self.qah_relation_head = nn.Sequential(
+                nn.Linear(
+                    config.EMBED_DIM * 2 + 1,
+                    256,
+                ),
+                nn.GELU(),
+                nn.Linear(
+                    256,
+                    relation_dim,
+                ),
             )
         else:
             self.qah_relation_head = None
@@ -206,42 +141,24 @@ class AllMapGeoCLIP(nn.Module):
         )
 
         if self.use_basin_rank_ms:
-            self.basin_ranker = (
-                nn.Sequential(
-                    nn.Linear(
-                        6,
-                        32,
-                    ),
-                    nn.GELU(),
-                    nn.Linear(
-                        32,
-                        16,
-                    ),
-                    nn.GELU(),
-                    nn.Linear(
-                        16,
-                        1,
-                    ),
-                )
+            self.basin_ranker = nn.Sequential(
+                nn.Linear(6, 32),
+                nn.GELU(),
+                nn.Linear(32, 16),
+                nn.GELU(),
+                nn.Linear(16, 1),
             )
         else:
             self.basin_ranker = None
 
         self.logit_scale = nn.Parameter(
             torch.ones([])
-            * math.log(
-                1.0
-                / 0.07
-            )
+            * math.log(1.0 / 0.07)
         )
 
     @torch.no_grad()
-    def encode_clip_image(
-        self,
-        image,
-    ):
+    def encode_clip_image(self, image):
         self.clip.eval()
-
         return self.clip.encode_image(
             image.float()
         )
@@ -258,9 +175,7 @@ class AllMapGeoCLIP(nn.Module):
         )
 
         feature = (
-            self.encode_clip_image(
-                image
-            )
+            self.encode_clip_image(image)
             .unsqueeze(-1)
             .unsqueeze(-1)
         )
@@ -292,12 +207,8 @@ class AllMapGeoCLIP(nn.Module):
         uav,
         yaw=None,
     ):
-        return (
-            self.encode_uav_from_clip(
-                self.encode_clip_image(
-                    uav
-                )
-            )
+        return self.encode_uav_from_clip(
+            self.encode_clip_image(uav)
         )
 
     def encode_sat_from_clip(
@@ -306,12 +217,9 @@ class AllMapGeoCLIP(nn.Module):
         xy,
     ):
         if self.use_coord_encoder:
-            coord_feat = (
-                self.coord_encoder(
-                    xy.float()
-                )
+            coord_feat = self.coord_encoder(
+                xy.float()
             )
-
             sat_input = torch.cat(
                 [
                     sat_clip_feat.float(),
@@ -320,9 +228,7 @@ class AllMapGeoCLIP(nn.Module):
                 dim=1,
             )
         else:
-            sat_input = (
-                sat_clip_feat.float()
-            )
+            sat_input = sat_clip_feat.float()
 
         embedding = self.sat_head(
             sat_input
@@ -339,10 +245,7 @@ class AllMapGeoCLIP(nn.Module):
         z_sat,
         logits,
     ):
-        if (
-            self.qah_relation_head
-            is None
-        ):
+        if self.qah_relation_head is None:
             raise RuntimeError(
                 "QAH relation head is disabled"
             )
@@ -357,9 +260,7 @@ class AllMapGeoCLIP(nn.Module):
             - z_sat
         )
 
-        pair_logit = (
-            logits.unsqueeze(-1)
-        )
+        pair_logit = logits.unsqueeze(-1)
 
         pair = torch.cat(
             [
@@ -370,12 +271,10 @@ class AllMapGeoCLIP(nn.Module):
             dim=-1,
         )
 
-        relation = (
-            self.qah_relation_head(
-                pair.reshape(
-                    -1,
-                    pair.shape[-1],
-                )
+        relation = self.qah_relation_head(
+            pair.reshape(
+                -1,
+                pair.shape[-1],
             )
         )
 
@@ -387,42 +286,34 @@ class AllMapGeoCLIP(nn.Module):
 
 
 # =============================================================================
-# v5: image-motion-gated route LSTM
+# v6 Route-bounded recurrent hypothesis model
 # =============================================================================
 
 @dataclass
-class VisualMotionLSTMOutput:
-    refined_logits: torch.Tensor
-    phase_logits: torch.Tensor
-    phase_probability: torch.Tensor
-    translation_gate: torch.Tensor
-    stationary_probability: torch.Tensor
-    rotation_probability: torch.Tensor
+class HypothesisLSTMOutput:
+    local_refined_logits: torch.Tensor
+    recovery_refined_logits: torch.Tensor
+    waypoint_refined_logits: torch.Tensor
+    branch_logits: torch.Tensor
+    branch_probability: torch.Tensor
     measurement_variance: torch.Tensor
-    inertia_strength: torch.Tensor
-    polynomial_sigma: torch.Tensor
-    polynomial_delta_route: torch.Tensor
-    raw_visual_offset_route: torch.Tensor
     hidden: torch.Tensor
     cell: torch.Tensor
 
 
-class VisualMotionRouteLSTM(nn.Module):
+class RouteBoundedHypothesisLSTM(nn.Module):
     """
-    No free-running velocity head exists.
+    The recurrent network never predicts absolute XY or velocity.
 
-    The model sees:
-      - current UAV visual embedding
-      - previous UAV visual embedding
-      - current SAT visual embeddings and visual similarity
-      - image-pair motion cue from consecutive UAV frames
-      - current candidate relative offsets in the current leg frame
-      - route-relative START/END context
-      - previous OBSERVED motion state
-      - previous hidden/cell
+    Four image-conditioned hypotheses:
+      HOLD      previous image-derived position
+      LOCAL     current image matched near previous position
+      RECOVERY  current image retrieved anywhere inside the active route leg
+      WAYPOINT  current image matched in a small transition lattice centered
+                at the current leg endpoint
 
-    The previous observed state comes from actual previous image-derived
-    localizations, not from a learned constant/fixed speed.
+    WAYPOINT being the strongest branch is the learned leg-transition event.
+    There is no speed timer and no endpoint-distance inference threshold.
     """
 
     def __init__(self):
@@ -436,128 +327,80 @@ class VisualMotionRouteLSTM(nn.Module):
             config.LSTM_HIDDEN_DIM
         )
 
-        self.current_uav_projection = (
-            nn.Sequential(
-                nn.Linear(
-                    config.EMBED_DIM,
-                    feature_dim,
-                ),
-                nn.GELU(),
-                nn.LayerNorm(
-                    feature_dim
-                ),
-            )
+        self.current_uav_projection = nn.Sequential(
+            nn.Linear(
+                config.EMBED_DIM,
+                feature_dim,
+            ),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
         )
 
-        # Pair branch explicitly compares consecutive UAV images.
         pair_input_dim = (
-            config.EMBED_DIM
-            * 4
-            + 1
+            config.EMBED_DIM * 4 + 1
         )
 
-        self.frame_pair_projection = (
-            nn.Sequential(
-                nn.Linear(
-                    pair_input_dim,
-                    feature_dim,
-                ),
-                nn.GELU(),
-                nn.LayerNorm(
-                    feature_dim
-                ),
-            )
+        self.frame_pair_projection = nn.Sequential(
+            nn.Linear(
+                pair_input_dim,
+                feature_dim,
+            ),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
         )
 
-        self.sat_context_projection = (
-            nn.Sequential(
-                nn.Linear(
-                    config.EMBED_DIM,
-                    feature_dim,
-                ),
-                nn.GELU(),
-                nn.LayerNorm(
-                    feature_dim
-                ),
-            )
+        self.local_sat_projection = nn.Sequential(
+            nn.Linear(
+                config.EMBED_DIM,
+                feature_dim,
+            ),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
         )
 
-        # entropy, top1-top2 margin, max probability, logit std
-        self.visual_stats_projection = (
-            nn.Sequential(
-                nn.Linear(
-                    4,
-                    feature_dim // 2,
-                ),
-                nn.GELU(),
-                nn.LayerNorm(
-                    feature_dim // 2
-                ),
-            )
+        self.recovery_sat_projection = nn.Sequential(
+            nn.Linear(
+                config.EMBED_DIM,
+                feature_dim,
+            ),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
         )
 
-        self.image_motion_projection = (
-            nn.Sequential(
-                nn.Linear(
-                    config.IMAGE_MOTION_CUE_DIM,
-                    feature_dim // 2,
-                ),
-                nn.GELU(),
-                nn.LayerNorm(
-                    feature_dim // 2
-                ),
-            )
+        self.waypoint_sat_projection = nn.Sequential(
+            nn.Linear(
+                config.EMBED_DIM,
+                feature_dim,
+            ),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
         )
 
-        # remaining ratio, cross track, normalized leg length, final-leg flag
-        self.route_context_projection = (
-            nn.Sequential(
-                nn.Linear(
-                    4,
-                    feature_dim // 2,
-                ),
-                nn.GELU(),
-                nn.LayerNorm(
-                    feature_dim // 2
-                ),
-            )
-        )
+        # Numeric:
+        # local stats 4
+        # recovery stats 4
+        # waypoint stats 4
+        # route-global stats 4
+        # route context 4
+        # observed motion 4
+        # local raw offset 2
+        # recovery raw offset 2
+        # waypoint raw offset 2
+        # polynomial delta 2
+        # total = 32
+        numeric_dim = 32
 
-        self.observed_motion_projection = (
-            nn.Sequential(
-                nn.Linear(
-                    config.OBSERVED_MOTION_STATE_DIM,
-                    feature_dim // 2,
-                ),
-                nn.GELU(),
-                nn.LayerNorm(
-                    feature_dim // 2
-                ),
-            )
-        )
-
-        self.raw_offset_projection = (
-            nn.Sequential(
-                nn.Linear(
-                    2,
-                    feature_dim // 2,
-                ),
-                nn.GELU(),
-                nn.LayerNorm(
-                    feature_dim // 2
-                ),
-            )
+        self.numeric_projection = nn.Sequential(
+            nn.Linear(
+                numeric_dim,
+                feature_dim,
+            ),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
         )
 
         lstm_input_dim = (
-            feature_dim
-            + feature_dim
-            + feature_dim
-            + feature_dim // 2
-            + feature_dim // 2
-            + feature_dim // 2
-            + feature_dim // 2
-            + feature_dim // 2
+            feature_dim * 6
         )
 
         self.lstm = nn.LSTMCell(
@@ -571,21 +414,49 @@ class VisualMotionRouteLSTM(nn.Module):
             )
         )
 
-        # Explicit 3-state image-motion classifier:
-        # stationary / translation / rotation.
-        self.phase_head = nn.Sequential(
+        # Shared image-candidate refinement head.
+        self.candidate_uav_projection = nn.Linear(
+            config.EMBED_DIM,
+            96,
+        )
+
+        self.candidate_sat_projection = nn.Linear(
+            config.EMBED_DIM,
+            96,
+        )
+
+        self.candidate_hidden_projection = nn.Linear(
+            hidden_dim,
+            96,
+        )
+
+        candidate_feature_dim = (
+            96
+            + 96
+            + 96
+            + 1
+            + 2
+            + 2
+        )
+
+        self.candidate_score_head = nn.Sequential(
             nn.Linear(
-                hidden_dim,
-                hidden_dim // 2,
+                candidate_feature_dim,
+                160,
             ),
             nn.GELU(),
             nn.Linear(
-                hidden_dim // 2,
-                config.PHASE_COUNT,
+                160,
+                80,
+            ),
+            nn.GELU(),
+            nn.Linear(
+                80,
+                1,
             ),
         )
 
-        self.inertia_head = nn.Sequential(
+        self.branch_head = nn.Sequential(
             nn.Linear(
                 hidden_dim,
                 hidden_dim // 2,
@@ -593,9 +464,28 @@ class VisualMotionRouteLSTM(nn.Module):
             nn.GELU(),
             nn.Linear(
                 hidden_dim // 2,
-                2,
+                config.HYPOTHESIS_COUNT,
             ),
         )
+
+        # Initial behavior: prefer LOCAL, allow HOLD, strongly suppress
+        # RECOVERY/WAYPOINT until current visual evidence justifies them.
+        nn.init.zeros_(
+            self.branch_head[-1].weight
+        )
+
+        with torch.no_grad():
+            self.branch_head[-1].bias.copy_(
+                torch.tensor(
+                    [
+                        0.0,   # HOLD
+                        1.0,   # LOCAL
+                        -1.0,  # RECOVERY
+                        -1.5,  # WAYPOINT
+                    ],
+                    dtype=self.branch_head[-1].bias.dtype,
+                )
+            )
 
         self.variance_head = nn.Sequential(
             nn.Linear(
@@ -609,79 +499,19 @@ class VisualMotionRouteLSTM(nn.Module):
             ),
         )
 
-        self.candidate_uav_projection = (
-            nn.Linear(
-                config.EMBED_DIM,
-                96,
-            )
-        )
-
-        self.candidate_sat_projection = (
-            nn.Linear(
-                config.EMBED_DIM,
-                96,
-            )
-        )
-
-        self.candidate_hidden_projection = (
-            nn.Linear(
-                hidden_dim,
-                96,
-            )
-        )
-
-        # Candidate feature:
-        # uav 96 + sat 96 + hidden 96
-        # raw visual score 1
-        # normalized offset 2
-        # normalized polynomial residual 2
-        candidate_feature_dim = (
-            96
-            + 96
-            + 96
-            + 1
-            + 2
-            + 2
-        )
-
-        self.candidate_score_head = (
-            nn.Sequential(
-                nn.Linear(
-                    candidate_feature_dim,
-                    160,
-                ),
-                nn.GELU(),
-                nn.Linear(
-                    160,
-                    80,
-                ),
-                nn.GELU(),
-                nn.Linear(
-                    80,
-                    1,
-                ),
-            )
-        )
-
         initial_var = 6.0
 
         inverse_softplus = math.log(
-            math.exp(
-                initial_var
-            )
+            math.exp(initial_var)
             - 1.0
         )
 
         nn.init.zeros_(
-            self.variance_head[
-                -1
-            ].weight
+            self.variance_head[-1].weight
         )
 
         nn.init.constant_(
-            self.variance_head[
-                -1
-            ].bias,
+            self.variance_head[-1].bias,
             inverse_softplus,
         )
 
@@ -692,12 +522,8 @@ class VisualMotionRouteLSTM(nn.Module):
         dtype,
     ):
         hidden = torch.zeros(
-            int(
-                batch_size
-            ),
-            int(
-                config.LSTM_HIDDEN_DIM
-            ),
+            int(batch_size),
+            int(config.LSTM_HIDDEN_DIM),
             device=device,
             dtype=dtype,
         )
@@ -706,81 +532,97 @@ class VisualMotionRouteLSTM(nn.Module):
             hidden
         )
 
-        observed_motion = torch.zeros(
-            int(
-                batch_size
-            ),
-            int(
-                config.OBSERVED_MOTION_STATE_DIM
-            ),
-            device=device,
-            dtype=dtype,
-        )
-
         return (
             hidden,
             cell,
-            observed_motion,
+        )
+
+    @staticmethod
+    def _masked_probability(
+        logits,
+        valid_mask,
+    ):
+        masked_logits = torch.where(
+            valid_mask,
+            logits,
+            torch.full_like(
+                logits,
+                -1e4,
+            ),
+        )
+
+        return torch.softmax(
+            masked_logits,
+            dim=1,
         )
 
     @staticmethod
     def visual_stats(
-        raw_logits,
-        raw_prob,
+        logits,
+        valid_mask,
     ):
-        count = max(
-            int(
-                raw_prob.shape[1]
-            ),
-            2,
+        probability = (
+            RouteBoundedHypothesisLSTM
+            ._masked_probability(
+                logits,
+                valid_mask,
+            )
         )
 
+        valid_count = valid_mask.sum(
+            dim=1
+        ).clamp_min(
+            2
+        ).float()
+
         entropy = -(
-            raw_prob
-            * raw_prob.clamp_min(
+            probability
+            * probability.clamp_min(
                 1e-8
             ).log()
         ).sum(
             dim=1
-        ) / math.log(
-            float(
-                count
-            )
-        )
+        ) / valid_count.log()
 
-        top2 = raw_prob.topk(
+        top2 = probability.topk(
             k=2,
             dim=1,
         ).values
 
         margin = (
-            top2[
-                :,
-                0
-            ]
-            - top2[
-                :,
-                1
-            ]
+            top2[:, 0]
+            - top2[:, 1]
         )
 
-        max_probability = (
-            top2[
-                :,
-                0
-            ]
+        maximum = top2[:, 0]
+
+        mask_float = valid_mask.float()
+
+        count = mask_float.sum(
+            dim=1
+        ).clamp_min(
+            1.0
         )
 
-        logit_std = (
-            raw_logits.float()
-            .std(
-                dim=1,
-                unbiased=False,
-            )
-        )
+        mean = (
+            logits
+            * mask_float
+        ).sum(
+            dim=1
+        ) / count
 
-        logit_std = torch.tanh(
-            logit_std
+        variance = (
+            (
+                logits
+                - mean.unsqueeze(1)
+            ).square()
+            * mask_float
+        ).sum(
+            dim=1
+        ) / count
+
+        std = torch.tanh(
+            variance.sqrt()
             / 10.0
         )
 
@@ -788,99 +630,324 @@ class VisualMotionRouteLSTM(nn.Module):
             [
                 entropy,
                 margin,
-                max_probability,
-                logit_std,
+                maximum,
+                std,
             ],
             dim=1,
         )
 
     @staticmethod
-    def normalize_observed_motion(
-        state,
+    def _normalize_observed_motion(
+        observed_motion,
     ):
         return torch.clamp(
-            state
+            observed_motion
             / float(
-                config.OBSERVED_MOTION_NORMALIZE_M
+                config.OBSERVED_MOTION_SCALE_M
             ),
             min=-3.0,
             max=3.0,
         )
 
+    @staticmethod
+    def _weighted_sat_context(
+        logits,
+        valid_mask,
+        z_sat,
+    ):
+        probability = (
+            RouteBoundedHypothesisLSTM
+            ._masked_probability(
+                logits,
+                valid_mask,
+            )
+        )
+
+        return (
+            probability.unsqueeze(-1)
+            * z_sat
+        ).sum(
+            dim=1
+        )
+
+    @staticmethod
+    def _raw_expected_offset(
+        logits,
+        valid_mask,
+        offsets_route,
+    ):
+        probability = (
+            RouteBoundedHypothesisLSTM
+            ._masked_probability(
+                logits,
+                valid_mask,
+            )
+        )
+
+        return (
+            probability.unsqueeze(-1)
+            * offsets_route
+        ).sum(
+            dim=1
+        )
+
+    def _refine_candidate_logits(
+        self,
+        z_uav,
+        z_sat,
+        raw_logits,
+        valid_mask,
+        offsets_route,
+        polynomial_delta_route,
+        hidden,
+    ):
+        batch = z_uav.shape[0]
+        candidate_count = z_sat.shape[1]
+
+        mask_float = valid_mask.float()
+
+        count = mask_float.sum(
+            dim=1,
+            keepdim=True,
+        ).clamp_min(
+            1.0
+        )
+
+        mean = (
+            raw_logits
+            * mask_float
+        ).sum(
+            dim=1,
+            keepdim=True,
+        ) / count
+
+        variance = (
+            (
+                raw_logits
+                - mean
+            ).square()
+            * mask_float
+        ).sum(
+            dim=1,
+            keepdim=True,
+        ) / count
+
+        standardized = (
+            raw_logits
+            - mean
+        ) / variance.sqrt().clamp_min(
+            1e-5
+        )
+
+        standardized = torch.where(
+            valid_mask,
+            standardized,
+            torch.full_like(
+                standardized,
+                -20.0,
+            ),
+        )
+
+        uav_pair = (
+            self.candidate_uav_projection(
+                z_uav
+            )
+            .unsqueeze(1)
+            .expand(
+                -1,
+                candidate_count,
+                -1,
+            )
+        )
+
+        sat_pair = (
+            self.candidate_sat_projection(
+                z_sat
+            )
+        )
+
+        hidden_pair = (
+            self.candidate_hidden_projection(
+                hidden
+            )
+            .unsqueeze(1)
+            .expand(
+                -1,
+                candidate_count,
+                -1,
+            )
+        )
+
+        normalized_offset = (
+            offsets_route
+            / float(
+                config.CANDIDATE_OFFSET_SCALE_M
+            )
+        ).clamp(
+            -3.0,
+            3.0,
+        )
+
+        polynomial_residual = (
+            offsets_route
+            - polynomial_delta_route.unsqueeze(1)
+        )
+
+        normalized_polynomial_residual = (
+            polynomial_residual
+            / float(
+                config.POLYNOMIAL_SCALE_M
+            )
+        ).clamp(
+            -3.0,
+            3.0,
+        )
+
+        feature = torch.cat(
+            [
+                uav_pair,
+                sat_pair,
+                hidden_pair,
+                standardized.unsqueeze(-1),
+                normalized_offset,
+                normalized_polynomial_residual,
+            ],
+            dim=2,
+        )
+
+        residual = (
+            self.candidate_score_head(
+                feature.reshape(
+                    -1,
+                    feature.shape[-1],
+                )
+            )
+            .reshape(
+                batch,
+                candidate_count,
+            )
+        )
+
+        refined = (
+            standardized
+            + residual
+        )
+
+        refined = torch.where(
+            valid_mask,
+            refined,
+            torch.full_like(
+                refined,
+                -1e4,
+            ),
+        )
+
+        return refined
+
     def forward_step(
         self,
         z_uav,
         previous_z_uav,
-        z_sat,
-        raw_logits,
-        raw_prob,
-        candidate_offsets_route,
+        local_z_sat,
+        local_raw_logits,
+        local_valid_mask,
+        local_offsets_route,
+        recovery_z_sat,
+        recovery_raw_logits,
+        recovery_valid_mask,
+        recovery_offsets_route,
+        waypoint_z_sat,
+        waypoint_raw_logits,
+        waypoint_valid_mask,
+        waypoint_offsets_route,
+        global_stats,
         route_context,
-        image_motion_cue,
-        previous_observed_motion,
+        observed_motion,
+        polynomial_delta_route,
         hidden,
         cell,
     ):
-        batch = z_uav.shape[
-            0
-        ]
+        batch = z_uav.shape[0]
 
-        if hidden is None:
+        if hidden is None or cell is None:
             (
-                init_hidden,
-                init_cell,
-                init_motion,
+                hidden,
+                cell,
             ) = self.initial_state(
                 batch,
                 z_uav.device,
                 z_uav.dtype,
             )
 
-            hidden = init_hidden
-
-            if cell is None:
-                cell = init_cell
-
-            if previous_observed_motion is None:
-                previous_observed_motion = (
-                    init_motion
-                )
-
-        if cell is None:
-            cell = torch.zeros_like(
-                hidden
-            )
-
-        if previous_observed_motion is None:
-            previous_observed_motion = torch.zeros(
-                batch,
-                int(
-                    config.OBSERVED_MOTION_STATE_DIM
-                ),
-                device=z_uav.device,
-                dtype=z_uav.dtype,
-            )
-
         if previous_z_uav is None:
             previous_z_uav = z_uav
 
-        sat_context = (
-            raw_prob.unsqueeze(
-                -1
+        local_context = (
+            self._weighted_sat_context(
+                local_raw_logits,
+                local_valid_mask,
+                local_z_sat,
             )
-            * z_sat
-        ).sum(
-            dim=1
         )
 
-        stats = self.visual_stats(
-            raw_logits,
-            raw_prob,
+        recovery_context = (
+            self._weighted_sat_context(
+                recovery_raw_logits,
+                recovery_valid_mask,
+                recovery_z_sat,
+            )
         )
 
-        cosine_previous_current = (
-            previous_z_uav
-            * z_uav
+        waypoint_context = (
+            self._weighted_sat_context(
+                waypoint_raw_logits,
+                waypoint_valid_mask,
+                waypoint_z_sat,
+            )
+        )
+
+        local_stats = self.visual_stats(
+            local_raw_logits,
+            local_valid_mask,
+        )
+
+        recovery_stats = self.visual_stats(
+            recovery_raw_logits,
+            recovery_valid_mask,
+        )
+
+        waypoint_stats = self.visual_stats(
+            waypoint_raw_logits,
+            waypoint_valid_mask,
+        )
+
+        local_raw_offset = (
+            self._raw_expected_offset(
+                local_raw_logits,
+                local_valid_mask,
+                local_offsets_route,
+            )
+        )
+
+        recovery_raw_offset = (
+            self._raw_expected_offset(
+                recovery_raw_logits,
+                recovery_valid_mask,
+                recovery_offsets_route,
+            )
+        )
+
+        waypoint_raw_offset = (
+            self._raw_expected_offset(
+                waypoint_raw_logits,
+                waypoint_valid_mask,
+                waypoint_offsets_route,
+            )
+        )
+
+        pair_cosine = (
+            z_uav
+            * previous_z_uav
         ).sum(
             dim=1,
             keepdim=True,
@@ -896,41 +963,59 @@ class VisualMotionRouteLSTM(nn.Module):
                 ),
                 z_uav
                 * previous_z_uav,
-                cosine_previous_current,
+                pair_cosine,
             ],
             dim=1,
         )
 
-        offset_scale = (
-            candidate_offsets_route.abs()
-            .amax(
-                dim=(1, 2),
-                keepdim=True,
-            )
-            .clamp_min(
-                1.0
-            )
-        )
-
-        normalized_offsets = (
-            candidate_offsets_route
-            / offset_scale
-        )
-
-        raw_visual_offset_route = (
-            raw_prob.unsqueeze(
-                -1
-            )
-            * candidate_offsets_route
-        ).sum(
-            dim=1
-        )
-
-        normalized_raw_visual_offset = (
-            raw_visual_offset_route
-            / offset_scale.squeeze(
-                1
-            )
+        numeric = torch.cat(
+            [
+                local_stats,
+                recovery_stats,
+                waypoint_stats,
+                global_stats,
+                route_context,
+                self._normalize_observed_motion(
+                    observed_motion
+                ),
+                (
+                    local_raw_offset
+                    / float(
+                        config.CANDIDATE_OFFSET_SCALE_M
+                    )
+                ).clamp(
+                    -3.0,
+                    3.0,
+                ),
+                (
+                    recovery_raw_offset
+                    / float(
+                        config.CANDIDATE_OFFSET_SCALE_M
+                    )
+                ).clamp(
+                    -3.0,
+                    3.0,
+                ),
+                (
+                    waypoint_raw_offset
+                    / float(
+                        config.CANDIDATE_OFFSET_SCALE_M
+                    )
+                ).clamp(
+                    -3.0,
+                    3.0,
+                ),
+                (
+                    polynomial_delta_route
+                    / float(
+                        config.POLYNOMIAL_SCALE_M
+                    )
+                ).clamp(
+                    -3.0,
+                    3.0,
+                ),
+            ],
+            dim=1,
         )
 
         recurrent_input = torch.cat(
@@ -941,25 +1026,17 @@ class VisualMotionRouteLSTM(nn.Module):
                 self.frame_pair_projection(
                     pair_feature
                 ),
-                self.sat_context_projection(
-                    sat_context
+                self.local_sat_projection(
+                    local_context
                 ),
-                self.visual_stats_projection(
-                    stats
+                self.recovery_sat_projection(
+                    recovery_context
                 ),
-                self.image_motion_projection(
-                    image_motion_cue
+                self.waypoint_sat_projection(
+                    waypoint_context
                 ),
-                self.route_context_projection(
-                    route_context
-                ),
-                self.observed_motion_projection(
-                    self.normalize_observed_motion(
-                        previous_observed_motion
-                    )
-                ),
-                self.raw_offset_projection(
-                    normalized_raw_visual_offset
+                self.numeric_projection(
+                    numeric
                 ),
             ],
             dim=1,
@@ -980,210 +1057,52 @@ class VisualMotionRouteLSTM(nn.Module):
             hidden
         )
 
-        phase_logits = self.phase_head(
+        local_refined_logits = (
+            self._refine_candidate_logits(
+                z_uav,
+                local_z_sat,
+                local_raw_logits,
+                local_valid_mask,
+                local_offsets_route,
+                polynomial_delta_route,
+                head_hidden,
+            )
+        )
+
+        recovery_refined_logits = (
+            self._refine_candidate_logits(
+                z_uav,
+                recovery_z_sat,
+                recovery_raw_logits,
+                recovery_valid_mask,
+                recovery_offsets_route,
+                polynomial_delta_route,
+                head_hidden,
+            )
+        )
+
+        waypoint_refined_logits = (
+            self._refine_candidate_logits(
+                z_uav,
+                waypoint_z_sat,
+                waypoint_raw_logits,
+                waypoint_valid_mask,
+                waypoint_offsets_route,
+                polynomial_delta_route,
+                head_hidden,
+            )
+        )
+
+        branch_logits = self.branch_head(
             head_hidden
         )
 
-        phase_probability = torch.softmax(
-            phase_logits,
+        branch_probability = torch.softmax(
+            branch_logits
+            / float(
+                config.BRANCH_SOFTMAX_TEMPERATURE
+            ),
             dim=1,
-        )
-
-        stationary_probability = (
-            phase_probability[
-                :,
-                config.PHASE_STATIONARY:
-                config.PHASE_STATIONARY
-                + 1
-            ]
-        )
-
-        translation_gate = (
-            phase_probability[
-                :,
-                config.PHASE_TRANSLATION:
-                config.PHASE_TRANSLATION
-                + 1
-            ]
-        )
-
-        rotation_probability = (
-            phase_probability[
-                :,
-                config.PHASE_ROTATION:
-                config.PHASE_ROTATION
-                + 1
-            ]
-        )
-
-        # Polynomial comes ONLY from previous OBSERVED image-derived motion.
-        previous_velocity = (
-            previous_observed_motion[
-                :,
-                0:2
-            ]
-        )
-
-        previous_acceleration = (
-            previous_observed_motion[
-                :,
-                2:4
-            ]
-        )
-
-        polynomial_delta_route = (
-            previous_velocity
-            + 0.5
-            * previous_acceleration
-        )
-
-        inertia_raw = self.inertia_head(
-            head_hidden
-        )
-
-        inertia_strength = torch.sigmoid(
-            inertia_raw[
-                :,
-                0:1
-            ]
-        )
-
-        sigma_fraction = torch.sigmoid(
-            inertia_raw[
-                :,
-                1:2
-            ]
-        )
-
-        polynomial_sigma = (
-            float(
-                config.POLY_SIGMA_MIN_M
-            )
-            + sigma_fraction
-            * (
-                float(
-                    config.POLY_SIGMA_MAX_M
-                )
-                - float(
-                    config.POLY_SIGMA_MIN_M
-                )
-            )
-        )
-
-        candidate_count = z_sat.shape[
-            1
-        ]
-
-        uav_pair = (
-            self.candidate_uav_projection(
-                z_uav
-            )
-            .unsqueeze(
-                1
-            )
-            .expand(
-                -1,
-                candidate_count,
-                -1,
-            )
-        )
-
-        sat_pair = (
-            self.candidate_sat_projection(
-                z_sat
-            )
-        )
-
-        hidden_pair = (
-            self.candidate_hidden_projection(
-                head_hidden
-            )
-            .unsqueeze(
-                1
-            )
-            .expand(
-                -1,
-                candidate_count,
-                -1,
-            )
-        )
-
-        standardized_raw_logit = (
-            raw_logits
-            - raw_logits.mean(
-                dim=1,
-                keepdim=True,
-            )
-        ) / raw_logits.std(
-            dim=1,
-            keepdim=True,
-            unbiased=False,
-        ).clamp_min(
-            1e-5
-        )
-
-        polynomial_residual = (
-            candidate_offsets_route
-            - polynomial_delta_route.unsqueeze(
-                1
-            )
-        )
-
-        normalized_polynomial_residual = (
-            polynomial_residual
-            / polynomial_sigma.unsqueeze(
-                1
-            )
-        )
-
-        candidate_feature = torch.cat(
-            [
-                uav_pair,
-                sat_pair,
-                hidden_pair,
-                standardized_raw_logit.unsqueeze(
-                    -1
-                ),
-                normalized_offsets,
-                normalized_polynomial_residual,
-            ],
-            dim=2,
-        )
-
-        learned_visual_residual = (
-            self.candidate_score_head(
-                candidate_feature.reshape(
-                    -1,
-                    candidate_feature.shape[
-                        -1
-                    ],
-                )
-            )
-            .reshape(
-                batch,
-                candidate_count,
-            )
-        )
-
-        polynomial_prior = -0.5 * (
-            normalized_polynomial_residual.square()
-        ).sum(
-            dim=2
-        )
-
-        # Critical anti-runaway rule:
-        # polynomial prior disappears when the image-pair classifier says
-        # stationary or rotation.
-        effective_inertia = (
-            translation_gate
-            * inertia_strength
-        )
-
-        refined_logits = (
-            standardized_raw_logit
-            + learned_visual_residual
-            + effective_inertia
-            * polynomial_prior
         )
 
         measurement_variance = (
@@ -1201,18 +1120,13 @@ class VisualMotionRouteLSTM(nn.Module):
             )
         )
 
-        return VisualMotionLSTMOutput(
-            refined_logits=refined_logits,
-            phase_logits=phase_logits,
-            phase_probability=phase_probability,
-            translation_gate=translation_gate,
-            stationary_probability=stationary_probability,
-            rotation_probability=rotation_probability,
+        return HypothesisLSTMOutput(
+            local_refined_logits=local_refined_logits,
+            recovery_refined_logits=recovery_refined_logits,
+            waypoint_refined_logits=waypoint_refined_logits,
+            branch_logits=branch_logits,
+            branch_probability=branch_probability,
             measurement_variance=measurement_variance,
-            inertia_strength=inertia_strength,
-            polynomial_sigma=polynomial_sigma,
-            polynomial_delta_route=polynomial_delta_route,
-            raw_visual_offset_route=raw_visual_offset_route,
             hidden=hidden,
             cell=cell,
         )

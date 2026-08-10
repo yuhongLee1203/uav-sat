@@ -5,10 +5,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # =============================================================================
 # Experiment
 # =============================================================================
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "visual_motion_gated_route_lstm_v5"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "route_bounded_hypothesis_lstm_v6"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "visual_motion_route_lstm_A_only.pt"
+TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "route_hypothesis_lstm_A_only.pt"
 
 ROUTE_ROOTS = [
     Path("/yh/study/new_data_2/model_dataset_new_1_flight"),
@@ -34,7 +34,7 @@ SAT_JSON = Path(
 )
 
 # =============================================================================
-# Existing single-frame visual retrieval
+# Existing Route-A-only visual retrieval
 # =============================================================================
 BACKBONE_NAME = "hf-hub:timm/MobileCLIP2-S2-OpenCLIP"
 CLIP_DIM = 512
@@ -68,7 +68,6 @@ MEANSHIFT_BANDWIDTH_M = 8.0
 MEANSHIFT_ITERATIONS = 3
 
 GRID_SIZE = 6
-CANDIDATE_COUNT = GRID_SIZE * GRID_SIZE
 LOCAL_PRIOR_JITTER_M = 12.0
 CANDIDATE_CAPTURE_RADIUS_M = 7.5
 MIN_TRAIN_CAPTURE_RATE = 0.95
@@ -79,95 +78,106 @@ TEST_FRACTION = 0.15
 SPLIT_GUARD_FRAMES = 16
 
 # =============================================================================
-# v5 temporal model
+# v6: Route-bounded hypothesis recurrent localization
 # =============================================================================
-# NO fixed/nominal speed exists in v5.
 #
-# Previous motion state is OBSERVED from previous IMAGE-derived localization:
-#   [delta_parallel, delta_cross, acceleration_parallel, acceleration_cross]
+# There is NO:
+#   fixed speed
+#   nominal speed
+#   translation probability gate
+#   free-running velocity head
+#   constant-velocity Kalman
 #
-# The neural network is not allowed to invent a free-running velocity.
+# Each frame has three hypotheses:
+#   0 HOLD      = previous image-derived position
+#   1 LOCAL     = current UAV image matched in a local 6x6 SAT lattice
+#   2 RECOVERY  = current UAV image globally retrieves inside the CURRENT
+#                 Start->End route corridor, then refines with a 6x6 lattice
+#   3 WAYPOINT   = current UAV image matched in a small 6x6 transition
+#                 neighborhood centered on the active endpoint
+#
+# LSTM selects/fuses hypotheses from current images + previous recurrent state.
+# WAYPOINT being the strongest branch is also the learned leg-transition event.
+# =============================================================================
+HYPOTHESIS_HOLD = 0
+HYPOTHESIS_LOCAL = 1
+HYPOTHESIS_RECOVERY = 2
+HYPOTHESIS_WAYPOINT = 3
+HYPOTHESIS_COUNT = 4
+
 LSTM_HIDDEN_DIM = 256
 LSTM_FEATURE_DIM = 128
 LSTM_DROPOUT = 0.10
 
-OBSERVED_MOTION_STATE_DIM = 4
-OBSERVED_MOTION_NORMALIZE_M = 8.0
+BRANCH_SOFTMAX_TEMPERATURE = 0.30
+BRANCH_TARGET_TAU_M = 5.0
 
-# Explicit image-pair motion cue from consecutive UAV frames.
-# cv2.findTransformECC(EUCLIDEAN) produces:
-#   center_dx_norm, center_dy_norm, sin(rotation), 1-cos(rotation), correlation
-IMAGE_MOTION_CUE_DIM = 5
-ECC_IMAGE_SIZE = 160
-ECC_ITERATIONS = 35
-ECC_EPSILON = 1e-5
+# Route corridor: candidates can never run arbitrarily past the active endpoint.
+ROUTE_CORRIDOR_HALF_WIDTH_M = 36.0
+ROUTE_ALONG_PADDING_M = 12.0
 
-# Soft pseudo-target calibration used only to train the 3-state phase head.
-# These are NOT flight speed limits and never move the localization state.
-ECC_TRANSLATION_GAIN = 28.0
-ECC_ROTATION_SCALE_DEG = 18.0
-GT_TRANSLATION_SOFT_SCALE_M = 2.0
+# Global route retrieval diagnostics / features.
+GLOBAL_STATS_TOPK = 8
 
-# Phase classes.
-PHASE_STATIONARY = 0
-PHASE_TRANSLATION = 1
-PHASE_ROTATION = 2
-PHASE_COUNT = 3
+# Previous observed motion is measured only from previous image-derived outputs.
+OBSERVED_MOTION_DIM = 4
+OBSERVED_MOTION_SCALE_M = 8.0
 
-# Polynomial is built only from OBSERVED image-derived previous steps:
-#   delta_poly = previous_delta + 0.5 * previous_acceleration
-# It is only a soft score prior.
-POLY_SIGMA_MIN_M = 2.0
-POLY_SIGMA_MAX_M = 12.0
+# Advisor-requested second-order inertial polynomial:
+# delta_poly = previous_observed_delta + 0.5 * observed_acceleration
+# It is INPUT CONTEXT ONLY. It never moves XY and has no additive score prior.
+POLYNOMIAL_SCALE_M = 10.0
 
-# Route-relative start/end context.
-ROUTE_CROSS_TRACK_SCALE_M = 30.0
+# Route-relative numeric context.
+ROUTE_CROSS_TRACK_SCALE_M = 36.0
 ROUTE_LENGTH_LOG_SCALE_M = 1000.0
+CANDIDATE_OFFSET_SCALE_M = 24.0
 
 # =============================================================================
 # Temporal training
 # =============================================================================
-TEMPORAL_EPOCHS = 50
+# All Route-A frames are used for temporal training.
+# B/C are never used for training, validation, or checkpoint selection.
+TEMPORAL_EPOCHS = 40
 TEMPORAL_LR = 2e-4
 TEMPORAL_WEIGHT_DECAY = 1e-3
 TBPTT_STEPS = 32
 GRAD_CLIP_NORM = 5.0
-EARLY_STOPPING_PATIENCE = 10
 
-TEMPORAL_TRAIN_LEG_FRACTION = 0.70
-TEMPORAL_VAL_LEG_FRACTION = 0.15
+# Causal scheduled local-center guidance only.
+# Current GT is never an input.
+# After this epoch local search is fully model-centered.
+TEACHER_CENTER_END_EPOCH = 6
 
-# Early scheduled sampling only; after this epoch the sequence is fully closed-loop.
-TEACHER_CENTER_END_EPOCH = 10
-
-LOSS_RETRIEVAL_CE = 1.00
-LOSS_CURRENT_RELATIVE_POSITION = 0.45
-LOSS_PHASE_SOFT_CE = 0.35
-LOSS_STEP_DISPLACEMENT = 0.30
+LOSS_POSITION = 1.00
+LOSS_BRANCH_DISTRIBUTION = 0.40
+LOSS_LOCAL_CANDIDATE_CE = 0.20
+LOSS_RECOVERY_CANDIDATE_CE = 0.25
+LOSS_WAYPOINT_CANDIDATE_CE = 0.20
+LOSS_STEP = 0.20
 
 # =============================================================================
-# Waypoint inference
+# Inference waypoint switching
 # =============================================================================
-# Switching requires actual current image-derived localization to enter the
-# endpoint radius. v4's early "progress >= length-radius" shortcut is removed.
-INFER_WAYPOINT_REACHED_RADIUS_M = 8.0
+# NO test waypoint frame_index is used.
+# There is no arrival-distance threshold and no timer.
+# A leg changes when the recurrent model's strongest hypothesis is WAYPOINT.
 
-# At the FINAL mission waypoint we freeze the terminal IMAGE-derived state.
-# This is a mission-end constraint, not a speed model.
+# Final mission state is frozen after the learned arrival detector says the
+# final endpoint has been reached.
 TERMINAL_LOCK_ENABLED = True
 
 # =============================================================================
-# Final FilterPy smoother
+# Position-only FilterPy smoother
 # =============================================================================
-# Position-only random-walk Kalman.
-# There is NO vx/vy and NO constant-velocity prediction in v5.
-KALMAN_Q_POSITION = 0.30
+# state = [x, y], F = identity. No vx/vy.
 KALMAN_INIT_POSITION_VAR = 9.0
+KALMAN_Q_POSITION = 0.25
 KALMAN_R_MIN_VAR = 1.0
 KALMAN_R_MAX_VAR = 25.0
 
 # =============================================================================
-# Evaluation / visualization
+# Evaluation / rendering
 # =============================================================================
 JUMP_TOLERANCE_M = 3.0
 

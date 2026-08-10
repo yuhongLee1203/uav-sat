@@ -6,19 +6,14 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
 
 import config
 from data import RouteDataset, meters_from_latlon
-from visual_localizer import (
-    FrozenVisualLocalizer,
-    hard_mean_shift,
-    train_visual_retrieval_a_only,
-)
-from visual_model import VisualMotionRouteLSTM
+from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_only
+from visual_model import RouteBoundedHypothesisLSTM
 
 try:
     from filterpy.kalman import KalmanFilter
@@ -26,27 +21,19 @@ except ImportError:
     KalmanFilter = None
 
 
-ARCHITECTURE_NAME = "VisualMotionGatedRouteLSTM_v5"
+ARCHITECTURE_NAME = "RouteBoundedHypothesisLSTM_v6"
 
-
-# =============================================================================
-# Data structures
-# =============================================================================
 
 @dataclass
 class RouteCache:
     route_name: str
     frame_ids: torch.Tensor
     gt_xy: torch.Tensor
-    raw_gt_xy: torch.Tensor
     uav_clip: torch.Tensor
-    image_motion_cues: torch.Tensor
     image_paths: list
 
     def __len__(self):
-        return int(
-            self.gt_xy.shape[0]
-        )
+        return int(self.gt_xy.shape[0])
 
 
 @dataclass
@@ -64,15 +51,11 @@ class MissionLeg:
 
     @property
     def start_frame(self):
-        return int(
-            self.start.frame_index
-        )
+        return int(self.start.frame_index)
 
     @property
     def end_frame(self):
-        return int(
-            self.end.frame_index
-        )
+        return int(self.end.frame_index)
 
     @property
     def start_xy(self):
@@ -90,185 +73,88 @@ class MissionRoute:
     legs: list
 
 
-# =============================================================================
-# General
-# =============================================================================
+@dataclass
+class FineCandidate:
+    centers: torch.Tensor
+    z_sat: torch.Tensor
+    raw_logits: torch.Tensor
+    valid_mask: torch.Tensor
+
 
 def set_seed(seed):
-    random.seed(
-        int(
-            seed
-        )
-    )
-
-    np.random.seed(
-        int(
-            seed
-        )
-    )
-
-    torch.manual_seed(
-        int(
-            seed
-        )
-    )
-
+    random.seed(int(seed))
+    np.random.seed(int(seed))
+    torch.manual_seed(int(seed))
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(
-            int(
-                seed
-            )
-        )
+        torch.cuda.manual_seed_all(int(seed))
 
 
 def cache_dtype():
-    if (
-        config.FEATURE_CACHE_DTYPE
-        == "float16"
-    ):
-        return torch.float16
-
-    return torch.float32
+    return torch.float16 if config.FEATURE_CACHE_DTYPE == "float16" else torch.float32
 
 
 def parse_frame_id(value):
-    if isinstance(
-        value,
-        torch.Tensor,
-    ):
-        return int(
-            value.item()
-        )
-
-    return int(
-        str(
-            value
-        )
-    )
+    if isinstance(value, torch.Tensor):
+        return int(value.item())
+    return int(str(value))
 
 
 # =============================================================================
-# Mission route
+# Route / data
 # =============================================================================
 
-def load_mission_route(
-    route_name,
-    origin_lat,
-    origin_lon,
-):
-    path = Path(
-        config.WAYPOINT_FILES[
-            route_name
-        ]
-    )
+def load_mission_route(route_name, origin_lat, origin_lon):
+    path = Path(config.WAYPOINT_FILES[route_name])
+    payload = json.loads(path.read_text(encoding="utf-8"))
 
-    if not path.exists():
-        raise FileNotFoundError(
-            path
-        )
-
-    payload = json.loads(
-        path.read_text(
-            encoding="utf-8"
-        )
-    )
-
-    raw_waypoints = sorted(
-        payload[
-            "waypoints"
-        ],
-        key=lambda item: int(
-            item[
-                "waypoint_order"
-            ]
-        ),
+    raw = sorted(
+        payload["waypoints"],
+        key=lambda item: int(item["waypoint_order"]),
     )
 
     waypoints = []
 
-    for item in raw_waypoints:
-        x_meter, y_meter = (
-            meters_from_latlon(
-                item[
-                    "latitude"
-                ],
-                item[
-                    "longitude"
-                ],
-                origin_lat,
-                origin_lon,
-            )
+    for item in raw:
+        x_m, y_m = meters_from_latlon(
+            item["latitude"],
+            item["longitude"],
+            origin_lat,
+            origin_lon,
         )
 
         waypoints.append(
             MissionWaypoint(
-                order=int(
-                    item[
-                        "waypoint_order"
-                    ]
-                ),
-                frame_index=int(
-                    item.get(
-                        "frame_index",
-                        -1,
-                    )
-                ),
+                order=int(item["waypoint_order"]),
+                frame_index=int(item.get("frame_index", -1)),
                 xy=torch.tensor(
-                    [
-                        x_meter,
-                        y_meter,
-                    ],
+                    [x_m, y_m],
                     dtype=torch.float32,
                 ),
             )
         )
 
-    if len(
-        waypoints
-    ) < 2:
-        raise RuntimeError(
-            f"{route_name}: fewer than two waypoints"
-        )
+    if len(waypoints) < 2:
+        raise RuntimeError(f"{route_name}: fewer than two waypoints")
 
-    legs = []
-
-    for index in range(
-        len(
-            waypoints
+    legs = [
+        MissionLeg(
+            index=i,
+            start=waypoints[i],
+            end=waypoints[i + 1],
         )
-        - 1
-    ):
-        legs.append(
-            MissionLeg(
-                index=index,
-                start=waypoints[
-                    index
-                ],
-                end=waypoints[
-                    index
-                    + 1
-                ],
-            )
-        )
+        for i in range(len(waypoints) - 1)
+    ]
 
     print(
-        f"{route_name}: "
-        f"{len(waypoints)} waypoints -> "
-        f"{len(legs)} adjacent start/end legs",
+        f"{route_name}: {len(waypoints)} waypoints -> {len(legs)} legs",
         flush=True,
     )
 
     print(
         "  "
         + " -> ".join(
-            [
-                (
-                    f"W{waypoint.order}"
-                    f"[f{waypoint.frame_index}]"
-                )
-                for waypoint
-                in waypoints
-            ]
+            f"W{wp.order}[f{wp.frame_index}]"
+            for wp in waypoints
         ),
         flush=True,
     )
@@ -280,336 +166,37 @@ def load_mission_route(
     )
 
 
-# =============================================================================
-# Pure-image pair motion cue
-# =============================================================================
-
-def _read_motion_gray(path):
-    image = cv2.imread(
-        str(
-            path
-        ),
-        cv2.IMREAD_GRAYSCALE,
-    )
-
-    if image is None:
-        raise FileNotFoundError(
-            path
-        )
-
-    size = int(
-        config.ECC_IMAGE_SIZE
-    )
-
-    image = cv2.resize(
-        image,
-        (
-            size,
-            size,
-        ),
-        interpolation=cv2.INTER_AREA,
-    )
-
-    return (
-        image.astype(
-            np.float32
-        )
-        / 255.0
-    )
-
-
-def estimate_image_pair_motion(
-    previous_path,
-    current_path,
-):
-    """
-    Image-only motion evidence.
-
-    The cue is NOT converted to metres and does not move the localization.
-    It only helps the LSTM distinguish:
-      stationary / translation / in-place rotation.
-    """
-    if previous_path is None:
-        return np.asarray(
-            [
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-            ],
-            dtype=np.float32,
-        )
-
-    previous = _read_motion_gray(
-        previous_path
-    )
-
-    current = _read_motion_gray(
-        current_path
-    )
-
-    size = float(
-        config.ECC_IMAGE_SIZE
-    )
-
-    warp = np.eye(
-        2,
-        3,
-        dtype=np.float32,
-    )
-
-    criteria = (
-        cv2.TERM_CRITERIA_EPS
-        | cv2.TERM_CRITERIA_COUNT,
-        int(
-            config.ECC_ITERATIONS
-        ),
-        float(
-            config.ECC_EPSILON
-        ),
-    )
-
-    correlation = 0.0
-
-    try:
-        correlation, warp = (
-            cv2.findTransformECC(
-                previous,
-                current,
-                warp,
-                cv2.MOTION_EUCLIDEAN,
-                criteria,
-                None,
-                1,
-            )
-        )
-
-        center = np.asarray(
-            [
-                size
-                * 0.5,
-                size
-                * 0.5,
-                1.0,
-            ],
-            dtype=np.float32,
-        )
-
-        mapped_center = (
-            warp
-            @ center
-        )
-
-        center_shift = (
-            mapped_center
-            - center[
-                :2
-            ]
-        )
-
-        theta = math.atan2(
-            float(
-                warp[
-                    1,
-                    0
-                ]
-            ),
-            float(
-                warp[
-                    0,
-                    0
-                ]
-            ),
-        )
-
-        dx_norm = float(
-            center_shift[
-                0
-            ]
-            / size
-        )
-
-        dy_norm = float(
-            center_shift[
-                1
-            ]
-            / size
-        )
-
-        cue = np.asarray(
-            [
-                dx_norm,
-                dy_norm,
-                math.sin(
-                    theta
-                ),
-                1.0
-                - math.cos(
-                    theta
-                ),
-                float(
-                    np.clip(
-                        correlation,
-                        0.0,
-                        1.0,
-                    )
-                ),
-            ],
-            dtype=np.float32,
-        )
-
-        if np.all(
-            np.isfinite(
-                cue
-            )
-        ):
-            return cue
-
-    except cv2.error:
-        pass
-
-    # Fallback: translation-only phase correlation.
-    try:
-        (
-            shift_x_y,
-            response,
-        ) = cv2.phaseCorrelate(
-            previous,
-            current,
-        )
-
-        cue = np.asarray(
-            [
-                float(
-                    shift_x_y[
-                        0
-                    ]
-                    / size
-                ),
-                float(
-                    shift_x_y[
-                        1
-                    ]
-                    / size
-                ),
-                0.0,
-                0.0,
-                float(
-                    np.clip(
-                        response,
-                        0.0,
-                        1.0,
-                    )
-                ),
-            ],
-            dtype=np.float32,
-        )
-
-        if np.all(
-            np.isfinite(
-                cue
-            )
-        ):
-            return cue
-
-    except cv2.error:
-        pass
-
-    return np.zeros(
-        int(
-            config.IMAGE_MOTION_CUE_DIM
-        ),
-        dtype=np.float32,
-    )
-
-
-# =============================================================================
-# Route cache
-# =============================================================================
-
 @torch.no_grad()
-def build_route_cache(
-    route_name,
-    root,
-    visual,
-    device,
-):
-    checkpoint_stat = (
-        config.VISUAL_CHECKPOINT.stat()
-    )
+def build_route_cache(route_name, root, visual, device):
+    stat = config.VISUAL_CHECKPOINT.stat()
 
-    visual_signature = {
-        "path": str(
-            config.VISUAL_CHECKPOINT
-        ),
-        "size": int(
-            checkpoint_stat.st_size
-        ),
-        "mtime_ns": int(
-            checkpoint_stat.st_mtime_ns
-        ),
-        "ecc_size": int(
-            config.ECC_IMAGE_SIZE
-        ),
-        "ecc_iterations": int(
-            config.ECC_ITERATIONS
-        ),
+    signature = {
+        "size": int(stat.st_size),
+        "mtime_ns": int(stat.st_mtime_ns),
     }
 
     cache_path = (
         config.OUTPUT_DIR
         / "feature_cache"
-        / (
-            f"{route_name}_"
-            "visual_motion_cache.pt"
-        )
+        / f"{route_name}_uav_clip.pt"
     )
 
     if cache_path.exists():
-        payload = torch.load(
-            cache_path,
-            map_location="cpu",
-        )
+        payload = torch.load(cache_path, map_location="cpu")
 
-        if (
-            payload.get(
-                "visual_signature"
-            )
-            == visual_signature
-        ):
-            print(
-                f"{route_name}: "
-                "reuse cached UAV embeddings + image-pair motion cues",
-                flush=True,
-            )
+        if payload.get("signature") == signature:
+            print(f"{route_name}: reuse UAV backbone cache", flush=True)
 
             return RouteCache(
                 route_name=route_name,
-                frame_ids=payload[
-                    "frame_ids"
-                ],
-                gt_xy=payload[
-                    "gt_xy"
-                ],
-                raw_gt_xy=payload[
-                    "raw_gt_xy"
-                ],
-                uav_clip=payload[
-                    "uav_clip"
-                ],
-                image_motion_cues=payload[
-                    "image_motion_cues"
-                ],
-                image_paths=payload[
-                    "image_paths"
-                ],
+                frame_ids=payload["frame_ids"],
+                gt_xy=payload["gt_xy"],
+                uav_clip=payload["uav_clip"],
+                image_paths=payload["image_paths"],
             )
 
     dataset = RouteDataset(
-        Path(
-            root
-        ),
+        Path(root),
         train=False,
         origin_lat=visual.origin_lat,
         origin_lon=visual.origin_lon,
@@ -617,225 +204,98 @@ def build_route_cache(
 
     frame_rows = []
     gt_rows = []
-    raw_gt_rows = []
     clip_rows = []
     image_paths = []
 
-    batch_size = int(
-        config.VISUAL_CACHE_BATCH_SIZE
-    )
+    batch_size = int(config.VISUAL_CACHE_BATCH_SIZE)
 
-    for start in range(
-        0,
-        len(
-            dataset
-        ),
-        batch_size,
-    ):
-        end = min(
-            start
-            + batch_size,
-            len(
-                dataset
-            ),
-        )
+    for start in range(0, len(dataset), batch_size):
+        end = min(start + batch_size, len(dataset))
 
-        items = [
-            dataset[
-                index
-            ]
-            for index
-            in range(
-                start,
-                end,
-            )
-        ]
+        items = [dataset[i] for i in range(start, end)]
 
         uav = torch.stack(
-            [
-                item[
-                    "uav"
-                ]
-                for item
-                in items
-            ]
-        ).to(
-            device
-        )
+            [item["uav"] for item in items]
+        ).to(device)
 
-        clip = visual.encode_uav_clip(
-            uav
-        )
+        clip = visual.encode_uav_clip(uav)
 
         clip_rows.append(
-            clip.detach()
-            .cpu()
-            .to(
-                cache_dtype()
-            )
+            clip.detach().cpu().to(cache_dtype())
         )
 
         gt_rows.append(
             torch.stack(
-                [
-                    item[
-                        "xy"
-                    ].float()
-                    for item
-                    in items
-                ]
-            )
-        )
-
-        raw_gt_rows.append(
-            torch.stack(
-                [
-                    item[
-                        "raw_xy"
-                    ].float()
-                    for item
-                    in items
-                ]
+                [item["xy"].float() for item in items]
             )
         )
 
         for item in items:
             frame_rows.append(
-                parse_frame_id(
-                    item[
-                        "frame_id"
-                    ]
-                )
+                parse_frame_id(item["frame_id"])
             )
-
-            image_paths.append(
-                str(
-                    item[
-                        "image_path"
-                    ]
-                )
-            )
+            image_paths.append(str(item["image_path"]))
 
         if (
-            start
-            == 0
-            or end
-            == len(
-                dataset
-            )
-            or (
-                start
-                // batch_size
-            )
-            % 10
-            == 0
+            start == 0
+            or end == len(dataset)
+            or (start // batch_size) % 10 == 0
         ):
             print(
-                f"{route_name} backbone cache: "
-                f"{end}/{len(dataset)}",
-                flush=True,
-            )
-
-    motion_cues = []
-
-    previous_path = None
-
-    for index, image_path in enumerate(
-        image_paths
-    ):
-        cue = estimate_image_pair_motion(
-            previous_path,
-            image_path,
-        )
-
-        motion_cues.append(
-            cue
-        )
-
-        previous_path = (
-            image_path
-        )
-
-        if (
-            index
-            == 0
-            or index
-            + 1
-            == len(
-                image_paths
-            )
-            or (
-                index
-                + 1
-            )
-            % 250
-            == 0
-        ):
-            print(
-                f"{route_name} image-pair motion cue: "
-                f"{index + 1}/{len(image_paths)}",
+                f"{route_name} backbone cache: {end}/{len(dataset)}",
                 flush=True,
             )
 
     result = RouteCache(
         route_name=route_name,
-        frame_ids=torch.tensor(
-            frame_rows,
-            dtype=torch.long,
-        ),
-        gt_xy=torch.cat(
-            gt_rows
-        ).float(),
-        raw_gt_xy=torch.cat(
-            raw_gt_rows
-        ).float(),
-        uav_clip=torch.cat(
-            clip_rows
-        ),
-        image_motion_cues=torch.tensor(
-            np.asarray(
-                motion_cues
-            ),
-            dtype=torch.float32,
-        ),
+        frame_ids=torch.tensor(frame_rows, dtype=torch.long),
+        gt_xy=torch.cat(gt_rows).float(),
+        uav_clip=torch.cat(clip_rows),
         image_paths=image_paths,
     )
 
-    cache_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
 
     torch.save(
         {
-            "visual_signature": (
-                visual_signature
-            ),
-            "frame_ids": (
-                result.frame_ids
-            ),
-            "gt_xy": (
-                result.gt_xy
-            ),
-            "raw_gt_xy": (
-                result.raw_gt_xy
-            ),
-            "uav_clip": (
-                result.uav_clip
-            ),
-            "image_motion_cues": (
-                result.image_motion_cues
-            ),
-            "image_paths": (
-                result.image_paths
-            ),
+            "signature": signature,
+            "frame_ids": result.frame_ids,
+            "gt_xy": result.gt_xy,
+            "uav_clip": result.uav_clip,
+            "image_paths": result.image_paths,
         },
         cache_path,
     )
 
+    return result
+
+
+@torch.no_grad()
+def build_satellite_task_embeddings(visual):
+    clip_feat = visual.gallery["clip_feat"]
+    xy = visual.gallery["xy"]
+
+    rows = []
+    batch_size = 4096
+
+    for start in range(0, int(clip_feat.shape[0]), batch_size):
+        end = min(
+            start + batch_size,
+            int(clip_feat.shape[0]),
+        )
+
+        rows.append(
+            visual.model.encode_sat_from_clip(
+                clip_feat[start:end].float(),
+                xy[start:end].float(),
+            )
+        )
+
+    result = torch.cat(rows, dim=0)
+
     print(
-        f"{route_name}: cache saved -> "
-        f"{cache_path}",
+        "satellite task embeddings:",
+        tuple(result.shape),
         flush=True,
     )
 
@@ -846,829 +306,571 @@ def build_route_cache(
 # Route geometry
 # =============================================================================
 
-def leg_geometry(
-    leg,
-    device=None,
-    dtype=torch.float32,
-):
+def leg_geometry(leg, device=None, dtype=torch.float32):
     start = leg.start_xy
     end = leg.end_xy
 
     if device is not None:
-        start = start.to(
-            device=device,
-            dtype=dtype,
-        )
+        start = start.to(device=device, dtype=dtype)
+        end = end.to(device=device, dtype=dtype)
 
-        end = end.to(
-            device=device,
-            dtype=dtype,
-        )
+    vector = end - start
+    length = torch.linalg.norm(vector).clamp_min(1e-6)
+    unit = vector / length
+    normal = torch.stack([-unit[1], unit[0]])
 
-    vector = (
-        end
-        - start
+    return start, end, unit, normal, length
+
+
+def xy_vector_to_leg_frame(vector_xy, unit, normal):
+    parallel = (vector_xy * unit).sum(dim=-1)
+    cross = (vector_xy * normal).sum(dim=-1)
+    return torch.stack([parallel, cross], dim=-1)
+
+
+def leg_frame_to_xy(vector_route, unit, normal):
+    return (
+        vector_route[..., 0:1] * unit
+        + vector_route[..., 1:2] * normal
     )
 
-    length = torch.linalg.norm(
-        vector
-    ).clamp_min(
-        1e-6
+
+def route_valid_mask(xy, leg):
+    start, _, unit, normal, length = leg_geometry(
+        leg,
+        device=xy.device,
+        dtype=xy.dtype,
     )
 
-    unit = (
-        vector
-        / length
-    )
+    if xy.ndim == 2:
+        start_view = start.reshape(1, 2)
+    elif xy.ndim == 3:
+        start_view = start.reshape(1, 1, 2)
+    else:
+        raise ValueError(f"Unexpected XY shape: {tuple(xy.shape)}")
 
-    normal = torch.stack(
-        [
-            -unit[
-                1
-            ],
-            unit[
-                0
-            ],
-        ]
-    )
+    relative = xy - start_view
+
+    along = (relative * unit).sum(dim=-1)
+    cross = (relative * normal).sum(dim=-1).abs()
+
+    padding = float(config.ROUTE_ALONG_PADDING_M)
 
     return (
-        start,
-        end,
-        unit,
-        normal,
-        length,
+        (along >= -padding)
+        & (along <= length + padding)
+        & (
+            cross
+            <= float(config.ROUTE_CORRIDOR_HALF_WIDTH_M)
+        )
     )
 
 
-def xy_vector_to_leg_frame(
-    vector_xy,
-    unit,
-    normal,
-):
-    parallel = (
-        vector_xy
-        * unit
-    ).sum(
-        dim=-1
+def route_bank_indices(visual, leg):
+    mask = route_valid_mask(
+        visual.gallery["xy"],
+        leg,
     )
 
-    cross = (
-        vector_xy
-        * normal
-    ).sum(
-        dim=-1
-    )
+    indices = torch.nonzero(
+        mask,
+        as_tuple=False,
+    ).flatten()
 
-    return torch.stack(
-        [
-            parallel,
-            cross,
-        ],
-        dim=-1,
-    )
+    if indices.numel() < 4:
+        raise RuntimeError(
+            f"Too few SAT patches in W{leg.start.order}->W{leg.end.order}: "
+            f"{indices.numel()}"
+        )
+
+    return indices
 
 
-def leg_frame_vector_to_xy(
-    vector_route,
-    unit,
-    normal,
-):
-    return (
-        vector_route[
-            ...,
-            0:1
-        ]
-        * unit
-        + vector_route[
-            ...,
-            1:2
-        ]
-        * normal
-    )
+def build_route_banks(visual, route):
+    banks = {}
+
+    for leg in route.legs:
+        bank = route_bank_indices(visual, leg)
+        banks[leg.index] = bank
+
+        print(
+            f"{route.route_name} W{leg.start.order}->W{leg.end.order}: "
+            f"{bank.numel()} route SAT patches",
+            flush=True,
+        )
+
+    return banks
 
 
-def candidate_offsets_in_leg_frame(
+def candidate_offsets_route(
     centers,
-    search_center,
+    reference_xy,
     leg,
 ):
-    (
-        _,
-        _,
-        unit,
-        normal,
-        _,
-    ) = leg_geometry(
+    _, _, unit, normal, _ = leg_geometry(
         leg,
         device=centers.device,
         dtype=centers.dtype,
     )
 
-    relative_xy = (
-        centers
-        - search_center[
-            :,
-            None,
-            :
-        ]
-    )
-
-    parallel = (
-        relative_xy
-        * unit.reshape(
-            1,
-            1,
-            2,
-        )
-    ).sum(
-        dim=2
-    )
-
-    cross = (
-        relative_xy
-        * normal.reshape(
-            1,
-            1,
-            2,
-        )
-    ).sum(
-        dim=2
-    )
-
-    return torch.stack(
-        [
-            parallel,
-            cross,
-        ],
-        dim=2,
-    )
-
-
-def route_context_tensor(
-    search_center,
-    leg,
-    final_leg,
-):
-    (
-        start,
-        _,
-        unit,
-        normal,
-        length,
-    ) = leg_geometry(
-        leg,
-        device=search_center.device,
-        dtype=search_center.dtype,
-    )
-
     relative = (
-        search_center
-        - start.reshape(
-            1,
-            2,
-        )
+        centers
+        - reference_xy[:, None, :]
     )
+
+    return xy_vector_to_leg_frame(
+        relative,
+        unit.reshape(1, 1, 2),
+        normal.reshape(1, 1, 2),
+    )
+
+
+def route_context(reference_xy, leg, final_leg):
+    start, _, unit, normal, length = leg_geometry(
+        leg,
+        device=reference_xy.device,
+        dtype=reference_xy.dtype,
+    )
+
+    relative = reference_xy - start.reshape(1, 2)
 
     along = (
         relative
-        * unit.reshape(
-            1,
-            2,
-        )
-    ).sum(
-        dim=1
-    )
+        * unit.reshape(1, 2)
+    ).sum(dim=1)
 
     cross = (
         relative
-        * normal.reshape(
-            1,
-            2,
-        )
-    ).sum(
-        dim=1
-    )
+        * normal.reshape(1, 2)
+    ).sum(dim=1)
 
     remaining_ratio = (
-        (
-            length
-            - along
-        )
-        / length
-    ).clamp(
-        -0.25,
-        1.50,
-    )
+        (length - along) / length
+    ).clamp(-0.15, 1.25)
 
     normalized_cross = (
         cross
-        / float(
-            config.ROUTE_CROSS_TRACK_SCALE_M
-        )
-    ).clamp(
-        -2.0,
-        2.0,
-    )
+        / float(config.ROUTE_CROSS_TRACK_SCALE_M)
+    ).clamp(-2.0, 2.0)
 
-    normalized_log_length = (
-        torch.log1p(
-            length
-        )
+    normalized_length = (
+        torch.log1p(length)
         / math.log1p(
-            float(
-                config.ROUTE_LENGTH_LOG_SCALE_M
-            )
+            float(config.ROUTE_LENGTH_LOG_SCALE_M)
         )
-    ).reshape(
-        1
-    ).expand_as(
-        remaining_ratio
-    )
+    ).reshape(1).expand_as(remaining_ratio)
 
-    final_leg_tensor = torch.full_like(
+    final_flag = torch.full_like(
         remaining_ratio,
-        1.0
-        if final_leg
-        else 0.0,
+        1.0 if final_leg else 0.0,
     )
 
     return torch.stack(
         [
             remaining_ratio,
             normalized_cross,
-            normalized_log_length,
-            final_leg_tensor,
+            normalized_length,
+            final_flag,
         ],
         dim=1,
     )
 
 
-def rotate_observed_motion_state(
-    state,
-    old_leg,
-    new_leg,
+def update_observed_motion(
+    previous_state,
+    previous_xy,
+    current_xy,
+    leg,
 ):
+    _, _, unit, normal, _ = leg_geometry(
+        leg,
+        device=current_xy.device,
+        dtype=current_xy.dtype,
+    )
+
+    delta = xy_vector_to_leg_frame(
+        current_xy - previous_xy,
+        unit.reshape(1, 2),
+        normal.reshape(1, 2),
+    )
+
+    acceleration = (
+        delta
+        - previous_state[:, 0:2]
+    )
+
+    return torch.cat(
+        [delta, acceleration],
+        dim=1,
+    )
+
+
+def rotate_observed_motion(state, old_leg, new_leg):
     device = state.device
     dtype = state.dtype
 
-    (
-        _,
-        _,
-        old_unit,
-        old_normal,
-        _,
-    ) = leg_geometry(
+    _, _, old_unit, old_normal, _ = leg_geometry(
         old_leg,
         device=device,
         dtype=dtype,
     )
 
-    (
-        _,
-        _,
-        new_unit,
-        new_normal,
-        _,
-    ) = leg_geometry(
+    _, _, new_unit, new_normal, _ = leg_geometry(
         new_leg,
         device=device,
         dtype=dtype,
     )
 
-    velocity_xy = (
-        state[
-            :,
-            0:1
-        ]
-        * old_unit.reshape(
-            1,
-            2,
-        )
-        + state[
-            :,
-            1:2
-        ]
-        * old_normal.reshape(
-            1,
-            2,
-        )
+    delta_xy = leg_frame_to_xy(
+        state[:, 0:2],
+        old_unit.reshape(1, 2),
+        old_normal.reshape(1, 2),
     )
 
-    acceleration_xy = (
-        state[
-            :,
-            2:3
-        ]
-        * old_unit.reshape(
-            1,
-            2,
-        )
-        + state[
-            :,
-            3:4
-        ]
-        * old_normal.reshape(
-            1,
-            2,
-        )
+    acceleration_xy = leg_frame_to_xy(
+        state[:, 2:4],
+        old_unit.reshape(1, 2),
+        old_normal.reshape(1, 2),
     )
 
-    new_velocity = torch.stack(
-        [
-            (
-                velocity_xy
-                * new_unit.reshape(
-                    1,
-                    2,
-                )
-            ).sum(
-                dim=1
-            ),
-            (
-                velocity_xy
-                * new_normal.reshape(
-                    1,
-                    2,
-                )
-            ).sum(
-                dim=1
-            ),
-        ],
-        dim=1,
+    new_delta = xy_vector_to_leg_frame(
+        delta_xy,
+        new_unit.reshape(1, 2),
+        new_normal.reshape(1, 2),
     )
 
-    new_acceleration = torch.stack(
-        [
-            (
-                acceleration_xy
-                * new_unit.reshape(
-                    1,
-                    2,
-                )
-            ).sum(
-                dim=1
-            ),
-            (
-                acceleration_xy
-                * new_normal.reshape(
-                    1,
-                    2,
-                )
-            ).sum(
-                dim=1
-            ),
-        ],
-        dim=1,
+    new_acceleration = xy_vector_to_leg_frame(
+        acceleration_xy,
+        new_unit.reshape(1, 2),
+        new_normal.reshape(1, 2),
     )
 
     return torch.cat(
-        [
-            new_velocity,
-            new_acceleration,
-        ],
+        [new_delta, new_acceleration],
         dim=1,
     )
 
 
 # =============================================================================
-# Visual proposal + gated synchronized state
+# Visual candidate construction
 # =============================================================================
 
-def decode_visual_proposal(
-    refined_logits,
-    centers,
-):
-    probability = torch.softmax(
-        refined_logits,
+def global_visual_stats(logits):
+    probability = torch.softmax(logits, dim=1)
+    count = max(int(logits.shape[1]), 2)
+
+    entropy = -(
+        probability
+        * probability.clamp_min(1e-8).log()
+    ).sum(dim=1) / math.log(float(count))
+
+    top2 = probability.topk(
+        k=2,
         dim=1,
-    )
+    ).values
 
-    proposal_xy = (
-        probability.unsqueeze(
-            -1
+    margin = top2[:, 0] - top2[:, 1]
+    maximum = top2[:, 0]
+
+    std = torch.tanh(
+        logits.std(
+            dim=1,
+            unbiased=False,
         )
-        * centers
-    ).sum(
-        dim=1
+        / 10.0
     )
 
-    return (
-        proposal_xy,
-        probability,
-    )
-
-
-def apply_translation_gate(
-    previous_visual_xy,
-    proposal_xy,
-    translation_gate,
-):
-    return (
-        previous_visual_xy
-        + translation_gate
-        * (
-            proposal_xy
-            - previous_visual_xy
-        )
-    )
-
-
-def nearest_candidate_label(
-    centers,
-    gt_xy,
-):
-    distance = torch.linalg.norm(
-        centers
-        - gt_xy[
-            :,
-            None,
-            :
-        ],
-        dim=2,
-    )
-
-    return distance.argmin(
-        dim=1
-    )
-
-
-def update_observed_motion_state(
-    previous_state,
-    previous_visual_xy,
-    current_visual_xy,
-    leg,
-):
-    (
-        _,
-        _,
-        unit,
-        normal,
-        _,
-    ) = leg_geometry(
-        leg,
-        device=current_visual_xy.device,
-        dtype=current_visual_xy.dtype,
-    )
-
-    delta_xy = (
-        current_visual_xy
-        - previous_visual_xy
-    )
-
-    current_velocity = (
-        xy_vector_to_leg_frame(
-            delta_xy,
-            unit,
-            normal,
-        )
-    )
-
-    previous_velocity = (
-        previous_state[
-            :,
-            0:2
-        ]
-    )
-
-    current_acceleration = (
-        current_velocity
-        - previous_velocity
-    )
-
-    return torch.cat(
-        [
-            current_velocity,
-            current_acceleration,
-        ],
+    return torch.stack(
+        [entropy, margin, maximum, std],
         dim=1,
     )
 
 
-# =============================================================================
-# Image-motion phase soft supervision
-# =============================================================================
-
-def phase_soft_target(
-    image_motion_cue,
-    current_gt,
-    previous_gt,
+@torch.no_grad()
+def score_global_route(
+    visual,
+    z_uav,
+    gallery_z_sat,
+    bank_indices,
 ):
-    """
-    Soft 3-state target:
-      stationary / translation / rotation
-
-    This is training supervision only.
-
-    High-quality ECC alignment dominates when correlation is high.
-    If ECC is unreliable, the target falls back toward supervised GT step
-    magnitude. Neither quantity is ever a network input as a position/speed.
-    """
-    cue = image_motion_cue
-
-    shift_norm = torch.sqrt(
-        cue[
-            :,
-            0
-        ].square()
-        + cue[
-            :,
-            1
-        ].square()
-        + 1e-12
-    )
-
-    ecc_translation = (
-        1.0
-        - torch.exp(
-            -float(
-                config.ECC_TRANSLATION_GAIN
-            )
-            * shift_norm
-        )
-    ).clamp(
-        0.0,
-        1.0,
-    )
-
-    sin_theta = cue[
-        :,
-        2
+    bank_z_sat = gallery_z_sat[
+        bank_indices
     ]
 
-    cos_theta = (
-        1.0
-        - cue[
-            :,
-            3
-        ]
-    )
-
-    rotation_angle = torch.atan2(
-        sin_theta.abs(),
-        cos_theta.clamp(
-            min=-1.0,
-            max=1.0,
-        ),
-    )
-
-    rotation_scale = math.radians(
-        float(
-            config.ECC_ROTATION_SCALE_DEG
+    logits = (
+        visual.model.logit_scale.exp()
+        .clamp(max=100.0)
+        * (
+            z_uav
+            @ bank_z_sat.t()
         )
     )
 
-    rotation_strength = (
-        rotation_angle
-        / max(
-            rotation_scale,
-            1e-6,
-        )
-    ).clamp(
-        0.0,
-        1.0,
-    )
+    top_local = logits.argmax(dim=1)
+    top_gallery = bank_indices[top_local]
+    top_xy = visual.gallery["xy"][
+        top_gallery
+    ]
 
-    if previous_gt is None:
-        gt_translation = torch.zeros_like(
-            ecc_translation
-        )
-    else:
-        gt_step = torch.linalg.norm(
-            current_gt
-            - previous_gt,
-            dim=1,
-        )
-
-        gt_translation = (
-            1.0
-            - torch.exp(
-                -gt_step
-                / float(
-                    config.GT_TRANSLATION_SOFT_SCALE_M
-                )
-            )
-        ).clamp(
-            0.0,
-            1.0,
-        )
-
-    reliability = cue[
-        :,
-        4
-    ].clamp(
-        0.0,
-        1.0,
-    )
-
-    translation = (
-        reliability
-        * ecc_translation
-        + (
-            1.0
-            - reliability
-        )
-        * gt_translation
-    ).clamp(
-        0.0,
-        1.0,
-    )
-
-    rotation = (
-        (
-            1.0
-            - translation
-        )
-        * reliability
-        * rotation_strength
-    ).clamp(
-        0.0,
-        1.0,
-    )
-
-    stationary = (
-        1.0
-        - translation
-        - rotation
-    ).clamp(
-        0.0,
-        1.0,
-    )
-
-    target = torch.stack(
-        [
-            stationary,
-            translation,
-            rotation,
-        ],
-        dim=1,
-    )
-
-    return (
-        target
-        / target.sum(
-            dim=1,
-            keepdim=True,
-        ).clamp_min(
-            1e-6
-        )
-    )
+    return logits, top_xy
 
 
-def soft_cross_entropy(
-    logits,
-    target_probability,
-):
-    return -(
-        target_probability
-        * torch.log_softmax(
-            logits,
-            dim=1,
-        )
-    ).sum(
-        dim=1
-    ).mean()
-
-
-# =============================================================================
-# Route-A leg split
-# =============================================================================
-
-def split_training_legs(
-    route,
-):
-    count = len(
-        route.legs
-    )
-
-    train_count = max(
-        1,
-        int(
-            count
-            * float(
-                config.TEMPORAL_TRAIN_LEG_FRACTION
-            )
-        ),
-    )
-
-    val_count = max(
-        1,
-        int(
-            count
-            * float(
-                config.TEMPORAL_VAL_LEG_FRACTION
-            )
-        ),
-    )
-
-    if (
-        train_count
-        + val_count
-        >= count
-    ):
-        val_count = max(
-            1,
-            count
-            - train_count
-            - 1,
-        )
-
-    return {
-        "train": route.legs[
-            :train_count
-        ],
-        "val": route.legs[
-            train_count:
-            train_count
-            + val_count
-        ],
-        "test": route.legs[
-            train_count
-            + val_count:
-        ],
-    }
-
-
-def frame_to_cache_index(
-    cache,
-):
-    return {
-        int(
-            frame_id
-        ): index
-        for index, frame_id
-        in enumerate(
-            cache.frame_ids.tolist()
-        )
-    }
-
-
-def indices_for_leg(
-    cache,
+@torch.no_grad()
+def build_bounded_candidate(
+    visual,
+    uav_clip,
+    center_xy,
     leg,
-    is_last_route_leg,
+    bank_indices,
 ):
-    index_map = frame_to_cache_index(
-        cache
+    candidate = visual.candidate_batch(
+        uav_clip,
+        center_xy,
+        grid_size=config.GRID_SIZE,
     )
 
-    start_frame = int(
-        leg.start_frame
+    valid = route_valid_mask(
+        candidate.centers,
+        leg,
     )
 
-    end_frame_exclusive = int(
-        leg.end_frame
-    )
-
-    if is_last_route_leg:
-        end_frame_exclusive += 1
-
-    indices = []
-
-    for frame_id in range(
-        start_frame,
-        end_frame_exclusive,
+    if not bool(
+        (valid.sum(dim=1) > 0).all()
     ):
-        if frame_id in index_map:
-            indices.append(
-                index_map[
-                    frame_id
+        legal_xy = visual.gallery["xy"][
+            bank_indices
+        ]
+
+        fallback_rows = []
+
+        for batch_index in range(
+            center_xy.shape[0]
+        ):
+            distance = torch.linalg.norm(
+                legal_xy
+                - center_xy[
+                    batch_index:
+                    batch_index + 1
+                ],
+                dim=1,
+            )
+
+            fallback_rows.append(
+                legal_xy[
+                    distance.argmin()
                 ]
             )
 
-    if not indices:
+        fallback_center = torch.stack(
+            fallback_rows,
+            dim=0,
+        )
+
+        candidate = visual.candidate_batch(
+            uav_clip,
+            fallback_center,
+            grid_size=config.GRID_SIZE,
+        )
+
+        valid = route_valid_mask(
+            candidate.centers,
+            leg,
+        )
+
+    if not bool(
+        (valid.sum(dim=1) > 0).all()
+    ):
         raise RuntimeError(
-            "No frames found for "
+            "No legal bounded candidate for "
             f"W{leg.start.order}->W{leg.end.order}"
         )
 
-    return indices
+    return FineCandidate(
+        centers=candidate.centers,
+        z_sat=candidate.z_sat,
+        raw_logits=candidate.raw_logits,
+        valid_mask=valid,
+    )
 
 
-def teacher_center_ratio(
-    epoch_index,
+@torch.no_grad()
+def build_waypoint_candidate(
+    visual,
+    uav_clip,
+    endpoint_xy,
 ):
+    """
+    Small visual transition neighborhood around the active waypoint.
+
+    This is intentionally not masked to only the old leg because during an
+    in-place turn the image can already face the next leg. Spatially it is still
+    only one 6x6 lattice around the shared endpoint.
+    """
+    candidate = visual.candidate_batch(
+        uav_clip,
+        endpoint_xy,
+        grid_size=config.GRID_SIZE,
+    )
+
+    valid = torch.ones_like(
+        candidate.raw_logits,
+        dtype=torch.bool,
+    )
+
+    return FineCandidate(
+        centers=candidate.centers,
+        z_sat=candidate.z_sat,
+        raw_logits=candidate.raw_logits,
+        valid_mask=valid,
+    )
+
+
+def decode_refined(
+    logits,
+    centers,
+    valid_mask,
+):
+    masked = torch.where(
+        valid_mask,
+        logits,
+        torch.full_like(
+            logits,
+            -1e4,
+        ),
+    )
+
+    probability = torch.softmax(
+        masked,
+        dim=1,
+    )
+
+    xy = (
+        probability.unsqueeze(-1)
+        * centers
+    ).sum(dim=1)
+
+    return xy, probability
+
+
+def compose_hypotheses(
+    previous_xy,
+    local_xy,
+    recovery_xy,
+    waypoint_xy,
+    branch_probability,
+):
+    hypotheses = torch.stack(
+        [
+            previous_xy,
+            local_xy,
+            recovery_xy,
+            waypoint_xy,
+        ],
+        dim=1,
+    )
+
+    current_xy = (
+        branch_probability.unsqueeze(-1)
+        * hypotheses
+    ).sum(dim=1)
+
+    return current_xy, hypotheses
+
+
+# =============================================================================
+# Route-A supervision
+# =============================================================================
+
+def training_leg_for_frame(route, frame_id):
+    # Exact waypoint frame belongs to the arriving leg.
+    for leg in route.legs:
+        if (
+            frame_id >= leg.start_frame
+            and frame_id <= leg.end_frame
+        ):
+            return leg
+
+    return route.legs[-1]
+
+
+def teacher_ratio(epoch_index):
     end_epoch = int(
         config.TEACHER_CENTER_END_EPOCH
     )
 
     if (
-        end_epoch
-        <= 0
-        or epoch_index
-        >= end_epoch
+        end_epoch <= 0
+        or epoch_index >= end_epoch
     ):
         return 0.0
 
     return max(
         0.0,
         1.0
-        - float(
-            epoch_index
-        )
-        / float(
-            end_epoch
+        - float(epoch_index)
+        / float(end_epoch),
+    )
+
+
+def masked_candidate_ce(
+    logits,
+    centers,
+    valid_mask,
+    gt_xy,
+):
+    distance = torch.linalg.norm(
+        centers
+        - gt_xy[:, None, :],
+        dim=2,
+    )
+
+    distance = torch.where(
+        valid_mask,
+        distance,
+        torch.full_like(
+            distance,
+            1e9,
         ),
+    )
+
+    minimum_distance, target = distance.min(
+        dim=1
+    )
+
+    capture = (
+        minimum_distance
+        <= float(
+            config.CANDIDATE_CAPTURE_RADIUS_M
+        )
+    )
+
+    if bool(capture.any()):
+        loss = F.cross_entropy(
+            logits[capture],
+            target[capture],
+        )
+    else:
+        loss = logits.sum() * 0.0
+
+    return loss, capture.float().mean()
+
+
+def branch_distribution_target(
+    hypotheses,
+    gt_xy,
+):
+    error = torch.linalg.norm(
+        hypotheses.detach()
+        - gt_xy[:, None, :],
+        dim=2,
+    )
+
+    return torch.softmax(
+        -error
+        / float(
+            config.BRANCH_TARGET_TAU_M
+        ),
+        dim=1,
     )
 
 
@@ -1680,1029 +882,563 @@ def train_one_epoch(
     model,
     optimizer,
     visual,
+    gallery_z_sat,
     cache,
-    train_legs,
-    all_route_legs,
+    route,
+    banks,
     device,
     epoch_index,
 ):
     model.train()
 
-    (
-        hidden,
-        cell,
-        observed_motion,
-    ) = model.initial_state(
+    hidden, cell = model.initial_state(
         1,
         device,
         torch.float32,
     )
 
-    optimizer.zero_grad(
-        set_to_none=True
+    observed_motion = torch.zeros(
+        1,
+        int(config.OBSERVED_MOTION_DIM),
+        device=device,
+        dtype=torch.float32,
     )
 
-    teacher_ratio = (
-        teacher_center_ratio(
-            epoch_index
-        )
+    previous_visual_xy = (
+        route.legs[0].start_xy.to(
+            device
+        ).reshape(1, 2)
     )
+
+    previous_gt = (
+        previous_visual_xy.detach()
+    )
+
+    previous_z_uav = None
+    previous_leg = route.legs[0]
+
+    optimizer.zero_grad(set_to_none=True)
 
     accumulated_loss = None
     accumulated_steps = 0
 
+    ratio = teacher_ratio(epoch_index)
+
     logs = []
 
-    previous_leg = None
-    previous_visual_xy = None
-    previous_gt = None
-    previous_z_uav = None
-
-    for leg_position, leg in enumerate(
-        train_legs
-    ):
-        is_last_route_leg = (
-            leg.index
-            == all_route_legs[
-                -1
-            ].index
+    for sequence_index in range(len(cache)):
+        frame_id = int(
+            cache.frame_ids[
+                sequence_index
+            ].item()
         )
 
-        leg_indices = indices_for_leg(
-            cache,
-            leg,
-            is_last_route_leg,
+        leg = training_leg_for_frame(
+            route,
+            frame_id,
         )
 
-        if previous_visual_xy is None:
-            previous_visual_xy = (
-                leg.start_xy.to(
-                    device
-                ).reshape(
-                    1,
-                    2,
-                )
+        if leg.index != previous_leg.index:
+            observed_motion = rotate_observed_motion(
+                observed_motion,
+                previous_leg,
+                leg,
             )
-
-            previous_gt = (
-                previous_visual_xy.detach()
-            )
-        elif previous_leg is not None:
-            observed_motion = (
-                rotate_observed_motion_state(
-                    observed_motion,
-                    previous_leg,
-                    leg,
-                )
-            )
+            previous_leg = leg
 
         final_leg = (
             leg.index
-            == all_route_legs[
-                -1
-            ].index
+            == len(route.legs) - 1
         )
 
-        for local_index, cache_index in enumerate(
-            leg_indices
-        ):
-            current_gt = cache.gt_xy[
-                cache_index
-            ].to(
-                device
-            ).reshape(
-                1,
-                2,
+        gt_xy = cache.gt_xy[
+            sequence_index:
+            sequence_index + 1
+        ].to(device).float()
+
+        local_center = (
+            float(ratio)
+            * previous_gt
+            + (1.0 - float(ratio))
+            * previous_visual_xy
+        )
+
+        uav_clip = cache.uav_clip[
+            sequence_index:
+            sequence_index + 1
+        ].to(device).float()
+
+        z_uav = visual.model.encode_uav_from_clip(
+            uav_clip
+        )
+
+        bank_indices = banks[
+            leg.index
+        ]
+
+        global_logits, global_top_xy = (
+            score_global_route(
+                visual,
+                z_uav,
+                gallery_z_sat,
+                bank_indices,
             )
+        )
 
-            # Causal teacher center only.
-            # It uses PREVIOUS GT, never current GT.
-            search_center = (
-                float(
-                    teacher_ratio
-                )
-                * previous_gt
-                + (
-                    1.0
-                    - float(
-                        teacher_ratio
-                    )
-                )
-                * previous_visual_xy
-            )
+        local_candidate = build_bounded_candidate(
+            visual,
+            uav_clip,
+            local_center,
+            leg,
+            bank_indices,
+        )
 
-            uav_clip = cache.uav_clip[
-                cache_index:
-                cache_index
-                + 1
-            ].to(
-                device
-            ).float()
-
-            candidate = (
-                visual.candidate_batch(
-                    uav_clip,
-                    search_center,
-                    grid_size=(
-                        config.GRID_SIZE
-                    ),
-                )
-            )
-
-            offsets_route = (
-                candidate_offsets_in_leg_frame(
-                    candidate.centers,
-                    search_center,
-                    leg,
-                )
-            )
-
-            route_context = (
-                route_context_tensor(
-                    search_center,
-                    leg,
-                    final_leg,
-                )
-            )
-
-            image_motion_cue = (
-                cache.image_motion_cues[
-                    cache_index:
-                    cache_index
-                    + 1
-                ].to(
-                    device
-                ).float()
-            )
-
-            output = model.forward_step(
-                candidate.z_uav,
-                previous_z_uav,
-                candidate.z_sat,
-                candidate.raw_logits,
-                candidate.raw_prob,
-                offsets_route,
-                route_context,
-                image_motion_cue,
-                observed_motion,
-                hidden,
-                cell,
-            )
-
-            (
-                proposal_xy,
-                refined_probability,
-            ) = decode_visual_proposal(
-                output.refined_logits,
-                candidate.centers,
-            )
-
-            current_visual_xy = (
-                apply_translation_gate(
-                    previous_visual_xy,
-                    proposal_xy,
-                    output.translation_gate,
-                )
-            )
-
-            target_index = (
-                nearest_candidate_label(
-                    candidate.centers,
-                    current_gt,
-                )
-            )
-
-            ce_loss = F.cross_entropy(
-                output.refined_logits,
-                target_index,
-                label_smoothing=float(
-                    config.VISUAL_LABEL_SMOOTHING
-                ),
-            )
-
-            (
-                _,
-                _,
-                unit,
-                normal,
-                _,
-            ) = leg_geometry(
+        recovery_candidate = (
+            build_bounded_candidate(
+                visual,
+                uav_clip,
+                global_top_xy,
                 leg,
-                device=device,
-                dtype=torch.float32,
+                bank_indices,
             )
-
-            target_relative_route = (
-                xy_vector_to_leg_frame(
-                    current_gt
-                    - search_center,
-                    unit,
-                    normal,
-                )
-            )
-
-            predicted_relative_route = (
-                xy_vector_to_leg_frame(
-                    current_visual_xy
-                    - search_center,
-                    unit,
-                    normal,
-                )
-            )
-
-            relative_position_loss = (
-                F.smooth_l1_loss(
-                    predicted_relative_route,
-                    target_relative_route,
-                )
-            )
-
-            phase_target = phase_soft_target(
-                image_motion_cue,
-                current_gt,
-                previous_gt,
-            )
-
-            phase_loss = soft_cross_entropy(
-                output.phase_logits,
-                phase_target,
-            )
-
-            if previous_gt is None:
-                target_step_route = torch.zeros_like(
-                    predicted_relative_route
-                )
-            else:
-                target_step_route = (
-                    xy_vector_to_leg_frame(
-                        current_gt
-                        - previous_gt,
-                        unit,
-                        normal,
-                    )
-                )
-
-            predicted_step_route = (
-                xy_vector_to_leg_frame(
-                    current_visual_xy
-                    - previous_visual_xy,
-                    unit,
-                    normal,
-                )
-            )
-
-            step_loss = F.smooth_l1_loss(
-                predicted_step_route,
-                target_step_route,
-            )
-
-            loss = (
-                float(
-                    config.LOSS_RETRIEVAL_CE
-                )
-                * ce_loss
-                + float(
-                    config.LOSS_CURRENT_RELATIVE_POSITION
-                )
-                * relative_position_loss
-                + float(
-                    config.LOSS_PHASE_SOFT_CE
-                )
-                * phase_loss
-                + float(
-                    config.LOSS_STEP_DISPLACEMENT
-                )
-                * step_loss
-            )
-
-            if accumulated_loss is None:
-                accumulated_loss = loss
-            else:
-                accumulated_loss = (
-                    accumulated_loss
-                    + loss
-                )
-
-            accumulated_steps += 1
-
-            minimum_gt_distance = (
-                torch.linalg.norm(
-                    candidate.centers[
-                        0
-                    ]
-                    - current_gt[
-                        0
-                    ].reshape(
-                        1,
-                        2,
-                    ),
-                    dim=1,
-                ).min()
-            )
-
-            predicted_phase = int(
-                output.phase_probability[
-                    0
-                ].argmax()
-                .detach()
-                .cpu()
-                .item()
-            )
-
-            cue_shift = float(
-                torch.sqrt(
-                    image_motion_cue[
-                        0,
-                        0
-                    ].square()
-                    + image_motion_cue[
-                        0,
-                        1
-                    ].square()
-                ).detach()
-                .cpu()
-                .item()
-            )
-
-            logs.append(
-                {
-                    "loss": float(
-                        loss.detach()
-                        .cpu()
-                    ),
-                    "ce": float(
-                        ce_loss.detach()
-                        .cpu()
-                    ),
-                    "relative": float(
-                        relative_position_loss.detach()
-                        .cpu()
-                    ),
-                    "phase": float(
-                        phase_loss.detach()
-                        .cpu()
-                    ),
-                    "step": float(
-                        step_loss.detach()
-                        .cpu()
-                    ),
-                    "capture": float(
-                        minimum_gt_distance.item()
-                        <= float(
-                            config.CANDIDATE_CAPTURE_RADIUS_M
-                        )
-                    ),
-                    "gate": float(
-                        output.translation_gate.mean()
-                        .detach()
-                        .cpu()
-                    ),
-                    "stationary": float(
-                        output.stationary_probability.mean()
-                        .detach()
-                        .cpu()
-                    ),
-                    "rotation": float(
-                        output.rotation_probability.mean()
-                        .detach()
-                        .cpu()
-                    ),
-                    "phase_class": float(
-                        predicted_phase
-                    ),
-                    "ecc_shift": cue_shift,
-                }
-            )
-
-            new_observed_motion = (
-                update_observed_motion_state(
-                    observed_motion,
-                    previous_visual_xy,
-                    current_visual_xy,
-                    leg,
-                )
-            )
-
-            hidden = (
-                output.hidden
-            )
-
-            cell = (
-                output.cell
-            )
-
-            observed_motion = (
-                new_observed_motion
-            )
-
-            previous_z_uav = (
-                candidate.z_uav.detach()
-            )
-
-            previous_visual_xy = (
-                current_visual_xy
-            )
-
-            previous_gt = (
-                current_gt.detach()
-            )
-
-            final_training_step = (
-                leg_position
-                == len(
-                    train_legs
-                )
-                - 1
-                and local_index
-                == len(
-                    leg_indices
-                )
-                - 1
-            )
-
-            if (
-                accumulated_steps
-                >= int(
-                    config.TBPTT_STEPS
-                )
-                or final_training_step
-            ):
-                normalized_loss = (
-                    accumulated_loss
-                    / float(
-                        accumulated_steps
-                    )
-                )
-
-                if not torch.isfinite(
-                    normalized_loss
-                ):
-                    raise FloatingPointError(
-                        "non-finite temporal loss"
-                    )
-
-                normalized_loss.backward()
-
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(),
-                    float(
-                        config.GRAD_CLIP_NORM
-                    ),
-                )
-
-                optimizer.step()
-
-                optimizer.zero_grad(
-                    set_to_none=True
-                )
-
-                hidden = (
-                    hidden.detach()
-                )
-
-                cell = (
-                    cell.detach()
-                )
-
-                observed_motion = (
-                    observed_motion.detach()
-                )
-
-                previous_visual_xy = (
-                    previous_visual_xy.detach()
-                )
-
-                previous_z_uav = (
-                    previous_z_uav.detach()
-                )
-
-                accumulated_loss = None
-                accumulated_steps = 0
-
-        previous_leg = leg
-
-    if not logs:
-        raise RuntimeError(
-            "Temporal training produced no steps"
         )
+
+        endpoint_center = (
+            leg.end_xy.to(
+                device
+            ).reshape(1, 2)
+        )
+
+        waypoint_candidate = (
+            build_waypoint_candidate(
+                visual,
+                uav_clip,
+                endpoint_center,
+            )
+        )
+
+        local_offsets = candidate_offsets_route(
+            local_candidate.centers,
+            previous_visual_xy,
+            leg,
+        )
+
+        recovery_offsets = candidate_offsets_route(
+            recovery_candidate.centers,
+            previous_visual_xy,
+            leg,
+        )
+
+        waypoint_offsets = candidate_offsets_route(
+            waypoint_candidate.centers,
+            previous_visual_xy,
+            leg,
+        )
+
+        context = route_context(
+            previous_visual_xy,
+            leg,
+            final_leg,
+        )
+
+        polynomial_delta = (
+            observed_motion[:, 0:2]
+            + 0.5
+            * observed_motion[:, 2:4]
+        )
+
+        output = model.forward_step(
+            z_uav=z_uav,
+            previous_z_uav=previous_z_uav,
+            local_z_sat=local_candidate.z_sat,
+            local_raw_logits=local_candidate.raw_logits,
+            local_valid_mask=local_candidate.valid_mask,
+            local_offsets_route=local_offsets,
+            recovery_z_sat=recovery_candidate.z_sat,
+            recovery_raw_logits=recovery_candidate.raw_logits,
+            recovery_valid_mask=recovery_candidate.valid_mask,
+            recovery_offsets_route=recovery_offsets,
+            waypoint_z_sat=waypoint_candidate.z_sat,
+            waypoint_raw_logits=waypoint_candidate.raw_logits,
+            waypoint_valid_mask=waypoint_candidate.valid_mask,
+            waypoint_offsets_route=waypoint_offsets,
+            global_stats=global_visual_stats(
+                global_logits
+            ),
+            route_context=context,
+            observed_motion=observed_motion,
+            polynomial_delta_route=polynomial_delta,
+            hidden=hidden,
+            cell=cell,
+        )
+
+        local_xy, _ = decode_refined(
+            output.local_refined_logits,
+            local_candidate.centers,
+            local_candidate.valid_mask,
+        )
+
+        recovery_xy, _ = decode_refined(
+            output.recovery_refined_logits,
+            recovery_candidate.centers,
+            recovery_candidate.valid_mask,
+        )
+
+        waypoint_xy, _ = decode_refined(
+            output.waypoint_refined_logits,
+            waypoint_candidate.centers,
+            waypoint_candidate.valid_mask,
+        )
+
+        current_visual_xy, hypotheses = (
+            compose_hypotheses(
+                previous_visual_xy,
+                local_xy,
+                recovery_xy,
+                waypoint_xy,
+                output.branch_probability,
+            )
+        )
+
+        position_loss = F.smooth_l1_loss(
+            current_visual_xy,
+            gt_xy,
+        )
+
+        branch_target = branch_distribution_target(
+            hypotheses,
+            gt_xy,
+        )
+
+        # Standard class-balancing emphasis for the rare waypoint-transition
+        # hypothesis, still fully supervised by Route-A only.
+        branch_weight = (
+            1.0
+            + 2.0
+            * branch_target[
+                :,
+                config.HYPOTHESIS_WAYPOINT
+            ]
+        )
+
+        branch_loss_per_frame = -(
+            branch_target
+            * output.branch_probability.clamp_min(
+                1e-8
+            ).log()
+        ).sum(dim=1)
+
+        branch_loss = (
+            branch_weight
+            * branch_loss_per_frame
+        ).mean()
+
+        local_ce, local_capture = (
+            masked_candidate_ce(
+                output.local_refined_logits,
+                local_candidate.centers,
+                local_candidate.valid_mask,
+                gt_xy,
+            )
+        )
+
+        recovery_ce, recovery_capture = (
+            masked_candidate_ce(
+                output.recovery_refined_logits,
+                recovery_candidate.centers,
+                recovery_candidate.valid_mask,
+                gt_xy,
+            )
+        )
+
+        waypoint_ce, waypoint_capture = (
+            masked_candidate_ce(
+                output.waypoint_refined_logits,
+                waypoint_candidate.centers,
+                waypoint_candidate.valid_mask,
+                gt_xy,
+            )
+        )
+
+        target_step = (
+            gt_xy
+            - previous_gt
+        )
+
+        predicted_step = (
+            current_visual_xy
+            - previous_visual_xy
+        )
+
+        step_loss = F.smooth_l1_loss(
+            predicted_step,
+            target_step,
+        )
+
+        loss = (
+            float(config.LOSS_POSITION)
+            * position_loss
+            + float(
+                config.LOSS_BRANCH_DISTRIBUTION
+            )
+            * branch_loss
+            + float(
+                config.LOSS_LOCAL_CANDIDATE_CE
+            )
+            * local_ce
+            + float(
+                config.LOSS_RECOVERY_CANDIDATE_CE
+            )
+            * recovery_ce
+            + float(
+                config.LOSS_WAYPOINT_CANDIDATE_CE
+            )
+            * waypoint_ce
+            + float(config.LOSS_STEP)
+            * step_loss
+        )
+
+        accumulated_loss = (
+            loss
+            if accumulated_loss is None
+            else accumulated_loss + loss
+        )
+
+        accumulated_steps += 1
+
+        branch = (
+            output.branch_probability[
+                0
+            ].detach().cpu().numpy()
+        )
+
+        logs.append(
+            {
+                "loss": float(
+                    loss.detach().cpu()
+                ),
+                "position": float(
+                    position_loss.detach().cpu()
+                ),
+                "branch": float(
+                    branch_loss.detach().cpu()
+                ),
+                "hold": float(
+                    branch[
+                        config.HYPOTHESIS_HOLD
+                    ]
+                ),
+                "local": float(
+                    branch[
+                        config.HYPOTHESIS_LOCAL
+                    ]
+                ),
+                "recovery": float(
+                    branch[
+                        config.HYPOTHESIS_RECOVERY
+                    ]
+                ),
+                "waypoint": float(
+                    branch[
+                        config.HYPOTHESIS_WAYPOINT
+                    ]
+                ),
+                "local_capture": float(
+                    local_capture.detach().cpu()
+                ),
+                "recovery_capture": float(
+                    recovery_capture.detach().cpu()
+                ),
+                "waypoint_capture": float(
+                    waypoint_capture.detach().cpu()
+                ),
+            }
+        )
+
+        new_motion = update_observed_motion(
+            observed_motion,
+            previous_visual_xy,
+            current_visual_xy,
+            leg,
+        )
+
+        hidden = output.hidden
+        cell = output.cell
+        observed_motion = new_motion
+
+        previous_z_uav = z_uav.detach()
+        previous_visual_xy = current_visual_xy
+        previous_gt = gt_xy.detach()
+
+        chunk_end = (
+            accumulated_steps
+            >= int(config.TBPTT_STEPS)
+            or sequence_index
+            == len(cache) - 1
+        )
+
+        if chunk_end:
+            normalized = (
+                accumulated_loss
+                / float(accumulated_steps)
+            )
+
+            if not torch.isfinite(normalized):
+                raise FloatingPointError(
+                    "non-finite temporal loss"
+                )
+
+            normalized.backward()
+
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(),
+                float(config.GRAD_CLIP_NORM),
+            )
+
+            optimizer.step()
+            optimizer.zero_grad(
+                set_to_none=True
+            )
+
+            hidden = hidden.detach()
+            cell = cell.detach()
+            observed_motion = (
+                observed_motion.detach()
+            )
+            previous_visual_xy = (
+                previous_visual_xy.detach()
+            )
+            previous_z_uav = (
+                previous_z_uav.detach()
+            )
+
+            accumulated_loss = None
+            accumulated_steps = 0
 
     result = {}
 
     for key in (
         "loss",
-        "ce",
-        "relative",
-        "phase",
-        "step",
-        "capture",
-        "gate",
-        "stationary",
-        "rotation",
-        "ecc_shift",
+        "position",
+        "branch",
+        "hold",
+        "local",
+        "recovery",
+        "waypoint",
+        "local_capture",
+        "recovery_capture",
+        "waypoint_capture",
     ):
-        result[
-            key
-        ] = float(
+        result[key] = float(
             np.mean(
-                [
-                    row[
-                        key
-                    ]
-                    for row
-                    in logs
-                ]
+                [row[key] for row in logs]
             )
         )
 
-    result[
-        "capture_pct"
-    ] = (
-        result[
-            "capture"
-        ]
-        * 100.0
-    )
-
-    result[
-        "teacher_ratio"
-    ] = float(
-        teacher_ratio
-    )
+    result["teacher_ratio"] = float(ratio)
 
     return result
 
 
-# =============================================================================
-# Closed-loop Route-A validation
-# =============================================================================
-
-@torch.no_grad()
-def evaluate_closed_loop_legs(
-    model,
-    visual,
-    cache,
-    legs,
-    all_route_legs,
-    device,
-):
-    model.eval()
-
-    prediction_rows = []
-    gt_rows = []
-
-    for leg in legs:
-        (
-            hidden,
-            cell,
-            observed_motion,
-        ) = model.initial_state(
-            1,
-            device,
-            torch.float32,
-        )
-
-        visual_xy = (
-            leg.start_xy.to(
-                device
-            ).reshape(
-                1,
-                2,
-            )
-        )
-
-        previous_z_uav = None
-
-        leg_indices = indices_for_leg(
-            cache,
-            leg,
-            (
-                leg.index
-                == all_route_legs[
-                    -1
-                ].index
-            ),
-        )
-
-        final_leg = (
-            leg.index
-            == all_route_legs[
-                -1
-            ].index
-        )
-
-        for cache_index in leg_indices:
-            search_center = (
-                visual_xy
-            )
-
-            uav_clip = cache.uav_clip[
-                cache_index:
-                cache_index
-                + 1
-            ].to(
-                device
-            ).float()
-
-            candidate = (
-                visual.candidate_batch(
-                    uav_clip,
-                    search_center,
-                    grid_size=(
-                        config.GRID_SIZE
-                    ),
-                )
-            )
-
-            offsets_route = (
-                candidate_offsets_in_leg_frame(
-                    candidate.centers,
-                    search_center,
-                    leg,
-                )
-            )
-
-            context = route_context_tensor(
-                search_center,
-                leg,
-                final_leg,
-            )
-
-            image_motion_cue = (
-                cache.image_motion_cues[
-                    cache_index:
-                    cache_index
-                    + 1
-                ].to(
-                    device
-                ).float()
-            )
-
-            output = model.forward_step(
-                candidate.z_uav,
-                previous_z_uav,
-                candidate.z_sat,
-                candidate.raw_logits,
-                candidate.raw_prob,
-                offsets_route,
-                context,
-                image_motion_cue,
-                observed_motion,
-                hidden,
-                cell,
-            )
-
-            (
-                proposal_xy,
-                _,
-            ) = decode_visual_proposal(
-                output.refined_logits,
-                candidate.centers,
-            )
-
-            new_visual_xy = (
-                apply_translation_gate(
-                    visual_xy,
-                    proposal_xy,
-                    output.translation_gate,
-                )
-            )
-
-            prediction_rows.append(
-                new_visual_xy[
-                    0
-                ].cpu()
-                .numpy()
-            )
-
-            gt_rows.append(
-                cache.gt_xy[
-                    cache_index
-                ].numpy()
-            )
-
-            observed_motion = (
-                update_observed_motion_state(
-                    observed_motion,
-                    visual_xy,
-                    new_visual_xy,
-                    leg,
-                )
-            )
-
-            visual_xy = (
-                new_visual_xy
-            )
-
-            previous_z_uav = (
-                candidate.z_uav
-            )
-
-            hidden = output.hidden
-            cell = output.cell
-
-    prediction = np.asarray(
-        prediction_rows,
-        dtype=np.float64,
-    )
-
-    gt = np.asarray(
-        gt_rows,
-        dtype=np.float64,
-    )
-
-    error = np.linalg.norm(
-        prediction
-        - gt,
-        axis=1,
-    )
-
-    if len(
-        prediction
-    ) > 1:
-        rpe = np.linalg.norm(
-            np.diff(
-                prediction,
-                axis=0,
-            )
-            - np.diff(
-                gt,
-                axis=0,
-            ),
-            axis=1,
-        ).mean()
-    else:
-        rpe = 0.0
-
-    return {
-        "MLE_m": float(
-            error.mean()
-        ),
-        "P90_m": float(
-            np.percentile(
-                error,
-                90,
-            )
-        ),
-        "RPE_m": float(
-            rpe
-        ),
-    }
-
-
-# =============================================================================
-# Temporal driver
-# =============================================================================
-
 def train_temporal_model(
     model,
     visual,
+    gallery_z_sat,
     cache,
-    training_route,
+    route,
+    banks,
     device,
     epochs,
 ):
-    split = split_training_legs(
-        training_route
-    )
-
     print(
-        "Route-A leg split:",
-        {
-            key: [
-                (
-                    leg.start.order,
-                    leg.end.order,
-                )
-                for leg
-                in value
-            ]
-            for key, value
-            in split.items()
-        },
-        flush=True,
-    )
-
-    print(
-        "v5 MOTION RULE:",
-        flush=True,
-    )
-
-    print(
-        "  NO fixed speed / nominal speed / learned free-running velocity head",
-        flush=True,
-    )
-
-    print(
-        "  previous motion = displacement actually observed from previous "
-        "IMAGE-derived localizations",
-        flush=True,
-    )
-
-    print(
-        "  current-vs-previous UAV image pair predicts "
-        "stationary / translation / rotation",
-        flush=True,
-    )
-
-    print(
-        "  polynomial is disabled automatically when translation probability is low",
+        "TEMPORAL v6: all Route-A frames, "
+        "HOLD/LOCAL/RECOVERY/WAYPOINT",
         flush=True,
     )
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=float(
-            config.TEMPORAL_LR
-        ),
+        lr=float(config.TEMPORAL_LR),
         weight_decay=float(
             config.TEMPORAL_WEIGHT_DECAY
         ),
     )
-
-    best_score = float(
-        "inf"
-    )
-
-    best_state = None
-    patience = 0
 
     config.CHECKPOINT_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    for epoch_index in range(
-        int(
-            epochs
+    for epoch_index in range(int(epochs)):
+        metrics = train_one_epoch(
+            model=model,
+            optimizer=optimizer,
+            visual=visual,
+            gallery_z_sat=gallery_z_sat,
+            cache=cache,
+            route=route,
+            banks=banks,
+            device=device,
+            epoch_index=epoch_index,
         )
-    ):
-        training = train_one_epoch(
-            model,
-            optimizer,
-            visual,
-            cache,
-            split[
-                "train"
-            ],
-            training_route.legs,
-            device,
-            epoch_index,
-        )
-
-        validation = (
-            evaluate_closed_loop_legs(
-                model,
-                visual,
-                cache,
-                split[
-                    "val"
-                ],
-                training_route.legs,
-                device,
-            )
-        )
-
-        score = (
-            validation[
-                "MLE_m"
-            ]
-            + 0.25
-            * validation[
-                "RPE_m"
-            ]
-        )
-
-        if score < best_score:
-            best_score = float(
-                score
-            )
-
-            best_state = {
-                key: (
-                    value.detach()
-                    .cpu()
-                    .clone()
-                )
-                for key, value
-                in model.state_dict().items()
-            }
-
-            patience = 0
-        else:
-            patience += 1
 
         torch.save(
             {
-                "architecture": (
-                    ARCHITECTURE_NAME
-                ),
-                "model": (
-                    model.state_dict()
-                ),
-                "best_model": (
-                    best_state
-                ),
-                "epoch": (
-                    epoch_index
-                    + 1
-                ),
-                "best_score": (
-                    best_score
-                ),
-                "training_route": (
-                    "route_A"
-                ),
-                "fixed_speed_used": False,
-                "nominal_speed_used": False,
+                "architecture": ARCHITECTURE_NAME,
+                "model": model.state_dict(),
+                "epoch": epoch_index + 1,
+                "training_route": "route_A",
+                "all_route_a_frames_used": True,
+                "test_routes_used_for_training": False,
+                "fixed_speed": False,
+                "translation_gate": False,
                 "free_running_velocity_head": False,
-                "previous_motion_state_source": (
-                    "previous image-derived localization differences"
-                ),
-                "image_pair_motion_cue": (
-                    "ECC Euclidean registration + previous/current UAV embeddings"
-                ),
-                "phase_classes": [
-                    "stationary",
-                    "translation",
-                    "rotation",
+                "constant_velocity_kalman": False,
+                "hypotheses": [
+                    "HOLD",
+                    "LOCAL",
+                    "RECOVERY",
+                    "WAYPOINT",
                 ],
-                "polynomial": (
-                    "observed_delta + 0.5 * observed_acceleration"
-                ),
-                "polynomial_role": (
-                    "translation-gated soft candidate-score prior only"
+                "waypoint_transition": (
+                    "argmax recurrent WAYPOINT hypothesis"
                 ),
                 "absolute_current_gt_network_input": False,
-                "raw_gps_network_input": False,
-                "waypoint_frame_index_inference_switch": False,
-                "teacher_center_end_epoch": int(
-                    config.TEACHER_CENTER_END_EPOCH
-                ),
+                "test_waypoint_frame_index_used": False,
             },
             config.TEMPORAL_CHECKPOINT,
         )
 
         print(
             f"epoch={epoch_index + 1:03d}/{epochs} "
-            f"loss={training['loss']:.4f} "
-            f"ce={training['ce']:.4f} "
-            f"rel={training['relative']:.4f} "
-            f"phase={training['phase']:.4f} "
-            f"step={training['step']:.4f} "
-            f"capture={training['capture_pct']:.2f}% "
-            f"teacher={training['teacher_ratio']:.2f} "
-            f"move_gate={training['gate']:.3f} "
-            f"stop={training['stationary']:.3f} "
-            f"rotate={training['rotation']:.3f} "
-            f"val_mle={validation['MLE_m']:.3f}m "
-            f"val_rpe={validation['RPE_m']:.3f}m",
+            f"loss={metrics['loss']:.4f} "
+            f"pos={metrics['position']:.4f} "
+            f"branch={metrics['branch']:.4f} "
+            f"teacher={metrics['teacher_ratio']:.2f} "
+            f"H/L/R/W="
+            f"{metrics['hold']:.2f}/"
+            f"{metrics['local']:.2f}/"
+            f"{metrics['recovery']:.2f}/"
+            f"{metrics['waypoint']:.2f} "
+            f"cap L/R/W="
+            f"{metrics['local_capture'] * 100.0:.1f}/"
+            f"{metrics['recovery_capture'] * 100.0:.1f}/"
+            f"{metrics['waypoint_capture'] * 100.0:.1f}%",
             flush=True,
         )
 
-        if patience >= int(
-            config.EARLY_STOPPING_PATIENCE
-        ):
-            print(
-                "temporal early stopping",
-                flush=True,
-            )
-            break
-
-    if best_state is None:
-        raise RuntimeError(
-            "Temporal training produced no best checkpoint"
-        )
-
-    model.load_state_dict(
-        best_state,
-        strict=True,
-    )
-
-    checkpoint = torch.load(
-        config.TEMPORAL_CHECKPOINT,
-        map_location="cpu",
-    )
-
-    checkpoint[
-        "model"
-    ] = best_state
-
-    checkpoint[
-        "best_model"
-    ] = best_state
-
-    torch.save(
-        checkpoint,
-        config.TEMPORAL_CHECKPOINT,
-    )
-
-    return split
+    return {
+        "train_frames": int(len(cache)),
+        "route_a_waypoints": int(
+            len(route.waypoints)
+        ),
+        "route_a_legs": int(
+            len(route.legs)
+        ),
+    }
 
 
-def load_temporal_model(
-    model,
-    device,
-):
+def load_temporal_model(model, device):
     if not config.TEMPORAL_CHECKPOINT.exists():
         raise FileNotFoundError(
             config.TEMPORAL_CHECKPOINT
@@ -2714,9 +1450,7 @@ def load_temporal_model(
     )
 
     if (
-        checkpoint.get(
-            "architecture"
-        )
+        checkpoint.get("architecture")
         != ARCHITECTURE_NAME
     ):
         raise RuntimeError(
@@ -2724,17 +1458,8 @@ def load_temporal_model(
             f"{checkpoint.get('architecture')}"
         )
 
-    state = (
-        checkpoint.get(
-            "best_model"
-        )
-        or checkpoint[
-            "model"
-        ]
-    )
-
     model.load_state_dict(
-        state,
+        checkpoint["model"],
         strict=True,
     )
 
@@ -2742,59 +1467,13 @@ def load_temporal_model(
 
 
 # =============================================================================
-# Endpoint / terminal handling
+# Position-only Kalman / metrics
 # =============================================================================
 
-def endpoint_distance(
-    visual_xy,
-    leg,
-):
-    endpoint = leg.end_xy.to(
-        device=visual_xy.device,
-        dtype=visual_xy.dtype,
-    ).reshape(
-        1,
-        2,
-    )
-
-    return float(
-        torch.linalg.norm(
-            visual_xy
-            - endpoint,
-            dim=1,
-        )[
-            0
-        ].item()
-    )
-
-
-def endpoint_reached(
-    visual_xy,
-    leg,
-):
-    # v4's progress >= length-radius shortcut is deliberately removed.
-    # The image-derived location must actually enter the endpoint neighborhood.
-    return (
-        endpoint_distance(
-            visual_xy,
-            leg,
-        )
-        <= float(
-            config.INFER_WAYPOINT_REACHED_RADIUS_M
-        )
-    )
-
-
-# =============================================================================
-# Position-only FilterPy Kalman
-# =============================================================================
-
-def make_position_kalman(
-    initial_xy,
-):
+def make_position_kalman(initial_xy):
     if KalmanFilter is None:
         raise ImportError(
-            "FilterPy is required: pip install filterpy"
+            "FilterPy required: pip install filterpy"
         )
 
     kf = KalmanFilter(
@@ -2803,22 +1482,10 @@ def make_position_kalman(
     )
 
     kf.x = np.asarray(
-        [
-            float(
-                initial_xy[
-                    0
-                ]
-            ),
-            float(
-                initial_xy[
-                    1
-                ]
-            ),
-        ],
+        initial_xy,
         dtype=np.float64,
-    )
+    ).reshape(2)
 
-    # Random-walk position state. NO velocity.
     kf.F = np.eye(
         2,
         dtype=np.float64,
@@ -2830,20 +1497,14 @@ def make_position_kalman(
     )
 
     kf.P = (
-        np.eye(
-            2,
-            dtype=np.float64,
-        )
+        np.eye(2, dtype=np.float64)
         * float(
             config.KALMAN_INIT_POSITION_VAR
         )
     )
 
     kf.Q = (
-        np.eye(
-            2,
-            dtype=np.float64,
-        )
+        np.eye(2, dtype=np.float64)
         * float(
             config.KALMAN_Q_POSITION
         )
@@ -2852,14 +1513,7 @@ def make_position_kalman(
     return kf
 
 
-# =============================================================================
-# Metrics
-# =============================================================================
-
-def metric_block(
-    prediction,
-    gt,
-):
+def metric_block(prediction, gt):
     prediction = np.asarray(
         prediction,
         dtype=np.float64,
@@ -2871,15 +1525,12 @@ def metric_block(
     )
 
     error = np.linalg.norm(
-        prediction
-        - gt,
+        prediction - gt,
         axis=1,
     )
 
-    if len(
-        prediction
-    ) > 1:
-        prediction_step = np.diff(
+    if len(prediction) > 1:
+        pred_step = np.diff(
             prediction,
             axis=0,
         )
@@ -2890,16 +1541,13 @@ def metric_block(
         )
 
         rpe = np.linalg.norm(
-            prediction_step
-            - gt_step,
+            pred_step - gt_step,
             axis=1,
         )
 
-        gt_step_length = (
-            np.linalg.norm(
-                gt_step,
-                axis=1,
-            )
+        gt_step_length = np.linalg.norm(
+            gt_step,
+            axis=1,
         )
 
         jump_threshold = (
@@ -2909,103 +1557,60 @@ def metric_block(
                     99,
                 )
             )
-            + float(
-                config.JUMP_TOLERANCE_M
-            )
-        )
-
-        prediction_step_length = (
-            np.linalg.norm(
-                prediction_step,
-                axis=1,
-            )
+            + float(config.JUMP_TOLERANCE_M)
         )
 
         jump_rate = float(
             (
-                prediction_step_length
+                np.linalg.norm(
+                    pred_step,
+                    axis=1,
+                )
                 > jump_threshold
             ).mean()
             * 100.0
         )
     else:
-        rpe = np.zeros(
-            1,
-            dtype=np.float64,
-        )
-
+        rpe = np.zeros(1)
         jump_threshold = 0.0
         jump_rate = 0.0
 
     return {
-        "MLE_m": float(
-            error.mean()
-        ),
+        "MLE_m": float(error.mean()),
         "MedLE_m": float(
-            np.median(
-                error
-            )
+            np.median(error)
         ),
         "P90_m": float(
-            np.percentile(
-                error,
-                90,
-            )
+            np.percentile(error, 90)
         ),
         "P95_m": float(
-            np.percentile(
-                error,
-                95,
-            )
+            np.percentile(error, 95)
         ),
         "ATE_RMSE_m": float(
             np.sqrt(
-                np.mean(
-                    error
-                    ** 2
-                )
+                np.mean(error ** 2)
             )
         ),
-        "RPE_m": float(
-            rpe.mean()
-        ),
-        "JumpRate_pct": float(
-            jump_rate
-        ),
-        "JumpThreshold_m": float(
-            jump_threshold
-        ),
+        "RPE_m": float(rpe.mean()),
+        "JumpRate_pct": jump_rate,
+        "JumpThreshold_m": jump_threshold,
         "LSR@5_pct": float(
-            (
-                error
-                <= 5.0
-            ).mean()
+            (error <= 5.0).mean()
             * 100.0
         ),
         "LSR@10_pct": float(
-            (
-                error
-                <= 10.0
-            ).mean()
+            (error <= 10.0).mean()
             * 100.0
         ),
         "LSR@15_pct": float(
-            (
-                error
-                <= 15.0
-            ).mean()
+            (error <= 15.0).mean()
             * 100.0
         ),
         "LSR@20_pct": float(
-            (
-                error
-                <= 20.0
-            ).mean()
+            (error <= 20.0).mean()
             * 100.0
         ),
-        "MaxLE_m": float(
-            error.max()
-        ),
+        "MaxLE_m": float(error.max()),
     }
 
 
@@ -3017,57 +1622,49 @@ def metric_block(
 def run_inference(
     model,
     visual,
+    gallery_z_sat,
     cache,
     route,
+    banks,
     device,
     csv_path,
 ):
     model.eval()
 
-    (
-        hidden,
-        cell,
-        observed_motion,
-    ) = model.initial_state(
+    hidden, cell = model.initial_state(
         1,
         device,
         torch.float32,
     )
 
-    active_leg_index = 0
+    observed_motion = torch.zeros(
+        1,
+        int(config.OBSERVED_MOTION_DIM),
+        device=device,
+        dtype=torch.float32,
+    )
 
-    active_leg = route.legs[
-        active_leg_index
-    ]
+    active_leg_index = 0
+    active_leg = route.legs[0]
 
     visual_xy = (
         active_leg.start_xy.to(
             device
-        ).reshape(
-            1,
-            2,
-        )
+        ).reshape(1, 2)
     )
 
     previous_z_uav = None
 
-    kf = make_position_kalman(
-        visual_xy[
-            0
-        ].cpu()
-        .numpy()
-    )
+    mission_complete = False
+    terminal_frame = None
 
-    terminal_locked = False
-    terminal_lock_frame = None
+    kf = make_position_kalman(
+        visual_xy[0].cpu().numpy()
+    )
 
     rows = []
 
-    for sequence_index in range(
-        len(
-            cache
-        )
-    ):
+    for sequence_index in range(len(cache)):
         frame_id = int(
             cache.frame_ids[
                 sequence_index
@@ -3080,140 +1677,220 @@ def run_inference(
 
         final_leg = (
             active_leg_index
-            == len(
-                route.legs
-            )
-            - 1
+            == len(route.legs) - 1
         )
 
-        search_center = (
-            visual_xy
-        )
+        previous_xy = visual_xy
 
         uav_clip = cache.uav_clip[
             sequence_index:
-            sequence_index
-            + 1
-        ].to(
-            device
-        ).float()
+            sequence_index + 1
+        ].to(device).float()
 
-        candidate = (
-            visual.candidate_batch(
+        z_uav = visual.model.encode_uav_from_clip(
+            uav_clip
+        )
+
+        bank_indices = banks[
+            active_leg_index
+        ]
+
+        global_logits, global_top_xy = (
+            score_global_route(
+                visual,
+                z_uav,
+                gallery_z_sat,
+                bank_indices,
+            )
+        )
+
+        local_candidate = build_bounded_candidate(
+            visual,
+            uav_clip,
+            visual_xy,
+            active_leg,
+            bank_indices,
+        )
+
+        recovery_candidate = (
+            build_bounded_candidate(
+                visual,
                 uav_clip,
-                search_center,
-                grid_size=(
-                    config.GRID_SIZE
-                ),
-            )
-        )
-
-        offsets_route = (
-            candidate_offsets_in_leg_frame(
-                candidate.centers,
-                search_center,
+                global_top_xy,
                 active_leg,
+                bank_indices,
             )
         )
 
-        route_context = (
-            route_context_tensor(
-                search_center,
-                active_leg,
-                final_leg,
-            )
-        )
-
-        image_motion_cue = (
-            cache.image_motion_cues[
-                sequence_index:
-                sequence_index
-                + 1
-            ].to(
+        endpoint_center = (
+            active_leg.end_xy.to(
                 device
-            ).float()
+            ).reshape(1, 2)
+        )
+
+        waypoint_candidate = (
+            build_waypoint_candidate(
+                visual,
+                uav_clip,
+                endpoint_center,
+            )
+        )
+
+        local_offsets = candidate_offsets_route(
+            local_candidate.centers,
+            visual_xy,
+            active_leg,
+        )
+
+        recovery_offsets = candidate_offsets_route(
+            recovery_candidate.centers,
+            visual_xy,
+            active_leg,
+        )
+
+        waypoint_offsets = candidate_offsets_route(
+            waypoint_candidate.centers,
+            visual_xy,
+            active_leg,
+        )
+
+        context = route_context(
+            visual_xy,
+            active_leg,
+            final_leg,
+        )
+
+        polynomial_delta = (
+            observed_motion[:, 0:2]
+            + 0.5
+            * observed_motion[:, 2:4]
         )
 
         output = model.forward_step(
-            candidate.z_uav,
-            previous_z_uav,
-            candidate.z_sat,
-            candidate.raw_logits,
-            candidate.raw_prob,
-            offsets_route,
-            route_context,
-            image_motion_cue,
-            observed_motion,
-            hidden,
-            cell,
+            z_uav=z_uav,
+            previous_z_uav=previous_z_uav,
+            local_z_sat=local_candidate.z_sat,
+            local_raw_logits=local_candidate.raw_logits,
+            local_valid_mask=local_candidate.valid_mask,
+            local_offsets_route=local_offsets,
+            recovery_z_sat=recovery_candidate.z_sat,
+            recovery_raw_logits=recovery_candidate.raw_logits,
+            recovery_valid_mask=recovery_candidate.valid_mask,
+            recovery_offsets_route=recovery_offsets,
+            waypoint_z_sat=waypoint_candidate.z_sat,
+            waypoint_raw_logits=waypoint_candidate.raw_logits,
+            waypoint_valid_mask=waypoint_candidate.valid_mask,
+            waypoint_offsets_route=waypoint_offsets,
+            global_stats=global_visual_stats(
+                global_logits
+            ),
+            route_context=context,
+            observed_motion=observed_motion,
+            polynomial_delta_route=polynomial_delta,
+            hidden=hidden,
+            cell=cell,
         )
 
-        (
-            proposal_xy,
-            refined_probability,
-        ) = decode_visual_proposal(
-            output.refined_logits,
-            candidate.centers,
+        local_xy, _ = decode_refined(
+            output.local_refined_logits,
+            local_candidate.centers,
+            local_candidate.valid_mask,
         )
 
-        if terminal_locked:
-            # Mission is finished. Keep the last IMAGE-derived terminal state.
-            # No fixed speed / polynomial / Kalman velocity exists.
-            current_visual_xy = (
-                visual_xy
-            )
-
-            effective_translation_gate = torch.zeros_like(
-                output.translation_gate
-            )
-        else:
-            current_visual_xy = (
-                apply_translation_gate(
-                    visual_xy,
-                    proposal_xy,
-                    output.translation_gate,
-                )
-            )
-
-            effective_translation_gate = (
-                output.translation_gate
-            )
-
-        (
-            _,
-            _,
-            unit,
-            normal,
-            _,
-        ) = leg_geometry(
-            active_leg,
-            device=device,
-            dtype=torch.float32,
+        recovery_xy, _ = decode_refined(
+            output.recovery_refined_logits,
+            recovery_candidate.centers,
+            recovery_candidate.valid_mask,
         )
 
-        polynomial_delta_xy = (
-            leg_frame_vector_to_xy(
-                output.polynomial_delta_route,
-                unit,
-                normal,
+        waypoint_xy, _ = decode_refined(
+            output.waypoint_refined_logits,
+            waypoint_candidate.centers,
+            waypoint_candidate.valid_mask,
+        )
+
+        proposed_xy, hypotheses = (
+            compose_hypotheses(
+                visual_xy,
+                local_xy,
+                recovery_xy,
+                waypoint_xy,
+                output.branch_probability,
+            )
+        )
+
+        selected_branch = int(
+            output.branch_probability[
+                0
+            ].argmax()
+            .cpu()
+            .item()
+        )
+
+        current_visual_xy = (
+            visual_xy
+            if mission_complete
+            else proposed_xy
+        )
+
+        _, _, unit, normal, _ = (
+            leg_geometry(
+                active_leg,
+                device=device,
+                dtype=torch.float32,
             )
         )
 
         polynomial_xy = (
             visual_xy
-            + polynomial_delta_xy
-        )
-
-        new_observed_motion = (
-            update_observed_motion_state(
-                observed_motion,
-                visual_xy,
-                current_visual_xy,
-                active_leg,
+            + leg_frame_to_xy(
+                polynomial_delta,
+                unit.reshape(1, 2),
+                normal.reshape(1, 2),
             )
         )
 
-        # Position-only Kalman: predict does not advance XY.
+        new_motion = update_observed_motion(
+            observed_motion,
+            visual_xy,
+            current_visual_xy,
+            active_leg,
+        )
+
+        switched = False
+        waypoint_selected = (
+            not mission_complete
+            and selected_branch
+            == int(
+                config.HYPOTHESIS_WAYPOINT
+            )
+        )
+
+        if waypoint_selected:
+            if final_leg:
+                if bool(
+                    config.TERMINAL_LOCK_ENABLED
+                ):
+                    mission_complete = True
+                    terminal_frame = int(frame_id)
+                    new_motion = torch.zeros_like(
+                        new_motion
+                    )
+            else:
+                old_leg = active_leg
+                active_leg_index += 1
+                new_leg = route.legs[
+                    active_leg_index
+                ]
+
+                new_motion = rotate_observed_motion(
+                    new_motion,
+                    old_leg,
+                    new_leg,
+                )
+
+                switched = True
+
         kf.predict()
 
         measurement_variance = (
@@ -3221,9 +1898,7 @@ def run_inference(
                 0
             ].cpu()
             .numpy()
-            .astype(
-                np.float64
-            )
+            .astype(np.float64)
         )
 
         kf.R = np.diag(
@@ -3235,182 +1910,51 @@ def run_inference(
                 0
             ].cpu()
             .numpy()
-            .astype(
-                np.float64
-            )
+            .astype(np.float64)
         )
 
         final_xy = np.asarray(
             kf.x,
             dtype=np.float64,
-        ).reshape(
-            2
-        )
-
-        raw_top1 = (
-            candidate.raw_top1_xy[
-                0
-            ].cpu()
-            .numpy()
-        )
-
-        raw_hardms = (
-            candidate.hardms_xy[
-                0
-            ].cpu()
-            .numpy()
-        )
-
-        refined_hardms, refined_support = (
-            hard_mean_shift(
-                output.refined_logits,
-                candidate.centers,
-                1.0,
-                config.MEANSHIFT_BANDWIDTH_M,
-                config.MEANSHIFT_ITERATIONS,
-            )
-        )
-
-        refined_hardms_np = (
-            refined_hardms[
-                0
-            ].cpu()
-            .numpy()
-        )
-
-        proposal_np = (
-            proposal_xy[
-                0
-            ].cpu()
-            .numpy()
-        )
-
-        current_visual_np = (
-            current_visual_xy[
-                0
-            ].cpu()
-            .numpy()
-        )
-
-        polynomial_np = (
-            polynomial_xy[
-                0
-            ].cpu()
-            .numpy()
-        )
+        ).reshape(2)
 
         gt_xy = cache.gt_xy[
             sequence_index
         ].numpy()
 
-        phase_probability = (
-            output.phase_probability[
+        branch = (
+            output.branch_probability[
                 0
             ].cpu()
             .numpy()
         )
 
-        predicted_phase = int(
-            np.argmax(
-                phase_probability
-            )
+        local_np = (
+            local_xy[0].cpu().numpy()
         )
 
-        cue_np = (
-            image_motion_cue[
+        recovery_np = (
+            recovery_xy[0].cpu().numpy()
+        )
+
+        waypoint_np = (
+            waypoint_xy[0].cpu().numpy()
+        )
+
+        global_np = (
+            global_top_xy[0].cpu().numpy()
+        )
+
+        visual_np = (
+            current_visual_xy[
                 0
-            ].cpu()
-            .numpy()
+            ].cpu().numpy()
         )
 
-        ecc_shift_norm = float(
-            math.sqrt(
-                float(
-                    cue_np[
-                        0
-                    ]
-                    ** 2
-                )
-                + float(
-                    cue_np[
-                        1
-                    ]
-                    ** 2
-                )
-            )
-        )
-
-        ecc_rotation_deg = math.degrees(
-            math.atan2(
-                abs(
-                    float(
-                        cue_np[
-                            2
-                        ]
-                    )
-                ),
-                max(
-                    -1.0,
-                    min(
-                        1.0,
-                        1.0
-                        - float(
-                            cue_np[
-                                3
-                            ]
-                        ),
-                    ),
-                ),
-            )
-        )
-
-        switched = False
-        reached_now = False
-
-        if (
-            not terminal_locked
-            and endpoint_reached(
-                current_visual_xy,
-                active_leg,
-            )
-        ):
-            reached_now = True
-
-            if final_leg:
-                if bool(
-                    config.TERMINAL_LOCK_ENABLED
-                ):
-                    terminal_locked = True
-                    terminal_lock_frame = (
-                        frame_id
-                    )
-
-                    new_observed_motion = torch.zeros_like(
-                        new_observed_motion
-                    )
-            else:
-                old_leg = (
-                    active_leg
-                )
-
-                active_leg_index += 1
-
-                new_leg = route.legs[
-                    active_leg_index
-                ]
-
-                new_observed_motion = (
-                    rotate_observed_motion_state(
-                        new_observed_motion,
-                        old_leg,
-                        new_leg,
-                    )
-                )
-
-                switched = True
-
-        current_leg_for_log = (
-            active_leg
+        polynomial_np = (
+            polynomial_xy[
+                0
+            ].cpu().numpy()
         )
 
         rows.append(
@@ -3418,327 +1962,178 @@ def run_inference(
                 "sequence_index": int(
                     sequence_index
                 ),
-                "frame_id": int(
-                    frame_id
-                ),
+                "frame_id": int(frame_id),
                 "image_path": (
                     cache.image_paths[
                         sequence_index
                     ]
                 ),
                 "active_waypoint_from": int(
-                    current_leg_for_log.start.order
+                    active_leg.start.order
                 ),
                 "active_waypoint_to": int(
-                    current_leg_for_log.end.order
+                    active_leg.end.order
                 ),
-                "waypoint_reached_this_frame": int(
-                    reached_now
+                "waypoint_branch_selected": int(
+                    waypoint_selected
                 ),
                 "waypoint_switched_after_frame": int(
                     switched
                 ),
-                "terminal_locked": int(
-                    terminal_locked
+                "mission_complete": int(
+                    mission_complete
                 ),
-                "gt_x": float(
-                    gt_xy[
-                        0
-                    ]
-                ),
-                "gt_y": float(
-                    gt_xy[
-                        1
-                    ]
-                ),
-                "search_center_x": float(
-                    search_center[
+                "gt_x": float(gt_xy[0]),
+                "gt_y": float(gt_xy[1]),
+                "hold_x": float(
+                    previous_xy[
                         0,
                         0
-                    ].cpu()
-                    .item()
+                    ].cpu().item()
                 ),
-                "search_center_y": float(
-                    search_center[
+                "hold_y": float(
+                    previous_xy[
                         0,
                         1
-                    ].cpu()
-                    .item()
+                    ].cpu().item()
                 ),
-                "raw_top1_x": float(
-                    raw_top1[
-                        0
-                    ]
+                "local_x": float(local_np[0]),
+                "local_y": float(local_np[1]),
+                "recovery_x": float(
+                    recovery_np[0]
                 ),
-                "raw_top1_y": float(
-                    raw_top1[
-                        1
-                    ]
+                "recovery_y": float(
+                    recovery_np[1]
                 ),
-                "raw_hardms_x": float(
-                    raw_hardms[
-                        0
-                    ]
+                "waypoint_x": float(
+                    waypoint_np[0]
                 ),
-                "raw_hardms_y": float(
-                    raw_hardms[
-                        1
-                    ]
+                "waypoint_y": float(
+                    waypoint_np[1]
                 ),
-                "refined_hardms_x": float(
-                    refined_hardms_np[
-                        0
-                    ]
+                "global_top1_x": float(
+                    global_np[0]
                 ),
-                "refined_hardms_y": float(
-                    refined_hardms_np[
-                        1
-                    ]
-                ),
-                "proposal_x": float(
-                    proposal_np[
-                        0
-                    ]
-                ),
-                "proposal_y": float(
-                    proposal_np[
-                        1
-                    ]
-                ),
-                "visual_measurement_x": float(
-                    current_visual_np[
-                        0
-                    ]
-                ),
-                "visual_measurement_y": float(
-                    current_visual_np[
-                        1
-                    ]
+                "global_top1_y": float(
+                    global_np[1]
                 ),
                 "polynomial_x": float(
-                    polynomial_np[
-                        0
-                    ]
+                    polynomial_np[0]
                 ),
                 "polynomial_y": float(
-                    polynomial_np[
-                        1
+                    polynomial_np[1]
+                ),
+                "branch_hold": float(
+                    branch[
+                        config.HYPOTHESIS_HOLD
                     ]
                 ),
-                "translation_probability": float(
-                    phase_probability[
-                        config.PHASE_TRANSLATION
+                "branch_local": float(
+                    branch[
+                        config.HYPOTHESIS_LOCAL
                     ]
                 ),
-                "stationary_probability": float(
-                    phase_probability[
-                        config.PHASE_STATIONARY
+                "branch_recovery": float(
+                    branch[
+                        config.HYPOTHESIS_RECOVERY
                     ]
                 ),
-                "rotation_probability": float(
-                    phase_probability[
-                        config.PHASE_ROTATION
+                "branch_waypoint": float(
+                    branch[
+                        config.HYPOTHESIS_WAYPOINT
                     ]
                 ),
-                "predicted_phase": int(
-                    predicted_phase
+                "selected_branch": int(
+                    selected_branch
                 ),
-                "effective_translation_gate": float(
-                    effective_translation_gate[
-                        0,
-                        0
-                    ].cpu()
-                    .item()
+                "visual_x": float(
+                    visual_np[0]
                 ),
-                "ecc_center_shift_norm": float(
-                    ecc_shift_norm
-                ),
-                "ecc_rotation_deg": float(
-                    ecc_rotation_deg
-                ),
-                "ecc_correlation": float(
-                    cue_np[
-                        4
-                    ]
+                "visual_y": float(
+                    visual_np[1]
                 ),
                 "observed_delta_parallel": float(
-                    new_observed_motion[
+                    new_motion[
                         0,
                         0
-                    ].cpu()
-                    .item()
+                    ].cpu().item()
                 ),
                 "observed_delta_cross": float(
-                    new_observed_motion[
+                    new_motion[
                         0,
                         1
-                    ].cpu()
-                    .item()
+                    ].cpu().item()
                 ),
                 "observed_acc_parallel": float(
-                    new_observed_motion[
+                    new_motion[
                         0,
                         2
-                    ].cpu()
-                    .item()
+                    ].cpu().item()
                 ),
                 "observed_acc_cross": float(
-                    new_observed_motion[
+                    new_motion[
                         0,
                         3
-                    ].cpu()
-                    .item()
-                ),
-                "inertia_strength": float(
-                    output.inertia_strength[
-                        0,
-                        0
-                    ].cpu()
-                    .item()
-                ),
-                "polynomial_sigma_m": float(
-                    output.polynomial_sigma[
-                        0,
-                        0
-                    ].cpu()
-                    .item()
+                    ].cpu().item()
                 ),
                 "measurement_var_x": float(
-                    measurement_variance[
-                        0
-                    ]
+                    measurement_variance[0]
                 ),
                 "measurement_var_y": float(
-                    measurement_variance[
-                        1
-                    ]
+                    measurement_variance[1]
                 ),
-                "refined_hardms_support": float(
-                    refined_support[
-                        0
-                    ].cpu()
-                    .item()
-                ),
-                "final_x": float(
-                    final_xy[
-                        0
-                    ]
-                ),
-                "final_y": float(
-                    final_xy[
-                        1
-                    ]
-                ),
+                "final_x": float(final_xy[0]),
+                "final_y": float(final_xy[1]),
                 "error_visual_m": float(
                     np.linalg.norm(
-                        current_visual_np
-                        - gt_xy
+                        visual_np - gt_xy
                     )
                 ),
                 "error_final_m": float(
                     np.linalg.norm(
-                        final_xy
-                        - gt_xy
+                        final_xy - gt_xy
                     )
                 ),
             }
         )
 
-        hidden = (
-            output.hidden
-        )
-
-        cell = (
-            output.cell
-        )
-
-        observed_motion = (
-            new_observed_motion
-        )
-
-        previous_z_uav = (
-            candidate.z_uav
-        )
-
-        visual_xy = (
-            current_visual_xy
-        )
+        hidden = output.hidden
+        cell = output.cell
+        observed_motion = new_motion
+        previous_z_uav = z_uav
+        visual_xy = current_visual_xy
 
     gt = np.asarray(
         [
-            [
-                row[
-                    "gt_x"
-                ],
-                row[
-                    "gt_y"
-                ],
-            ]
-            for row
-            in rows
+            [row["gt_x"], row["gt_y"]]
+            for row in rows
+        ],
+        dtype=np.float64,
+    )
+
+    visual_prediction = np.asarray(
+        [
+            [row["visual_x"], row["visual_y"]]
+            for row in rows
+        ],
+        dtype=np.float64,
+    )
+
+    final_prediction = np.asarray(
+        [
+            [row["final_x"], row["final_y"]]
+            for row in rows
         ],
         dtype=np.float64,
     )
 
     summary = {
-        "RawTop1": metric_block(
-            [
-                [
-                    row[
-                        "raw_top1_x"
-                    ],
-                    row[
-                        "raw_top1_y"
-                    ],
-                ]
-                for row
-                in rows
-            ],
-            gt,
-        ),
-        "RawHardMS": metric_block(
-            [
-                [
-                    row[
-                        "raw_hardms_x"
-                    ],
-                    row[
-                        "raw_hardms_y"
-                    ],
-                ]
-                for row
-                in rows
-            ],
-            gt,
-        ),
-        "VisualMotionGatedMeasurement": metric_block(
-            [
-                [
-                    row[
-                        "visual_measurement_x"
-                    ],
-                    row[
-                        "visual_measurement_y"
-                    ],
-                ]
-                for row
-                in rows
-            ],
+        "RouteBoundedVisual": metric_block(
+            visual_prediction,
             gt,
         ),
         "FinalPositionKalman": metric_block(
-            [
-                [
-                    row[
-                        "final_x"
-                    ],
-                    row[
-                        "final_y"
-                    ],
-                ]
-                for row
-                in rows
-            ],
+            final_prediction,
             gt,
         ),
         "WaypointSwitchCount": int(
@@ -3746,57 +2141,48 @@ def run_inference(
                 row[
                     "waypoint_switched_after_frame"
                 ]
-                for row
-                in rows
+                for row in rows
             )
         ),
-        "TerminalLockFrame": (
-            None
-            if terminal_lock_frame
-            is None
-            else int(
-                terminal_lock_frame
-            )
+        "ExpectedWaypointSwitchCount": int(
+            max(0, len(route.legs) - 1)
         ),
-        "MeanTranslationProbability": float(
+        "TerminalFrame": terminal_frame,
+        "MeanHoldProbability": float(
             np.mean(
                 [
-                    row[
-                        "translation_probability"
-                    ]
-                    for row
-                    in rows
+                    row["branch_hold"]
+                    for row in rows
                 ]
             )
         ),
-        "MeanStationaryProbability": float(
+        "MeanLocalProbability": float(
             np.mean(
                 [
-                    row[
-                        "stationary_probability"
-                    ]
-                    for row
-                    in rows
+                    row["branch_local"]
+                    for row in rows
                 ]
             )
         ),
-        "MeanRotationProbability": float(
+        "MeanRecoveryProbability": float(
             np.mean(
                 [
-                    row[
-                        "rotation_probability"
-                    ]
-                    for row
-                    in rows
+                    row["branch_recovery"]
+                    for row in rows
+                ]
+            )
+        ),
+        "MeanWaypointProbability": float(
+            np.mean(
+                [
+                    row["branch_waypoint"]
+                    for row in rows
                 ]
             )
         ),
     }
 
-    csv_path = Path(
-        csv_path
-    )
-
+    csv_path = Path(csv_path)
     csv_path.parent.mkdir(
         parents=True,
         exist_ok=True,
@@ -3810,22 +2196,13 @@ def run_inference(
         writer = csv.DictWriter(
             file,
             fieldnames=list(
-                rows[
-                    0
-                ].keys()
+                rows[0].keys()
             ),
         )
-
         writer.writeheader()
+        writer.writerows(rows)
 
-        writer.writerows(
-            rows
-        )
-
-    return (
-        summary,
-        rows,
-    )
+    return summary, rows
 
 
 # =============================================================================
@@ -3834,9 +2211,7 @@ def run_inference(
 
 def route_catalog():
     return {
-        name: Path(
-            root
-        )
+        name: Path(root)
         for name, root
         in zip(
             config.ROUTE_NAMES,
@@ -3861,17 +2236,13 @@ def main():
     parser.add_argument(
         "--visual-epochs",
         type=int,
-        default=(
-            config.VISUAL_EPOCHS
-        ),
+        default=config.VISUAL_EPOCHS,
     )
 
     parser.add_argument(
         "--temporal-epochs",
         type=int,
-        default=(
-            config.TEMPORAL_EPOCHS
-        ),
+        default=config.TEMPORAL_EPOCHS,
     )
 
     parser.add_argument(
@@ -3881,9 +2252,7 @@ def main():
 
     args = parser.parse_args()
 
-    set_seed(
-        config.SEED
-    )
+    set_seed(config.SEED)
 
     device = torch.device(
         config.DEVICE
@@ -3891,55 +2260,33 @@ def main():
         else "cpu"
     )
 
+    print("=" * 100, flush=True)
     print(
-        "="
-        * 100,
+        "ROUTE-BOUNDED HYPOTHESIS LSTM v6",
         flush=True,
     )
-
+    print("=" * 100, flush=True)
     print(
-        "VISUAL-MOTION-GATED ROUTE LSTM v5",
+        "No fixed speed / translation gate / velocity extrapolation.",
         flush=True,
     )
-
     print(
-        "="
-        * 100,
+        "Branches: HOLD / LOCAL / RECOVERY / WAYPOINT.",
         flush=True,
     )
-
     print(
-        "NO fixed speed. NO nominal speed. NO learned free-running velocity.",
+        "WAYPOINT branch is the learned mission-leg transition.",
         flush=True,
     )
-
     print(
-        "Current+previous UAV images explicitly classify "
-        "STATIONARY / TRANSLATION / ROTATION.",
+        "Current-leg visual candidates are bounded by Start->End corridor.",
         flush=True,
     )
-
     print(
-        "Previous v/a state is reconstructed only from previous "
-        "IMAGE-derived localization differences.",
+        "Polynomial is observed-motion context only; it cannot move XY.",
         flush=True,
     )
-
-    print(
-        "Polynomial is translation-gated and can never move the state by itself.",
-        flush=True,
-    )
-
-    print(
-        "Final FilterPy Kalman is position-only; it has no vx/vy state.",
-        flush=True,
-    )
-
-    print(
-        "="
-        * 100,
-        flush=True,
-    )
+    print("=" * 100, flush=True)
 
     config.CHECKPOINT_DIR.mkdir(
         parents=True,
@@ -3953,17 +2300,16 @@ def main():
         if args.reuse_visual:
             if not config.VISUAL_CHECKPOINT.exists():
                 raise FileNotFoundError(
-                    "--reuse-visual requested but visual checkpoint is missing: "
+                    "--reuse-visual requested but visual checkpoint missing: "
                     f"{config.VISUAL_CHECKPOINT}"
                 )
-
             print(
                 "[STAGE 1/4] reuse Route-A visual checkpoint",
                 flush=True,
             )
         else:
             print(
-                "[STAGE 1/4] train Route-A single-frame visual retrieval",
+                "[STAGE 1/4] train Route-A visual retrieval",
                 flush=True,
             )
 
@@ -3987,7 +2333,7 @@ def main():
         )
 
     print(
-        "[STAGE 2/4] load frozen visual localizer/gallery",
+        "[STAGE 2/4] frozen visual model + SAT gallery",
         flush=True,
     )
 
@@ -3995,8 +2341,15 @@ def main():
         device
     )
 
-    model = VisualMotionRouteLSTM().to(
-        device
+    gallery_z_sat = (
+        build_satellite_task_embeddings(
+            visual
+        )
+    )
+
+    model = (
+        RouteBoundedHypothesisLSTM()
+        .to(device)
     )
 
     catalog = route_catalog()
@@ -4007,7 +2360,7 @@ def main():
         visual.origin_lon,
     )
 
-    split_description = None
+    training_description = None
 
     if args.mode in (
         "train",
@@ -4016,44 +2369,37 @@ def main():
         if config.TEMPORAL_CHECKPOINT.exists():
             config.TEMPORAL_CHECKPOINT.unlink()
 
+        route_a_cache = build_route_cache(
+            "route_A",
+            catalog["route_A"],
+            visual,
+            device,
+        )
+
+        route_a_banks = build_route_banks(
+            visual,
+            route_a,
+        )
+
         print(
-            "[STAGE 3/4] train image-motion-gated recurrent model on Route A",
+            "[STAGE 3/4] train v6 on all Route-A frames",
             flush=True,
         )
 
-        route_a_cache = build_route_cache(
-            "route_A",
-            catalog[
-                "route_A"
-            ],
-            visual,
-            device,
+        training_description = (
+            train_temporal_model(
+                model=model,
+                visual=visual,
+                gallery_z_sat=gallery_z_sat,
+                cache=route_a_cache,
+                route=route_a,
+                banks=route_a_banks,
+                device=device,
+                epochs=int(
+                    args.temporal_epochs
+                ),
+            )
         )
-
-        split = train_temporal_model(
-            model,
-            visual,
-            route_a_cache,
-            route_a,
-            device,
-            int(
-                args.temporal_epochs
-            ),
-        )
-
-        split_description = {
-            key: [
-                [
-                    leg.start.order,
-                    leg.end.order,
-                ]
-                for leg
-                in value
-            ]
-            for key, value
-            in split.items()
-        }
-
     else:
         load_temporal_model(
             model,
@@ -4071,11 +2417,11 @@ def main():
             )
 
         print(
-            "[STAGE 4/4] B/C closed-loop inference",
+            "[STAGE 4/4] Route-B / Route-C inference",
             flush=True,
         )
 
-        route_results = {}
+        results = {}
         waypoint_counts = {}
 
         for route_name in (
@@ -4088,137 +2434,108 @@ def main():
                 visual.origin_lon,
             )
 
-            waypoint_counts[
-                route_name
-            ] = len(
-                route.waypoints
-            )
-
             cache = build_route_cache(
                 route_name,
-                catalog[
-                    route_name
-                ],
+                catalog[route_name],
                 visual,
                 device,
+            )
+
+            banks = build_route_banks(
+                visual,
+                route,
             )
 
             csv_path = (
                 config.OUTPUT_DIR
                 / (
                     f"{route_name}_"
-                    "visual_motion_lstm_frames.csv"
+                    "route_hypothesis_lstm_frames.csv"
                 )
             )
 
-            (
-                summary,
-                _,
-            ) = run_inference(
-                model,
-                visual,
-                cache,
-                route,
-                device,
-                csv_path,
+            summary, _ = run_inference(
+                model=model,
+                visual=visual,
+                gallery_z_sat=gallery_z_sat,
+                cache=cache,
+                route=route,
+                banks=banks,
+                device=device,
+                csv_path=csv_path,
             )
 
-            route_results[
-                route_name
-            ] = summary
+            results[route_name] = summary
+            waypoint_counts[route_name] = (
+                len(route.waypoints)
+            )
 
-            visual_metric = summary[
-                "VisualMotionGatedMeasurement"
-            ]
-
-            final_metric = summary[
+            metric = summary[
                 "FinalPositionKalman"
             ]
 
             print(
                 f"{route_name}: "
-                f"Visual MLE={visual_metric['MLE_m']:.3f}m "
-                f"Visual RPE={visual_metric['RPE_m']:.3f}m "
-                f"| Final MLE={final_metric['MLE_m']:.3f}m "
-                f"Final P90={final_metric['P90_m']:.3f}m "
-                f"Final Jump={final_metric['JumpRate_pct']:.3f}% "
-                f"| switches={summary['WaypointSwitchCount']} "
-                f"terminal={summary['TerminalLockFrame']}",
+                f"MLE={metric['MLE_m']:.3f}m "
+                f"P90={metric['P90_m']:.3f}m "
+                f"RPE={metric['RPE_m']:.3f}m "
+                f"Jump={metric['JumpRate_pct']:.3f}% "
+                f"switch={summary['WaypointSwitchCount']}/"
+                f"{summary['ExpectedWaypointSwitchCount']} "
+                f"H/L/R/W="
+                f"{summary['MeanHoldProbability']:.2f}/"
+                f"{summary['MeanLocalProbability']:.2f}/"
+                f"{summary['MeanRecoveryProbability']:.2f}/"
+                f"{summary['MeanWaypointProbability']:.2f}",
                 flush=True,
             )
 
         payload = {
-            "architecture": (
-                ARCHITECTURE_NAME
-            ),
-            "why_v4_failed": {
-                "mean_inertia_stayed_high": True,
-                "free_running_motion_state_removed": True,
-                "constant_velocity_kalman_removed": True,
-                "early_progress_waypoint_switch_removed": True,
+            "architecture": ARCHITECTURE_NAME,
+            "v5_failure_fixed": {
+                "translation_gate_removed": True,
+                "route_unbounded_drift_removed": True,
+                "exact_endpoint_radius_switch_removed": True,
+                "local_only_no_recovery_removed": True,
             },
             "training": {
-                "route": (
-                    "route_A"
-                ),
-                "waypoint_start_end_used": True,
+                "route": "route_A",
+                "all_route_a_frames_used": True,
+                "test_routes_used_for_training": False,
                 "absolute_current_gt_network_input": False,
-                "raw_gps_network_input": False,
                 "gt_role": (
-                    "supervision only"
+                    "supervision and early causal previous-frame local-center guidance only"
                 ),
-                "image_pair_motion": (
-                    "previous/current UAV images + ECC image registration cue"
-                ),
-                "phase_classes": [
-                    "stationary",
-                    "translation",
-                    "rotation",
-                ],
-                "leg_split": (
-                    split_description
-                ),
+                "description": training_description,
             },
             "model": {
-                "fixed_speed": False,
-                "nominal_speed": False,
-                "free_running_velocity_prediction": False,
-                "observed_motion_state": [
-                    "previous visual delta parallel",
-                    "previous visual delta cross",
-                    "observed acceleration parallel",
-                    "observed acceleration cross",
+                "branches": [
+                    "HOLD",
+                    "LOCAL",
+                    "RECOVERY",
+                    "WAYPOINT",
                 ],
+                "waypoint_transition": (
+                    "learned WAYPOINT branch argmax"
+                ),
+                "route_recovery": (
+                    "current-image global retrieval only inside active Start->End corridor"
+                ),
                 "polynomial": (
-                    "observed_delta + 0.5 * observed_acceleration"
+                    "previous observed image-derived delta + 0.5 acceleration"
                 ),
-                "polynomial_role": (
-                    "translation-gated score prior only"
-                ),
-                "current_position_source": (
-                    "current image proposal gated by image-derived translation probability"
-                ),
+                "polynomial_moves_position": False,
+                "fixed_speed": False,
+                "translation_gate": False,
             },
             "inference": {
-                "waypoint_frame_index_switching": False,
-                "endpoint_switch_rule": (
-                    "actual image-derived position must be within endpoint radius"
-                ),
-                "terminal_lock": bool(
-                    config.TERMINAL_LOCK_ENABLED
-                ),
-                "kalman_state": (
-                    "[x,y] only"
-                ),
-                "kalman_constant_velocity": False,
+                "test_waypoint_frame_index_used": False,
                 "test_gt_used_by_inference": False,
+                "route_candidate_space_bounded": True,
+                "kalman_state": "[x,y] only",
             },
-            "waypoint_counts": (
-                waypoint_counts
-            ),
-            "routes": (
-                route_results
-            ),
+            "waypoint_counts": waypoint_counts,
+            "routes": results,
         }
 
         config.OUTPUT_DIR.mkdir(

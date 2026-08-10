@@ -1,0 +1,121 @@
+{
+  "architecture": "RouteBoundedHypothesisLSTM_v6",
+  "v5_failure_fixed": {
+    "translation_gate_removed": true,
+    "route_unbounded_drift_removed": true,
+    "exact_endpoint_radius_switch_removed": true,
+    "local_only_no_recovery_removed": true
+  },
+  "training": {
+    "route": "route_A",
+    "all_route_a_frames_used": true,
+    "test_routes_used_for_training": false,
+    "absolute_current_gt_network_input": false,
+    "gt_role": "supervision and early causal previous-frame local-center guidance only",
+    "description": null
+  },
+  "model": {
+    "branches": [
+      "HOLD",
+      "LOCAL",
+      "RECOVERY",
+      "WAYPOINT"
+    ],
+    "waypoint_transition": "learned WAYPOINT branch argmax",
+    "route_recovery": "current-image global retrieval only inside active Start->End corridor",
+    "polynomial": "previous observed image-derived delta + 0.5 acceleration",
+    "polynomial_moves_position": false,
+    "fixed_speed": false,
+    "translation_gate": false
+  },
+  "inference": {
+    "test_waypoint_frame_index_used": false,
+    "test_gt_used_by_inference": false,
+    "route_candidate_space_bounded": true,
+    "kalman_state": "[x,y] only"
+  },
+  "waypoint_counts": {
+    "route_B": 16,
+    "route_C": 12
+  },
+  "routes": {
+    "route_B": {
+      "RouteBoundedVisual": {
+        "MLE_m": 362.1345311516327,
+        "MedLE_m": 361.39529610936705,
+        "P90_m": 640.7149731865875,
+        "P95_m": 718.019715987277,
+        "ATE_RMSE_m": 417.264041498185,
+        "RPE_m": 2.9950684428606045,
+        "JumpRate_pct": 0.21978021978021978,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.5272407732864675,
+        "LSR@10_pct": 1.7574692442882252,
+        "LSR@15_pct": 2.5043936731107204,
+        "LSR@20_pct": 5.052724077328647,
+        "MaxLE_m": 765.6198539724293
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 361.7045726463658,
+        "MedLE_m": 361.52281408591955,
+        "P90_m": 640.2230005602179,
+        "P95_m": 718.1985978205307,
+        "ATE_RMSE_m": 417.21106701380035,
+        "RPE_m": 2.916370307970737,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.35149384885764495,
+        "LSR@10_pct": 1.1423550087873462,
+        "LSR@15_pct": 3.3391915641476277,
+        "LSR@20_pct": 5.623901581722319,
+        "MaxLE_m": 765.5095681608351
+      },
+      "WaypointSwitchCount": 0,
+      "ExpectedWaypointSwitchCount": 14,
+      "TerminalFrame": null,
+      "MeanHoldProbability": 0.6208851387976343,
+      "MeanLocalProbability": 0.07137791202068067,
+      "MeanRecoveryProbability": 0.007345978713018233,
+      "MeanWaypointProbability": 0.30039097156335953
+    },
+    "route_C": {
+      "RouteBoundedVisual": {
+        "MLE_m": 357.4552946736329,
+        "MedLE_m": 379.2743427245682,
+        "P90_m": 589.279138082184,
+        "P95_m": 701.3752738332274,
+        "ATE_RMSE_m": 411.7044274669633,
+        "RPE_m": 2.1309779189260443,
+        "JumpRate_pct": 1.511535401750199,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.8744038155802861,
+        "LSR@10_pct": 1.9077901430842605,
+        "LSR@15_pct": 4.054054054054054,
+        "LSR@20_pct": 6.120826709062003,
+        "MaxLE_m": 741.9797167651773
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 359.1998135024548,
+        "MedLE_m": 379.01635547242626,
+        "P90_m": 589.131447876851,
+        "P95_m": 702.7475834938544,
+        "ATE_RMSE_m": 411.9412874915771,
+        "RPE_m": 1.8432138004033494,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 1.5898251192368837,
+        "LSR@10_pct": 3.5771065182829886,
+        "LSR@15_pct": 4.133545310015898,
+        "LSR@20_pct": 4.372019077901431,
+        "MaxLE_m": 742.1476793071283
+      },
+      "WaypointSwitchCount": 0,
+      "ExpectedWaypointSwitchCount": 10,
+      "TerminalFrame": null,
+      "MeanHoldProbability": 0.6607954902944579,
+      "MeanLocalProbability": 0.09114389048092696,
+      "MeanRecoveryProbability": 0.006909173951056358,
+      "MeanWaypointProbability": 0.24115144542328842
+    }
+  }
+}
