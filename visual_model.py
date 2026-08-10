@@ -187,6 +187,7 @@ class AllMapGeoCLIP(nn.Module):
 # Route-coordinate recurrent measurement model
 # =============================================================================
 
+
 @dataclass
 class RouteMeasurementOutput:
     measurement_sd: torch.Tensor
@@ -196,21 +197,14 @@ class RouteMeasurementOutput:
 
 
 class RouteCoordinateGRU(nn.Module):
-    """
-    One UAV frame per recurrent step.
+    """One current frame per recurrent step.
 
-    The GRU does NOT output the final XY coordinate.
-    It outputs a route-coordinate visual measurement:
-      z_t = [s_meas, d_meas]
-    and uncertainty:
-      R_t = [var_s, var_d]
-
-    Final localization is produced by FilterPy Kalman inference.
+    The GRU outputs a route-coordinate visual measurement [s,d] and a learned
+    diagonal measurement variance. Final filtering is done by Kalman equations.
     """
 
     def __init__(self):
         super().__init__()
-
         feature_dim = int(config.RNN_FEATURE_DIM)
         hidden_dim = int(config.RNN_HIDDEN_DIM)
 
@@ -219,62 +213,42 @@ class RouteCoordinateGRU(nn.Module):
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
-
         self.sat_projection = nn.Sequential(
             nn.Linear(config.EMBED_DIM, feature_dim),
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
 
-        # Numeric input (13):
-        # entropy, top1-top2 margin, max probability, HardMS support,
-        # visual_s-pred_s, visual_d-pred_d,
-        # hardms_s-pred_s, hardms_d-pred_d,
-        # normalized progress, normalized remaining,
-        # normalized v, normalized vd, leg-change flag.
+        # entropy, margin, max prob, HardMS support,
+        # visual/prediction innovation s,d, HardMS/prediction innovation s,d,
+        # normalized progress, remaining, v, vd, dt_seconds, leg-change.
         self.numeric_projection = nn.Sequential(
-            nn.Linear(13, feature_dim),
+            nn.Linear(14, feature_dim),
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
 
-        self.gru = nn.GRUCell(
-            feature_dim * 3,
-            hidden_dim,
-        )
-
-        self.dropout = nn.Dropout(
-            float(config.RNN_DROPOUT)
-        )
-
+        self.gru = nn.GRUCell(feature_dim * 3, hidden_dim)
+        self.dropout = nn.Dropout(float(config.RNN_DROPOUT))
         self.measurement_residual_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
             nn.Linear(hidden_dim // 2, 2),
         )
-
         self.variance_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
             nn.Linear(hidden_dim // 2, 2),
         )
 
-        # Begin from retrieval expectation instead of a random coordinate jump.
-        nn.init.zeros_(
-            self.measurement_residual_head[-1].weight
-        )
-        nn.init.zeros_(
-            self.measurement_residual_head[-1].bias
-        )
-
+        # Start from the retrieval expectation, not a random coordinate jump.
+        nn.init.zeros_(self.measurement_residual_head[-1].weight)
+        nn.init.zeros_(self.measurement_residual_head[-1].bias)
         initial_var = 4.0
-        inverse_softplus = math.log(
-            math.exp(initial_var) - 1.0
-        )
         nn.init.zeros_(self.variance_head[-1].weight)
         nn.init.constant_(
             self.variance_head[-1].bias,
-            inverse_softplus,
+            math.log(math.exp(initial_var) - 1.0),
         )
 
     def initial_hidden(self, batch_size, device, dtype):
@@ -287,13 +261,9 @@ class RouteCoordinateGRU(nn.Module):
 
     @staticmethod
     def normalized_entropy(probability):
-        count = max(
-            int(probability.shape[-1]),
-            2,
-        )
+        count = max(int(probability.shape[-1]), 2)
         return -(
-            probability
-            * probability.clamp_min(1e-8).log()
+            probability * probability.clamp_min(1e-8).log()
         ).sum(dim=1) / math.log(float(count))
 
     def forward_step(
@@ -307,41 +277,27 @@ class RouteCoordinateGRU(nn.Module):
         predicted_state,
         previous_progress,
         leg_length,
-        forward_speed_limit,
-        cross_speed_limit,
+        nominal_speed_mps,
+        forward_speed_limit_mps,
+        cross_speed_limit_mps,
+        dt_seconds,
         leg_change,
         hidden,
     ):
-        """
-        predicted_state: [B,4] = [s, v, d, vd]
-        candidate_sd:    [B,36,2]
-        """
-        batch = z_uav.shape[0]
-
         if hidden is None:
             hidden = self.initial_hidden(
-                batch,
-                z_uav.device,
-                z_uav.dtype,
+                z_uav.shape[0], z_uav.device, z_uav.dtype
             )
 
         visual_expectation = (
-            raw_prob.unsqueeze(-1)
-            * candidate_sd
+            raw_prob.unsqueeze(-1) * candidate_sd
         ).sum(dim=1)
-
         sat_context = (
-            raw_prob.unsqueeze(-1)
-            * z_sat
+            raw_prob.unsqueeze(-1) * z_sat
         ).sum(dim=1)
 
         entropy = self.normalized_entropy(raw_prob)
-
-        top2 = raw_prob.topk(
-            k=2,
-            dim=1,
-        ).values
-
+        top2 = raw_prob.topk(k=2, dim=1).values
         margin = top2[:, 0] - top2[:, 1]
         max_probability = top2[:, 0]
 
@@ -350,24 +306,17 @@ class RouteCoordinateGRU(nn.Module):
         predicted_d = predicted_state[:, 2]
         predicted_vd = predicted_state[:, 3]
 
-        progress_normalized = (
-            predicted_s
-            / leg_length.clamp_min(1e-6)
+        progress_norm = (
+            predicted_s / leg_length.clamp_min(1e-6)
         ).clamp(0.0, 1.0)
-
-        remaining_normalized = (
-            (leg_length - predicted_s)
-            / leg_length.clamp_min(1e-6)
+        remaining_norm = (
+            (leg_length - predicted_s) / leg_length.clamp_min(1e-6)
         ).clamp(0.0, 1.0)
-
-        v_normalized = (
-            predicted_v
-            / forward_speed_limit.clamp_min(1e-6)
+        v_norm = (
+            predicted_v / nominal_speed_mps.clamp_min(1e-6)
         ).clamp(0.0, 2.0)
-
-        vd_normalized = (
-            predicted_vd
-            / cross_speed_limit.clamp_min(1e-6)
+        vd_norm = (
+            predicted_vd / cross_speed_limit_mps.clamp_min(1e-6)
         ).clamp(-2.0, 2.0)
 
         numeric = torch.stack(
@@ -380,10 +329,11 @@ class RouteCoordinateGRU(nn.Module):
                 visual_expectation[:, 1] - predicted_d,
                 hardms_sd[:, 0] - predicted_s,
                 hardms_sd[:, 1] - predicted_d,
-                progress_normalized,
-                remaining_normalized,
-                v_normalized,
-                vd_normalized,
+                progress_norm,
+                remaining_norm,
+                v_norm,
+                vd_norm,
+                dt_seconds,
                 leg_change.float(),
             ],
             dim=1,
@@ -397,91 +347,54 @@ class RouteCoordinateGRU(nn.Module):
             ],
             dim=1,
         )
-
-        hidden = self.gru(
-            recurrent_input,
-            hidden,
-        )
-
+        hidden = self.gru(recurrent_input, hidden)
         head_hidden = self.dropout(hidden)
 
-        raw_residual = self.measurement_residual_head(
-            head_hidden
+        residual = self.measurement_residual_head(head_hidden)
+        # Residual magnitude is expressed in metres using physical m/s * dt.
+        residual_s = (
+            torch.tanh(residual[:, 0])
+            * forward_speed_limit_mps
+            * dt_seconds
+        )
+        residual_d = (
+            torch.tanh(residual[:, 1])
+            * cross_speed_limit_mps
+            * dt_seconds
         )
 
-        # Residual itself is bounded by the Route-A training motion envelope.
-        s_residual = (
-            torch.tanh(raw_residual[:, 0])
-            * forward_speed_limit
-        )
+        raw_s = visual_expectation[:, 0] + residual_s
+        raw_d = visual_expectation[:, 1] + residual_d
 
-        d_residual = (
-            torch.tanh(raw_residual[:, 1])
-            * cross_speed_limit
-            * 2.0
-        )
-
-        raw_measurement_s = (
-            visual_expectation[:, 0]
-            + s_residual
-        )
-
-        raw_measurement_d = (
-            visual_expectation[:, 1]
-            + d_residual
-        )
-
-        # Measurement may look several frames ahead for retrieval support, but
-        # it can never point behind accepted progress or outside the leg.
-        search_measurement_upper = torch.minimum(
+        # Retrieval can look several seconds ahead, but never behind the already
+        # accepted mission progress.
+        measurement_upper = torch.minimum(
             leg_length,
             previous_progress
-            + forward_speed_limit
-            * float(config.SEARCH_LOOKAHEAD_FRAMES),
+            + forward_speed_limit_mps * float(config.SEARCH_LOOKAHEAD_SECONDS),
         )
-
         measurement_s = torch.maximum(
             previous_progress,
-            torch.minimum(
-                raw_measurement_s,
-                search_measurement_upper,
-            ),
+            torch.minimum(raw_s, measurement_upper),
         )
-
         measurement_d = torch.clamp(
-            raw_measurement_d,
+            raw_d,
             min=-float(config.ROUTE_CORRIDOR_HALF_WIDTH_M),
             max=float(config.ROUTE_CORRIDOR_HALF_WIDTH_M),
         )
 
-        measurement_sd = torch.stack(
-            [measurement_s, measurement_d],
-            dim=1,
-        )
-
         variance = (
-            F.softplus(
-                self.variance_head(head_hidden)
-            )
+            F.softplus(self.variance_head(head_hidden))
             + float(config.KALMAN_MIN_VARIANCE)
-        ).clamp(
-            max=float(
-                config.KALMAN_MAX_MEASUREMENT_VAR
-            )
-        )
+        ).clamp(max=float(config.KALMAN_MAX_MEASUREMENT_VAR))
 
         return RouteMeasurementOutput(
-            measurement_sd=measurement_sd,
+            measurement_sd=torch.stack([measurement_s, measurement_d], dim=1),
             measurement_variance=variance,
             visual_expectation_sd=visual_expectation,
             hidden=hidden,
         )
 
-
-# =============================================================================
-# Differentiable route-coordinate Kalman equations for TRAINING ONLY.
-# Inference uses filterpy.kalman.KalmanFilter.
-# =============================================================================
 
 def initial_covariance_torch(batch, device, dtype):
     diagonal = torch.tensor(
@@ -494,48 +407,22 @@ def initial_covariance_torch(batch, device, dtype):
         device=device,
         dtype=dtype,
     )
+    return torch.diag(diagonal).unsqueeze(0).repeat(int(batch), 1, 1)
 
-    return torch.diag(
-        diagonal
-    ).unsqueeze(0).repeat(
-        int(batch),
-        1,
-        1,
+
+def transition_matrix_torch(dt_seconds, device, dtype):
+    dt = torch.as_tensor(dt_seconds, device=device, dtype=dtype).reshape(-1)
+    matrix = torch.eye(4, device=device, dtype=dtype).unsqueeze(0).repeat(
+        dt.shape[0], 1, 1
     )
-
-
-def transition_matrix_torch(dt, device, dtype):
-    dt = torch.as_tensor(
-        dt,
-        device=device,
-        dtype=dtype,
-    ).reshape(-1)
-
-    batch = dt.shape[0]
-
-    matrix = torch.eye(
-        4,
-        device=device,
-        dtype=dtype,
-    ).unsqueeze(0).repeat(
-        batch,
-        1,
-        1,
-    )
-
     matrix[:, 0, 1] = dt
     matrix[:, 2, 3] = dt
-
     return matrix
 
 
-def process_covariance_torch(dt, device, dtype):
-    dt = torch.as_tensor(
-        dt,
-        device=device,
-        dtype=dtype,
-    ).reshape(-1).clamp_min(1.0)
-
+def process_covariance_torch(dt_seconds, device, dtype):
+    dt = torch.as_tensor(dt_seconds, device=device, dtype=dtype).reshape(-1)
+    dt = dt.clamp_min(float(config.MIN_DT_SECONDS))
     base = torch.tensor(
         [
             config.KALMAN_Q_PROGRESS,
@@ -546,48 +433,24 @@ def process_covariance_torch(dt, device, dtype):
         device=device,
         dtype=dtype,
     )
-
-    return torch.diag_embed(
-        base.unsqueeze(0)
-        * dt.unsqueeze(1)
-    )
+    return torch.diag_embed(base.unsqueeze(0) * dt.unsqueeze(1))
 
 
-def kalman_predict_torch(
-    state,
-    covariance,
-    dt,
-):
+def kalman_predict_torch(state, covariance, dt_seconds):
     transition = transition_matrix_torch(
-        dt,
-        state.device,
-        state.dtype,
+        dt_seconds, state.device, state.dtype
     )
-
     predicted_state = torch.bmm(
-        transition,
-        state.unsqueeze(-1),
+        transition, state.unsqueeze(-1)
     ).squeeze(-1)
-
     predicted_covariance = (
         torch.bmm(
-            torch.bmm(
-                transition,
-                covariance,
-            ),
+            torch.bmm(transition, covariance),
             transition.transpose(1, 2),
         )
-        + process_covariance_torch(
-            dt,
-            state.device,
-            state.dtype,
-        )
+        + process_covariance_torch(dt_seconds, state.device, state.dtype)
     )
-
-    return (
-        predicted_state,
-        predicted_covariance,
-    )
+    return predicted_state, predicted_covariance
 
 
 def kalman_update_torch(
@@ -600,103 +463,46 @@ def kalman_update_torch(
     device = predicted_state.device
     dtype = predicted_state.dtype
 
-    observation = torch.zeros(
-        batch,
-        2,
-        4,
-        device=device,
-        dtype=dtype,
-    )
+    observation = torch.zeros(batch, 2, 4, device=device, dtype=dtype)
     observation[:, 0, 0] = 1.0
     observation[:, 1, 2] = 1.0
-
-    measurement_covariance = torch.diag_embed(
-        measurement_variance
-    )
-
+    measurement_covariance = torch.diag_embed(measurement_variance)
     expected = torch.stack(
-        [
-            predicted_state[:, 0],
-            predicted_state[:, 2],
-        ],
-        dim=1,
+        [predicted_state[:, 0], predicted_state[:, 2]], dim=1
     )
+    innovation = measurement_sd - expected
 
-    innovation = (
-        measurement_sd
-        - expected
-    )
-
-    hp = torch.bmm(
-        observation,
-        predicted_covariance,
-    )
-
+    hp = torch.bmm(observation, predicted_covariance)
     innovation_covariance = (
-        torch.bmm(
-            hp,
-            observation.transpose(1, 2),
-        )
+        torch.bmm(hp, observation.transpose(1, 2))
         + measurement_covariance
     )
-
     ph_t = torch.bmm(
-        predicted_covariance,
-        observation.transpose(1, 2),
+        predicted_covariance, observation.transpose(1, 2)
     )
-
     gain = torch.linalg.solve(
-        innovation_covariance,
-        ph_t.transpose(1, 2),
+        innovation_covariance, ph_t.transpose(1, 2)
     ).transpose(1, 2)
 
-    updated_state = (
-        predicted_state
-        + torch.bmm(
-            gain,
-            innovation.unsqueeze(-1),
-        ).squeeze(-1)
+    updated_state = predicted_state + torch.bmm(
+        gain, innovation.unsqueeze(-1)
+    ).squeeze(-1)
+
+    identity = torch.eye(4, device=device, dtype=dtype).unsqueeze(0).repeat(
+        batch, 1, 1
     )
-
-    identity = torch.eye(
-        4,
-        device=device,
-        dtype=dtype,
-    ).unsqueeze(0).repeat(
-        batch,
-        1,
-        1,
-    )
-
-    kh = torch.bmm(
-        gain,
-        observation,
-    )
-
-    left = identity - kh
-
+    left = identity - torch.bmm(gain, observation)
     updated_covariance = (
         torch.bmm(
-            torch.bmm(
-                left,
-                predicted_covariance,
-            ),
+            torch.bmm(left, predicted_covariance),
             left.transpose(1, 2),
         )
         + torch.bmm(
-            torch.bmm(
-                gain,
-                measurement_covariance,
-            ),
+            torch.bmm(gain, measurement_covariance),
             gain.transpose(1, 2),
         )
     )
-
-    return (
-        updated_state,
-        updated_covariance,
-        gain,
-    )
+    return updated_state, updated_covariance, gain
 
 
 def constrain_route_state_torch(
@@ -704,81 +510,47 @@ def constrain_route_state_torch(
     previous_progress,
     previous_cross_track,
     leg_length,
-    forward_speed_limit,
-    cross_speed_limit,
-    dt,
+    forward_speed_limit_mps,
+    cross_speed_limit_mps,
+    dt_seconds,
 ):
-    """
-    Physical mission-state projection.
+    """Project state onto the physically valid mission state set.
 
-    This is the key structural guarantee:
-      1) along-track progress never decreases;
-      2) it cannot advance faster than the Route-A learned speed envelope;
-      3) cross-track motion cannot teleport by an arbitrary amount.
+    The constraint is structural: within one active leg, progress cannot go
+    backward or teleport farther than the Route-A learned m/s envelope allows.
     """
     dt = torch.as_tensor(
-        dt,
-        device=state.device,
-        dtype=state.dtype,
+        dt_seconds, device=state.device, dtype=state.dtype
     ).reshape(-1)
 
     max_progress = torch.minimum(
         leg_length,
-        previous_progress
-        + forward_speed_limit
-        * dt,
+        previous_progress + forward_speed_limit_mps * dt,
     )
-
     progress = torch.maximum(
         previous_progress,
-        torch.minimum(
-            state[:, 0],
-            max_progress,
-        ),
+        torch.minimum(state[:, 0], max_progress),
+    )
+    velocity = torch.maximum(
+        torch.zeros_like(state[:, 1]),
+        torch.minimum(state[:, 1], forward_speed_limit_mps),
     )
 
-    velocity = torch.clamp(
-        state[:, 1],
-        min=0.0,
+    max_cross_delta = cross_speed_limit_mps * dt
+    cross_delta = torch.maximum(
+        -max_cross_delta,
+        torch.minimum(state[:, 2] - previous_cross_track, max_cross_delta),
     )
-    velocity = torch.minimum(
-        velocity,
-        forward_speed_limit,
-    )
-
-    max_cross_delta = (
-        cross_speed_limit
-        * dt
-    )
-
-    cross_delta = torch.clamp(
-        state[:, 2]
-        - previous_cross_track,
-        min=-max_cross_delta,
-        max=max_cross_delta,
-    )
-
     cross_track = torch.clamp(
-        previous_cross_track
-        + cross_delta,
+        previous_cross_track + cross_delta,
         min=-float(config.ROUTE_CORRIDOR_HALF_WIDTH_M),
         max=float(config.ROUTE_CORRIDOR_HALF_WIDTH_M),
     )
-
     cross_velocity = torch.maximum(
-        -cross_speed_limit,
-        torch.minimum(
-            state[:, 3],
-            cross_speed_limit,
-        ),
+        -cross_speed_limit_mps,
+        torch.minimum(state[:, 3], cross_speed_limit_mps),
     )
 
     return torch.stack(
-        [
-            progress,
-            velocity,
-            cross_track,
-            cross_velocity,
-        ],
-        dim=1,
+        [progress, velocity, cross_track, cross_velocity], dim=1
     )

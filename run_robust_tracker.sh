@@ -9,145 +9,84 @@ TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-50}"
 JITTER_M="${JITTER_M:-12}"
 REUSE_VISUAL="${REUSE_VISUAL:-0}"
 
-trap 'code=$?; echo; echo "ERROR: run_robust_tracker.sh stopped at line ${LINENO}, exit=${code}" >&2; exit ${code}' ERR
+OUTPUT_DIR="outputs/route_coordinate_gru_kalman_v3"
+VISUAL_CKPT="${OUTPUT_DIR}/checkpoints/visual_retrieval_A_only.pt"
+mkdir -p "${OUTPUT_DIR}/checkpoints"
+
+trap 'code=$?; echo "ERROR: stopped at line ${LINENO}, exit=${code}" >&2; exit ${code}' ERR
 
 echo "================================================================================"
-echo "ROUTE-COORDINATE GRU + CONSTRAINED FILTERPY KALMAN"
+echo "TIMESTAMP-AWARE ROUTE-COORDINATE GRU + FILTERPY KALMAN v3"
 echo "================================================================================"
-echo "PWD             : $(pwd)"
-echo "Python          : $(command -v python3)"
-python3 --version
 echo "GPU             : ${GPU}"
 echo "Visual epochs   : ${VISUAL_EPOCHS}"
 echo "Temporal epochs : ${TEMPORAL_EPOCHS}"
 echo "Reuse visual    : ${REUSE_VISUAL}"
+echo "Every JSON waypoint is loaded and adjacent pairs are rebuilt automatically."
+echo "Time unit is seconds; velocity unit is m/s."
+echo "Inference automatically renders synchronized UAV+map videos and frame figures."
 echo "================================================================================"
 
-echo
-echo "[PRECHECK 1/4] required project files"
-for f in \
-  config.py \
-  data.py \
-  visual_model.py \
-  visual_localizer.py \
-  robust_tracker.py \
-  route_waypoints/route_A_waypoints.json \
-  route_waypoints/route_B_waypoints.json \
-  route_waypoints/route_C_waypoints.json
-do
-  if [[ ! -f "${f}" ]]; then
-    echo "MISSING: ${f}" >&2
-    exit 10
-  fi
-  echo "OK: ${f}"
+for f in config.py data.py visual_model.py visual_localizer.py robust_tracker.py render_results_video.py; do
+  [[ -f "$f" ]] || { echo "MISSING: $f" >&2; exit 10; }
 done
 
-echo
-echo "[PRECHECK 2/4] Python syntax"
-python3 -m py_compile \
-  config.py \
-  data.py \
-  visual_model.py \
-  visual_localizer.py \
-  robust_tracker.py
-echo "Python syntax OK"
+python3 -m py_compile config.py visual_model.py robust_tracker.py render_results_video.py
 
-echo
-echo "[PRECHECK 3/4] imports"
-PYTHONUNBUFFERED=1 python3 -u - <<'PY'
-import importlib
-import sys
-import traceback
-
-modules = [
-    "torch",
-    "filterpy",
-    "matplotlib",
-    "config",
-    "data",
-    "visual_model",
-    "visual_localizer",
-    "robust_tracker",
-]
-
-for name in modules:
-    print("[IMPORT]", name, "...", flush=True)
-    try:
-        module = importlib.import_module(name)
-    except BaseException:
-        print("[IMPORT FAILED]", name, flush=True)
-        traceback.print_exc()
-        raise
-    else:
-        print("[IMPORT OK]", name, flush=True)
-
-import torch
-print(
-    "[CUDA] available=",
-    torch.cuda.is_available(),
-    "device_count=",
-    torch.cuda.device_count(),
-    flush=True,
-)
-if torch.cuda.is_available():
-    print(
-        "[CUDA] device0=",
-        torch.cuda.get_device_name(0),
-        flush=True,
-    )
+python3 - <<'PY'
+for name in ("torch", "filterpy", "matplotlib", "cv2"):
+    __import__(name)
+    print("import OK:", name)
 PY
 
-echo
-echo "[PRECHECK 4/4] checkpoints / output"
-mkdir -p outputs/route_coordinate_gru_kalman_v2/checkpoints
-
-VISUAL_CKPT="outputs/route_coordinate_gru_kalman_v2/checkpoints/visual_retrieval_A_only.pt"
-
+EXTRA_ARGS=()
 if [[ "${REUSE_VISUAL}" == "1" ]]; then
   if [[ ! -f "${VISUAL_CKPT}" ]]; then
-    echo "REUSE_VISUAL=1 but ${VISUAL_CKPT} does not exist." >&2
-    echo "Either copy the visual checkpoint there or run with REUSE_VISUAL=0." >&2
-    exit 11
+    OLD_CANDIDATES=(
+      "outputs/route_coordinate_gru_kalman_v2/checkpoints/visual_retrieval_A_only.pt"
+      "outputs/route_rnn_filterpy_full_retrain/checkpoints/visual_retrieval_A_only.pt"
+      "outputs/strict_train_A_test_BC_t2only_w5/checkpoints/visual_retrieval_A_only.pt"
+    )
+    FOUND=""
+    for candidate in "${OLD_CANDIDATES[@]}"; do
+      if [[ -f "${candidate}" ]]; then
+        FOUND="${candidate}"
+        break
+      fi
+    done
+    [[ -n "${FOUND}" ]] || {
+      echo "REUSE_VISUAL=1 but no Route-A visual checkpoint was found." >&2
+      exit 20
+    }
+    cp -p "${FOUND}" "${VISUAL_CKPT}"
+    echo "Copied visual checkpoint:"
+    echo "  ${FOUND}"
+    echo "  -> ${VISUAL_CKPT}"
   fi
-  echo "Visual checkpoint found: ${VISUAL_CKPT}"
-else
-  echo "Visual retrieval will train from scratch."
-fi
-
-CMD=(
-  python3
-  -u
-  robust_tracker.py
-  --mode
-  train_eval
-  --visual-epochs
-  "${VISUAL_EPOCHS}"
-  --epochs
-  "${TEMPORAL_EPOCHS}"
-  --jitter-m
-  "${JITTER_M}"
-)
-
-if [[ "${REUSE_VISUAL}" == "1" ]]; then
-  CMD+=(--reuse-visual)
+  EXTRA_ARGS+=(--reuse-visual)
 fi
 
 echo
-echo "================================================================================"
-echo "[LAUNCH] training process starts NOW"
-printf 'COMMAND:'
-printf ' %q' "${CMD[@]}"
-echo
-echo "================================================================================"
+echo "[1/2] TRAIN + B/C INFERENCE"
+PYTHONUNBUFFERED=1 \
+CUDA_VISIBLE_DEVICES="${GPU}" \
+OMP_NUM_THREADS=4 \
+MKL_NUM_THREADS=4 \
+OPENBLAS_NUM_THREADS=4 \
+NUMEXPR_NUM_THREADS=4 \
+python3 -u robust_tracker.py \
+  --mode train_eval \
+  --visual-epochs "${VISUAL_EPOCHS}" \
+  --epochs "${TEMPORAL_EPOCHS}" \
+  --jitter-m "${JITTER_M}" \
+  "${EXTRA_ARGS[@]}"
 
-# exec is deliberate:
-# the shell process is replaced by Python. If training is alive, `ps` must show
-# robust_tracker.py. PYTHONUNBUFFERED=1 prevents silent buffered output.
-exec env \
-  PYTHONUNBUFFERED=1 \
-  CUDA_VISIBLE_DEVICES="${GPU}" \
-  OMP_NUM_THREADS=4 \
-  MKL_NUM_THREADS=4 \
-  OPENBLAS_NUM_THREADS=4 \
-  NUMEXPR_NUM_THREADS=4 \
-  "${CMD[@]}"
+echo
+echo "[2/2] SYNCHRONIZED VIDEO + FRAME-LABELLED FIGURES"
+PYTHONUNBUFFERED=1 python3 -u render_results_video.py --route all
+
+echo "================================================================================"
+echo "DONE"
+echo "Summary: ${OUTPUT_DIR}/robust_tracker_summary.json"
+echo "Visualizations: ${OUTPUT_DIR}/visualizations/"
+echo "================================================================================"
