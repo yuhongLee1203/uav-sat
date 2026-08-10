@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import argparse
 from pathlib import Path
 
 import matplotlib
@@ -34,9 +35,22 @@ ROUTES = {
     "route_C": ROOT.parents[0] / "new_data" / "model_dataset_flight" / "sensor_with_yaw.json",
 }
 
-RDP_EPSILON_M = 8.0
-MIN_TURN_DEGREES = 45.0
+# A waypoint is detected from the *full* GPS trajectory.  The heading before
+# and after a frame is estimated over this many samples, which makes the
+# detector robust to per-frame GPS noise while keeping a real turn localized.
+HEADING_WINDOW_FRAMES = 30
+POSITION_SMOOTHING_FRAMES = 11
+# High-recall segmentation: even a shallow, sustained bend should become a
+# boundary, because the intended downstream units are straight flight legs.
+# The spatial checks below suppress one-frame GPS jitter instead of relying on
+# a large angle threshold that would hide genuine small turns.
+MIN_TURN_DEGREES = 6.0
+MAJOR_TURN_DEGREES = 45.0
+MIN_MINOR_TURN_TRAVEL_M = 8.0
+MIN_TURN_SEPARATION_FRAMES = 20
 MIN_LEG_LENGTH_M = 20.0
+MERGE_TURN_DISTANCE_M = 20.0
+TERMINAL_SETTLE_DISTANCE_M = 20.0
 
 
 def local_meters(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
@@ -47,39 +61,99 @@ def local_meters(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
     return np.column_stack([x, y])
 
 
-def rdp_indices(points: np.ndarray, epsilon_m: float) -> np.ndarray:
-    """Return sampled vertices for a polyline under point-to-segment error."""
-    if len(points) < 3:
-        return np.arange(len(points), dtype=int)
+def smooth_positions(points: np.ndarray, window: int) -> np.ndarray:
+    """Centered moving average without moving either endpoint."""
+    if window <= 1:
+        return points.copy()
+    pad = window // 2
+    padded = np.pad(points, ((pad, pad), (0, 0)), mode="edge")
+    kernel = np.full(window, 1.0 / window, dtype=float)
+    return np.column_stack([
+        np.convolve(padded[:, 0], kernel, mode="valid"),
+        np.convolve(padded[:, 1], kernel, mode="valid"),
+    ])
 
-    chosen = [0]
 
-    def split(start: int, end: int) -> None:
-        if end - start <= 1:
-            return
-        edge = points[end] - points[start]
-        length = float(np.linalg.norm(edge))
-        interior = points[start + 1:end]
-        if length < 1e-8:
-            distance = np.linalg.norm(interior - points[start], axis=1)
+def wrapped_angle_degrees(angle: np.ndarray) -> np.ndarray:
+    return np.degrees(np.arctan2(np.sin(angle), np.cos(angle)))
+
+
+def turn_candidates(points: np.ndarray) -> tuple[list[int], dict[int, float], np.ndarray]:
+    """Find separated heading-change maxima on the complete GPS polyline."""
+    window = HEADING_WINDOW_FRAMES
+    smoothed = smooth_positions(points, POSITION_SMOOTHING_FRAMES)
+    if len(points) <= 2 * window:
+        return [], {}, smoothed
+
+    before = smoothed[window:-window] - smoothed[:-2 * window]
+    after = smoothed[2 * window:] - smoothed[window:-window]
+    heading_before = np.arctan2(before[:, 1], before[:, 0])
+    heading_after = np.arctan2(after[:, 1], after[:, 0])
+    signed_change = wrapped_angle_degrees(heading_after - heading_before)
+    magnitude = np.abs(signed_change)
+
+    # Start from local extrema, rather than accepting every intermediate GPS
+    # sample on a smooth curve. Major turns remain valid when the aircraft
+    # pauses at a waypoint; shallow bends need real motion on both sides.
+    local_peaks: list[int] = []
+    for offset in range(1, len(magnitude) - 1):
+        if magnitude[offset] < MIN_TURN_DEGREES:
+            continue
+        if magnitude[offset] < magnitude[offset - 1] or magnitude[offset] < magnitude[offset + 1]:
+            continue
+        frame = int(offset + window)
+        if magnitude[offset] < MAJOR_TURN_DEGREES:
+            left = max(0, frame - window)
+            right = min(len(smoothed) - 1, frame + window)
+            if min(np.linalg.norm(smoothed[frame] - smoothed[left]), np.linalg.norm(smoothed[right] - smoothed[frame])) < MIN_MINOR_TURN_TRAVEL_M:
+                continue
+        local_peaks.append(offset)
+
+    # Greedily keep only the strongest peak in a short temporal neighborhood.
+    selected: list[int] = []
+    for offset in sorted(local_peaks, key=lambda index: magnitude[index], reverse=True):
+        frame = int(offset + window)
+        if all(abs(frame - prior) >= MIN_TURN_SEPARATION_FRAMES for prior in selected):
+            selected.append(frame)
+    selected.sort()
+
+    turns: dict[int, float] = {}
+    for frame in selected:
+        turns[frame] = float(signed_change[frame - window])
+    return selected, turns, smoothed
+
+
+def consolidate_turns(candidates: list[int], turns: dict[int, float], xy: np.ndarray) -> tuple[list[int], int]:
+    """Merge multiple heading peaks from one physical turn and trim endpoint dwell."""
+    if not candidates:
+        return [], len(xy) - 1
+
+    groups: list[list[int]] = [[candidates[0]]]
+    for frame in candidates[1:]:
+        # A tight group of temporal peaks at the same world location is one
+        # gradual turn, not multiple short straight missions.
+        if np.linalg.norm(xy[frame] - xy[groups[-1][-1]]) < MERGE_TURN_DISTANCE_M:
+            groups[-1].append(frame)
         else:
-            delta = interior - points[start]
-            distance = np.abs(delta[:, 0] * edge[1] - delta[:, 1] * edge[0]) / length
-        if len(distance) and float(distance.max()) > epsilon_m:
-            pivot = start + 1 + int(distance.argmax())
-            split(start, pivot)
-            chosen.append(pivot)
-            split(pivot, end)
+            groups.append([frame])
+    merged = [max(group, key=lambda frame: abs(turns[frame])) for group in groups]
 
-    split(0, len(points) - 1)
-    chosen.append(len(points) - 1)
-    return np.asarray(sorted(set(chosen)), dtype=int)
+    # If the last peak is already at the final stationary GPS position, it is
+    # the mission end, rather than an extra turn followed by a zero-length leg.
+    end_frame = len(xy) - 1
+    if merged and np.linalg.norm(xy[merged[-1]] - xy[-1]) < TERMINAL_SETTLE_DISTANCE_M:
+        end_frame = merged.pop()
 
-
-def signed_turn_degrees(a: np.ndarray, b: np.ndarray) -> float:
-    cross = float(a[0] * b[1] - a[1] * b[0])
-    dot = float(np.dot(a, b))
-    return float(math.degrees(math.atan2(cross, dot)))
+    # Ensure each retained pair really forms a spatially meaningful straight
+    # leg. In a rare near-duplicate pair, retain the stronger heading peak.
+    result: list[int] = []
+    for frame in merged:
+        if result and np.linalg.norm(xy[frame] - xy[result[-1]]) < MIN_LEG_LENGTH_M:
+            if abs(turns[frame]) > abs(turns[result[-1]]):
+                result[-1] = frame
+        else:
+            result.append(frame)
+    return result, end_frame
 
 
 def route_waypoints(sensor_path: Path) -> tuple[list[dict], np.ndarray, np.ndarray]:
@@ -88,36 +162,16 @@ def route_waypoints(sensor_path: Path) -> tuple[list[dict], np.ndarray, np.ndarr
     lon = np.asarray([row["longitude"] for row in samples], dtype=float)
     xy = local_meters(lat, lon)
 
-    # GPS positions repeat between receiver updates. Keep only meaningful
-    # movement for geometry, while retaining the original frame ID for output.
-    keep = np.r_[True, np.linalg.norm(np.diff(xy, axis=0), axis=1) > 0.05]
-    compact_xy = xy[keep]
-    compact_to_frame = np.flatnonzero(keep)
-    vertices = rdp_indices(compact_xy, RDP_EPSILON_M)
-
-    # Only retain geometric vertices that separate two sufficiently long legs
-    # and have an actual heading change. These are safe split boundaries.
-    waypoint_compact = [int(vertices[0])]
-    turns: dict[int, float] = {}
-    for previous, current, following in zip(vertices[:-2], vertices[1:-1], vertices[2:]):
-        first = compact_xy[current] - compact_xy[previous]
-        second = compact_xy[following] - compact_xy[current]
-        if min(np.linalg.norm(first), np.linalg.norm(second)) < MIN_LEG_LENGTH_M:
-            continue
-        turn = signed_turn_degrees(first, second)
-        if abs(turn) >= MIN_TURN_DEGREES:
-            waypoint_compact.append(int(current))
-            turns[int(current)] = turn
-    waypoint_compact.append(int(vertices[-1]))
-    waypoint_compact = list(dict.fromkeys(waypoint_compact))
+    candidates, turns, _ = turn_candidates(xy)
+    waypoint_frames, end_frame = consolidate_turns(candidates, turns, xy)
+    waypoint_frames = [0, *waypoint_frames, end_frame]
 
     result = []
-    for order, compact_index in enumerate(waypoint_compact):
-        frame_index = int(compact_to_frame[compact_index])
+    for order, frame_index in enumerate(waypoint_frames):
         row = samples[frame_index]
         record = {
             "waypoint_order": order,
-            "role": "start" if order == 0 else "end" if order == len(waypoint_compact) - 1 else "turn",
+            "role": "start" if order == 0 else "end" if order == len(waypoint_frames) - 1 else "turn",
             "frame_index": frame_index,
             "image": row["image"],
             "timestamp_ns": int(row["timestamp_ns"]),
@@ -126,7 +180,7 @@ def route_waypoints(sensor_path: Path) -> tuple[list[dict], np.ndarray, np.ndarr
             "altitude_m": float(row["altitude"]),
             "local_x_m": float(xy[frame_index, 0]),
             "local_y_m": float(xy[frame_index, 1]),
-            "turn_degrees": None if compact_index not in turns else float(turns[compact_index]),
+            "turn_degrees": None if frame_index not in turns else float(turns[frame_index]),
         }
         result.append(record)
     return result, xy, np.asarray(samples, dtype=object)
@@ -171,25 +225,62 @@ def draw_route(route: str, records: list[dict], samples: np.ndarray, mapper: Sat
     axis.set_title(f"{route}: GPS-derived straight-leg waypoint boundaries", weight="bold", fontsize=14)
     axis.set_xticks([]); axis.set_yticks([])
     axis.legend(loc="upper right", fontsize=8, framealpha=0.94, ncol=2)
-    for suffix in ("png", "pdf"):
+    for suffix in ("png",):
         figure.savefig(OUT / f"{route}_gps_waypoints.{suffix}", dpi=300, bbox_inches="tight")
     plt.close(figure)
 
 
+def draw_turn_diagnostic(route: str, records: list[dict], samples: np.ndarray, mapper: SatGeoMapper, sat: Image.Image) -> None:
+    """A transparent diagnostic: full GPS curve first, detected turns second."""
+    full = np.asarray([
+        mapper.latlon_to_pixel(float(row["latitude"]), float(row["longitude"]))
+        for row in samples
+    ], dtype=float)
+    points = to_pixels(records, mapper)
+    background, extent = crop_background(sat, np.vstack([full, points]))
+    figure, axis = plt.subplots(figsize=(11, 10), constrained_layout=True)
+    axis.imshow(background, extent=extent, origin="upper", alpha=0.72)
+    axis.plot(full[:, 0], full[:, 1], color="#f8fafc", linewidth=3.3, alpha=0.95, zorder=2, label="Complete sampled GPS path")
+    axis.plot(full[:, 0], full[:, 1], color="#111827", linewidth=1.25, alpha=0.95, zorder=3)
+    axis.scatter(points[0, 0], points[0, 1], s=115, marker="o", color="#22c55e", edgecolor="white", linewidth=1.2, label="Start", zorder=6)
+    axis.scatter(points[-1, 0], points[-1, 1], s=140, marker="s", color="#ef4444", edgecolor="white", linewidth=1.2, label="End", zorder=6)
+    if len(points) > 2:
+        axis.scatter(points[1:-1, 0], points[1:-1, 1], s=135, marker="X", color="#facc15", edgecolor="#111827", linewidth=1.0, label="Detected turn waypoint", zorder=7)
+    for record, point in zip(records, points):
+        label = "S" if record["role"] == "start" else "E" if record["role"] == "end" else str(record["waypoint_order"])
+        axis.annotate(label, point, xytext=(7, 7), textcoords="offset points", color="white", fontsize=9, weight="bold", bbox={"facecolor": "#111827", "alpha": 0.88, "pad": 1.5, "edgecolor": "none"}, zorder=8)
+    axis.set_title(f"{route}: complete GPS path and detected turn boundaries", weight="bold", fontsize=14)
+    axis.set_xticks([]); axis.set_yticks([])
+    axis.legend(loc="upper right", fontsize=9, framealpha=0.95)
+    for suffix in ("png",):
+        figure.savefig(OUT / f"{route}_turn_alignment_check.{suffix}", dpi=300, bbox_inches="tight")
+    plt.close(figure)
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--route", choices=sorted(ROUTES), help="Regenerate one route only.")
+    args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     mapper = SatGeoMapper(SAT_JSON, SAT_IMAGE)
     with Image.open(SAT_IMAGE) as image:
         satellite = image.convert("RGB").copy()
     overview = {
-        "method": "RDP GPS polyline simplification followed by direction-change filtering",
-        "rdp_epsilon_m": RDP_EPSILON_M,
+        "method": "smoothed full-GPS heading-change peaks with non-maximum suppression",
+        "heading_window_frames": HEADING_WINDOW_FRAMES,
+        "position_smoothing_frames": POSITION_SMOOTHING_FRAMES,
         "minimum_turn_degrees": MIN_TURN_DEGREES,
+        "major_turn_degrees": MAJOR_TURN_DEGREES,
+        "minimum_minor_turn_travel_m": MIN_MINOR_TURN_TRAVEL_M,
+        "minimum_turn_separation_frames": MIN_TURN_SEPARATION_FRAMES,
         "minimum_adjacent_leg_length_m": MIN_LEG_LENGTH_M,
+        "merge_turn_distance_m": MERGE_TURN_DISTANCE_M,
+        "terminal_settle_distance_m": TERMINAL_SETTLE_DISTANCE_M,
         "important_limit": "The source folders contain sampled GPS but no PX4 mission-item/waypoint command list. Turn waypoints are GPS-derived estimates, not asserted flight-controller command coordinates.",
         "routes": {},
     }
-    for route, source in ROUTES.items():
+    selected_routes = ROUTES if args.route is None else {args.route: ROUTES[args.route]}
+    for route, source in selected_routes.items():
         records, _, samples = route_waypoints(source)
         payload = {
             "route": route,
@@ -214,6 +305,20 @@ def main() -> None:
             "leg_count": max(0, len(records) - 1),
         }
         draw_route(route, records, samples, mapper, satellite)
+        draw_turn_diagnostic(route, records, samples, mapper, satellite)
+    # A one-route regeneration must not discard the summaries for the other
+    # already generated routes.
+    for route, source in ROUTES.items():
+        manifest = OUT / f"{route}_waypoints.json"
+        if not manifest.exists():
+            continue
+        stored = json.loads(manifest.read_text(encoding="utf-8"))
+        overview["routes"][route] = {
+            "source": str(source),
+            "waypoint_count": len(stored["waypoints"]),
+            "turn_count": max(0, len(stored["waypoints"]) - 2),
+            "leg_count": len(stored["straight_legs"]),
+        }
     (OUT / "waypoint_detection_summary.json").write_text(json.dumps(overview, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (OUT / "README.md").write_text(
         "# GPS-derived route waypoint manifests\n\n"

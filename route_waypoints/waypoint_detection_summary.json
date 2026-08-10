@@ -1,27 +1,33 @@
 {
-  "method": "RDP GPS polyline simplification followed by direction-change filtering",
-  "rdp_epsilon_m": 8.0,
-  "minimum_turn_degrees": 45.0,
+  "method": "smoothed full-GPS heading-change peaks with non-maximum suppression",
+  "heading_window_frames": 30,
+  "position_smoothing_frames": 11,
+  "minimum_turn_degrees": 6.0,
+  "major_turn_degrees": 45.0,
+  "minimum_minor_turn_travel_m": 8.0,
+  "minimum_turn_separation_frames": 20,
   "minimum_adjacent_leg_length_m": 20.0,
+  "merge_turn_distance_m": 20.0,
+  "terminal_settle_distance_m": 20.0,
   "important_limit": "The source folders contain sampled GPS but no PX4 mission-item/waypoint command list. Turn waypoints are GPS-derived estimates, not asserted flight-controller command coordinates.",
   "routes": {
+    "route_C": {
+      "source": "/yh/study/new_data/model_dataset_flight/sensor_with_yaw.json",
+      "waypoint_count": 12,
+      "turn_count": 10,
+      "leg_count": 11
+    },
     "route_A": {
       "source": "/yh/study/new_data_2/model_dataset_new_1_flight/sensor_with_yaw.json",
-      "waypoint_count": 15,
-      "turn_count": 13,
-      "leg_count": 14
+      "waypoint_count": 19,
+      "turn_count": 17,
+      "leg_count": 18
     },
     "route_B": {
       "source": "/yh/study/new_data_2/model_dataset_new_2_flight/sensor_with_yaw.json",
-      "waypoint_count": 14,
-      "turn_count": 12,
-      "leg_count": 13
-    },
-    "route_C": {
-      "source": "/yh/study/new_data/model_dataset_flight/sensor_with_yaw.json",
-      "waypoint_count": 8,
-      "turn_count": 6,
-      "leg_count": 7
+      "waypoint_count": 16,
+      "turn_count": 14,
+      "leg_count": 15
     }
   }
 }

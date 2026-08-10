@@ -3,7 +3,7 @@ import csv
 import json
 import math
 import random
-import time
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,10 +12,7 @@ import torch
 import torch.nn.functional as F
 
 import config
-from data import (
-    RouteDataset,
-    meters_from_latlon,
-)
+from data import RouteDataset, meters_from_latlon
 from visual_localizer import (
     CandidateBatch,
     FrozenVisualLocalizer,
@@ -23,10 +20,11 @@ from visual_localizer import (
     train_visual_retrieval_a_only,
 )
 from visual_model import (
-    RouteGRUMeasurementModel,
+    RouteCoordinateGRU,
     initial_covariance_torch,
     kalman_predict_torch,
     kalman_update_torch,
+    constrain_route_state_torch,
 )
 
 try:
@@ -35,12 +33,8 @@ except ImportError:
     KalmanFilter = None
 
 
-ARCHITECTURE_NAME = "RouteConditionedGRU_FilterPyKalman"
+ARCHITECTURE_NAME = "RouteCoordinateGRU_ConstrainedFilterPyKalman"
 
-
-# ============================================================================
-# Data structures
-# ============================================================================
 
 @dataclass
 class BackboneCache:
@@ -73,8 +67,18 @@ class RouteLeg:
 
     @property
     def unit(self):
-        length = max(self.length, 1e-8)
-        return self.vector / length
+        return self.vector / max(
+            self.length,
+            1e-8,
+        )
+
+    @property
+    def normal(self):
+        unit = self.unit
+        return torch.tensor(
+            [-float(unit[1]), float(unit[0])],
+            dtype=torch.float32,
+        )
 
 
 @dataclass
@@ -83,9 +87,32 @@ class WaypointManifest:
     legs: list
 
 
-# ============================================================================
-# Utilities
-# ============================================================================
+@dataclass
+class MotionEnvelope:
+    forward_speed_limit: float
+    cross_speed_limit: float
+    percentile: float
+
+    def as_dict(self):
+        return {
+            "forward_speed_limit_m_per_frame": float(
+                self.forward_speed_limit
+            ),
+            "cross_speed_limit_m_per_frame": float(
+                self.cross_speed_limit
+            ),
+            "percentile": float(
+                self.percentile
+            ),
+            "source": (
+                "Route-A temporal training legs only"
+            ),
+        }
+
+
+# =============================================================================
+# General utilities
+# =============================================================================
 
 def set_seed(seed):
     random.seed(int(seed))
@@ -119,7 +146,8 @@ def load_waypoint_manifest(
 
     if not path.exists():
         raise FileNotFoundError(
-            f"waypoint manifest not found: {path}"
+            "waypoint file not found: "
+            f"{path}"
         )
 
     payload = json.loads(
@@ -183,17 +211,22 @@ def active_leg_for_frame(
 ):
     frame_id = int(frame_id)
 
-    for leg_index, leg in enumerate(manifest.legs):
+    for leg_index, leg in enumerate(
+        manifest.legs
+    ):
         is_last = (
             leg_index
             == len(manifest.legs) - 1
         )
 
         if (
-            leg.start_frame <= frame_id < leg.end_frame
+            leg.start_frame
+            <= frame_id
+            < leg.end_frame
             or (
                 is_last
-                and frame_id <= leg.end_frame
+                and frame_id
+                <= leg.end_frame
             )
         ):
             return leg
@@ -204,36 +237,97 @@ def active_leg_for_frame(
     return manifest.legs[-1]
 
 
-def project_to_leg(xy, leg):
+def xy_to_route(
+    xy,
+    leg,
+):
     xy = torch.as_tensor(
         xy,
         dtype=torch.float32,
     )
-    relative = xy - leg.start_xy
-    unit = leg.unit
-    normal = torch.tensor(
-        [-unit[1], unit[0]],
-        dtype=torch.float32,
+
+    relative = (
+        xy - leg.start_xy
     )
 
-    along = float(
-        torch.dot(relative, unit).item()
-    )
-    cross = float(
-        torch.dot(relative, normal).item()
+    progress = torch.dot(
+        relative,
+        leg.unit,
     )
 
-    return along, cross
+    cross_track = torch.dot(
+        relative,
+        leg.normal,
+    )
+
+    return torch.stack(
+        [progress, cross_track]
+    )
 
 
-def split_route_a_legs(manifest):
+def route_to_xy_torch(
+    progress,
+    cross_track,
+    leg,
+    device,
+    dtype,
+):
+    start = leg.start_xy.to(
+        device=device,
+        dtype=dtype,
+    ).reshape(1, 2)
+
+    unit = leg.unit.to(
+        device=device,
+        dtype=dtype,
+    ).reshape(1, 2)
+
+    normal = leg.normal.to(
+        device=device,
+        dtype=dtype,
+    ).reshape(1, 2)
+
+    return (
+        start
+        + progress.reshape(-1, 1)
+        * unit
+        + cross_track.reshape(-1, 1)
+        * normal
+    )
+
+
+def route_to_xy_numpy(
+    progress,
+    cross_track,
+    leg,
+):
+    return (
+        leg.start_xy.numpy().astype(
+            np.float64
+        )
+        + float(progress)
+        * leg.unit.numpy().astype(
+            np.float64
+        )
+        + float(cross_track)
+        * leg.normal.numpy().astype(
+            np.float64
+        )
+    )
+
+
+def split_route_a_legs(
+    manifest,
+):
     count = len(manifest.legs)
 
     train_count = max(
         1,
         int(
             count
-            * float(config.TEMPORAL_TRAIN_LEG_FRACTION)
+            * float(
+                config.TEMPORAL_TRAIN_LEG_FRACTION
+            )
         ),
     )
 
@@ -241,7 +335,9 @@ def split_route_a_legs(manifest):
         1,
         int(
             count
-            * float(config.TEMPORAL_VAL_LEG_FRACTION)
+            * float(
+                config.TEMPORAL_VAL_LEG_FRACTION
+            )
         ),
     )
 
@@ -271,24 +367,37 @@ def split_route_a_legs(manifest):
             val_legs[-1].end_frame,
         ),
         "test": (
-            test_legs[0].start_frame,
-            test_legs[-1].end_frame,
-        )
-        if test_legs
-        else (
-            val_legs[-1].end_frame,
-            val_legs[-1].end_frame,
+            (
+                test_legs[0].start_frame,
+                test_legs[-1].end_frame,
+            )
+            if test_legs
+            else (
+                val_legs[-1].end_frame,
+                val_legs[-1].end_frame,
+            )
         ),
     }
 
 
-# ============================================================================
-# Current-frame backbone cache
-# ============================================================================
-# The temporal model never receives multiple images.  This cache stores one
-# public-backbone descriptor for each independent UAV frame so recurrent
-# training does not repeatedly decode JPEGs / rerun MobileCLIP.
-# ============================================================================
+def route_frame_indices(
+    cache,
+    start_frame,
+    end_frame,
+):
+    values = cache.frame_ids.numpy()
+
+    mask = (
+        (values >= int(start_frame))
+        & (values <= int(end_frame))
+    )
+
+    return np.nonzero(mask)[0].tolist()
+
+
+# =============================================================================
+# Single-frame backbone cache
+# =============================================================================
 
 @torch.no_grad()
 def build_backbone_cache(
@@ -324,16 +433,24 @@ def build_backbone_cache(
 
         items = [
             dataset[index]
-            for index in range(start, end)
+            for index in range(
+                start,
+                end,
+            )
         ]
 
-        # Batch is only a compute optimization.
-        # Each row is still an independent single-frame descriptor.
+        # Batching is only a compute optimization.
+        # Every temporal step still consumes exactly ONE cached frame descriptor.
         uav = torch.stack(
-            [item["uav"] for item in items]
+            [
+                item["uav"]
+                for item in items
+            ]
         ).to(device)
 
-        clip = visual.encode_uav_clip(uav)
+        clip = visual.encode_uav_clip(
+            uav
+        )
 
         clip_rows.append(
             clip.detach().cpu().to(
@@ -351,14 +468,18 @@ def build_backbone_cache(
         )
 
         frame_rows.extend(
-            parse_frame_id(item["frame_id"])
+            parse_frame_id(
+                item["frame_id"]
+            )
             for item in items
         )
 
         if (
             start == 0
             or end == len(dataset)
-            or (start // batch_size) % 20 == 0
+            or (
+                start // batch_size
+            ) % 20 == 0
         ):
             print(
                 f"{route_name} backbone cache: "
@@ -372,113 +493,242 @@ def build_backbone_cache(
             frame_rows,
             dtype=torch.long,
         ),
-        gt_xy=torch.cat(gt_rows).float(),
-        uav_clip=torch.cat(clip_rows),
+        gt_xy=torch.cat(
+            gt_rows
+        ).float(),
+        uav_clip=torch.cat(
+            clip_rows
+        ),
     )
 
 
-# ============================================================================
-# Forward-only route candidate search
-# ============================================================================
+# =============================================================================
+# Derive physical speed envelope ONLY from Route-A temporal training split
+# =============================================================================
 
-def candidate_indices_forward(
+def derive_motion_envelope(
+    cache,
+    manifest,
+    train_range,
+):
+    indices = route_frame_indices(
+        cache,
+        train_range[0],
+        train_range[1],
+    )
+
+    forward_speeds = []
+    cross_speeds = []
+
+    previous_frame = None
+    previous_leg_index = None
+    previous_sd = None
+
+    for index in indices:
+        frame_id = int(
+            cache.frame_ids[index].item()
+        )
+        leg = active_leg_for_frame(
+            manifest,
+            frame_id,
+        )
+
+        current_sd = xy_to_route(
+            cache.gt_xy[index],
+            leg,
+        )
+
+        if (
+            previous_frame is not None
+            and previous_leg_index
+            == leg.index
+        ):
+            dt = max(
+                frame_id - previous_frame,
+                1,
+            )
+
+            delta = (
+                current_sd
+                - previous_sd
+            )
+
+            # Forward mission speed is nonnegative by definition.
+            forward_speeds.append(
+                max(
+                    0.0,
+                    float(delta[0]) / dt,
+                )
+            )
+
+            cross_speeds.append(
+                abs(
+                    float(delta[1]) / dt
+                )
+            )
+
+        previous_frame = frame_id
+        previous_leg_index = leg.index
+        previous_sd = current_sd
+
+    if not forward_speeds:
+        raise RuntimeError(
+            "Cannot derive Route-A motion envelope"
+        )
+
+    percentile = float(
+        config.MOTION_ENVELOPE_PERCENTILE
+    )
+
+    forward_limit = max(
+        float(
+            np.percentile(
+                np.asarray(
+                    forward_speeds,
+                    dtype=np.float64,
+                ),
+                percentile,
+            )
+        ),
+        float(
+            config.MIN_FORWARD_SPEED_LIMIT_M_PER_FRAME
+        ),
+    )
+
+    cross_limit = max(
+        float(
+            np.percentile(
+                np.asarray(
+                    cross_speeds,
+                    dtype=np.float64,
+                ),
+                percentile,
+            )
+        ),
+        float(
+            config.MIN_CROSS_SPEED_LIMIT_M_PER_FRAME
+        ),
+    )
+
+    envelope = MotionEnvelope(
+        forward_speed_limit=forward_limit,
+        cross_speed_limit=cross_limit,
+        percentile=percentile,
+    )
+
+    print(
+        "Route-A learned motion envelope: "
+        f"forward <= {forward_limit:.3f} m/frame, "
+        f"|cross| <= {cross_limit:.3f} m/frame "
+        f"(p{percentile})",
+        flush=True,
+    )
+
+    return envelope
+
+
+# =============================================================================
+# Route-coordinate forward candidate retrieval
+# =============================================================================
+
+def gallery_route_coordinates(
     visual,
-    predicted_xy,
     leg,
-    accepted_progress_m,
 ):
     gallery_xy = visual.gallery["xy"]
 
     start = leg.start_xy.to(
         gallery_xy.device
     )
-    end = leg.end_xy.to(
+    unit = leg.unit.to(
+        gallery_xy.device
+    )
+    normal = leg.normal.to(
         gallery_xy.device
     )
 
-    vector = end - start
-    length = torch.linalg.norm(
-        vector
-    ).clamp_min(1e-6)
-    unit = vector / length
-
-    normal = torch.stack(
-        [-unit[1], unit[0]]
+    relative = (
+        gallery_xy
+        - start[None, :]
     )
 
-    relative = gallery_xy - start[None, :]
-
-    along = (
-        relative * unit[None, :]
+    progress = (
+        relative
+        * unit[None, :]
     ).sum(dim=1)
 
-    cross = (
-        relative * normal[None, :]
+    cross_track = (
+        relative
+        * normal[None, :]
     ).sum(dim=1)
 
-    predicted_xy = predicted_xy.to(
-        gallery_xy.device
-    ).reshape(2)
-
-    predicted_along = (
-        (predicted_xy - start) * unit
-    ).sum()
-
-    # Mission progress is a coordinate ON the currently active straight leg.
-    # It must never grow beyond that leg's endpoint while the mission
-    # controller still reports the same active leg.  The previous version
-    # allowed Kalman overshoot (e.g. progress > leg_length) to become the hard
-    # search lower bound, which could make the legal candidate set empty.
-    leg_length_m = float(length.item())
-
-    min_along = min(
-        max(
-            0.0,
-            float(accepted_progress_m),
-        ),
-        leg_length_m,
+    return (
+        progress,
+        cross_track,
     )
 
-    max_along = min(
-        leg_length_m
-        + float(config.ROUTE_ENDPOINT_PADDING_M),
-        max(
-            min_along + 1.0,
-            float(predicted_along.item())
-            + float(config.ROUTE_FORWARD_HORIZON_M),
-        ),
+
+def candidate_indices_forward(
+    visual,
+    predicted_progress,
+    previous_progress,
+    leg,
+    motion_envelope,
+):
+    progress, cross_track = (
+        gallery_route_coordinates(
+            visual,
+            leg,
+        )
     )
 
     count = int(
         config.ROUTE_CANDIDATE_COUNT
     )
 
+    previous_progress = min(
+        max(
+            0.0,
+            float(previous_progress),
+        ),
+        float(leg.length),
+    )
+
+    predicted_progress = min(
+        max(
+            previous_progress,
+            float(predicted_progress),
+        ),
+        float(leg.length),
+    )
+
+    search_upper = min(
+        float(leg.length)
+        + float(
+            config.ROUTE_ENDPOINT_PADDING_M
+        ),
+        previous_progress
+        + float(
+            motion_envelope.forward_speed_limit
+        )
+        * float(
+            config.SEARCH_LOOKAHEAD_FRAMES
+        ),
+    )
+
     chosen_mask = None
 
-    # Widen only sideways / forward range. Never intentionally open the
-    # accepted-progress floor toward already traversed route.
-    for width_scale, forward_scale in (
-        (1.0, 1.0),
-        (1.5, 1.5),
-        (2.0, 2.0),
-        (4.0, 3.0),
+    for width_scale in (
+        1.0,
+        1.5,
+        2.0,
+        4.0,
     ):
-        current_max = min(
-            float(length.item())
-            + float(config.ROUTE_ENDPOINT_PADDING_M),
-            max(
-                min_along + 1.0,
-                float(predicted_along.item())
-                + float(config.ROUTE_FORWARD_HORIZON_M)
-                * forward_scale,
-            ),
-        )
-
         mask = (
-            (along >= min_along)
-            & (along <= current_max)
+            (progress >= previous_progress)
+            & (progress <= search_upper)
             & (
-                cross.abs()
+                cross_track.abs()
                 <= float(
                     config.ROUTE_CORRIDOR_HALF_WIDTH_M
                 )
@@ -486,18 +736,16 @@ def candidate_indices_forward(
             )
         )
 
-        if int(mask.sum().item()) >= count:
+        if int(
+            mask.sum().item()
+        ) >= count:
             chosen_mask = mask
             break
 
     if chosen_mask is None:
         chosen_mask = (
-            (along >= min_along)
-            & (
-                along
-                <= leg_length_m
-                + float(config.ROUTE_ENDPOINT_PADDING_M)
-            )
+            (progress >= previous_progress)
+            & (progress <= search_upper)
         )
 
     valid_indices = torch.nonzero(
@@ -505,30 +753,28 @@ def candidate_indices_forward(
         as_tuple=False,
     ).flatten()
 
+    # At the exact endpoint, use only a terminal support band.
     if valid_indices.numel() == 0:
-        # Terminal-cap fallback.
-        #
-        # A discrete SAT-patch gallery does not necessarily contain a patch
-        # center whose along-track coordinate is >= the exact geometric
-        # waypoint coordinate.  When the active leg has already reached its
-        # endpoint, keep the search local to the endpoint support band instead
-        # of reopening the whole traversed route or crashing.
         terminal_start = max(
             0.0,
-            leg_length_m
-            - float(config.ROUTE_ENDPOINT_PADDING_M),
+            float(leg.length)
+            - float(
+                config.ROUTE_ENDPOINT_PADDING_M
+            ),
         )
 
         terminal_end = (
-            leg_length_m
-            + float(config.ROUTE_ENDPOINT_PADDING_M)
+            float(leg.length)
+            + float(
+                config.ROUTE_ENDPOINT_PADDING_M
+            )
         )
 
         terminal_mask = (
-            (along >= terminal_start)
-            & (along <= terminal_end)
+            (progress >= terminal_start)
+            & (progress <= terminal_end)
             & (
-                cross.abs()
+                cross_track.abs()
                 <= float(
                     config.ROUTE_CORRIDOR_HALF_WIDTH_M
                 )
@@ -543,29 +789,45 @@ def candidate_indices_forward(
 
     if valid_indices.numel() == 0:
         raise RuntimeError(
-            "No satellite gallery patch exists even in the "
-            "terminal endpoint support band: "
+            "No legal SAT patch in forward route support: "
             f"leg={leg.index}, "
-            f"leg_length={leg_length_m:.2f}m, "
-            f"accepted_progress={float(accepted_progress_m):.2f}m"
+            f"previous_progress={previous_progress:.2f}m, "
+            f"search_upper={search_upper:.2f}m"
         )
 
-    valid_xy = gallery_xy[
+    valid_progress = progress[
         valid_indices
     ]
 
-    distance2 = (
-        valid_xy - predicted_xy[None, :]
-    ).square().sum(dim=1)
-
-    valid_cross = cross[
+    valid_cross = cross_track[
         valid_indices
     ]
 
-    ranking_cost = (
-        distance2
-        + float(config.ROUTE_CROSS_TRACK_COST)
-        * valid_cross.square()
+    # Rank in ROUTE coordinates, not free XY.
+    scale_s = max(
+        motion_envelope.forward_speed_limit
+        * 2.0,
+        1.0,
+    )
+
+    scale_d = max(
+        motion_envelope.cross_speed_limit
+        * 4.0,
+        1.0,
+    )
+
+    cost = (
+        (
+            (
+                valid_progress
+                - predicted_progress
+            )
+            / scale_s
+        ).square()
+        + (
+            valid_cross
+            / scale_d
+        ).square()
     )
 
     actual_count = min(
@@ -574,7 +836,7 @@ def candidate_indices_forward(
     )
 
     order = torch.topk(
-        ranking_cost,
+        cost,
         k=actual_count,
         largest=False,
     ).indices
@@ -583,20 +845,22 @@ def candidate_indices_forward(
         order
     ]
 
-    # Near an endpoint the legal forward set can be smaller than 36.
-    # Pad by repeating the furthest legal selected patch rather than opening
-    # the search backward into already traversed route.
     if selected.numel() < count:
-        pad_value = selected[-1]
-        padding = pad_value.repeat(
-            count - selected.numel()
-        )
         selected = torch.cat(
-            [selected, padding],
+            [
+                selected,
+                selected[-1].repeat(
+                    count
+                    - selected.numel()
+                ),
+            ],
             dim=0,
         )
 
-    return selected.reshape(1, -1)
+    return selected.reshape(
+        1,
+        -1,
+    )
 
 
 @torch.no_grad()
@@ -616,8 +880,10 @@ def candidate_batch_from_indices(
         "clip_feat"
     ][indices]
 
-    z_uav = visual.model.encode_uav_from_clip(
-        uav_clip
+    z_uav = (
+        visual.model.encode_uav_from_clip(
+            uav_clip
+        )
     )
 
     z_sat = visual.model.encode_sat_from_clip(
@@ -625,7 +891,10 @@ def candidate_batch_from_indices(
             -1,
             satellite_clip.shape[-1],
         ),
-        centers.reshape(-1, 2),
+        centers.reshape(
+            -1,
+            2,
+        ),
     ).reshape(
         centers.shape[0],
         centers.shape[1],
@@ -644,11 +913,15 @@ def candidate_batch_from_indices(
 
     raw_prob = torch.softmax(
         raw_logits
-        / float(config.MEANSHIFT_SCORE_TAU),
+        / float(
+            config.MEANSHIFT_SCORE_TAU
+        ),
         dim=1,
     )
 
-    raw_index = raw_logits.argmax(dim=1)
+    raw_index = raw_logits.argmax(
+        dim=1
+    )
 
     raw_top1_xy = centers[
         torch.arange(
@@ -658,12 +931,14 @@ def candidate_batch_from_indices(
         raw_index,
     ]
 
-    hardms_xy, hardms_support = hard_mean_shift(
-        raw_logits,
-        centers,
-        config.MEANSHIFT_SCORE_TAU,
-        config.MEANSHIFT_BANDWIDTH_M,
-        config.MEANSHIFT_ITERATIONS,
+    hardms_xy, hardms_support = (
+        hard_mean_shift(
+            raw_logits,
+            centers,
+            config.MEANSHIFT_SCORE_TAU,
+            config.MEANSHIFT_BANDWIDTH_M,
+            config.MEANSHIFT_ITERATIONS,
+        )
     )
 
     return CandidateBatch(
@@ -679,256 +954,319 @@ def candidate_batch_from_indices(
     )
 
 
-def gt_candidate_captured(
-    candidate,
-    gt_xy,
+def candidate_centers_to_route(
+    centers,
+    leg,
 ):
-    distance = torch.linalg.norm(
-        candidate.centers[0]
-        - gt_xy.to(
-            candidate.centers.device
-        )[None, :],
+    start = leg.start_xy.to(
+        centers.device
+    ).reshape(1, 1, 2)
+
+    unit = leg.unit.to(
+        centers.device
+    ).reshape(1, 1, 2)
+
+    normal = leg.normal.to(
+        centers.device
+    ).reshape(1, 1, 2)
+
+    relative = (
+        centers - start
+    )
+
+    progress = (
+        relative * unit
+    ).sum(dim=2)
+
+    cross = (
+        relative * normal
+    ).sum(dim=2)
+
+    return torch.stack(
+        [progress, cross],
+        dim=2,
+    )
+
+
+def xy_batch_to_route(
+    xy,
+    leg,
+):
+    start = leg.start_xy.to(
+        xy.device
+    ).reshape(1, 2)
+
+    unit = leg.unit.to(
+        xy.device
+    ).reshape(1, 2)
+
+    normal = leg.normal.to(
+        xy.device
+    ).reshape(1, 2)
+
+    relative = (
+        xy - start
+    )
+
+    return torch.stack(
+        [
+            (relative * unit).sum(dim=1),
+            (relative * normal).sum(dim=1),
+        ],
         dim=1,
     )
 
-    return bool(
-        distance.min().item()
-        <= float(
-            config.CANDIDATE_CAPTURE_RADIUS_M
-        )
-    )
 
+# =============================================================================
+# Route-coordinate Kalman helpers
+# =============================================================================
 
-# ============================================================================
-# Kalman helpers
-# ============================================================================
-
-def initial_state_tensor(
-    start_xy,
+def initial_route_state_torch(
     device,
 ):
-    # Build the initial state without any in-place slice assignment.
-    position = start_xy.to(
-        device=device,
-        dtype=torch.float32,
-    ).reshape(1, 2)
-
-    motion = torch.zeros(
+    return torch.zeros(
         1,
         4,
         device=device,
         dtype=torch.float32,
     )
 
-    return torch.cat(
-        [
-            position,
-            motion,
-        ],
-        dim=1,
-    )
 
-
-def retarget_torch_state(
-    state,
-    covariance,
-    new_leg,
+def reset_route_state_torch(
+    old_state,
 ):
-    """
-    Align the carried velocity with the newly active mission leg.
-
-    IMPORTANT:
-    This function must be fully out-of-place because state/covariance can still
-    belong to the current truncated-BPTT autograd graph.  In-place writes such
-    as state[:, 2:4] = ... or covariance[:, 2, 2] += ... invalidate saved views
-    that backward() still needs.
-    """
-    position = state[:, 0:2]
-
-    old_velocity = state[:, 2:4]
-
-    speed = torch.linalg.norm(
-        old_velocity,
-        dim=1,
-        keepdim=True,
+    # At a controller-confirmed waypoint switch:
+    # progress=0 and cross-track=0 in the NEW leg.
+    # Carry only the nonnegative forward speed magnitude.
+    forward_speed = torch.clamp(
+        old_state[:, 1],
+        min=0.0,
     )
 
-    unit = new_leg.unit.to(
-        device=state.device,
-        dtype=state.dtype,
-    ).reshape(1, 2)
-
-    aligned_velocity = (
-        speed * unit
+    zero = torch.zeros_like(
+        forward_speed
     )
 
-    zero_acceleration = torch.zeros_like(
-        state[:, 4:6]
-    )
-
-    new_state = torch.cat(
+    return torch.stack(
         [
-            position,
-            aligned_velocity,
-            zero_acceleration,
+            zero,
+            forward_speed,
+            zero,
+            zero,
         ],
         dim=1,
     )
 
-    covariance_boost_diagonal = torch.tensor(
-        [
-            0.0,
-            0.0,
-            float(
-                config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
-            ),
-            float(
-                config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
-            ),
-            float(
-                config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
-            ),
-            float(
-                config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
-            ),
-        ],
-        device=covariance.device,
-        dtype=covariance.dtype,
+
+def filterpy_transition(
+    dt,
+):
+    dt = float(
+        max(dt, 1.0)
     )
-
-    covariance_boost = torch.diag(
-        covariance_boost_diagonal
-    ).unsqueeze(0).expand(
-        covariance.shape[0],
-        -1,
-        -1,
-    )
-
-    new_covariance = (
-        covariance
-        + covariance_boost
-    )
-
-    return (
-        new_state,
-        new_covariance,
-    )
-
-
-def filterpy_transition(dt):
-    dt = float(max(dt, 1.0))
-    half_dt2 = 0.5 * dt * dt
 
     return np.array(
         [
-            [1, 0, dt, 0, half_dt2, 0],
-            [0, 1, 0, dt, 0, half_dt2],
-            [0, 0, 1, 0, dt, 0],
-            [0, 0, 0, 1, 0, dt],
-            [0, 0, 0, 0, 1, 0],
-            [0, 0, 0, 0, 0, 1],
+            [1.0, dt, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, dt],
+            [0.0, 0.0, 0.0, 1.0],
         ],
         dtype=np.float64,
     )
 
 
-def filterpy_process_covariance(dt):
-    dt = float(max(dt, 1.0))
+def filterpy_process_covariance(
+    dt,
+):
+    dt = float(
+        max(dt, 1.0)
+    )
 
-    diagonal = np.array(
-        [
-            config.KALMAN_Q_POSITION,
-            config.KALMAN_Q_POSITION,
-            config.KALMAN_Q_VELOCITY,
-            config.KALMAN_Q_VELOCITY,
-            config.KALMAN_Q_ACCELERATION,
-            config.KALMAN_Q_ACCELERATION,
-        ],
-        dtype=np.float64,
-    ) * dt
+    return np.diag(
+        np.array(
+            [
+                config.KALMAN_Q_PROGRESS,
+                config.KALMAN_Q_FORWARD_SPEED,
+                config.KALMAN_Q_CROSS_TRACK,
+                config.KALMAN_Q_CROSS_SPEED,
+            ],
+            dtype=np.float64,
+        )
+        * dt
+    )
 
-    return np.diag(diagonal)
 
-
-def make_filterpy_filter(start_xy):
+def make_filterpy_filter():
     if KalmanFilter is None:
         raise ImportError(
-            "FilterPy is required for evaluation/inference. "
-            "Install it with: pip install filterpy"
+            "FilterPy is required: pip install filterpy"
         )
 
     kf = KalmanFilter(
-        dim_x=6,
+        dim_x=4,
         dim_z=2,
     )
 
-    kf.x = np.array(
-        [
-            float(start_xy[0]),
-            float(start_xy[1]),
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-        ],
+    kf.x = np.zeros(
+        4,
         dtype=np.float64,
     )
 
+    # measurement z=[s,d]
     kf.H = np.array(
         [
-            [1, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
         ],
         dtype=np.float64,
     )
 
     kf.P = np.diag(
         [
-            config.KALMAN_INIT_POSITION_VAR,
-            config.KALMAN_INIT_POSITION_VAR,
-            config.KALMAN_INIT_VELOCITY_VAR,
-            config.KALMAN_INIT_VELOCITY_VAR,
-            config.KALMAN_INIT_ACCELERATION_VAR,
-            config.KALMAN_INIT_ACCELERATION_VAR,
+            config.KALMAN_INIT_PROGRESS_VAR,
+            config.KALMAN_INIT_FORWARD_SPEED_VAR,
+            config.KALMAN_INIT_CROSS_TRACK_VAR,
+            config.KALMAN_INIT_CROSS_SPEED_VAR,
         ]
     ).astype(np.float64)
 
     return kf
 
 
-def retarget_filterpy_state(
+def reset_filterpy_for_new_leg(
     kf,
-    new_leg,
+    motion_envelope,
 ):
-    speed = math.hypot(
-        float(kf.x[2]),
-        float(kf.x[3]),
+    carried_speed = min(
+        max(
+            0.0,
+            float(kf.x[1]),
+        ),
+        float(
+            motion_envelope.forward_speed_limit
+        ),
     )
 
-    unit = new_leg.unit.numpy()
-
-    kf.x[2] = speed * float(unit[0])
-    kf.x[3] = speed * float(unit[1])
-    kf.x[4] = 0.0
-    kf.x[5] = 0.0
-
-    kf.P[2, 2] += float(
-        config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
-    )
-    kf.P[3, 3] += float(
-        config.LEG_CHANGE_VELOCITY_COVARIANCE_BOOST
-    )
-    kf.P[4, 4] += float(
-        config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
-    )
-    kf.P[5, 5] += float(
-        config.LEG_CHANGE_ACCELERATION_COVARIANCE_BOOST
+    kf.x = np.array(
+        [
+            0.0,
+            carried_speed,
+            0.0,
+            0.0,
+        ],
+        dtype=np.float64,
     )
 
+    kf.P = np.diag(
+        [
+            config.KALMAN_INIT_PROGRESS_VAR,
+            config.KALMAN_INIT_FORWARD_SPEED_VAR,
+            config.KALMAN_INIT_CROSS_TRACK_VAR,
+            config.KALMAN_INIT_CROSS_SPEED_VAR,
+        ]
+    ).astype(np.float64)
 
-# ============================================================================
+
+def constrain_route_state_numpy(
+    state,
+    previous_progress,
+    previous_cross,
+    leg,
+    motion_envelope,
+    dt,
+):
+    state = np.asarray(
+        state,
+        dtype=np.float64,
+    ).reshape(4)
+
+    dt = float(
+        max(dt, 1.0)
+    )
+
+    progress_upper = min(
+        float(leg.length),
+        float(previous_progress)
+        + float(
+            motion_envelope.forward_speed_limit
+        )
+        * dt,
+    )
+
+    progress = min(
+        max(
+            float(state[0]),
+            float(previous_progress),
+        ),
+        progress_upper,
+    )
+
+    forward_speed = min(
+        max(
+            float(state[1]),
+            0.0,
+        ),
+        float(
+            motion_envelope.forward_speed_limit
+        ),
+    )
+
+    cross_delta_limit = (
+        float(
+            motion_envelope.cross_speed_limit
+        )
+        * dt
+    )
+
+    cross_delta = min(
+        max(
+            float(state[2])
+            - float(previous_cross),
+            -cross_delta_limit,
+        ),
+        cross_delta_limit,
+    )
+
+    cross = min(
+        max(
+            float(previous_cross)
+            + cross_delta,
+            -float(
+                config.ROUTE_CORRIDOR_HALF_WIDTH_M
+            ),
+        ),
+        float(
+            config.ROUTE_CORRIDOR_HALF_WIDTH_M
+        ),
+    )
+
+    cross_speed = min(
+        max(
+            float(state[3]),
+            -float(
+                motion_envelope.cross_speed_limit
+            ),
+        ),
+        float(
+            motion_envelope.cross_speed_limit
+        ),
+    )
+
+    return np.array(
+        [
+            progress,
+            forward_speed,
+            cross,
+            cross_speed,
+        ],
+        dtype=np.float64,
+    )
+
+
+# =============================================================================
 # Metrics
-# ============================================================================
+# =============================================================================
 
 def metric_block(
     prediction,
@@ -959,7 +1297,8 @@ def metric_block(
         )
 
         rpe = np.linalg.norm(
-            predicted_step - gt_step,
+            predicted_step
+            - gt_step,
             axis=1,
         )
 
@@ -975,7 +1314,9 @@ def metric_block(
                     99,
                 )
             )
-            + float(config.JUMP_TOLERANCE_M)
+            + float(
+                config.JUMP_TOLERANCE_M
+            )
         )
 
         predicted_step_length = np.linalg.norm(
@@ -999,7 +1340,9 @@ def metric_block(
         jump_rate = 0.0
 
     return {
-        "MLE_m": float(error.mean()),
+        "MLE_m": float(
+            error.mean()
+        ),
         "MedLE_m": float(
             np.median(error)
         ),
@@ -1011,7 +1354,9 @@ def metric_block(
         ),
         "ATE_RMSE_m": float(
             np.sqrt(
-                np.mean(error ** 2)
+                np.mean(
+                    error ** 2
+                )
             )
         ),
         "RPE_m": float(
@@ -1045,81 +1390,41 @@ def metric_block(
     }
 
 
-# ============================================================================
-# Training
-# ============================================================================
+# =============================================================================
+# Temporal training
+# =============================================================================
 
-def teacher_search_ratio(epoch):
-    horizon = max(
-        1,
-        int(config.TEACHER_SEARCH_EPOCHS),
-    )
-
-    if epoch >= horizon:
-        return 0.0
-
-    return float(
-        1.0
-        - epoch / float(horizon)
-    )
-
-
-def frame_position_lookup(cache):
-    return {
-        int(frame_id): index
-        for index, frame_id
-        in enumerate(
-            cache.frame_ids.tolist()
-        )
-    }
-
-
-def route_frame_range_indices(
-    cache,
-    start_frame,
-    end_frame,
-):
-    frame_ids = cache.frame_ids.numpy()
-
-    mask = (
-        (frame_ids >= int(start_frame))
-        & (frame_ids <= int(end_frame))
-    )
-
-    return np.nonzero(mask)[0].tolist()
-
-
-def compute_motion_targets(
-    current_gt,
-    previous_gt,
-    previous_velocity,
+def gt_velocity_target(
+    current_sd,
+    previous_sd,
     dt,
 ):
-    if previous_gt is None:
-        velocity = torch.zeros_like(
-            current_gt
+    if previous_sd is None:
+        return torch.zeros(
+            2,
+            device=current_sd.device,
+            dtype=current_sd.dtype,
         )
-        acceleration = torch.zeros_like(
-            current_gt
-        )
-        return velocity, acceleration
 
-    dt_value = float(max(dt, 1.0))
+    dt = float(
+        max(dt, 1.0)
+    )
 
     velocity = (
-        current_gt - previous_gt
-    ) / dt_value
+        current_sd
+        - previous_sd
+    ) / dt
 
-    if previous_velocity is None:
-        acceleration = torch.zeros_like(
-            velocity
-        )
-    else:
-        acceleration = (
-            velocity - previous_velocity
-        ) / dt_value
-
-    return velocity, acceleration
+    # Route state is explicitly forward-only.
+    return torch.stack(
+        [
+            torch.clamp(
+                velocity[0],
+                min=0.0,
+            ),
+            velocity[1],
+        ]
+    )
 
 
 def train_one_epoch(
@@ -1129,12 +1434,12 @@ def train_one_epoch(
     cache,
     manifest,
     train_range,
+    motion_envelope,
     device,
-    epoch,
 ):
     model.train()
 
-    indices = route_frame_range_indices(
+    indices = route_frame_indices(
         cache,
         train_range[0],
         train_range[1],
@@ -1142,63 +1447,57 @@ def train_one_epoch(
 
     if not indices:
         raise RuntimeError(
-            "Temporal Route-A training range is empty"
+            "Empty Route-A temporal training split"
         )
 
-    first_frame = int(
-        cache.frame_ids[indices[0]].item()
-    )
-    current_leg = active_leg_for_frame(
-        manifest,
-        first_frame,
-    )
-
-    state = initial_state_tensor(
-        current_leg.start_xy,
-        device,
-    )
-    covariance = initial_covariance_torch(
-        1,
-        device,
-        torch.float32,
-    )
     hidden = model.initial_hidden(
         1,
         device,
         torch.float32,
     )
 
-    accepted_progress = 0.0
+    state = initial_route_state_torch(
+        device
+    )
+
+    covariance = initial_covariance_torch(
+        1,
+        device,
+        torch.float32,
+    )
+
+    first_frame = int(
+        cache.frame_ids[
+            indices[0]
+        ].item()
+    )
+
+    current_leg = active_leg_for_frame(
+        manifest,
+        first_frame,
+    )
+
+    previous_leg_index = (
+        current_leg.index
+    )
     previous_frame = first_frame - 1
-    previous_gt = None
-    previous_gt_velocity = None
-    previous_leg_index = current_leg.index
+    previous_gt_sd = None
+
+    loss_accumulator = None
+    chunk_steps = 0
+    term_rows = []
+    capture_rows = []
 
     optimizer.zero_grad(
         set_to_none=True
     )
 
-    loss_accumulator = None
-    chunk_steps = 0
-    loss_rows = []
-    capture_rows = []
-
-    ratio = teacher_search_ratio(
-        epoch
-    )
-
-    for sequence_step, index in enumerate(
+    for row_number, index in enumerate(
         indices
     ):
         frame_id = int(
             cache.frame_ids[index].item()
         )
-
-        gt_xy = cache.gt_xy[
-            index
-        ].to(
-            device
-        ).float()
 
         leg = active_leg_for_frame(
             manifest,
@@ -1211,17 +1510,30 @@ def train_one_epoch(
         )
 
         if leg_changed:
-            state, covariance = retarget_torch_state(
-                state,
-                covariance,
-                leg,
+            state = reset_route_state_torch(
+                state
             )
-            accepted_progress = 0.0
+            covariance = initial_covariance_torch(
+                1,
+                device,
+                torch.float32,
+            )
+            previous_gt_sd = None
 
         dt = max(
-            frame_id - previous_frame,
+            frame_id
+            - previous_frame,
             1,
         )
+
+        previous_progress = state[
+            :,
+            0
+        ]
+        previous_cross = state[
+            :,
+            2
+        ]
 
         predicted_state, predicted_covariance = (
             kalman_predict_torch(
@@ -1235,24 +1547,56 @@ def train_one_epoch(
             )
         )
 
-        predicted_xy = predicted_state[
-            0,
-            0:2,
-        ]
-
-        # Training-only curriculum for candidate search center.
-        # By the end of the curriculum ratio=0 and search is fully closed-loop.
-        search_xy = (
-            ratio * gt_xy.detach()
-            + (1.0 - ratio)
-            * predicted_xy.detach()
+        # Constrain prediction BEFORE it controls candidate search.
+        predicted_state = (
+            constrain_route_state_torch(
+                predicted_state,
+                previous_progress,
+                previous_cross,
+                torch.tensor(
+                    [leg.length],
+                    device=device,
+                    dtype=torch.float32,
+                ),
+                torch.tensor(
+                    [
+                        motion_envelope.forward_speed_limit
+                    ],
+                    device=device,
+                    dtype=torch.float32,
+                ),
+                torch.tensor(
+                    [
+                        motion_envelope.cross_speed_limit
+                    ],
+                    device=device,
+                    dtype=torch.float32,
+                ),
+                torch.tensor(
+                    [dt],
+                    device=device,
+                    dtype=torch.float32,
+                ),
+            )
         )
 
-        indices_forward = candidate_indices_forward(
-            visual,
-            search_xy,
-            leg,
-            accepted_progress,
+        candidate_indices = (
+            candidate_indices_forward(
+                visual,
+                float(
+                    predicted_state[
+                        0,
+                        0,
+                    ].detach().cpu()
+                ),
+                float(
+                    previous_progress[
+                        0
+                    ].detach().cpu()
+                ),
+                leg,
+                motion_envelope,
+            )
         )
 
         uav_clip = cache.uav_clip[
@@ -1264,30 +1608,49 @@ def train_one_epoch(
         candidate = candidate_batch_from_indices(
             visual,
             uav_clip,
-            indices_forward,
+            candidate_indices,
         )
 
-        capture_rows.append(
-            gt_candidate_captured(
-                candidate,
-                gt_xy.detach().cpu(),
+        candidate_sd = (
+            candidate_centers_to_route(
+                candidate.centers,
+                leg,
             )
+        )
+
+        hardms_sd = xy_batch_to_route(
+            candidate.hardms_xy,
+            leg,
         )
 
         measurement = model.forward_step(
             candidate.z_uav,
             candidate.z_sat,
             candidate.raw_prob,
-            candidate.centers,
-            candidate.hardms_xy,
+            candidate_sd,
+            hardms_sd,
             candidate.hardms_support,
             predicted_state,
-            leg.start_xy.to(
-                device
-            ).reshape(1, 2),
-            leg.end_xy.to(
-                device
-            ).reshape(1, 2),
+            previous_progress,
+            torch.tensor(
+                [leg.length],
+                device=device,
+                dtype=torch.float32,
+            ),
+            torch.tensor(
+                [
+                    motion_envelope.forward_speed_limit
+                ],
+                device=device,
+                dtype=torch.float32,
+            ),
+            torch.tensor(
+                [
+                    motion_envelope.cross_speed_limit
+                ],
+                device=device,
+                dtype=torch.float32,
+            ),
             torch.tensor(
                 [leg_changed],
                 device=device,
@@ -1299,50 +1662,124 @@ def train_one_epoch(
             kalman_update_torch(
                 predicted_state,
                 predicted_covariance,
-                measurement.measurement_xy,
+                measurement.measurement_sd,
                 measurement.measurement_variance,
             )
         )
 
-        velocity_target, acceleration_target = (
-            compute_motion_targets(
-                gt_xy,
-                previous_gt,
-                previous_gt_velocity,
-                dt,
+        updated_state = (
+            constrain_route_state_torch(
+                updated_state,
+                previous_progress,
+                previous_cross,
+                torch.tensor(
+                    [leg.length],
+                    device=device,
+                    dtype=torch.float32,
+                ),
+                torch.tensor(
+                    [
+                        motion_envelope.forward_speed_limit
+                    ],
+                    device=device,
+                    dtype=torch.float32,
+                ),
+                torch.tensor(
+                    [
+                        motion_envelope.cross_speed_limit
+                    ],
+                    device=device,
+                    dtype=torch.float32,
+                ),
+                torch.tensor(
+                    [dt],
+                    device=device,
+                    dtype=torch.float32,
+                ),
             )
         )
 
+        gt_xy = cache.gt_xy[
+            index
+        ].to(
+            device
+        ).float()
+
+        gt_sd = xy_batch_to_route(
+            gt_xy.reshape(
+                1,
+                2,
+            ),
+            leg,
+        )[0]
+
+        prediction_xy = route_to_xy_torch(
+            predicted_state[:, 0],
+            predicted_state[:, 2],
+            leg,
+            device,
+            torch.float32,
+        )
+
+        final_xy = route_to_xy_torch(
+            updated_state[:, 0],
+            updated_state[:, 2],
+            leg,
+            device,
+            torch.float32,
+        )
+
+        target_velocity = gt_velocity_target(
+            gt_sd,
+            previous_gt_sd,
+            dt,
+        )
+
         final_loss = F.smooth_l1_loss(
-            updated_state[:, 0:2],
-            gt_xy.reshape(1, 2),
+            final_xy,
+            gt_xy.reshape(
+                1,
+                2,
+            ),
         )
 
         measurement_nll = F.gaussian_nll_loss(
-            measurement.measurement_xy,
-            gt_xy.reshape(1, 2),
+            measurement.measurement_sd,
+            gt_sd.reshape(
+                1,
+                2,
+            ),
             measurement.measurement_variance,
             full=False,
             reduction="mean",
         )
 
         prediction_loss = F.smooth_l1_loss(
-            predicted_state[:, 0:2],
-            gt_xy.reshape(1, 2),
+            prediction_xy,
+            gt_xy.reshape(
+                1,
+                2,
+            ),
         )
 
         velocity_loss = F.smooth_l1_loss(
-            updated_state[:, 2:4],
-            velocity_target.reshape(1, 2),
-        )
-
-        acceleration_loss = F.smooth_l1_loss(
-            updated_state[:, 4:6],
-            acceleration_target.reshape(1, 2),
+            torch.stack(
+                [
+                    updated_state[:, 1],
+                    updated_state[:, 3],
+                ],
+                dim=1,
+            ),
+            target_velocity.reshape(
+                1,
+                2,
+            ),
         )
 
         loss = (
-            float(config.LOSS_FINAL_SMOOTH_L1)
+            float(
+                config.LOSS_FINAL_SMOOTH_L1
+            )
             * final_loss
             + float(
                 config.LOSS_MEASUREMENT_GAUSSIAN_NLL
@@ -1356,10 +1793,6 @@ def train_one_epoch(
                 config.LOSS_VELOCITY_SMOOTH_L1
             )
             * velocity_loss
-            + float(
-                config.LOSS_ACCELERATION_SMOOTH_L1
-            )
-            * acceleration_loss
         )
 
         if loss_accumulator is None:
@@ -1371,7 +1804,7 @@ def train_one_epoch(
 
         chunk_steps += 1
 
-        loss_rows.append(
+        term_rows.append(
             {
                 "total": float(
                     loss.detach().cpu()
@@ -1388,50 +1821,51 @@ def train_one_epoch(
                 "velocity": float(
                     velocity_loss.detach().cpu()
                 ),
-                "acceleration": float(
-                    acceleration_loss.detach().cpu()
-                ),
             }
+        )
+
+        # Capture diagnostic only.
+        distance = torch.linalg.norm(
+            candidate.centers[0]
+            - gt_xy.reshape(
+                1,
+                2,
+            ),
+            dim=1,
+        )
+
+        capture_rows.append(
+            bool(
+                distance.min().item()
+                <= float(
+                    config.CANDIDATE_CAPTURE_RADIUS_M
+                )
+            )
         )
 
         state = updated_state
         covariance = updated_covariance
         hidden = measurement.hidden
 
-        along, _ = project_to_leg(
-            state[
-                0,
-                0:2,
-            ].detach().cpu(),
-            leg,
-        )
-        accepted_progress = min(
-            max(
-                accepted_progress,
-                along,
-                0.0,
-            ),
-            float(leg.length),
-        )
-
+        previous_gt_sd = gt_sd.detach()
         previous_frame = frame_id
-        previous_gt = gt_xy.detach()
-        previous_gt_velocity = (
-            velocity_target.detach()
-        )
         previous_leg_index = leg.index
 
-        is_chunk_end = (
+        end_of_chunk = (
             chunk_steps
-            >= int(config.TBPTT_STEPS)
-            or sequence_step
+            >= int(
+                config.TBPTT_STEPS
+            )
+            or row_number
             == len(indices) - 1
         )
 
-        if is_chunk_end:
+        if end_of_chunk:
             normalized = (
                 loss_accumulator
-                / float(chunk_steps)
+                / float(
+                    chunk_steps
+                )
             )
 
             if not torch.isfinite(
@@ -1445,7 +1879,9 @@ def train_one_epoch(
 
             torch.nn.utils.clip_grad_norm_(
                 model.parameters(),
-                float(config.GRAD_CLIP_NORM),
+                float(
+                    config.GRAD_CLIP_NORM
+                ),
             )
 
             optimizer.step()
@@ -1453,7 +1889,7 @@ def train_one_epoch(
                 set_to_none=True
             )
 
-            # Truncated BPTT: state values persist, graph does not.
+            # Carry values, cut graph.
             state = state.detach()
             covariance = covariance.detach()
             hidden = hidden.detach()
@@ -1464,49 +1900,49 @@ def train_one_epoch(
     means = {
         key: float(
             np.mean(
-                [row[key] for row in loss_rows]
+                [
+                    row[key]
+                    for row in term_rows
+                ]
             )
         )
-        for key in loss_rows[0]
+        for key in term_rows[0]
     }
 
-    means["capture_pct"] = (
-        float(
-            np.mean(capture_rows)
-            * 100.0
+    means["capture_pct"] = float(
+        np.mean(
+            capture_rows
         )
-        if capture_rows
-        else 0.0
+        * 100.0
     )
-    means["teacher_search_ratio"] = ratio
 
     return means
 
 
-# ============================================================================
+# =============================================================================
 # FilterPy evaluation / inference
-# ============================================================================
+# =============================================================================
 
 @torch.no_grad()
-def evaluate_segment_filterpy(
+def evaluate_filterpy(
     model,
     visual,
     cache,
     manifest,
+    motion_envelope,
     device,
     start_frame,
     end_frame,
-    save_csv_path=None,
+    csv_path=None,
 ):
     if KalmanFilter is None:
         raise ImportError(
-            "FilterPy is required. "
-            "Run: pip install filterpy"
+            "FilterPy is required: pip install filterpy"
         )
 
     model.eval()
 
-    indices = route_frame_range_indices(
+    indices = route_frame_indices(
         cache,
         start_frame,
         end_frame,
@@ -1514,24 +1950,10 @@ def evaluate_segment_filterpy(
 
     if not indices:
         raise RuntimeError(
-            f"empty evaluation segment "
-            f"{start_frame}..{end_frame}"
+            "Empty evaluation range"
         )
 
-    first_frame_id = int(
-        cache.frame_ids[
-            indices[0]
-        ].item()
-    )
-
-    current_leg = active_leg_for_frame(
-        manifest,
-        first_frame_id,
-    )
-
-    kf = make_filterpy_filter(
-        current_leg.start_xy.numpy()
-    )
+    kf = make_filterpy_filter()
 
     hidden = model.initial_hidden(
         1,
@@ -1539,22 +1961,26 @@ def evaluate_segment_filterpy(
         torch.float32,
     )
 
-    accepted_progress = 0.0
-    previous_frame = first_frame_id - 1
+    first_frame = int(
+        cache.frame_ids[
+            indices[0]
+        ].item()
+    )
+
+    current_leg = active_leg_for_frame(
+        manifest,
+        first_frame,
+    )
+
     previous_leg_index = current_leg.index
+    previous_frame = first_frame - 1
 
     rows = []
 
     for index in indices:
         frame_id = int(
-            cache.frame_ids[
-                index
-            ].item()
+            cache.frame_ids[index].item()
         )
-
-        gt_xy = cache.gt_xy[
-            index
-        ]
 
         leg = active_leg_for_frame(
             manifest,
@@ -1567,18 +1993,25 @@ def evaluate_segment_filterpy(
         )
 
         if leg_changed:
-            retarget_filterpy_state(
+            reset_filterpy_for_new_leg(
                 kf,
-                leg,
+                motion_envelope,
             )
-            accepted_progress = 0.0
 
         dt = max(
-            frame_id - previous_frame,
+            frame_id
+            - previous_frame,
             1,
         )
 
-        # Standard FilterPy predict step.
+        previous_progress = float(
+            kf.x[0]
+        )
+        previous_cross = float(
+            kf.x[2]
+        )
+
+        # Standard FilterPy predict().
         kf.F = filterpy_transition(
             dt
         )
@@ -1587,27 +2020,30 @@ def evaluate_segment_filterpy(
         )
         kf.predict()
 
-        predicted_state_np = np.asarray(
+        kf.x = constrain_route_state_numpy(
             kf.x,
-            dtype=np.float64,
-        ).reshape(6)
-
-        predicted_state = torch.tensor(
-            predicted_state_np,
-            device=device,
-            dtype=torch.float32,
-        ).reshape(1, 6)
-
-        predicted_xy = torch.tensor(
-            predicted_state_np[0:2],
-            dtype=torch.float32,
+            previous_progress,
+            previous_cross,
+            leg,
+            motion_envelope,
+            dt,
         )
 
-        candidate_indices = candidate_indices_forward(
-            visual,
-            predicted_xy,
-            leg,
-            accepted_progress,
+        predicted_state_np = (
+            np.asarray(
+                kf.x,
+                dtype=np.float64,
+            ).reshape(4)
+        )
+
+        candidate_indices = (
+            candidate_indices_forward(
+                visual,
+                predicted_state_np[0],
+                previous_progress,
+                leg,
+                motion_envelope,
+            )
         )
 
         uav_clip = cache.uav_clip[
@@ -1616,26 +2052,67 @@ def evaluate_segment_filterpy(
             device
         ).float()
 
-        candidate = candidate_batch_from_indices(
-            visual,
-            uav_clip,
-            candidate_indices,
+        candidate = (
+            candidate_batch_from_indices(
+                visual,
+                uav_clip,
+                candidate_indices,
+            )
+        )
+
+        candidate_sd = (
+            candidate_centers_to_route(
+                candidate.centers,
+                leg,
+            )
+        )
+
+        hardms_sd = xy_batch_to_route(
+            candidate.hardms_xy,
+            leg,
+        )
+
+        predicted_state = torch.tensor(
+            predicted_state_np,
+            device=device,
+            dtype=torch.float32,
+        ).reshape(
+            1,
+            4,
         )
 
         measurement = model.forward_step(
             candidate.z_uav,
             candidate.z_sat,
             candidate.raw_prob,
-            candidate.centers,
-            candidate.hardms_xy,
+            candidate_sd,
+            hardms_sd,
             candidate.hardms_support,
             predicted_state,
-            leg.start_xy.to(
-                device
-            ).reshape(1, 2),
-            leg.end_xy.to(
-                device
-            ).reshape(1, 2),
+            torch.tensor(
+                [previous_progress],
+                device=device,
+                dtype=torch.float32,
+            ),
+            torch.tensor(
+                [leg.length],
+                device=device,
+                dtype=torch.float32,
+            ),
+            torch.tensor(
+                [
+                    motion_envelope.forward_speed_limit
+                ],
+                device=device,
+                dtype=torch.float32,
+            ),
+            torch.tensor(
+                [
+                    motion_envelope.cross_speed_limit
+                ],
+                device=device,
+                dtype=torch.float32,
+            ),
             torch.tensor(
                 [leg_changed],
                 device=device,
@@ -1645,111 +2122,142 @@ def evaluate_segment_filterpy(
 
         hidden = measurement.hidden
 
-        measurement_xy = (
-            measurement.measurement_xy[
+        measurement_sd = (
+            measurement.measurement_sd[
                 0
-            ].cpu().numpy()
+            ].cpu().numpy().astype(
+                np.float64
+            )
         )
 
         measurement_variance = (
             measurement.measurement_variance[
                 0
-            ].cpu().numpy()
+            ].cpu().numpy().astype(
+                np.float64
+            )
         )
 
-        # Standard FilterPy update step.
+        # Standard FilterPy update().
         kf.R = np.diag(
-            measurement_variance.astype(
-                np.float64
-            )
+            measurement_variance
+        )
+        kf.update(
+            measurement_sd
         )
 
-        kf.update(
-            measurement_xy.astype(
-                np.float64
-            )
+        kf.x = constrain_route_state_numpy(
+            kf.x,
+            previous_progress,
+            previous_cross,
+            leg,
+            motion_envelope,
+            dt,
         )
 
         final_state = np.asarray(
             kf.x,
             dtype=np.float64,
-        ).reshape(6)
+        ).reshape(4)
 
-        final_xy = final_state[
-            0:2
-        ]
-
-        along, cross = project_to_leg(
-            torch.tensor(
-                final_xy,
-                dtype=torch.float32,
-            ),
+        prediction_xy = route_to_xy_numpy(
+            predicted_state_np[0],
+            predicted_state_np[2],
             leg,
         )
 
-        accepted_progress = min(
-            max(
-                accepted_progress,
-                along,
-                0.0,
-            ),
-            float(leg.length),
+        final_xy = route_to_xy_numpy(
+            final_state[0],
+            final_state[2],
+            leg,
         )
 
-        capture = gt_candidate_captured(
-            candidate,
-            gt_xy,
+        raw_top1 = candidate.raw_top1_xy[
+            0
+        ].cpu().numpy()
+
+        hardms = candidate.hardms_xy[
+            0
+        ].cpu().numpy()
+
+        gt_xy = cache.gt_xy[
+            index
+        ].numpy()
+
+        gt_sd = xy_to_route(
+            cache.gt_xy[index],
+            leg,
+        ).numpy()
+
+        candidate_distance = np.linalg.norm(
+            candidate.centers[
+                0
+            ].cpu().numpy()
+            - gt_xy[None, :],
+            axis=1,
         )
 
         rows.append(
             {
                 "frame_id": frame_id,
-                "leg_index": leg.index,
+                "leg_index": int(
+                    leg.index
+                ),
                 "leg_changed": int(
                     leg_changed
                 ),
-                "gt_x": float(gt_xy[0]),
-                "gt_y": float(gt_xy[1]),
+                "gt_x": float(
+                    gt_xy[0]
+                ),
+                "gt_y": float(
+                    gt_xy[1]
+                ),
+                "gt_progress_s": float(
+                    gt_sd[0]
+                ),
+                "gt_cross_d": float(
+                    gt_sd[1]
+                ),
                 "prediction_x": float(
-                    predicted_state_np[0]
+                    prediction_xy[0]
                 ),
                 "prediction_y": float(
+                    prediction_xy[1]
+                ),
+                "prediction_s": float(
+                    predicted_state_np[0]
+                ),
+                "prediction_v": float(
                     predicted_state_np[1]
                 ),
+                "prediction_d": float(
+                    predicted_state_np[2]
+                ),
+                "prediction_vd": float(
+                    predicted_state_np[3]
+                ),
                 "raw_top1_x": float(
-                    candidate.raw_top1_xy[
-                        0,
-                        0,
-                    ].cpu()
+                    raw_top1[0]
                 ),
                 "raw_top1_y": float(
-                    candidate.raw_top1_xy[
-                        0,
-                        1,
-                    ].cpu()
+                    raw_top1[1]
                 ),
                 "hardms_x": float(
-                    candidate.hardms_xy[
-                        0,
-                        0,
-                    ].cpu()
+                    hardms[0]
                 ),
                 "hardms_y": float(
-                    candidate.hardms_xy[
-                        0,
-                        1,
-                    ].cpu()
+                    hardms[1]
                 ),
-                "measurement_x": float(
-                    measurement_xy[0]
+                "measurement_s": float(
+                    measurement_sd[0]
                 ),
-                "measurement_y": float(
-                    measurement_xy[1]
+                "measurement_d": float(
+                    measurement_sd[1]
                 ),
-                "measurement_var_x": float(
+                "measurement_var_s": float(
                     measurement_variance[0]
                 ),
-                "measurement_var_y": float(
+                "measurement_var_d": float(
                     measurement_variance[1]
                 ),
                 "final_x": float(
@@ -1758,26 +2266,23 @@ def evaluate_segment_filterpy(
                 "final_y": float(
                     final_xy[1]
                 ),
-                "vx": float(
+                "final_s": float(
+                    final_state[0]
+                ),
+                "final_v": float(
+                    final_state[1]
+                ),
+                "final_d": float(
                     final_state[2]
                 ),
-                "vy": float(
+                "final_vd": float(
                     final_state[3]
                 ),
-                "ax": float(
-                    final_state[4]
-                ),
-                "ay": float(
-                    final_state[5]
-                ),
-                "accepted_progress_m": float(
-                    accepted_progress
-                ),
-                "cross_track_m": float(
-                    cross
-                ),
                 "candidate_capture": int(
-                    capture
+                    candidate_distance.min()
+                    <= float(
+                        config.CANDIDATE_CAPTURE_RADIUS_M
+                    )
                 ),
             }
         )
@@ -1786,7 +2291,10 @@ def evaluate_segment_filterpy(
         previous_leg_index = leg.index
 
     gt = [
-        [row["gt_x"], row["gt_y"]]
+        [
+            row["gt_x"],
+            row["gt_y"],
+        ]
         for row in rows
     ]
 
@@ -1821,17 +2329,7 @@ def evaluate_segment_filterpy(
             ],
             gt,
         ),
-        "RNNMeasurement": metric_block(
-            [
-                [
-                    row["measurement_x"],
-                    row["measurement_y"],
-                ]
-                for row in rows
-            ],
-            gt,
-        ),
-        "FilterPyKalmanFinal": metric_block(
+        "RouteCoordinateKalmanFinal": metric_block(
             [
                 [
                     row["final_x"],
@@ -1844,36 +2342,76 @@ def evaluate_segment_filterpy(
         "CandidateCaptureRate_pct": float(
             np.mean(
                 [
-                    row["candidate_capture"]
+                    row[
+                        "candidate_capture"
+                    ]
                     for row in rows
                 ]
             )
             * 100.0
         ),
-        "MeanMeasurementVariance": float(
-            np.mean(
+        "MaxForwardStep_m": float(
+            max(
                 [
-                    0.5
-                    * (
-                        row["measurement_var_x"]
-                        + row["measurement_var_y"]
+                    max(
+                        0.0,
+                        rows[index][
+                            "final_s"
+                        ]
+                        - rows[index - 1][
+                            "final_s"
+                        ],
                     )
-                    for row in rows
+                    for index in range(
+                        1,
+                        len(rows),
+                    )
+                    if rows[index][
+                        "leg_index"
+                    ]
+                    == rows[index - 1][
+                        "leg_index"
+                    ]
                 ]
+                or [0.0]
+            )
+        ),
+        "BackwardProgressCount": int(
+            sum(
+                1
+                for index in range(
+                    1,
+                    len(rows),
+                )
+                if (
+                    rows[index][
+                        "leg_index"
+                    ]
+                    == rows[index - 1][
+                        "leg_index"
+                    ]
+                    and rows[index][
+                        "final_s"
+                    ]
+                    < rows[index - 1][
+                        "final_s"
+                    ]
+                    - 1e-8
+                )
             )
         ),
     }
 
-    if save_csv_path is not None:
-        save_csv_path = Path(
-            save_csv_path
+    if csv_path is not None:
+        csv_path = Path(
+            csv_path
         )
-        save_csv_path.parent.mkdir(
+        csv_path.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        with save_csv_path.open(
+        with csv_path.open(
             "w",
             newline="",
             encoding="utf-8",
@@ -1885,21 +2423,32 @@ def evaluate_segment_filterpy(
                 ),
             )
             writer.writeheader()
-            writer.writerows(rows)
+            writer.writerows(
+                rows
+            )
 
-    return summary, rows
+    return (
+        summary,
+        rows,
+    )
 
 
-def validation_score(summary):
+def validation_score(
+    summary,
+):
     metric = summary[
-        "FilterPyKalmanFinal"
+        "RouteCoordinateKalmanFinal"
     ]
 
     return (
         metric["MLE_m"]
-        + float(config.VAL_RPE_WEIGHT)
+        + float(
+            config.VAL_RPE_WEIGHT
+        )
         * metric["RPE_m"]
-        + float(config.VAL_JUMP_WEIGHT)
+        + float(
+            config.VAL_JUMP_WEIGHT
+        )
         * metric["JumpRate_pct"]
     )
 
@@ -1916,6 +2465,14 @@ def train_temporal(
         manifest
     )
 
+    motion_envelope = (
+        derive_motion_envelope(
+            cache,
+            manifest,
+            split["train"],
+        )
+    )
+
     print(
         "Route A temporal leg split:",
         split,
@@ -1924,13 +2481,17 @@ def train_temporal(
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=float(config.LR),
+        lr=float(
+            config.LR
+        ),
         weight_decay=float(
             config.WEIGHT_DECAY
         ),
     )
 
-    best_score = float("inf")
+    best_score = float(
+        "inf"
+    )
     best_state = None
     patience = 0
 
@@ -1949,19 +2510,22 @@ def train_temporal(
             cache,
             manifest,
             split["train"],
+            motion_envelope,
             device,
-            epoch,
         )
 
-        validation, _ = evaluate_segment_filterpy(
-            model,
-            visual,
-            cache,
-            manifest,
-            device,
-            split["val"][0],
-            split["val"][1],
-            save_csv_path=None,
+        validation, _ = (
+            evaluate_filterpy(
+                model,
+                visual,
+                cache,
+                manifest,
+                motion_envelope,
+                device,
+                split["val"][0],
+                split["val"][1],
+                csv_path=None,
+            )
         )
 
         score = validation_score(
@@ -1969,7 +2533,8 @@ def train_temporal(
         )
 
         improved = (
-            score < best_score
+            score
+            < best_score
         )
 
         if improved:
@@ -1990,6 +2555,7 @@ def train_temporal(
                 "best_model": best_state,
                 "epoch": epoch + 1,
                 "best_score": best_score,
+                "motion_envelope": motion_envelope.as_dict(),
                 "temporal_train_routes": [
                     "route_A"
                 ],
@@ -2000,26 +2566,21 @@ def train_temporal(
                     "route_B",
                     "route_C",
                 ],
-                "uses_mission_waypoints": True,
-                "waypoint_source_note": (
-                    "Current route_waypoints are GPS-derived "
-                    "mission-waypoint proxies."
-                ),
-                "filterpy_used_for_validation_and_inference": True,
-                "state_definition": [
-                    "x",
-                    "y",
-                    "vx",
-                    "vy",
-                    "ax",
-                    "ay",
+                "state": [
+                    "route_progress_s",
+                    "forward_velocity_v",
+                    "cross_track_d",
+                    "cross_velocity_vd",
                 ],
+                "single_frame_streaming": True,
+                "filterpy_inference": True,
+                "monotonic_progress_constraint": True,
             },
             config.TEMPORAL_CHECKPOINT,
         )
 
-        final_metric = validation[
-            "FilterPyKalmanFinal"
+        metric = validation[
+            "RouteCoordinateKalmanFinal"
         ]
 
         print(
@@ -2029,12 +2590,11 @@ def train_temporal(
             f"nll={training['nll']:.4f} "
             f"pred={training['prediction']:.4f} "
             f"vel={training['velocity']:.4f} "
-            f"acc={training['acceleration']:.4f} "
             f"capture={training['capture_pct']:.2f}% "
-            f"teacher={training['teacher_search_ratio']:.3f} "
-            f"val_mle={final_metric['MLE_m']:.3f}m "
-            f"val_rpe={final_metric['RPE_m']:.3f}m "
-            f"val_jump={final_metric['JumpRate_pct']:.3f}% "
+            f"val_mle={metric['MLE_m']:.3f}m "
+            f"val_rpe={metric['RPE_m']:.3f}m "
+            f"val_jump={metric['JumpRate_pct']:.3f}% "
+            f"backward={validation['BackwardProgressCount']} "
             f"score={score:.3f}",
             flush=True,
         )
@@ -2050,7 +2610,7 @@ def train_temporal(
 
     if best_state is None:
         raise RuntimeError(
-            "Temporal training did not produce a checkpoint"
+            "Temporal training produced no best state"
         )
 
     model.load_state_dict(
@@ -2070,18 +2630,16 @@ def train_temporal(
         config.TEMPORAL_CHECKPOINT,
     )
 
-    return split
+    return (
+        split,
+        motion_envelope,
+    )
 
 
 def load_temporal_checkpoint(
     model,
     device,
 ):
-    if not config.TEMPORAL_CHECKPOINT.exists():
-        raise FileNotFoundError(
-            config.TEMPORAL_CHECKPOINT
-        )
-
     checkpoint = torch.load(
         config.TEMPORAL_CHECKPOINT,
         map_location=device,
@@ -2091,12 +2649,16 @@ def load_temporal_checkpoint(
         "architecture"
     ) != ARCHITECTURE_NAME:
         raise RuntimeError(
-            "Temporal checkpoint architecture mismatch"
+            "Checkpoint architecture mismatch"
         )
 
     state = (
-        checkpoint.get("best_model")
-        or checkpoint["model"]
+        checkpoint.get(
+            "best_model"
+        )
+        or checkpoint[
+            "model"
+        ]
     )
 
     model.load_state_dict(
@@ -2104,12 +2666,411 @@ def load_temporal_checkpoint(
         strict=True,
     )
 
-    return checkpoint
+    envelope_dict = checkpoint[
+        "motion_envelope"
+    ]
+
+    envelope = MotionEnvelope(
+        forward_speed_limit=float(
+            envelope_dict[
+                "forward_speed_limit_m_per_frame"
+            ]
+        ),
+        cross_speed_limit=float(
+            envelope_dict[
+                "cross_speed_limit_m_per_frame"
+            ]
+        ),
+        percentile=float(
+            envelope_dict[
+                "percentile"
+            ]
+        ),
+    )
+
+    return (
+        checkpoint,
+        envelope,
+    )
 
 
-# ============================================================================
+# =============================================================================
+# Automatic visualization after inference
+# =============================================================================
+
+def render_route_outputs(
+    route_name,
+    rows,
+    output_dir,
+):
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.animation import (
+            FuncAnimation,
+            FFMpegWriter,
+        )
+    except Exception as exc:
+        print(
+            "Visualization skipped because matplotlib "
+            f"is unavailable: {exc}",
+            flush=True,
+        )
+        return
+
+    output_dir = Path(
+        output_dir
+    )
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    gt = np.asarray(
+        [
+            [
+                row["gt_x"],
+                row["gt_y"],
+            ]
+            for row in rows
+        ],
+        dtype=np.float64,
+    )
+
+    final = np.asarray(
+        [
+            [
+                row["final_x"],
+                row["final_y"],
+            ]
+            for row in rows
+        ],
+        dtype=np.float64,
+    )
+
+    frame_ids = np.asarray(
+        [
+            row["frame_id"]
+            for row in rows
+        ]
+    )
+
+    error = np.linalg.norm(
+        final - gt,
+        axis=1,
+    )
+
+    # 1) trajectory
+    fig, ax = plt.subplots(
+        figsize=(11, 8)
+    )
+    ax.plot(
+        gt[:, 0],
+        gt[:, 1],
+        linewidth=2.0,
+        label="GT",
+    )
+    ax.plot(
+        final[:, 0],
+        final[:, 1],
+        linewidth=1.8,
+        label="Route-GRU + Kalman Final",
+    )
+    ax.scatter(
+        [gt[0, 0]],
+        [gt[0, 1]],
+        s=70,
+        label="Start",
+    )
+    ax.set_title(
+        f"{route_name}: GT vs Final Route-Coordinate Kalman"
+    )
+    ax.set_xlabel(
+        "Local X (m)"
+    )
+    ax.set_ylabel(
+        "Local Y (m)"
+    )
+    ax.axis(
+        "equal"
+    )
+    ax.grid(
+        True,
+        alpha=0.25,
+    )
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(
+        output_dir
+        / f"{route_name}_trajectory.png",
+        dpi=200,
+    )
+    plt.close(fig)
+
+    # 2) localization error
+    fig, ax = plt.subplots(
+        figsize=(11, 6)
+    )
+    ax.plot(
+        frame_ids,
+        error,
+        label="Final localization error",
+    )
+    ax.set_title(
+        f"{route_name}: localization error"
+    )
+    ax.set_xlabel(
+        "Frame"
+    )
+    ax.set_ylabel(
+        "Error (m)"
+    )
+    ax.grid(
+        True,
+        alpha=0.25,
+    )
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(
+        output_dir
+        / f"{route_name}_error.png",
+        dpi=200,
+    )
+    plt.close(fig)
+
+    # 3) frame displacement -- direct smoothness view
+    if len(rows) > 1:
+        gt_step = np.linalg.norm(
+            np.diff(
+                gt,
+                axis=0,
+            ),
+            axis=1,
+        )
+        final_step = np.linalg.norm(
+            np.diff(
+                final,
+                axis=0,
+            ),
+            axis=1,
+        )
+
+        fig, ax = plt.subplots(
+            figsize=(11, 6)
+        )
+        ax.plot(
+            frame_ids[1:],
+            gt_step,
+            label="GT displacement/frame",
+        )
+        ax.plot(
+            frame_ids[1:],
+            final_step,
+            label="Final displacement/frame",
+        )
+        ax.set_title(
+            f"{route_name}: frame-to-frame displacement"
+        )
+        ax.set_xlabel(
+            "Frame"
+        )
+        ax.set_ylabel(
+            "Displacement (m)"
+        )
+        ax.grid(
+            True,
+            alpha=0.25,
+        )
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(
+            output_dir
+            / f"{route_name}_displacement.png",
+            dpi=200,
+        )
+        plt.close(fig)
+
+    # 4) animation
+    try:
+        all_xy = np.vstack(
+            [gt, final]
+        )
+
+        x_span = max(
+            float(
+                all_xy[:, 0].max()
+                - all_xy[:, 0].min()
+            ),
+            1.0,
+        )
+        y_span = max(
+            float(
+                all_xy[:, 1].max()
+                - all_xy[:, 1].min()
+            ),
+            1.0,
+        )
+
+        fig, ax = plt.subplots(
+            figsize=(10, 8)
+        )
+
+        ax.set_xlim(
+            all_xy[:, 0].min()
+            - max(
+                20.0,
+                0.05 * x_span,
+            ),
+            all_xy[:, 0].max()
+            + max(
+                20.0,
+                0.05 * x_span,
+            ),
+        )
+
+        ax.set_ylim(
+            all_xy[:, 1].min()
+            - max(
+                20.0,
+                0.05 * y_span,
+            ),
+            all_xy[:, 1].max()
+            + max(
+                20.0,
+                0.05 * y_span,
+            ),
+        )
+
+        ax.set_aspect(
+            "equal",
+            adjustable="box",
+        )
+        ax.grid(
+            True,
+            alpha=0.25,
+        )
+
+        gt_line, = ax.plot(
+            [],
+            [],
+            linewidth=2.0,
+            label="GT",
+        )
+        final_line, = ax.plot(
+            [],
+            [],
+            linewidth=1.8,
+            label="Final",
+        )
+        gt_dot, = ax.plot(
+            [],
+            [],
+            marker="o",
+            linestyle="None",
+        )
+        final_dot, = ax.plot(
+            [],
+            [],
+            marker="o",
+            linestyle="None",
+        )
+        title = ax.set_title("")
+        ax.legend()
+
+        stride = max(
+            1,
+            int(
+                math.ceil(
+                    len(rows)
+                    / 500.0
+                )
+            ),
+        )
+
+        animation_indices = list(
+            range(
+                0,
+                len(rows),
+                stride,
+            )
+        )
+
+        if (
+            animation_indices[-1]
+            != len(rows) - 1
+        ):
+            animation_indices.append(
+                len(rows) - 1
+            )
+
+        def update(animation_index):
+            index = animation_indices[
+                animation_index
+            ]
+
+            gt_line.set_data(
+                gt[:index + 1, 0],
+                gt[:index + 1, 1],
+            )
+            final_line.set_data(
+                final[:index + 1, 0],
+                final[:index + 1, 1],
+            )
+            gt_dot.set_data(
+                [gt[index, 0]],
+                [gt[index, 1]],
+            )
+            final_dot.set_data(
+                [final[index, 0]],
+                [final[index, 1]],
+            )
+            title.set_text(
+                f"{route_name} | "
+                f"frame={frame_ids[index]} | "
+                f"error={error[index]:.2f}m"
+            )
+
+            return (
+                gt_line,
+                final_line,
+                gt_dot,
+                final_dot,
+                title,
+            )
+
+        animation = FuncAnimation(
+            fig,
+            update,
+            frames=len(
+                animation_indices
+            ),
+            interval=50,
+            blit=False,
+        )
+
+        writer = FFMpegWriter(
+            fps=20,
+            bitrate=2200,
+        )
+
+        animation.save(
+            output_dir
+            / f"{route_name}_trajectory.mp4",
+            writer=writer,
+            dpi=120,
+        )
+
+        plt.close(fig)
+
+    except Exception as exc:
+        print(
+            f"{route_name} MP4 skipped: {exc}",
+            flush=True,
+        )
+
+
+# =============================================================================
 # Main
-# ============================================================================
+# =============================================================================
 
 def route_catalog():
     return {
@@ -2123,6 +3084,16 @@ def route_catalog():
 
 
 def main():
+    print(
+        "[PYTHON] robust_tracker.py main() entered",
+        flush=True,
+    )
+    print(
+        "[PYTHON] file:",
+        Path(__file__).resolve(),
+        flush=True,
+    )
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -2157,12 +3128,24 @@ def main():
         "--reuse-visual",
         action="store_true",
         help=(
-            "Reuse the already-trained visual_retrieval_A_only.pt and "
-            "restart only the GRU/Kalman temporal training from scratch."
+            "Reuse this experiment's visual checkpoint; "
+            "restart only the new temporal model."
         ),
     )
 
     args = parser.parse_args()
+
+    print(
+        "[PYTHON] parsed args:",
+        {
+            "mode": args.mode,
+            "visual_epochs": args.visual_epochs,
+            "epochs": args.epochs,
+            "jitter_m": args.jitter_m,
+            "reuse_visual": args.reuse_visual,
+        },
+        flush=True,
+    )
 
     set_seed(
         config.SEED
@@ -2174,50 +3157,72 @@ def main():
         else "cpu"
     )
 
-    print("=" * 88)
-    print("ROUTE-CONDITIONED SINGLE-FRAME GRU + FILTERPY KALMAN")
-    print("=" * 88)
-    print("Temporal input per step : ONE current UAV retrieval result")
-    print("Persistent RNN state    : GRU h_t")
-    print("Physical state          : [x,y,vx,vy,ax,ay]")
-    print("Motion prediction       : constant-acceleration polynomial")
-    print("Search                  : only forward current-leg SAT corridor")
-    print("Mission prior           : known current leg start/end waypoint")
-    print("Final inference filter  : FilterPy KalmanFilter")
-    print("Visual training         : Route A from scratch")
-    print("Temporal training       : Route A from scratch")
-    print("Final testing           : Route B + Route C")
-    print("=" * 88)
+    print("=" * 88, flush=True)
+    print(
+        "ROUTE-COORDINATE GRU + CONSTRAINED FILTERPY KALMAN",
+        flush=True,
+    )
+    print("=" * 88, flush=True)
+    print("One UAV image per temporal step", flush=True)
+    print(
+        "State: [route progress s, forward v, cross-track d, cross velocity vd]",
+        flush=True,
+    )
+    print("Inertia: constant-velocity prediction", flush=True)
+    print(
+        "Progress is structurally monotonic within each active mission leg",
+        flush=True,
+    )
+    print(
+        "Per-frame speed envelope is learned only from Route-A training legs",
+        flush=True,
+    )
+    print(
+        "Inference filter: filterpy.kalman.KalmanFilter",
+        flush=True,
+    )
+    print(
+        "Automatic B/C PNG + MP4 visualization: enabled",
+        flush=True,
+    )
+    print("=" * 88, flush=True)
 
     config.CHECKPOINT_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    # Training always restarts the NEW temporal model from scratch.
-    # Visual retrieval can either be fully retrained (default) or reused after
-    # a temporal-stage crash with --reuse-visual.
     if args.mode in (
         "train",
         "train_eval",
     ):
+        # New temporal model ALWAYS starts from scratch.
         if config.TEMPORAL_CHECKPOINT.exists():
             config.TEMPORAL_CHECKPOINT.unlink()
 
         if args.reuse_visual:
+            print(
+                "[STAGE 1/4] reuse visual retrieval checkpoint",
+                flush=True,
+            )
+
             if not config.VISUAL_CHECKPOINT.exists():
                 raise FileNotFoundError(
-                    "--reuse-visual was requested but the visual checkpoint "
-                    f"does not exist: {config.VISUAL_CHECKPOINT}"
+                    "--reuse-visual requested but missing: "
+                    f"{config.VISUAL_CHECKPOINT}"
                 )
 
             print(
-                "reuse visual checkpoint; restart GRU/Kalman temporal "
-                "training from scratch:",
+                "Reusing visual checkpoint:",
                 config.VISUAL_CHECKPOINT,
                 flush=True,
             )
         else:
+            print(
+                "[STAGE 1/4] train visual retrieval FROM SCRATCH on Route A",
+                flush=True,
+            )
+
             if config.VISUAL_CHECKPOINT.exists():
                 config.VISUAL_CHECKPOINT.unlink()
 
@@ -2232,32 +3237,54 @@ def main():
                 resume=False,
             )
 
+            print(
+                "[STAGE 1/4] visual training function returned",
+                flush=True,
+            )
+
     if not config.VISUAL_CHECKPOINT.exists():
         raise FileNotFoundError(
             "Visual checkpoint missing. "
-            "Run --mode train_eval for full retraining."
+            "Run train_eval without --reuse-visual."
         )
+
+    print(
+        "[STAGE 2/4] loading frozen visual localizer/gallery",
+        flush=True,
+    )
 
     visual = FrozenVisualLocalizer(
         device
     )
 
-    model = RouteGRUMeasurementModel().to(
+    print(
+        "[STAGE 2/4] visual localizer/gallery ready",
+        flush=True,
+    )
+
+    model = RouteCoordinateGRU().to(
         device
     )
 
     catalog = route_catalog()
 
-    route_a_manifest = load_waypoint_manifest(
-        "route_A",
-        visual.origin_lat,
-        visual.origin_lon,
+    route_a_manifest = (
+        load_waypoint_manifest(
+            "route_A",
+            visual.origin_lat,
+            visual.origin_lon,
+        )
     )
 
     if args.mode in (
         "train",
         "train_eval",
     ):
+        print(
+            "[STAGE 3/4] building Route-A single-frame backbone cache",
+            flush=True,
+        )
+
         route_a_cache = build_backbone_cache(
             "route_A",
             catalog["route_A"],
@@ -2265,20 +3292,31 @@ def main():
             device,
         )
 
-        temporal_split = train_temporal(
-            model,
-            visual,
-            route_a_cache,
-            route_a_manifest,
-            device,
-            int(args.epochs),
+        print(
+            "[STAGE 3/4] Route-A cache ready; starting NEW GRU/Kalman training",
+            flush=True,
+        )
+
+        split, motion_envelope = (
+            train_temporal(
+                model,
+                visual,
+                route_a_cache,
+                route_a_manifest,
+                device,
+                int(
+                    args.epochs
+                ),
+            )
         )
     else:
-        load_temporal_checkpoint(
-            model,
-            device,
+        _, motion_envelope = (
+            load_temporal_checkpoint(
+                model,
+                device,
+            )
         )
-        temporal_split = split_route_a_legs(
+        split = split_route_a_legs(
             route_a_manifest
         )
 
@@ -2286,14 +3324,23 @@ def main():
         "eval",
         "train_eval",
     ):
-        # If train_model returned the best state, it is already loaded.
+        print(
+            "[STAGE 4/4] starting Route-B / Route-C inference",
+            flush=True,
+        )
         if args.mode == "eval":
-            load_temporal_checkpoint(
-                model,
-                device,
+            _, motion_envelope = (
+                load_temporal_checkpoint(
+                    model,
+                    device,
+                )
             )
 
         route_results = {}
+        visualization_dir = (
+            config.OUTPUT_DIR
+            / "visualizations"
+        )
 
         for route_name in (
             "route_B",
@@ -2312,36 +3359,35 @@ def main():
                 device,
             )
 
-            start_frame = manifest.legs[
-                0
-            ].start_frame
-
-            end_frame = manifest.legs[
-                -1
-            ].end_frame
-
             csv_path = (
                 config.OUTPUT_DIR
-                / f"{route_name}_route_rnn_filterpy_frames.csv"
+                / f"{route_name}_route_coordinate_frames.csv"
             )
 
-            summary, _ = evaluate_segment_filterpy(
+            summary, rows = evaluate_filterpy(
                 model,
                 visual,
                 cache,
                 manifest,
+                motion_envelope,
                 device,
-                start_frame,
-                end_frame,
-                save_csv_path=csv_path,
+                manifest.legs[0].start_frame,
+                manifest.legs[-1].end_frame,
+                csv_path=csv_path,
             )
 
             route_results[
                 route_name
             ] = summary
 
+            render_route_outputs(
+                route_name,
+                rows,
+                visualization_dir,
+            )
+
             metric = summary[
-                "FilterPyKalmanFinal"
+                "RouteCoordinateKalmanFinal"
             ]
 
             print(
@@ -2350,13 +3396,23 @@ def main():
                 f"P90={metric['P90_m']:.3f}m "
                 f"RPE={metric['RPE_m']:.3f}m "
                 f"Jump={metric['JumpRate_pct']:.3f}% "
-                f"capture={summary['CandidateCaptureRate_pct']:.2f}%",
+                f"BackwardProgress="
+                f"{summary['BackwardProgressCount']} "
+                f"Capture="
+                f"{summary['CandidateCaptureRate_pct']:.2f}%",
                 flush=True,
             )
 
-        result = {
+        payload = {
             "architecture": ARCHITECTURE_NAME,
+            "state": [
+                "route_progress_s",
+                "forward_velocity_v",
+                "cross_track_d",
+                "cross_velocity_vd",
+            ],
             "protocol": {
+                "single_frame_streaming": True,
                 "visual_train": [
                     "route_A"
                 ],
@@ -2367,39 +3423,19 @@ def main():
                     "route_B",
                     "route_C",
                 ],
-                "single_frame_streaming": True,
                 "mission_waypoint_prior": True,
-                "waypoint_switch_emulation": (
-                    "Offline evaluation uses the annotated "
-                    "straight-leg frame boundaries as a proxy for "
-                    "the mission controller's active waypoint index."
-                ),
-                "important_waypoint_note": (
-                    "The current route_waypoints manifests were "
-                    "geometrically derived from GPS telemetry. "
-                    "They are not asserted PX4 mission-item coordinates."
+                "monotonic_progress": True,
+                "motion_envelope_source": (
+                    "Route-A temporal training split only"
                 ),
                 "filter": (
                     "filterpy.kalman.KalmanFilter"
                 ),
-                "candidate_search": (
-                    "forward-only current mission leg"
-                ),
             },
-            "state": {
-                "gru_hidden_dim": int(
-                    config.RNN_HIDDEN_DIM
-                ),
-                "kalman_state": [
-                    "x",
-                    "y",
-                    "vx",
-                    "vy",
-                    "ax",
-                    "ay",
-                ],
-            },
-            "route_A_temporal_split": temporal_split,
+            "route_A_temporal_split": split,
+            "motion_envelope": (
+                motion_envelope.as_dict()
+            ),
             "routes": route_results,
         }
 
@@ -2415,7 +3451,7 @@ def main():
 
         summary_path.write_text(
             json.dumps(
-                result,
+                payload,
                 ensure_ascii=False,
                 indent=2,
             ),
@@ -2424,7 +3460,7 @@ def main():
 
         print(
             json.dumps(
-                result,
+                payload,
                 ensure_ascii=False,
                 indent=2,
             ),
@@ -2432,7 +3468,13 @@ def main():
         )
 
         print(
-            f"summary saved: {summary_path}",
+            "Summary:",
+            summary_path,
+            flush=True,
+        )
+        print(
+            "Visualizations:",
+            visualization_dir,
             flush=True,
         )
 

@@ -1,0 +1,178 @@
+{
+  "architecture": "RouteCoordinateGRU_ConstrainedFilterPyKalman",
+  "state": [
+    "route_progress_s",
+    "forward_velocity_v",
+    "cross_track_d",
+    "cross_velocity_vd"
+  ],
+  "protocol": {
+    "single_frame_streaming": true,
+    "visual_train": [
+      "route_A"
+    ],
+    "temporal_train": [
+      "route_A"
+    ],
+    "eval": [
+      "route_B",
+      "route_C"
+    ],
+    "mission_waypoint_prior": true,
+    "monotonic_progress": true,
+    "motion_envelope_source": "Route-A temporal training split only",
+    "filter": "filterpy.kalman.KalmanFilter"
+  },
+  "route_A_temporal_split": {
+    "train": [
+      0,
+      1071
+    ],
+    "val": [
+      1071,
+      1151
+    ],
+    "test": [
+      1151,
+      1731
+    ]
+  },
+  "motion_envelope": {
+    "forward_speed_limit_m_per_frame": 10.199055690765382,
+    "cross_speed_limit_m_per_frame": 1.406884882450106,
+    "percentile": 99.5,
+    "source": "Route-A temporal training legs only"
+  },
+  "routes": {
+    "route_B": {
+      "MotionPrediction": {
+        "MLE_m": 231.942523826503,
+        "MedLE_m": 196.97722217175993,
+        "P90_m": 485.7275235076207,
+        "P95_m": 567.3554270869266,
+        "ATE_RMSE_m": 294.08424299183486,
+        "RPE_m": 4.546798595818259,
+        "JumpRate_pct": 0.35826242722794444,
+        "JumpThreshold_m": 13.148171886247972,
+        "LSR@5_pct": 1.0743061772605194,
+        "LSR@10_pct": 3.222918531781558,
+        "LSR@15_pct": 5.371530886302596,
+        "LSR@20_pct": 8.37063563115488,
+        "MaxLE_m": 767.8910265605692
+      },
+      "RawTop1": {
+        "MLE_m": 240.49939104483533,
+        "MedLE_m": 203.2866638580182,
+        "P90_m": 493.3764710503923,
+        "P95_m": 578.6340931781253,
+        "ATE_RMSE_m": 299.69609959007744,
+        "RPE_m": 6.528839233256656,
+        "JumpRate_pct": 11.240483654276758,
+        "JumpThreshold_m": 13.148171886247972,
+        "LSR@5_pct": 0.13428827215756492,
+        "LSR@10_pct": 0.6266786034019696,
+        "LSR@15_pct": 1.611459265890779,
+        "LSR@20_pct": 2.775290957923008,
+        "MaxLE_m": 765.3941581004382
+      },
+      "FixedHardMS": {
+        "MLE_m": 239.82325511599714,
+        "MedLE_m": 201.02010872813327,
+        "P90_m": 492.397979364637,
+        "P95_m": 577.996679026188,
+        "ATE_RMSE_m": 299.8712978074348,
+        "RPE_m": 5.595819022226993,
+        "JumpRate_pct": 8.463949843260188,
+        "JumpThreshold_m": 13.148171886247972,
+        "LSR@5_pct": 0.13428827215756492,
+        "LSR@10_pct": 1.0743061772605194,
+        "LSR@15_pct": 2.0143240823634736,
+        "LSR@20_pct": 3.043867502238138,
+        "MaxLE_m": 769.8356441107602
+      },
+      "RouteCoordinateKalmanFinal": {
+        "MLE_m": 231.9056011540154,
+        "MedLE_m": 196.90700662031742,
+        "P90_m": 485.6495356360862,
+        "P95_m": 567.3387414379508,
+        "ATE_RMSE_m": 294.03535592467233,
+        "RPE_m": 4.522005785738186,
+        "JumpRate_pct": 0.35826242722794444,
+        "JumpThreshold_m": 13.148171886247972,
+        "LSR@5_pct": 1.1190689346463742,
+        "LSR@10_pct": 3.222918531781558,
+        "LSR@15_pct": 5.326768128916741,
+        "LSR@20_pct": 8.325872873769026,
+        "MaxLE_m": 766.9042930058815
+      },
+      "CandidateCaptureRate_pct": 5.595344673231871,
+      "MaxForwardStep_m": 10.19905569076542,
+      "BackwardProgressCount": 0
+    },
+    "route_C": {
+      "MotionPrediction": {
+        "MLE_m": 98.02310945469968,
+        "MedLE_m": 74.16302802143642,
+        "P90_m": 237.36323689238844,
+        "P95_m": 297.4353999823126,
+        "ATE_RMSE_m": 135.09207176643866,
+        "RPE_m": 3.501321665251219,
+        "JumpRate_pct": 0.16433853738701726,
+        "JumpThreshold_m": 13.085266687759912,
+        "LSR@5_pct": 4.105090311986864,
+        "LSR@10_pct": 16.174055829228244,
+        "LSR@15_pct": 20.032840722495894,
+        "LSR@20_pct": 22.660098522167488,
+        "MaxLE_m": 414.10098392536327
+      },
+      "RawTop1": {
+        "MLE_m": 109.50362322308675,
+        "MedLE_m": 85.59496729063153,
+        "P90_m": 248.0945984981578,
+        "P95_m": 307.39353709932925,
+        "ATE_RMSE_m": 141.7924917550022,
+        "RPE_m": 5.897284221205245,
+        "JumpRate_pct": 10.84634346754314,
+        "JumpThreshold_m": 13.085266687759912,
+        "LSR@5_pct": 0.16420361247947454,
+        "LSR@10_pct": 1.8062397372742198,
+        "LSR@15_pct": 3.3661740558292284,
+        "LSR@20_pct": 9.277504105090312,
+        "MaxLE_m": 408.9507930838817
+      },
+      "FixedHardMS": {
+        "MLE_m": 106.20916491204555,
+        "MedLE_m": 81.8564024510064,
+        "P90_m": 246.24965287016698,
+        "P95_m": 305.30904171042624,
+        "ATE_RMSE_m": 140.5999420143058,
+        "RPE_m": 4.232468959890289,
+        "JumpRate_pct": 5.094494658997535,
+        "JumpThreshold_m": 13.085266687759912,
+        "LSR@5_pct": 1.0673234811165846,
+        "LSR@10_pct": 5.911330049261084,
+        "LSR@15_pct": 9.688013136289,
+        "LSR@20_pct": 12.397372742200329,
+        "MaxLE_m": 411.4363179322185
+      },
+      "RouteCoordinateKalmanFinal": {
+        "MLE_m": 97.99177276433198,
+        "MedLE_m": 73.718431152183,
+        "P90_m": 237.36323689238844,
+        "P95_m": 297.4948979491842,
+        "ATE_RMSE_m": 135.05821786859255,
+        "RPE_m": 3.4803214088659304,
+        "JumpRate_pct": 0.16433853738701726,
+        "JumpThreshold_m": 13.085266687759912,
+        "LSR@5_pct": 4.1871921182266005,
+        "LSR@10_pct": 16.502463054187192,
+        "LSR@15_pct": 20.114942528735632,
+        "LSR@20_pct": 22.824302134646963,
+        "MaxLE_m": 412.20144351039227
+      },
+      "CandidateCaptureRate_pct": 17.569786535303777,
+      "MaxForwardStep_m": 10.199055690765391,
+      "BackwardProgressCount": 0
+    }
+  }
+}
