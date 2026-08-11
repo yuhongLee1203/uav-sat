@@ -1,0 +1,106 @@
+{
+  "architecture": "ReversibleTopologyRecoveryLSTM_v10",
+  "changes": {
+    "forward_half_local_only": true,
+    "recovery_forward_restriction": false,
+    "recovery_predicted_xy_center": false,
+    "recovery_legs": "previous/current/next",
+    "leg_state_reversible": true,
+    "endpoint_distance_gate": false,
+    "observed_motion_input": false,
+    "polynomial_input": false,
+    "teacher_forcing": false,
+    "post_model_position_only_kalman": true
+  },
+  "training": {
+    "route": "route_A",
+    "teacher_ratio": 0.0,
+    "test_routes_used_for_training": false,
+    "test_gt_input": false,
+    "test_waypoint_frame_index_input": false
+  },
+  "routes": {
+    "route_B": {
+      "ReversibleTopologyVisual": {
+        "MLE_m": 472.1669194239183,
+        "MedLE_m": 462.4571303654699,
+        "P90_m": 800.5360066400117,
+        "P95_m": 982.5659152798944,
+        "ATE_RMSE_m": 534.7582460141821,
+        "RPE_m": 5.58515535987273,
+        "JumpRate_pct": 6.065934065934066,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.04393673110720562,
+        "LSR@10_pct": 0.04393673110720562,
+        "LSR@15_pct": 0.08787346221441124,
+        "LSR@20_pct": 0.08787346221441124,
+        "MaxLE_m": 1287.4758225226774
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 467.40917821909665,
+        "MedLE_m": 459.11876701980486,
+        "P90_m": 781.0929907584384,
+        "P95_m": 915.521698882004,
+        "ATE_RMSE_m": 527.5570718062995,
+        "RPE_m": 3.5277778212692366,
+        "JumpRate_pct": 1.3186813186813187,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.04393673110720562,
+        "LSR@10_pct": 0.04393673110720562,
+        "LSR@15_pct": 0.08787346221441124,
+        "LSR@20_pct": 0.08787346221441124,
+        "MaxLE_m": 1116.3694324936919
+      },
+      "LegStateChangeCount": 2276,
+      "LegAdvanceCount": 1145,
+      "LegRollbackCount": 1131,
+      "MeanHoldProbability": 0.33316280235829376,
+      "MeanLocalProbability": 0.333532929957332,
+      "MeanRecoveryProbability": 0.3333042661785451,
+      "MeanLegPreviousProbability": 0.6815477325229109,
+      "MeanLegCurrentProbability": 0.047179758903097446,
+      "MeanLegNextProbability": 0.2712725098187559
+    },
+    "route_C": {
+      "ReversibleTopologyVisual": {
+        "MLE_m": 247.5662961328831,
+        "MedLE_m": 244.78361983953852,
+        "P90_m": 392.37478671474776,
+        "P95_m": 489.57955207584655,
+        "ATE_RMSE_m": 279.2377681385339,
+        "RPE_m": 7.634626170430223,
+        "JumpRate_pct": 0.5568814638027049,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.0794912559618442,
+        "LSR@10_pct": 0.1589825119236884,
+        "LSR@15_pct": 0.6359300476947536,
+        "LSR@20_pct": 1.3513513513513513,
+        "MaxLE_m": 536.1958327532719
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 243.61511935176839,
+        "MedLE_m": 243.13890444787666,
+        "P90_m": 372.7126954322323,
+        "P95_m": 486.2628864462886,
+        "ATE_RMSE_m": 274.36961037054175,
+        "RPE_m": 2.4238378816356407,
+        "JumpRate_pct": 1.591089896579157,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.0794912559618442,
+        "LSR@10_pct": 0.1589825119236884,
+        "LSR@15_pct": 0.7154213036565978,
+        "LSR@20_pct": 1.3513513513513513,
+        "MaxLE_m": 533.1094269417371
+      },
+      "LegStateChangeCount": 1258,
+      "LegAdvanceCount": 634,
+      "LegRollbackCount": 624,
+      "MeanHoldProbability": 0.3331650675338099,
+      "MeanLocalProbability": 0.3335304086604444,
+      "MeanRecoveryProbability": 0.3333045242084797,
+      "MeanLegPreviousProbability": 0.6809503985465236,
+      "MeanLegCurrentProbability": 0.04734417576556033,
+      "MeanLegNextProbability": 0.27170542569531925
+    }
+  }
+}

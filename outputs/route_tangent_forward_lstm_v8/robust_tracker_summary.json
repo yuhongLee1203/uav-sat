@@ -1,0 +1,99 @@
+{
+  "architecture": "RouteTangentForwardHalfLSTM_v8",
+  "changes": {
+    "ecc_heading_removed": true,
+    "search_heading": "confirmed route tangent Start->End",
+    "forward_half_search": true,
+    "waypoint_removed_from_xy_fusion": true,
+    "transition_separate_from_localization": true,
+    "transition_requires_spatial_zone": true,
+    "transition_requires_next_leg_visual_support": true,
+    "post_model_position_only_kalman": true
+  },
+  "training": {
+    "route": "route_A",
+    "test_routes_used_for_training": false,
+    "test_gt_input": false,
+    "test_waypoint_frame_index_input": false
+  },
+  "routes": {
+    "route_B": {
+      "RouteTangentForwardVisual": {
+        "MLE_m": 398.5598148201164,
+        "MedLE_m": 413.39012246691027,
+        "P90_m": 782.2939525381628,
+        "P95_m": 888.2102168826816,
+        "ATE_RMSE_m": 478.4232429066028,
+        "RPE_m": 4.558083624516415,
+        "JumpRate_pct": 2.197802197802198,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.26362038664323373,
+        "LSR@10_pct": 0.5272407732864675,
+        "LSR@15_pct": 3.031634446397188,
+        "LSR@20_pct": 3.5149384885764503,
+        "MaxLE_m": 942.4149142498285
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 385.95799141443365,
+        "MedLE_m": 405.6027592183682,
+        "P90_m": 767.980604966931,
+        "P95_m": 866.2641153653033,
+        "ATE_RMSE_m": 465.7895242229105,
+        "RPE_m": 4.047260696128937,
+        "JumpRate_pct": 0.26373626373626374,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.35149384885764495,
+        "LSR@10_pct": 1.5377855887521967,
+        "LSR@15_pct": 4.437609841827768,
+        "LSR@20_pct": 5.448154657293498,
+        "MaxLE_m": 924.2789754016634
+      },
+      "WaypointSwitchCount": 14,
+      "ExpectedWaypointSwitchCount": 14,
+      "TerminalFrame": 1971,
+      "MeanHoldProbability": 0.5053487449936791,
+      "MeanLocalProbability": 0.43004611731623094,
+      "MeanRecoveryProbability": 0.06460513725695945,
+      "MeanTransitionProbability": 0.28025060837191446
+    },
+    "route_C": {
+      "RouteTangentForwardVisual": {
+        "MLE_m": 126.95135910523052,
+        "MedLE_m": 115.73014359444787,
+        "P90_m": 274.98100669491095,
+        "P95_m": 284.75787775274557,
+        "ATE_RMSE_m": 153.11421102398776,
+        "RPE_m": 2.479278877686854,
+        "JumpRate_pct": 0.7159904534606205,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.3179650238473768,
+        "LSR@10_pct": 0.9538950715421303,
+        "LSR@15_pct": 1.4308426073131957,
+        "LSR@20_pct": 2.8616852146263914,
+        "MaxLE_m": 303.4795138654556
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 121.4695463937776,
+        "MedLE_m": 108.7751167027165,
+        "P90_m": 274.9809936770417,
+        "P95_m": 284.75788769294104,
+        "ATE_RMSE_m": 150.19628692678862,
+        "RPE_m": 2.03711304559325,
+        "JumpRate_pct": 0.0,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.3179650238473768,
+        "LSR@10_pct": 1.7488076311605723,
+        "LSR@15_pct": 6.43879173290938,
+        "LSR@20_pct": 12.241653418124006,
+        "MaxLE_m": 303.4794900410689
+      },
+      "WaypointSwitchCount": 6,
+      "ExpectedWaypointSwitchCount": 10,
+      "TerminalFrame": null,
+      "MeanHoldProbability": 0.43199941849954937,
+      "MeanLocalProbability": 0.3783223944314902,
+      "MeanRecoveryProbability": 0.18967818382857973,
+      "MeanTransitionProbability": 0.4874493638971533
+    }
+  }
+}

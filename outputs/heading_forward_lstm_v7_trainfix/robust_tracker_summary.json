@@ -1,0 +1,139 @@
+{
+  "architecture": "HeadingAwareForwardHalfLSTM_v7_trainfix",
+  "v5_failure_fixed": {
+    "translation_gate_removed": true,
+    "route_unbounded_drift_removed": true,
+    "exact_endpoint_radius_switch_removed": true,
+    "local_only_no_recovery_removed": true
+  },
+  "training": {
+    "route": "route_A",
+    "all_route_a_frames_used": true,
+    "test_routes_used_for_training": false,
+    "absolute_current_gt_network_input": false,
+    "gt_role": "supervision and early causal previous-frame local-center guidance only",
+    "description": {
+      "train_frames": 1732,
+      "route_a_waypoints": 19,
+      "route_a_legs": 18,
+      "image_heading_sign": 1.0,
+      "image_heading_gain": 1.5
+    }
+  },
+  "model": {
+    "branches": [
+      "HOLD",
+      "LOCAL",
+      "RECOVERY",
+      "WAYPOINT"
+    ],
+    "waypoint_transition": "image-estimated heading becomes closer to next leg bearing",
+    "route_recovery": "current-image retrieval only in the forward half-plane of active Start->End corridor",
+    "heading_source": "previous/current UAV image ECC rotation; no IMU/yaw input",
+    "forward_search": "18 patches = forward half of conceptual 6x6 grid",
+    "polynomial": "previous observed image-derived delta + 0.5 acceleration",
+    "polynomial_moves_position": false,
+    "fixed_speed": false,
+    "translation_gate": false
+  },
+  "inference": {
+    "test_waypoint_frame_index_used": false,
+    "test_gt_used_by_inference": false,
+    "route_candidate_space_bounded": true,
+    "forward_half_only": true,
+    "backward_patch_search": false,
+    "kalman_state": "[x,y] only"
+  },
+  "waypoint_counts": {
+    "route_B": 16,
+    "route_C": 12
+  },
+  "routes": {
+    "route_B": {
+      "RouteBoundedVisual": {
+        "MLE_m": 454.03539798594517,
+        "MedLE_m": 394.53731733310497,
+        "P90_m": 801.5555255117712,
+        "P95_m": 1101.5091340112192,
+        "ATE_RMSE_m": 556.3792604929729,
+        "RPE_m": 5.199443156761438,
+        "JumpRate_pct": 7.560439560439561,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.6151142355008787,
+        "LSR@10_pct": 1.1423550087873462,
+        "LSR@15_pct": 1.6695957820738139,
+        "LSR@20_pct": 2.1528998242530757,
+        "MaxLE_m": 1425.8473046641116
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 460.4330924643754,
+        "MedLE_m": 404.20663824224243,
+        "P90_m": 803.4590230762492,
+        "P95_m": 1117.436089235827,
+        "ATE_RMSE_m": 562.5125363786512,
+        "RPE_m": 5.108781248870636,
+        "JumpRate_pct": 6.9010989010989015,
+        "JumpThreshold_m": 8.229941298883265,
+        "LSR@5_pct": 0.21968365553602814,
+        "LSR@10_pct": 1.054481546572935,
+        "LSR@15_pct": 1.493848857644991,
+        "LSR@20_pct": 1.845342706502636,
+        "MaxLE_m": 1425.8039619108865
+      },
+      "WaypointSwitchCount": 14,
+      "ExpectedWaypointSwitchCount": 14,
+      "TerminalFrame": null,
+      "MeanHoldProbability": 0.5726814710507284,
+      "MeanLocalProbability": 0.049975815375608856,
+      "MeanRecoveryProbability": 0.01740924053766514,
+      "MeanWaypointProbability": 0.35993347195063957,
+      "ImageHeadingSign": 1.0,
+      "ImageHeadingGain": 1.5,
+      "MeanImageRotationConfidence": 0.9240696170090686,
+      "ForwardCandidateCount": 18
+    },
+    "route_C": {
+      "RouteBoundedVisual": {
+        "MLE_m": 212.10054853357767,
+        "MedLE_m": 152.0317281474747,
+        "P90_m": 521.7751703860706,
+        "P95_m": 537.0815608336229,
+        "ATE_RMSE_m": 277.6711360152955,
+        "RPE_m": 2.9594537423529084,
+        "JumpRate_pct": 3.023070803500398,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 0.47694753577106513,
+        "LSR@10_pct": 3.338632750397456,
+        "LSR@15_pct": 9.45945945945946,
+        "LSR@20_pct": 11.92368839427663,
+        "MaxLE_m": 566.2868722193011
+      },
+      "FinalPositionKalman": {
+        "MLE_m": 213.62077254220216,
+        "MedLE_m": 154.5815652400039,
+        "P90_m": 521.7751672304087,
+        "P95_m": 537.0815608336218,
+        "ATE_RMSE_m": 277.6609311598244,
+        "RPE_m": 2.8075230860429103,
+        "JumpRate_pct": 2.4661893396976926,
+        "JumpThreshold_m": 8.012602756312024,
+        "LSR@5_pct": 1.5898251192368837,
+        "LSR@10_pct": 3.100158982511924,
+        "LSR@15_pct": 8.90302066772655,
+        "LSR@20_pct": 11.049284578696343,
+        "MaxLE_m": 566.286872126344
+      },
+      "WaypointSwitchCount": 10,
+      "ExpectedWaypointSwitchCount": 10,
+      "TerminalFrame": 854,
+      "MeanHoldProbability": 0.6084290464513821,
+      "MeanLocalProbability": 0.05276973481439587,
+      "MeanRecoveryProbability": 0.01948901586862361,
+      "MeanWaypointProbability": 0.3193122007200122,
+      "ImageHeadingSign": 1.0,
+      "ImageHeadingGain": 1.5,
+      "MeanImageRotationConfidence": 0.905932524838205,
+      "ForwardCandidateCount": 18
+    }
+  }
+}
