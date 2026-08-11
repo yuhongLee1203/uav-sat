@@ -1,0 +1,120 @@
+{
+  "method": "ResidualSecondOrderTemporalLatticeCRF",
+  "route": "route_B",
+  "dataset_indices": [
+    559,
+    560,
+    561,
+    562,
+    563
+  ],
+  "frame_ids": [
+    559,
+    560,
+    561,
+    562,
+    563
+  ],
+  "regular_2d_lattice_by_frame": [
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "jitter_m": 12.0,
+  "tensor_shapes": {
+    "raw_logits": [
+      5,
+      36
+    ],
+    "emission_logits": [
+      5,
+      36
+    ],
+    "first_transition": [
+      36,
+      36
+    ],
+    "second_transition_each": [
+      [
+        36,
+        36,
+        36
+      ],
+      [
+        36,
+        36,
+        36
+      ],
+      [
+        36,
+        36,
+        36
+      ]
+    ],
+    "alpha_each": [
+      [
+        36,
+        36
+      ],
+      [
+        36,
+        36
+      ],
+      [
+        36,
+        36
+      ],
+      [
+        36,
+        36
+      ]
+    ],
+    "path_probability": [
+      36
+    ]
+  },
+  "interpretation": {
+    "time": "五個依序排列的時間點",
+    "space_per_time": "每個時間點有36個候選，每個候選保存真實二維座標",
+    "flattening": "6x6攤平成0到35只用於tensor索引",
+    "official_inference": "log-sum-exp整合全部可能候選路徑",
+    "viterbi": "此新版完全不計算也不顯示Viterbi",
+    "figure_2": "上半部共用固定地圖座標；下半部各自以本幀候選格重新裁切"
+  },
+  "result": {
+    "hardms_xy": [
+      -954.6888427734375,
+      81.70103454589844
+    ],
+    "path_expectation_xy": [
+      -939.8651123046875,
+      98.69672393798828
+    ],
+    "final_xy": [
+      -940.0115356445312,
+      98.52885437011719
+    ],
+    "gt_xy": [
+      -934.4722900390625,
+      104.02806091308594
+    ],
+    "correction_gate": 0.9901227355003357,
+    "hardms_error_m": 30.119844436645508,
+    "path_error_m": 7.583250522613525,
+    "final_error_m": 7.805415630340576
+  },
+  "generated_images": [
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/01_actual_uav_window.png",
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/02_gt_prior_and_candidate_lattices.png",
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/03_patch_grid_to_candidate_indices.png",
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/04_raw_cosine_similarity.png",
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/05_learned_candidate_scores.png",
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/06_first_order_motion_scores.png",
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/07_second_order_motion_scores.png",
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/08_crf_forward_accumulation.png",
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/09_final_posterior_and_fusion.png",
+    "/yh/study/uav-sat/outputs/strict_train_A_test_BC/stage_debug_v3/route_B_frame_563/10_all_positions_on_one_map.png"
+  ]
+}

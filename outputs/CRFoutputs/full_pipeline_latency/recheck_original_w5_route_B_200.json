@@ -1,0 +1,75 @@
+{
+  "architecture": "T2-only ResidualSecondOrderTemporalLatticeCRF",
+  "temporal_window": 5,
+  "route": "route_B",
+  "device": "NVIDIA GeForce RTX 3090",
+  "candidate_count": 36,
+  "batch_size": 1,
+  "jitter_m": 12.0,
+  "first_gps_output_compute": {
+    "frames_required": 5,
+    "model_compute_ms": 1967.2133373096585,
+    "including_image_read_preprocess_ms": 2012.4207809567451,
+    "camera_waiting_time_included": false
+  },
+  "steady_state_one_new_gps": {
+    "preprocessed_uav_to_gps": {
+      "count": 200,
+      "mean_ms": 45.582083286717534,
+      "median_ms": 45.48652656376362,
+      "std_ms": 0.9343243280208015,
+      "min_ms": 43.703542090952396,
+      "p90_ms": 46.93125132471323,
+      "p95_ms": 47.35999018885195,
+      "p99_ms": 47.62698254548013,
+      "max_ms": 49.08802639693022,
+      "mean_fps": 21.93844440390895
+    },
+    "image_read_preprocess_only": {
+      "count": 200,
+      "mean_ms": 9.692848813720047,
+      "median_ms": 9.662323631346226,
+      "std_ms": 0.7264814651635938,
+      "min_ms": 8.806662634015083,
+      "p90_ms": 10.09570499882102,
+      "p95_ms": 10.263644345104694,
+      "p99_ms": 11.117348801344592,
+      "max_ms": 16.25836919993162,
+      "mean_fps": 103.16884325942632
+    },
+    "disk_image_to_gps": {
+      "count": 200,
+      "mean_ms": 55.27493210043758,
+      "median_ms": 55.11075211688876,
+      "std_ms": 1.2419972075404446,
+      "min_ms": 53.15406806766987,
+      "p90_ms": 56.917893420904875,
+      "p95_ms": 57.28163551539183,
+      "p99_ms": 59.08215161412953,
+      "max_ms": 60.968998819589615,
+      "mean_fps": 18.091383598318043
+    }
+  },
+  "t2_only_rtl_crf_forward_only": {
+    "count": 200,
+    "mean_ms": 3.5057628992944956,
+    "median_ms": 3.2840855419635773,
+    "std_ms": 0.36177823577891544,
+    "min_ms": 3.161059692502022,
+    "p90_ms": 4.157918319106102,
+    "p95_ms": 4.212707187980413,
+    "p99_ms": 4.285814166069031,
+    "max_ms": 4.312469623982906,
+    "mean_fps": 285.2446182830109
+  },
+  "example_final_gps": {
+    "latitude": 23.451486264007464,
+    "longitude": 120.27892707518119
+  },
+  "notes": {
+    "sat_gallery_precomputed": true,
+    "model_loading_included": false,
+    "local_prior_generation_included": false,
+    "gps_conversion_included": true
+  }
+}

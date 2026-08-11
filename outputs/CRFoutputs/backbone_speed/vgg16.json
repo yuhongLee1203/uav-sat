@@ -1,0 +1,32 @@
+{
+  "backbone_key": "vgg16",
+  "backbone_name": "torchvision:VGG16_IMAGENET1K_V1",
+  "device": "cuda",
+  "backbone_parameters": 14714688,
+  "task_trainable_parameters": 1050625,
+  "uav_online_batch1": {
+    "batch": 1,
+    "input_hw": [
+      256,
+      256
+    ],
+    "iterations": 200,
+    "total_seconds": 0.5428176186978817,
+    "ms_per_batch": 2.7140880934894085,
+    "ms_per_image": 2.7140880934894085,
+    "images_per_second": 368.44787846010365
+  },
+  "satellite_cache_batch": {
+    "batch": 64,
+    "input_hw": [
+      320,
+      320
+    ],
+    "iterations": 40,
+    "total_seconds": 3.2884174743667245,
+    "ms_per_batch": 82.21043685916811,
+    "ms_per_image": 1.2845380759245018,
+    "images_per_second": 778.4899636239156
+  },
+  "note": "Satellite backbone features are cached in the localization pipeline, so online frame-to-frame backbone cost is represented primarily by uav_online_batch1."
+}

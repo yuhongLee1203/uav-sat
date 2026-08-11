@@ -1,0 +1,32 @@
+{
+  "backbone_key": "mobilenet_v3_small",
+  "backbone_name": "torchvision:MobileNetV3-Small_IMAGENET1K_V1",
+  "device": "cuda",
+  "backbone_parameters": 927008,
+  "task_trainable_parameters": 1255553,
+  "uav_online_batch1": {
+    "batch": 1,
+    "input_hw": [
+      256,
+      256
+    ],
+    "iterations": 200,
+    "total_seconds": 1.4358864109963179,
+    "ms_per_batch": 7.179432054981589,
+    "ms_per_image": 7.179432054981589,
+    "images_per_second": 139.2867837374588
+  },
+  "satellite_cache_batch": {
+    "batch": 64,
+    "input_hw": [
+      320,
+      320
+    ],
+    "iterations": 40,
+    "total_seconds": 0.30149542540311813,
+    "ms_per_batch": 7.537385635077953,
+    "ms_per_image": 0.11777165054809302,
+    "images_per_second": 8491.007770937555
+  },
+  "note": "Satellite backbone features are cached in the localization pipeline, so online frame-to-frame backbone cost is represented primarily by uav_online_batch1."
+}

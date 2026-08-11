@@ -1,0 +1,335 @@
+nohup: ignoring input
+============================================================================
+T2-ONLY SECOND-ORDER RTL-CRF
+Temporal window: 5 frames
+No learned T1 factor
+Output directory: outputs/strict_train_A_test_BC_t2only_w5
+Visual checkpoint copy: outputs/strict_train_A_test_BC_t2only_w5/checkpoints/visual_retrieval_A_only.pt
+============================================================================
+============================================================================
+STRICT TRAIN-A / TEST-B+C EXPERIMENT
+visual train routes:      ['route_A']
+visual validation routes: ['route_A']
+temporal train routes:    ['route_A']
+temporal validation:      ['route_A']
+evaluation routes:        ['route_B', 'route_C']
+evaluation split:         all
+previous task checkpoint: DISALLOWED
+public backbone:          hf-hub:timm/MobileCLIP2-S2-OpenCLIP
+output directory:         /yh/study/uav-sat/outputs/strict_train_A_test_BC_t2only_w5
+============================================================================
+satellite backbone cache: 64/95480
+satellite backbone cache: 1344/95480
+satellite backbone cache: 2624/95480
+satellite backbone cache: 3904/95480
+satellite backbone cache: 5184/95480
+satellite backbone cache: 6464/95480
+satellite backbone cache: 7744/95480
+satellite backbone cache: 9024/95480
+satellite backbone cache: 10304/95480
+satellite backbone cache: 11584/95480
+satellite backbone cache: 12864/95480
+satellite backbone cache: 14144/95480
+satellite backbone cache: 15424/95480
+satellite backbone cache: 16704/95480
+satellite backbone cache: 17984/95480
+satellite backbone cache: 19264/95480
+satellite backbone cache: 20544/95480
+satellite backbone cache: 21824/95480
+satellite backbone cache: 23104/95480
+satellite backbone cache: 24384/95480
+satellite backbone cache: 25664/95480
+satellite backbone cache: 26944/95480
+satellite backbone cache: 28224/95480
+satellite backbone cache: 29504/95480
+satellite backbone cache: 30784/95480
+satellite backbone cache: 32064/95480
+satellite backbone cache: 33344/95480
+satellite backbone cache: 34624/95480
+satellite backbone cache: 35904/95480
+satellite backbone cache: 37184/95480
+satellite backbone cache: 38464/95480
+satellite backbone cache: 39744/95480
+satellite backbone cache: 41024/95480
+satellite backbone cache: 42304/95480
+satellite backbone cache: 43584/95480
+satellite backbone cache: 44864/95480
+satellite backbone cache: 46144/95480
+satellite backbone cache: 47424/95480
+satellite backbone cache: 48704/95480
+satellite backbone cache: 49984/95480
+satellite backbone cache: 51264/95480
+satellite backbone cache: 52544/95480
+satellite backbone cache: 53824/95480
+satellite backbone cache: 55104/95480
+satellite backbone cache: 56384/95480
+satellite backbone cache: 57664/95480
+satellite backbone cache: 58944/95480
+satellite backbone cache: 60224/95480
+satellite backbone cache: 61504/95480
+satellite backbone cache: 62784/95480
+satellite backbone cache: 64064/95480
+satellite backbone cache: 65344/95480
+satellite backbone cache: 66624/95480
+satellite backbone cache: 67904/95480
+satellite backbone cache: 69184/95480
+satellite backbone cache: 70464/95480
+satellite backbone cache: 71744/95480
+satellite backbone cache: 73024/95480
+satellite backbone cache: 74304/95480
+satellite backbone cache: 75584/95480
+satellite backbone cache: 76864/95480
+satellite backbone cache: 78144/95480
+satellite backbone cache: 79424/95480
+satellite backbone cache: 80704/95480
+satellite backbone cache: 81984/95480
+satellite backbone cache: 83264/95480
+satellite backbone cache: 84544/95480
+satellite backbone cache: 85824/95480
+satellite backbone cache: 87104/95480
+satellite backbone cache: 88384/95480
+satellite backbone cache: 89664/95480
+satellite backbone cache: 90944/95480
+satellite backbone cache: 92224/95480
+satellite backbone cache: 93504/95480
+satellite backbone cache: 94784/95480
+satellite backbone cache: 95480/95480
+satellite gallery size=95480
+Route A backbone cache: 64/1732
+Route A backbone cache: 1344/1732
+Route A backbone cache: 1732/1732
+Route A visual candidate capture=100.00%
+resume visual training from epoch 9
+best Route A visual validation HardMS MLE=9.129m
+cached route_A: frames=1732 capture=100.00%
+epoch=001/40 loss=133.08758 val_mle=6.691m val_p90=11.326m val_jump=16.33% score=9.623
+epoch=002/40 loss=106.28783 val_mle=7.061m val_p90=12.249m val_jump=15.51% score=9.917
+epoch=003/40 loss=66.73454 val_mle=6.247m val_p90=11.503m val_jump=8.57% score=8.443
+epoch=004/40 loss=50.13847 val_mle=6.440m val_p90=11.530m val_jump=11.02% score=8.799
+epoch=005/40 loss=40.00517 val_mle=6.568m val_p90=11.954m val_jump=6.12% score=8.556
+epoch=006/40 loss=37.40179 val_mle=5.919m val_p90=11.207m val_jump=4.08% score=7.767
+epoch=007/40 loss=34.99156 val_mle=5.506m val_p90=10.474m val_jump=4.08% score=7.259
+epoch=008/40 loss=32.57086 val_mle=5.935m val_p90=11.342m val_jump=4.49% score=7.759
+epoch=009/40 loss=29.70685 val_mle=6.355m val_p90=11.471m val_jump=5.31% score=8.292
+epoch=010/40 loss=26.34706 val_mle=5.712m val_p90=10.946m val_jump=4.90% score=7.506
+epoch=011/40 loss=22.51324 val_mle=5.903m val_p90=10.857m val_jump=4.90% score=7.768
+epoch=012/40 loss=18.58866 val_mle=6.279m val_p90=11.425m val_jump=4.90% score=8.232
+epoch=013/40 loss=16.85509 val_mle=5.697m val_p90=10.677m val_jump=4.49% score=7.563
+epoch=014/40 loss=16.30419 val_mle=5.498m val_p90=10.033m val_jump=4.90% score=7.374
+epoch=015/40 loss=16.07696 val_mle=6.018m val_p90=11.031m val_jump=5.71% score=8.046
+epoch=016/40 loss=15.83506 val_mle=6.162m val_p90=11.380m val_jump=6.12% score=8.187
+epoch=017/40 loss=15.54937 val_mle=5.986m val_p90=11.058m val_jump=4.90% score=7.880
+epoch=018/40 loss=15.27580 val_mle=6.320m val_p90=11.618m val_jump=4.49% score=8.253
+epoch=019/40 loss=15.25029 val_mle=6.100m val_p90=11.091m val_jump=5.31% score=8.007
+early stopping: validation objective stopped improving
+best validation objective=7.259
+cached route_B: frames=2276 capture=100.00%
+cached route_C: frames=1258 capture=100.00%
+{
+  "method": "ResidualSecondOrderTemporalLatticeCRF",
+  "protocol": "Public frozen MobileCLIP backbone; randomly initialized retrieval heads trained/validated only on Route A; randomly initialized RTL-CRF trained/validated only on Route A; Route B/C used only after training for evaluation; GT+jitter controlled local prior",
+  "visual_train_routes": [
+    "route_A"
+  ],
+  "visual_validation_routes": [
+    "route_A"
+  ],
+  "temporal_train_routes": [
+    "route_A"
+  ],
+  "temporal_validation_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "eval_split": "all",
+  "previous_task_checkpoint_loaded": false,
+  "backbone_source": "hf-hub:timm/MobileCLIP2-S2-OpenCLIP",
+  "jitter_m": 12.0,
+  "visual_checkpoint": "/yh/study/uav-sat/outputs/strict_train_A_test_BC_t2only_w5/checkpoints/visual_retrieval_A_only.pt",
+  "temporal_checkpoint": "/yh/study/uav-sat/outputs/strict_train_A_test_BC_t2only_w5/checkpoints/rtl_crf_A_only.pt",
+  "routes": {
+    "route_B": {
+      "route": "route_B",
+      "split": "all",
+      "RawTop1": {
+        "MLE_m": 15.046251881724876,
+        "MedLE_m": 14.7424857610597,
+        "P90_m": 24.001905371956973,
+        "P95_m": 26.08443795484268,
+        "ATE_RMSE_m": 16.415508189635755,
+        "LSR@5_pct": 6.426056338028169,
+        "LSR@10_pct": 23.943661971830984,
+        "LSR@15_pct": 51.49647887323944,
+        "LSR@20_pct": 75.92429577464789,
+        "RPE_m": 14.724402340046135,
+        "JumpRate_pct": 48.78907970057244,
+        "JumpThreshold_m": 13.147056657233255,
+        "StationaryDriftP90_m": 33.553039679794516,
+        "PathLengthRatio": 4.702597356034164,
+        "MaxLE_m": 33.45992443843069
+      },
+      "FixedHardMS": {
+        "MLE_m": 10.466197321342031,
+        "MedLE_m": 10.092221407603065,
+        "P90_m": 17.253197920819883,
+        "P95_m": 19.098942502268144,
+        "ATE_RMSE_m": 11.60524253561866,
+        "LSR@5_pct": 14.612676056338028,
+        "LSR@10_pct": 49.29577464788733,
+        "LSR@15_pct": 81.60211267605634,
+        "LSR@20_pct": 96.0387323943662,
+        "RPE_m": 11.849256230883103,
+        "JumpRate_pct": 44.429766622633196,
+        "JumpThreshold_m": 13.147056657233255,
+        "StationaryDriftP90_m": 23.704921297794968,
+        "PathLengthRatio": 4.008274774729714,
+        "MaxLE_m": 30.119845797461366
+      },
+      "TemporalPathExpectation": {
+        "MLE_m": 5.208106404486061,
+        "MedLE_m": 4.696512102285073,
+        "P90_m": 9.182070724581976,
+        "P95_m": 10.830625704019049,
+        "ATE_RMSE_m": 5.963066706058224,
+        "LSR@5_pct": 54.31338028169014,
+        "LSR@10_pct": 93.04577464788733,
+        "LSR@15_pct": 99.91197183098592,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 4.411737162058169,
+        "JumpRate_pct": 1.5852047556142668,
+        "JumpThreshold_m": 13.147056657233255,
+        "StationaryDriftP90_m": 7.571482944925578,
+        "PathLengthRatio": 1.4384260821692336,
+        "MaxLE_m": 16.513696579601685
+      },
+      "RTL_CRF": {
+        "MLE_m": 5.268676020170614,
+        "MedLE_m": 4.794743571521629,
+        "P90_m": 9.240521683854052,
+        "P95_m": 10.82959715808791,
+        "ATE_RMSE_m": 6.012151584680336,
+        "LSR@5_pct": 53.03697183098591,
+        "LSR@10_pct": 93.04577464788733,
+        "LSR@15_pct": 99.77992957746478,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 4.6061225686277485,
+        "JumpRate_pct": 1.893439013650374,
+        "JumpThreshold_m": 13.147056657233255,
+        "StationaryDriftP90_m": 7.938264946096799,
+        "PathLengthRatio": 1.5188368616639107,
+        "MaxLE_m": 16.01753955927482
+      },
+      "CandidateCaptureRate_pct": 100.0,
+      "MeanCorrectionGate": 0.8750429722336186,
+      "MeanPathEntropy": 0.5951546223368496
+    },
+    "route_C": {
+      "route": "route_C",
+      "split": "all",
+      "RawTop1": {
+        "MLE_m": 14.071702253911292,
+        "MedLE_m": 13.544219580841311,
+        "P90_m": 23.374031698301767,
+        "P95_m": 25.09399027833897,
+        "ATE_RMSE_m": 15.500739366509102,
+        "LSR@5_pct": 6.698564593301436,
+        "LSR@10_pct": 30.38277511961722,
+        "LSR@15_pct": 57.97448165869219,
+        "LSR@20_pct": 79.02711323763955,
+        "RPE_m": 12.344562516852067,
+        "JumpRate_pct": 41.58020750199521,
+        "JumpThreshold_m": 13.084796164778941,
+        "StationaryDriftP90_m": 28.939326537419134,
+        "PathLengthRatio": 5.695115720760011,
+        "MaxLE_m": 31.40342350227002
+      },
+      "FixedHardMS": {
+        "MLE_m": 9.528298513456512,
+        "MedLE_m": 9.172710656280186,
+        "P90_m": 15.933034859062332,
+        "P95_m": 17.74649926928319,
+        "ATE_RMSE_m": 10.634248130304327,
+        "LSR@5_pct": 16.985645933014354,
+        "LSR@10_pct": 56.14035087719298,
+        "LSR@15_pct": 85.56618819776715,
+        "LSR@20_pct": 98.00637958532695,
+        "RPE_m": 10.988094789327686,
+        "JumpRate_pct": 40.30327214684757,
+        "JumpThreshold_m": 13.084796164778941,
+        "StationaryDriftP90_m": 20.131632098409597,
+        "PathLengthRatio": 5.313947163437366,
+        "MaxLE_m": 24.498406956445564
+      },
+      "TemporalPathExpectation": {
+        "MLE_m": 4.504345656485153,
+        "MedLE_m": 4.165757998457645,
+        "P90_m": 7.811493825742026,
+        "P95_m": 9.083797820650048,
+        "ATE_RMSE_m": 5.12188719154107,
+        "LSR@5_pct": 64.1945773524721,
+        "LSR@10_pct": 97.1291866028708,
+        "LSR@15_pct": 100.0,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 3.9560196746655767,
+        "JumpRate_pct": 0.8778930566640064,
+        "JumpThreshold_m": 13.084796164778941,
+        "StationaryDriftP90_m": 6.817134078050977,
+        "PathLengthRatio": 1.8502423176625447,
+        "MaxLE_m": 14.161118862602192
+      },
+      "RTL_CRF": {
+        "MLE_m": 4.575263853604525,
+        "MedLE_m": 4.204766197360244,
+        "P90_m": 8.066043882324967,
+        "P95_m": 9.2513478103501,
+        "ATE_RMSE_m": 5.2022989981760706,
+        "LSR@5_pct": 63.078149920255186,
+        "LSR@10_pct": 96.7304625199362,
+        "LSR@15_pct": 100.0,
+        "LSR@20_pct": 100.0,
+        "RPE_m": 4.203735839608591,
+        "JumpRate_pct": 1.3567438148443736,
+        "JumpThreshold_m": 13.084796164778941,
+        "StationaryDriftP90_m": 7.219065657088559,
+        "PathLengthRatio": 1.998144461438356,
+        "MaxLE_m": 14.421968206873753
+      },
+      "CandidateCaptureRate_pct": 100.0,
+      "MeanCorrectionGate": 0.8534684179312114,
+      "MeanPathEntropy": 0.617726646821227
+    }
+  }
+}
+summary saved to /yh/study/uav-sat/outputs/strict_train_A_test_BC_t2only_w5/robust_tracker_summary.json
+================================================================================================================
+T2-ONLY RTL-CRF: 3-FRAME vs 4-FRAME vs 5-FRAME — COMMON-FRAME COMPARISON
+================================================================================================================
+
+ROUTE_B  common frames=2272
+----------------------------------------------------------------------------------------------------------------
+metric                         3-frame         4-frame         5-frame            best
+MLE_m                           5.5159          5.3436          5.2687         5-frame
+P90_m                           9.5238          9.3206          9.2405         5-frame
+RPE_m                           5.1786          4.8032          4.6061         5-frame
+JumpRate_pct                    2.8181          2.9062          1.8934         5-frame
+LSR@5_pct                      47.9313         51.4965         53.0370         5-frame
+LSR@10_pct                     91.6373         92.8697         93.0458         5-frame
+LSR@15_pct                     99.6479         99.7799         99.7799         4-frame
+
+ROUTE_C  common frames=1254
+----------------------------------------------------------------------------------------------------------------
+metric                         3-frame         4-frame         5-frame            best
+MLE_m                           5.2347          4.7208          4.5753         5-frame
+P90_m                           9.1051          8.0497          8.0660         4-frame
+RPE_m                           4.8668          4.4475          4.2037         5-frame
+JumpRate_pct                    1.8356          1.9952          1.3567         5-frame
+LSR@5_pct                      52.7911         60.0478         63.0781         5-frame
+LSR@10_pct                     94.0989         96.8900         96.7305         4-frame
+LSR@15_pct                     99.8405         99.8405        100.0000         5-frame
+
+================================================================================================================
+comparison saved to: outputs/t2only_temporal_window_3_4_5_comparison.json
+================================================================================================================
