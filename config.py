@@ -2,12 +2,12 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-ARCHITECTURE_NAME = "WaypointTemporalMotionGRUKalman_v22"
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "waypoint_temporal_motion_gru_kalman_v22"
+ARCHITECTURE_NAME = "WaypointRouteGlobalRecoveryGRUKalman_v23"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "waypoint_routeglobal_recovery_gru_kalman_v23"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_temporal_motion_gru_A_only.pt"
-LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_temporal_motion_gru_A_only_latest.pt"
+TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_routeglobal_recovery_gru_A_only.pt"
+LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_routeglobal_recovery_gru_A_only_latest.pt"
 
 ROUTE_ROOTS = [
     Path("/yh/study/new_data_2/model_dataset_new_1_flight"),
@@ -59,6 +59,8 @@ VISUAL_CACHE_BATCH_SIZE = 256
 VISUAL_EARLY_STOPPING_PATIENCE = 8
 VISUAL_LABEL_SMOOTHING = 0.05
 VISUAL_COORD_LOSS_WEIGHT = 0.25
+# Route-global recovery needs negatives beyond the local 6x6 window.
+VISUAL_GLOBAL_NEGATIVE_COUNT = 96
 
 MEANSHIFT_SCORE_TAU = 0.30
 MEANSHIFT_BANDWIDTH_M = 8.0
@@ -68,6 +70,25 @@ CANDIDATE_COUNT = 36
 LOCAL_PRIOR_JITTER_M = 12.0
 CANDIDATE_CAPTURE_RADIUS_M = 7.5
 MIN_TRAIN_CAPTURE_RATE = 0.95
+
+# -----------------------------------------------------------------------------
+# Dual-range retrieval. The 6x6 local branch is preserved, but every frame also
+# scores cached SAT anchors along the known waypoint corridor. The motion model
+# is a heavy-tailed soft prior: it can prefer nearby patches, but never removes
+# distant route hypotheses, so visual recovery remains possible after drift.
+# -----------------------------------------------------------------------------
+ROUTE_CORRIDOR_HALF_WIDTH_M = 60.0
+ROUTE_GLOBAL_TOPK = 96
+ROUTE_GLOBAL_MODE_RADIUS_M = 18.0
+ROUTE_GLOBAL_TEMPERATURE = 0.45
+ROUTE_GLOBAL_EMBED_BATCH = 4096
+ROUTE_PRIOR_SIGMA_XY_MIN_M = 22.0
+ROUTE_PRIOR_SIGMA_XY_MAX_M = 180.0
+ROUTE_PRIOR_COVARIANCE_SCALE = 2.0
+ROUTE_PRIOR_PROGRESS_SIGMA_M = 55.0
+ROUTE_PRIOR_UNIFORM_FLOOR = 0.05
+ROUTE_PRIOR_LOG_WEIGHT = 1.0
+WAYPOINT_PASS_PROBABILITY = 0.50
 
 TRAIN_FRACTION = 0.70
 VAL_FRACTION = 0.15
@@ -91,15 +112,15 @@ WAYPOINT_MIN_LEG_LENGTH_M = 1.0
 # -----------------------------------------------------------------------------
 RNN_HIDDEN_DIM = 256
 RNN_FEATURE_DIM = 128
-RNN_NUMERIC_DIM = 17
+RNN_NUMERIC_DIM = 22
 RNN_DROPOUT = 0.10
 MAX_FORWARD_SPEED_M_PER_FRAME = 10.0
 MAX_CROSS_SPEED_M_PER_FRAME = 5.0
 MAX_FORWARD_ACCEL_M_PER_FRAME2 = 5.0
 MAX_CROSS_ACCEL_M_PER_FRAME2 = 4.0
 MAX_POLYNOMIAL_STEP_M_PER_FRAME = 10.0
-MAX_MEASUREMENT_CORRECTION_PARALLEL_M = 3.0
-MAX_MEASUREMENT_CORRECTION_CROSS_M = 3.0
+MAX_MEASUREMENT_CORRECTION_PARALLEL_M = 5.0
+MAX_MEASUREMENT_CORRECTION_CROSS_M = 5.0
 
 # -----------------------------------------------------------------------------
 # Temporal training.

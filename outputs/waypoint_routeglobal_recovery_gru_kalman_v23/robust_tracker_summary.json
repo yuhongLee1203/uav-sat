@@ -1,0 +1,67 @@
+{
+  "architecture": "WaypointRouteGlobalRecoveryGRUKalman_v23",
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "known_at_inference": [
+    "start_coordinate",
+    "waypoint_coordinates"
+  ],
+  "uses_waypoint_frame_index_at_inference": false,
+  "motion_state": [
+    "signed_v_parallel",
+    "v_cross",
+    "a_parallel",
+    "a_cross"
+  ],
+  "temporal_visual_input": "previous/current UAV embeddings",
+  "visual_measurement": "local 6x6 + route-global waypoint-corridor posterior + learned residual/covariance",
+  "polynomial": "p_next = p_final + v + 0.5*a",
+  "waypoint_transition": "current-frame route-global posterior only",
+  "recovery": "heavy-tailed motion prior never removes route-global visual hypotheses",
+  "final_filter": "external Kalman [x,y,vx,vy]",
+  "route_B": {
+    "MLE_m": 748.6191114871147,
+    "MedLE_m": 742.6326257795295,
+    "P90_m": 1242.243531048582,
+    "P95_m": 1281.083797064024,
+    "P99_m": 1333.9651144396682,
+    "LSR@5_pct": 0.04393673110720562,
+    "LSR@10_pct": 0.35149384885764495,
+    "LSR@15_pct": 0.8347978910369069,
+    "LSR@20_pct": 1.2302284710017575,
+    "Local6x6Capture_pct": 1.4499121265377855,
+    "GlobalModeCapture_pct": 2.8119507908611596,
+    "RouteCorridorCapture_pct": 26.757469244288224,
+    "CandidateCapture_pct": 2.8119507908611596,
+    "MeanFinalStep_m": 0.37592006276473705,
+    "P95FinalStep_m": 0.9519936658101474,
+    "VisualWaypointTransitions": 14,
+    "Waypoints": 16,
+    "CSV": "/yh/study/uav-sat/outputs/waypoint_routeglobal_recovery_gru_kalman_v23/route_B_waypoint_routeglobal_recovery_gru_kalman_frames.csv"
+  },
+  "route_C": {
+    "MLE_m": 294.8867517542091,
+    "MedLE_m": 284.7857751697078,
+    "P90_m": 517.3794129726112,
+    "P95_m": 588.0935095399271,
+    "P99_m": 663.1353370813487,
+    "LSR@5_pct": 0.47694753577106513,
+    "LSR@10_pct": 1.192368839427663,
+    "LSR@15_pct": 1.8282988871224166,
+    "LSR@20_pct": 2.146263910969793,
+    "Local6x6Capture_pct": 2.305246422893482,
+    "GlobalModeCapture_pct": 4.848966613672496,
+    "RouteCorridorCapture_pct": 100.0,
+    "CandidateCapture_pct": 4.848966613672496,
+    "MeanFinalStep_m": 0.49103867273918933,
+    "P95FinalStep_m": 1.8571611651984752,
+    "VisualWaypointTransitions": 0,
+    "Waypoints": 12,
+    "CSV": "/yh/study/uav-sat/outputs/waypoint_routeglobal_recovery_gru_kalman_v23/route_C_waypoint_routeglobal_recovery_gru_kalman_frames.csv"
+  }
+}

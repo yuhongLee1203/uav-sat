@@ -119,14 +119,14 @@ class WaypointGRUOutput:
     state: torch.Tensor
 
 
-class WaypointTemporalMotionGRU(nn.Module):
-    """Two-frame waypoint-conditioned recurrent state estimator.
+class WaypointRouteGlobalRecoveryGRU(nn.Module):
+    """Two-frame recurrent motion model with local + route-global visual evidence.
 
-    Current and previous UAV embeddings are provided explicitly so the network
-    can estimate motion from temporal visual change rather than from a single
-    image. The network predicts signed route-frame velocity/acceleration and a
-    visual measurement uncertainty. The external Kalman filter remains the
-    only module that outputs the final navigation position.
+    The local 6x6 response is retained as a high-resolution continuity cue. A
+    second route-global branch supplies an absolute visual mode anywhere along
+    the known waypoint corridor. The GRU predicts motion for the *next* frame;
+    it does not decide waypoint transitions. Waypoint transitions are made from
+    the current-frame route-global posterior after the visual observation.
     """
 
     def __init__(self):
@@ -144,7 +144,8 @@ class WaypointTemporalMotionGRU(nn.Module):
 
         self.uav_projection = projection(config.EMBED_DIM)
         self.delta_uav_projection = projection(config.EMBED_DIM)
-        self.sat_projection = projection(config.EMBED_DIM)
+        self.local_sat_projection = projection(config.EMBED_DIM)
+        self.global_sat_projection = projection(config.EMBED_DIM)
         self.numeric_projection = nn.Sequential(
             nn.Linear(int(config.RNN_NUMERIC_DIM), feature_dim),
             nn.GELU(),
@@ -152,7 +153,7 @@ class WaypointTemporalMotionGRU(nn.Module):
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
-        self.gru = nn.GRUCell(feature_dim * 4, hidden_dim)
+        self.gru = nn.GRUCell(feature_dim * 5, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
         def head(output_dim):
@@ -168,16 +169,11 @@ class WaypointTemporalMotionGRU(nn.Module):
         self.variance_head = head(2)
         self.confidence_head = head(1)
 
-        # Signed velocity is important: direction is predicted and supervised,
-        # not hard-clamped. Initialize near the measured Route-A cruise speed.
+        # Do not inject an artificial cruise speed. Frame 0 has no temporal
+        # motion evidence, so the recurrent motion state starts at zero and is
+        # learned from previous/current UAV appearance plus route evidence.
         nn.init.zeros_(self.motion_head[-1].weight)
-        target_fraction = 3.0 / float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
-        target_fraction = min(max(target_fraction, -0.95), 0.95)
-        forward_bias = 0.5 * math.log((1.0 + target_fraction) / (1.0 - target_fraction))
-        with torch.no_grad():
-            self.motion_head[-1].bias.copy_(
-                torch.tensor([forward_bias, 0.0, 0.0, 0.0])
-            )
+        nn.init.zeros_(self.motion_head[-1].bias)
 
         nn.init.zeros_(self.correction_head[-1].weight)
         nn.init.zeros_(self.correction_head[-1].bias)
@@ -196,7 +192,9 @@ class WaypointTemporalMotionGRU(nn.Module):
     @staticmethod
     def _entropy(probability):
         count = max(int(probability.shape[1]), 2)
-        return -(probability * probability.clamp_min(1e-8).log()).sum(dim=1) / math.log(float(count))
+        return -(
+            probability * probability.clamp_min(1e-8).log()
+        ).sum(dim=1) / math.log(float(count))
 
     @staticmethod
     def _margin(probability):
@@ -221,42 +219,19 @@ class WaypointTemporalMotionGRU(nn.Module):
         scale = torch.clamp(float(maximum) / norm.clamp_min(1e-6), max=1.0)
         return vector * scale
 
-    def _measurement_distribution(
-        self, raw_probability, candidate_centers, search_center_xy, route_unit, cross_unit
-    ):
-        # Convert the spatial response into a RELATIVE visual innovation.
-        # This is deliberately centered on the polynomial search position, not
-        # on the quantized gallery grid. Therefore a flat/ambiguous 6x6 response
-        # produces ~zero correction instead of pinning the filter to one anchor.
-        temperature = max(float(config.TEMPORAL_MEASUREMENT_TAU), 1e-3)
-        logits = raw_probability.clamp_min(1e-8).log() / temperature
-        probability = torch.softmax(logits, dim=1)
-        grid_reference = candidate_centers.mean(dim=1)
-        candidate_offset = candidate_centers - grid_reference[:, None, :]
-        weighted_offset = (probability.unsqueeze(-1) * candidate_offset).sum(dim=1)
-        anchor = search_center_xy + weighted_offset
-
-        centered_offset = candidate_offset - weighted_offset[:, None, :]
-        parallel = (centered_offset * route_unit[:, None, :]).sum(dim=-1)
-        cross = (centered_offset * cross_unit[:, None, :]).sum(dim=-1)
-        response_var = torch.stack(
-            [
-                (probability * parallel.square()).sum(dim=1),
-                (probability * cross.square()).sum(dim=1),
-            ],
-            dim=1,
-        )
-        return probability, anchor, response_var
-
     def _numeric_features(
         self,
-        raw_probability,
-        hardms_xy,
-        raw_top1_xy,
-        hardms_support,
-        measurement_anchor_xy,
+        local_probability,
+        local_hardms_xy,
+        local_top1_xy,
+        local_hardms_support,
+        global_anchor_xy,
+        global_response_variance_route,
+        global_entropy,
+        global_margin,
+        global_mode_mass,
+        waypoint_pass_probability,
         search_center_xy,
-        previous_final_xy,
         route_unit,
         cross_unit,
         route_remaining_m,
@@ -267,39 +242,47 @@ class WaypointTemporalMotionGRU(nn.Module):
         z_uav,
         previous_z_uav,
     ):
-        hardms_innovation = self._project_route(
-            hardms_xy - search_center_xy, route_unit, cross_unit
+        local_hardms_innovation = self._project_route(
+            local_hardms_xy - search_center_xy, route_unit, cross_unit
         ) / float(config.ROUTE_STEP_SCALE_M)
-        anchor_innovation = self._project_route(
-            measurement_anchor_xy - search_center_xy, route_unit, cross_unit
-        ) / float(config.ROUTE_STEP_SCALE_M)
-        top1_disagreement = torch.linalg.norm(
-            hardms_xy - raw_top1_xy, dim=1, keepdim=True
-        ) / float(config.ROUTE_STEP_SCALE_M)
-        anchor_hardms_disagreement = torch.linalg.norm(
-            measurement_anchor_xy - hardms_xy, dim=1, keepdim=True
+        global_anchor_innovation = self._project_route(
+            global_anchor_xy - search_center_xy, route_unit, cross_unit
+        ) / float(config.ROUTE_DISTANCE_SCALE_M)
+        local_top1_disagreement = torch.linalg.norm(
+            local_hardms_xy - local_top1_xy, dim=1, keepdim=True
         ) / float(config.ROUTE_STEP_SCALE_M)
         temporal_cosine = F.cosine_similarity(
             z_uav, previous_z_uav, dim=1
         ).unsqueeze(1)
+        global_std_route = torch.sqrt(
+            global_response_variance_route.clamp_min(0.0)
+        ) / float(config.ROUTE_DISTANCE_SCALE_M)
 
         numeric = torch.cat(
             [
-                self._entropy(raw_probability).unsqueeze(1),
-                self._margin(raw_probability).unsqueeze(1),
-                hardms_support.reshape(-1, 1),
-                hardms_innovation,
-                anchor_innovation,
-                top1_disagreement,
+                self._entropy(local_probability).unsqueeze(1),
+                self._margin(local_probability).unsqueeze(1),
+                local_hardms_support.reshape(-1, 1),
+                local_hardms_innovation,
+                global_anchor_innovation,
+                local_top1_disagreement,
                 route_remaining_m / float(config.ROUTE_DISTANCE_SCALE_M),
                 route_cross_track_m / float(config.ROUTE_CROSS_TRACK_SCALE_M),
                 route_progress,
-                previous_velocity_route[:, 0:1] / float(config.MAX_FORWARD_SPEED_M_PER_FRAME),
-                previous_velocity_route[:, 1:2] / float(config.MAX_CROSS_SPEED_M_PER_FRAME),
-                previous_acceleration_route[:, 0:1] / float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
-                previous_acceleration_route[:, 1:2] / float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
+                previous_velocity_route[:, 0:1]
+                / float(config.MAX_FORWARD_SPEED_M_PER_FRAME),
+                previous_velocity_route[:, 1:2]
+                / float(config.MAX_CROSS_SPEED_M_PER_FRAME),
+                previous_acceleration_route[:, 0:1]
+                / float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
+                previous_acceleration_route[:, 1:2]
+                / float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
                 temporal_cosine,
-                anchor_hardms_disagreement,
+                global_entropy.reshape(-1, 1),
+                global_margin.reshape(-1, 1),
+                global_mode_mass.reshape(-1, 1),
+                global_std_route,
+                waypoint_pass_probability.reshape(-1, 1),
             ],
             dim=1,
         )
@@ -314,12 +297,19 @@ class WaypointTemporalMotionGRU(nn.Module):
         self,
         z_uav,
         previous_z_uav,
-        sat_context,
-        raw_probability,
-        candidate_centers,
-        hardms_xy,
-        raw_top1_xy,
-        hardms_support,
+        local_sat_context,
+        global_sat_context,
+        local_probability,
+        global_probability,
+        local_hardms_xy,
+        local_top1_xy,
+        local_hardms_support,
+        global_anchor_xy,
+        global_response_variance_route,
+        global_entropy,
+        global_margin,
+        global_mode_mass,
+        waypoint_pass_probability,
         search_center_xy,
         previous_final_xy,
         route_unit,
@@ -336,17 +326,18 @@ class WaypointTemporalMotionGRU(nn.Module):
         if previous_z_uav is None:
             previous_z_uav = z_uav
 
-        candidate_probability, measurement_anchor_xy, response_var_route = self._measurement_distribution(
-            raw_probability, candidate_centers, search_center_xy, route_unit, cross_unit
-        )
         numeric = self._numeric_features(
-            raw_probability=raw_probability,
-            hardms_xy=hardms_xy,
-            raw_top1_xy=raw_top1_xy,
-            hardms_support=hardms_support,
-            measurement_anchor_xy=measurement_anchor_xy,
+            local_probability=local_probability,
+            local_hardms_xy=local_hardms_xy,
+            local_top1_xy=local_top1_xy,
+            local_hardms_support=local_hardms_support,
+            global_anchor_xy=global_anchor_xy,
+            global_response_variance_route=global_response_variance_route,
+            global_entropy=global_entropy,
+            global_margin=global_margin,
+            global_mode_mass=global_mode_mass,
+            waypoint_pass_probability=waypoint_pass_probability,
             search_center_xy=search_center_xy,
-            previous_final_xy=previous_final_xy,
             route_unit=route_unit,
             cross_unit=cross_unit,
             route_remaining_m=route_remaining_m,
@@ -362,7 +353,8 @@ class WaypointTemporalMotionGRU(nn.Module):
             [
                 self.uav_projection(z_uav),
                 self.delta_uav_projection(z_uav - previous_z_uav),
-                self.sat_projection(sat_context),
+                self.local_sat_projection(local_sat_context),
+                self.global_sat_projection(global_sat_context),
                 self.numeric_projection(numeric),
             ],
             dim=1,
@@ -371,12 +363,22 @@ class WaypointTemporalMotionGRU(nn.Module):
         h = self.dropout(new_hidden)
 
         raw_motion = self.motion_head(h)
-        velocity_parallel = torch.tanh(raw_motion[:, 0:1]) * float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
-        velocity_cross = torch.tanh(raw_motion[:, 1:2]) * float(config.MAX_CROSS_SPEED_M_PER_FRAME)
-        acceleration_parallel = torch.tanh(raw_motion[:, 2:3]) * float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2)
-        acceleration_cross = torch.tanh(raw_motion[:, 3:4]) * float(config.MAX_CROSS_ACCEL_M_PER_FRAME2)
+        velocity_parallel = torch.tanh(raw_motion[:, 0:1]) * float(
+            config.MAX_FORWARD_SPEED_M_PER_FRAME
+        )
+        velocity_cross = torch.tanh(raw_motion[:, 1:2]) * float(
+            config.MAX_CROSS_SPEED_M_PER_FRAME
+        )
+        acceleration_parallel = torch.tanh(raw_motion[:, 2:3]) * float(
+            config.MAX_FORWARD_ACCEL_M_PER_FRAME2
+        )
+        acceleration_cross = torch.tanh(raw_motion[:, 3:4]) * float(
+            config.MAX_CROSS_ACCEL_M_PER_FRAME2
+        )
         velocity_route = torch.cat([velocity_parallel, velocity_cross], dim=1)
-        acceleration_route = torch.cat([acceleration_parallel, acceleration_cross], dim=1)
+        acceleration_route = torch.cat(
+            [acceleration_parallel, acceleration_cross], dim=1
+        )
         next_step_route = self._clip_norm(
             velocity_route + 0.5 * acceleration_route,
             float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME),
@@ -385,43 +387,58 @@ class WaypointTemporalMotionGRU(nn.Module):
         raw_correction = torch.tanh(self.correction_head(h))
         correction_route = torch.cat(
             [
-                raw_correction[:, 0:1] * float(config.MAX_MEASUREMENT_CORRECTION_PARALLEL_M),
-                raw_correction[:, 1:2] * float(config.MAX_MEASUREMENT_CORRECTION_CROSS_M),
+                raw_correction[:, 0:1]
+                * float(config.MAX_MEASUREMENT_CORRECTION_PARALLEL_M),
+                raw_correction[:, 1:2]
+                * float(config.MAX_MEASUREMENT_CORRECTION_CROSS_M),
             ],
             dim=1,
         )
-        correction_xy = self._route_to_xy(correction_route, route_unit, cross_unit)
-        measurement_xy = measurement_anchor_xy + correction_xy
+        correction_xy = self._route_to_xy(
+            correction_route, route_unit, cross_unit
+        )
+        measurement_xy = global_anchor_xy + correction_xy
 
         confidence = torch.sigmoid(self.confidence_head(h)).clamp(0.01, 0.995)
-        learned_var = F.softplus(self.variance_head(h)) + float(config.KALMAN_R_MIN_VAR)
-        # Confidence is squared so ambiguous measurements become genuinely weak
-        # Kalman observations rather than repeatedly erasing the motion prior.
-        variance_route = (learned_var + response_var_route) / confidence.square().clamp_min(1e-4)
+        learned_var = F.softplus(self.variance_head(h)) + float(
+            config.KALMAN_R_MIN_VAR
+        )
+        variance_route = (
+            learned_var + global_response_variance_route
+        ) / confidence.square().clamp_min(1e-4)
         variance_route = variance_route.clamp(
             min=float(config.KALMAN_R_MIN_VAR),
             max=float(config.KALMAN_R_MAX_VAR),
         )
-        var_x = route_unit[:, 0:1].square() * variance_route[:, 0:1] + cross_unit[:, 0:1].square() * variance_route[:, 1:2]
-        var_y = route_unit[:, 1:2].square() * variance_route[:, 0:1] + cross_unit[:, 1:2].square() * variance_route[:, 1:2]
+        var_x = (
+            route_unit[:, 0:1].square() * variance_route[:, 0:1]
+            + cross_unit[:, 0:1].square() * variance_route[:, 1:2]
+        )
+        var_y = (
+            route_unit[:, 1:2].square() * variance_route[:, 0:1]
+            + cross_unit[:, 1:2].square() * variance_route[:, 1:2]
+        )
         variance_xy = torch.cat([var_x, var_y], dim=1).clamp(
             min=float(config.KALMAN_R_MIN_VAR),
             max=float(config.KALMAN_R_MAX_VAR),
         )
 
         velocity_xy = self._route_to_xy(velocity_route, route_unit, cross_unit)
-        acceleration_xy = self._route_to_xy(acceleration_route, route_unit, cross_unit)
+        acceleration_xy = self._route_to_xy(
+            acceleration_route, route_unit, cross_unit
+        )
         next_step_xy = self._route_to_xy(next_step_route, route_unit, cross_unit)
         state = torch.cat(
-            [velocity_route, acceleration_route, correction_route, confidence], dim=1
+            [velocity_route, acceleration_route, correction_route, confidence],
+            dim=1,
         )
         return WaypointGRUOutput(
             measurement_xy=measurement_xy,
-            measurement_anchor_xy=measurement_anchor_xy,
+            measurement_anchor_xy=global_anchor_xy,
             correction_route=correction_route,
             measurement_variance_xy=variance_xy,
             measurement_variance_route=variance_route,
-            response_variance_route=response_var_route,
+            response_variance_route=global_response_variance_route,
             confidence=confidence,
             velocity_route=velocity_route,
             acceleration_route=acceleration_route,
@@ -429,11 +446,14 @@ class WaypointTemporalMotionGRU(nn.Module):
             velocity_xy=velocity_xy,
             acceleration_xy=acceleration_xy,
             next_step_xy=next_step_xy,
-            candidate_probability=candidate_probability,
+            candidate_probability=global_probability,
             hidden=new_hidden,
             state=state,
         )
 
 
-# Backward-compatible alias inside the replacement package only.
-WaypointConditionedGRU = WaypointTemporalMotionGRU
+# Compatibility aliases used by older scripts/checkpoints are intentionally
+# local to this replacement file; v23 temporal checkpoints require the new
+# architecture name and are never loaded as v22.
+WaypointTemporalMotionGRU = WaypointRouteGlobalRecoveryGRU
+WaypointConditionedGRU = WaypointRouteGlobalRecoveryGRU
