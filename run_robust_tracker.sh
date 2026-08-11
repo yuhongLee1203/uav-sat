@@ -50,13 +50,13 @@ case "${MODE}" in
   *) echo "ERROR: --mode must be train, eval, or train_eval" >&2; exit 2 ;;
 esac
 
-OUTPUT_DIR="outputs/waypoint_routeglobal_recovery_gru_kalman_v23"
+OUTPUT_DIR="outputs/waypoint_local_primary_recovery_gru_kalman_v24"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
-TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_routeglobal_recovery_gru_A_only.pt"
-LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_routeglobal_recovery_gru_A_only_latest.pt"
-ROUTE_B_CSV="${OUTPUT_DIR}/route_B_waypoint_routeglobal_recovery_gru_kalman_frames.csv"
-ROUTE_C_CSV="${OUTPUT_DIR}/route_C_waypoint_routeglobal_recovery_gru_kalman_frames.csv"
+TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_local_primary_recovery_gru_A_only.pt"
+LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_local_primary_recovery_gru_A_only_latest.pt"
+ROUTE_B_CSV="${OUTPUT_DIR}/route_B_waypoint_local_primary_recovery_gru_kalman_frames.csv"
+ROUTE_C_CSV="${OUTPUT_DIR}/route_C_waypoint_local_primary_recovery_gru_kalman_frames.csv"
 SUMMARY_JSON="${OUTPUT_DIR}/robust_tracker_summary.json"
 mkdir -p "${CHECKPOINT_DIR}"
 
@@ -105,19 +105,19 @@ verify_python() {
 import config
 import robust_tracker
 import visual_model
-assert config.ARCHITECTURE_NAME == "WaypointRouteGlobalRecoveryGRUKalman_v23"
-assert robust_tracker.ARCHITECTURE_NAME == "WaypointRouteGlobalRecoveryGRUKalman_v23"
-assert hasattr(visual_model, "WaypointRouteGlobalRecoveryGRU")
+assert config.ARCHITECTURE_NAME == "WaypointLocalPrimaryRecoveryGRUKalman_v24"
+assert robust_tracker.ARCHITECTURE_NAME == "WaypointLocalPrimaryRecoveryGRUKalman_v24"
+assert hasattr(visual_model, "WaypointLocalPrimaryRecoveryGRU")
 assert int(config.GRID_SIZE) == 6
 assert int(config.CANDIDATE_COUNT) == 36
-print("architecture : WaypointRouteGlobalRecoveryGRUKalman_v23")
+print("architecture : WaypointLocalPrimaryRecoveryGRUKalman_v24")
 print("RNN          : two-frame GRUCell (previous/current UAV embedding)")
 print("motion state : signed v_parallel, v_cross, a_parallel, a_cross")
 print("polynomial   : p_next = p_final + v + 0.5*a")
-print("visual       : local 6x6 + route-global waypoint-corridor posterior")
+print("visual       : local 6x6 PRIMARY + learned current/next-leg recovery gate")
 print("final output : external Kalman [x,y,vx,vy]")
 print("early stop   : Route-A known-start full CLOSED-LOOP held-out MLE")
-print("waypoint     : visual posterior confirms passage; prediction alone cannot switch leg")
+print("waypoint     : learned current-vs-next-leg classifier; at most one leg per frame")
 PY
 }
 
@@ -158,7 +158,7 @@ verify_eval_outputs() {
 }
 
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "Waypoint Route-Global Recovery GRU + Polynomial Soft Prior + Robust External Kalman v23"
+echo "Waypoint Local-Primary + Learned Recovery GRU + Polynomial + External Kalman v24"
 printf '%*s\n' 108 '' | tr ' ' '='
 echo "MODE             : ${MODE}"
 echo "GPU              : ${GPU}"

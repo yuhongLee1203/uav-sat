@@ -13,10 +13,10 @@ import torch.nn.functional as F
 import config
 from data import RouteDataset, meters_from_latlon
 from visual_localizer import FrozenVisualLocalizer, hard_mean_shift, train_visual_retrieval_a_only
-from visual_model import WaypointRouteGlobalRecoveryGRU
+from visual_model import WaypointLocalPrimaryRecoveryGRU
 
 
-ARCHITECTURE_NAME = "WaypointRouteGlobalRecoveryGRUKalman_v23"
+ARCHITECTURE_NAME = "WaypointLocalPrimaryRecoveryGRUKalman_v24"
 
 
 @dataclass
@@ -553,13 +553,22 @@ def route_global_observation(
     gt_xy=None,
 ):
     device = z_uav.device
-    eligible = route_gallery.leg_indices >= int(leg_index)
+    current_leg = int(np.clip(int(leg_index), 0, len(route.points) - 2))
+    next_leg = min(current_leg + 1, len(route.points) - 2)
+    # v24 recovery can only hypothesize the current or immediately next leg.
+    # It can no longer jump to an arbitrary future waypoint.
+    eligible = (route_gallery.leg_indices == current_leg) | (
+        route_gallery.leg_indices == next_leg
+    )
+    if not bool(eligible.any()):
+        eligible = route_gallery.leg_indices == current_leg
     if not bool(eligible.any()):
         eligible = torch.ones_like(route_gallery.leg_indices, dtype=torch.bool)
 
     centers = route_gallery.centers[eligible]
     z_sat = route_gallery.z_sat[eligible]
     route_s = route_gallery.route_s[eligible]
+    eligible_legs = route_gallery.leg_indices[eligible]
 
     visual_logits = visual.model.logit_scale.exp().clamp(max=100.0) * (
         z_uav[:, None, :] * z_sat[None, :, :]
@@ -637,9 +646,9 @@ def route_global_observation(
         dim=1,
     ) / mode_mass[:, None].square().clamp_min(1e-4)
 
-    if int(leg_index) < len(route.points) - 2:
-        boundary_s = float(route.boundary_s(int(leg_index) + 1))
-        pass_probability = posterior[:, route_s >= boundary_s].sum(dim=1)
+    if current_leg < len(route.points) - 2:
+        next_mask = eligible_legs == next_leg
+        pass_probability = posterior[:, next_mask].sum(dim=1) if bool(next_mask.any()) else torch.zeros(1, dtype=posterior.dtype, device=device)
     else:
         pass_probability = torch.zeros(1, dtype=posterior.dtype, device=device)
 
@@ -675,18 +684,20 @@ def route_global_observation(
     )
 
 
-def advance_leg_from_visual(route, leg_index, observation):
-    """Advance only from current-frame visual posterior, never motion alone."""
+def advance_leg_from_model(route, leg_index, output):
+    """Advance at most one leg from the learned current/next-leg classifier.
+
+    Motion prediction never changes a waypoint.  The classifier has already
+    seen the current UAV image, local response, recovery response, and route
+    context.  Because only current+next leg hypotheses are exposed, a frame can
+    never skip multiple future waypoints.
+    """
     leg = int(leg_index)
-    posterior = observation.posterior[0]
-    route_s = observation.route_s
-    threshold = float(config.WAYPOINT_PASS_PROBABILITY)
-    while leg < len(route.points) - 2:
-        boundary = float(route.boundary_s(leg + 1))
-        pass_probability = float(posterior[route_s >= boundary].sum().item())
-        if pass_probability <= threshold:
-            break
-        leg += 1
+    if leg >= len(route.points) - 2:
+        return leg
+    probability = float(output.leg_switch_probability.reshape(-1)[0].item())
+    if probability > float(config.WAYPOINT_PASS_PROBABILITY):
+        return leg + 1
     return leg
 
 
@@ -705,6 +716,9 @@ def forward_temporal(
     device,
 ):
     unit, cross, remaining, cross_track, progress = route_tensors(route_frame, device)
+    local_anchor_xy = (
+        local_candidate.raw_prob.unsqueeze(-1) * local_candidate.centers
+    ).sum(dim=1)
     output = model.forward_step(
         z_uav=local_candidate.z_uav,
         previous_z_uav=previous_z_uav,
@@ -712,6 +726,7 @@ def forward_temporal(
         global_sat_context=global_observation.sat_context,
         local_probability=local_candidate.raw_prob,
         global_probability=global_observation.posterior,
+        local_anchor_xy=local_anchor_xy,
         local_hardms_xy=local_candidate.hardms_xy,
         local_top1_xy=local_candidate.raw_top1_xy,
         local_hardms_support=local_candidate.hardms_support,
@@ -739,14 +754,18 @@ def temporal_loss(
     output,
     candidate,
     gt_xy,
-    capture,
+    local_capture,
+    recovery_capture,
+    target_leg_switch,
     target_velocity_route,
     target_acceleration_route,
     target_next_step_route,
     route_unit,
     cross_unit,
 ):
-    captured = bool(capture.reshape(-1)[0].item())
+    local_ok = bool(local_capture.reshape(-1)[0].item())
+    recovery_ok = bool(recovery_capture.reshape(-1)[0].item())
+    captured = local_ok or recovery_ok
     zero = output.measurement_xy.sum() * 0.0
 
     if captured:
@@ -773,7 +792,35 @@ def temporal_loss(
         output.acceleration_route, target_acceleration_route
     )
 
-    raw_error = torch.linalg.norm(output.measurement_anchor_xy - gt_xy, dim=1, keepdim=True)
+    local_error = torch.linalg.norm(
+        output.local_anchor_xy - gt_xy, dim=1, keepdim=True
+    )
+    recovery_error = torch.linalg.norm(
+        output.recovery_anchor_xy - gt_xy, dim=1, keepdim=True
+    )
+    gate_logit = (
+        local_error - recovery_error - float(config.RECOVERY_GATE_MARGIN_M)
+    ) / max(float(config.RECOVERY_GATE_TEMPERATURE_M), 1e-3)
+    gate_target = torch.sigmoid(gate_logit).detach()
+    if local_ok and not recovery_ok:
+        gate_target = torch.zeros_like(gate_target)
+    elif recovery_ok and not local_ok:
+        gate_target = torch.ones_like(gate_target)
+    elif not local_ok and not recovery_ok:
+        # Neither visual branch can supervise a recovery decision.
+        gate_target = output.recovery_probability.detach()
+    recovery_gate_loss = F.binary_cross_entropy(
+        output.recovery_probability, gate_target.clamp(0.0, 1.0)
+    ) if (local_ok or recovery_ok) else zero
+
+    leg_switch_loss = F.binary_cross_entropy(
+        output.leg_switch_probability,
+        target_leg_switch.detach().clamp(0.0, 1.0),
+    )
+
+    raw_error = torch.linalg.norm(
+        output.measurement_anchor_xy - gt_xy, dim=1, keepdim=True
+    )
     sigma = float(config.CONFIDENCE_TARGET_SIGMA_M)
     confidence_target = torch.exp(-0.5 * raw_error.square() / (sigma * sigma))
     if not captured:
@@ -811,6 +858,8 @@ def temporal_loss(
         + float(config.LOSS_CROSS_MOTION_REG) * cross_reg
         + float(config.LOSS_DIRECTION) * direction_loss
         + float(config.LOSS_SPEED) * speed_loss
+        + float(config.LOSS_RECOVERY_GATE) * recovery_gate_loss
+        + float(config.LOSS_LEG_SWITCH) * leg_switch_loss
     )
     return total, {
         "measurement": float(measurement_loss.detach().cpu()),
@@ -824,6 +873,14 @@ def temporal_loss(
         "pred_v_parallel": float(output.velocity_route[:, 0].mean().detach().cpu()),
         "nll": float(variance_nll.detach().cpu()),
         "confidence": float(confidence_loss.detach().cpu()),
+        "recovery_gate_loss": float(recovery_gate_loss.detach().cpu()),
+        "leg_switch_loss": float(leg_switch_loss.detach().cpu()),
+        "recovery_probability": float(output.recovery_probability.mean().detach().cpu()),
+        "leg_switch_probability": float(output.leg_switch_probability.mean().detach().cpu()),
+        "local_anchor_error_m": float(local_error.mean().detach().cpu()),
+        "recovery_anchor_error_m": float(recovery_error.mean().detach().cpu()),
+        "local_capture": 1.0 if local_ok else 0.0,
+        "recovery_capture": 1.0 if recovery_ok else 0.0,
         "capture": 1.0 if captured else 0.0,
     }
 
@@ -881,8 +938,11 @@ def evaluate_closed_loop_episode(
     previous_acceleration_xy = np.zeros(2, dtype=np.float64)
     previous_final = initial_xy.copy()
     errors = []
+    local_captures = []
     mode_captures = []
     corridor_captures = []
+    recovery_probabilities = []
+    leg_switch_probabilities = []
 
     for local_index, index in enumerate(range(start, end)):
         if local_index == 0:
@@ -894,7 +954,7 @@ def evaluate_closed_loop_episode(
         search_center = predicted_current.copy()
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
         gt = cache.gt_xy[index : index + 1].to(device).float()
-        local_candidate, local_context, _ = local_visual_observation(
+        local_candidate, local_context, local_capture = local_visual_observation(
             visual, uav_clip, tensor2(search_center, device), gt
         )
         global_obs = route_global_observation(
@@ -928,10 +988,13 @@ def evaluate_closed_loop_episode(
 
         gt_np = gt[0].detach().cpu().numpy()
         errors.append(float(np.linalg.norm(final_xy - gt_np)))
+        local_captures.append(float(local_capture.float().item()))
         mode_captures.append(float(global_obs.mode_capture.float().item()))
         corridor_captures.append(float(global_obs.corridor_capture.float().item()))
+        recovery_probabilities.append(float(output.recovery_probability.mean().item()))
+        leg_switch_probabilities.append(float(output.leg_switch_probability.mean().item()))
 
-        leg_index = advance_leg_from_visual(route, leg_index, global_obs)
+        leg_index = advance_leg_from_model(route, leg_index, output)
         previous_final = final_xy.copy()
         previous_velocity_route = output.velocity_route.detach()
         previous_acceleration_route = output.acceleration_route.detach()
@@ -943,13 +1006,18 @@ def evaluate_closed_loop_episode(
     if not errors:
         return {
             "mle": float("inf"), "p90": float("inf"),
-            "capture_pct": 0.0, "corridor_capture_pct": 0.0,
+            "local_capture_pct": 0.0, "capture_pct": 0.0,
+            "corridor_capture_pct": 0.0, "recovery_gate_mean": 0.0,
+            "leg_switch_mean": 0.0,
         }
     return {
         "mle": float(np.mean(errors)),
         "p90": float(np.quantile(errors, 0.90)),
+        "local_capture_pct": float(np.mean(local_captures) * 100.0),
         "capture_pct": float(np.mean(mode_captures) * 100.0),
         "corridor_capture_pct": float(np.mean(corridor_captures) * 100.0),
+        "recovery_gate_mean": float(np.mean(recovery_probabilities)),
+        "leg_switch_mean": float(np.mean(leg_switch_probabilities)),
     }
 
 @torch.no_grad()
@@ -970,8 +1038,11 @@ def evaluate_validation_episodes(
     previous_velocity_xy = np.zeros(2, dtype=np.float64)
     previous_acceleration_xy = np.zeros(2, dtype=np.float64)
     errors = []
+    local_captures = []
     mode_captures = []
     corridor_captures = []
+    recovery_probabilities = []
+    leg_switch_probabilities = []
 
     for index in range(metric_end):
         if index == 0:
@@ -982,7 +1053,7 @@ def evaluate_validation_episodes(
         search_center = predicted_current.copy()
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
         gt = cache.gt_xy[index : index + 1].to(device).float()
-        local_candidate, local_context, _ = local_visual_observation(
+        local_candidate, local_context, local_capture = local_visual_observation(
             visual, uav_clip, tensor2(search_center, device), gt
         )
         global_obs = route_global_observation(
@@ -1017,10 +1088,13 @@ def evaluate_validation_episodes(
         if index >= metric_start:
             gt_np = gt[0].detach().cpu().numpy()
             errors.append(float(np.linalg.norm(final_xy - gt_np)))
+            local_captures.append(float(local_capture.float().item()))
             mode_captures.append(float(global_obs.mode_capture.float().item()))
             corridor_captures.append(float(global_obs.corridor_capture.float().item()))
+            recovery_probabilities.append(float(output.recovery_probability.mean().item()))
+            leg_switch_probabilities.append(float(output.leg_switch_probability.mean().item()))
 
-        leg_index = advance_leg_from_visual(route, leg_index, global_obs)
+        leg_index = advance_leg_from_model(route, leg_index, output)
         previous_final = final_xy.copy()
         previous_velocity_route = output.velocity_route.detach()
         previous_acceleration_route = output.acceleration_route.detach()
@@ -1032,13 +1106,18 @@ def evaluate_validation_episodes(
     if not errors:
         return {
             "mle": float("inf"), "p90": float("inf"),
-            "capture_pct": 0.0, "corridor_capture_pct": 0.0,
+            "local_capture_pct": 0.0, "capture_pct": 0.0,
+            "corridor_capture_pct": 0.0, "recovery_gate_mean": 0.0,
+            "leg_switch_mean": 0.0,
         }
     return {
         "mle": float(np.mean(errors)),
         "p90": float(np.quantile(errors, 0.90)),
+        "local_capture_pct": float(np.mean(local_captures) * 100.0),
         "capture_pct": float(np.mean(mode_captures) * 100.0),
         "corridor_capture_pct": float(np.mean(corridor_captures) * 100.0),
+        "recovery_gate_mean": float(np.mean(recovery_probabilities)),
+        "leg_switch_mean": float(np.mean(leg_switch_probabilities)),
     }
 
 def train_temporal_model(
@@ -1051,7 +1130,7 @@ def train_temporal_model(
     patience_limit,
     resume=False,
 ):
-    model = WaypointRouteGlobalRecoveryGRU().to(device)
+    model = WaypointLocalPrimaryRecoveryGRU().to(device)
     parameters = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(
         parameters,
@@ -1132,10 +1211,28 @@ def train_temporal_model(
                     float(ratio) * teacher_center
                     + (1.0 - float(ratio)) * predicted_current
                 )
+                # Recovery augmentation is training-only. It creates examples
+                # where the local 6x6 window is wrong, so the learned selector
+                # can discover when current/next-leg recovery is actually better.
+                if (
+                    epoch > int(config.MOTION_WARMUP_EPOCHS)
+                    and random.random() < float(config.RECOVERY_AUGMENT_PROBABILITY)
+                ):
+                    magnitude = random.uniform(
+                        float(config.RECOVERY_AUGMENT_MIN_M),
+                        float(config.RECOVERY_AUGMENT_MAX_M),
+                    )
+                    sign = -1.0 if random.random() < 0.5 else 1.0
+                    lateral = random.uniform(-0.25, 0.25) * magnitude
+                    search_center = (
+                        search_center
+                        + sign * magnitude * route_frame.unit
+                        + lateral * route_frame.cross
+                    )
 
                 uav_clip = cache.uav_clip[index : index + 1].to(device).float()
                 gt = cache.gt_xy[index : index + 1].to(device).float()
-                local_candidate, local_context, _ = local_visual_observation(
+                local_candidate, local_context, local_capture = local_visual_observation(
                     visual, uav_clip, tensor2(search_center, device), gt
                 )
                 global_obs = route_global_observation(
@@ -1143,7 +1240,7 @@ def train_temporal_model(
                     route_gallery=route_gallery,
                     route=route,
                     z_uav=local_candidate.z_uav,
-                    predicted_xy=search_center,
+                    predicted_xy=predicted_current,
                     route_frame=route_frame,
                     leg_index=leg_index,
                     kalman_position_sigma=kf.position_sigma(),
@@ -1166,11 +1263,17 @@ def train_temporal_model(
                 target_v, target_a, target_next_route, _ = target_motion(
                     cache, index, route_unit, cross_unit, device
                 )
+                target_leg_switch = torch.tensor(
+                    [[1.0 if int(leg_labels[index]) > int(leg_index) else 0.0]],
+                    dtype=torch.float32, device=device,
+                )
                 step_loss, components = temporal_loss(
                     output,
                     local_candidate,
                     gt,
+                    local_capture,
                     global_obs.mode_capture,
+                    target_leg_switch,
                     target_v,
                     target_a,
                     target_next_route,
@@ -1187,7 +1290,7 @@ def train_temporal_model(
                 measurement = output.measurement_xy[0].detach().cpu().numpy()
                 variance = output.measurement_variance_xy[0].detach().cpu().numpy()
                 final_xy = kf.update(measurement, variance)
-                leg_index = advance_leg_from_visual(route, leg_index, global_obs)
+                leg_index = advance_leg_from_model(route, leg_index, output)
                 previous_final = final_xy.copy()
                 previous_velocity_route = output.velocity_route.detach()
                 previous_acceleration_route = output.acceleration_route.detach()
@@ -1236,7 +1339,7 @@ def train_temporal_model(
                     "eval_routes": ["route_B", "route_C"],
                     "uses_waypoint_coordinates": True,
                     "uses_waypoint_frame_index_at_inference": False,
-                    "waypoint_transition": "current-frame route-global posterior",
+                    "waypoint_transition": "learned current-vs-next-leg classifier after current-frame visual evidence",
                     "early_stop_metric": "Route-A known-start full closed-loop held-out MLE",
                 },
                 config.TEMPORAL_CHECKPOINT,
@@ -1263,14 +1366,18 @@ def train_temporal_model(
         pred_step_mean = float(np.mean([row["pred_step_m"] for row in component_rows])) if component_rows else 0.0
         target_step_mean = float(np.mean([row["target_step_m"] for row in component_rows])) if component_rows else 0.0
         v_parallel_mean = float(np.mean([row["pred_v_parallel"] for row in component_rows])) if component_rows else 0.0
+        recovery_gate_mean = float(np.mean([row["recovery_probability"] for row in component_rows])) if component_rows else 0.0
+        leg_switch_mean = float(np.mean([row["leg_switch_probability"] for row in component_rows])) if component_rows else 0.0
         print(
             "temporal epoch=%03d/%d loss=%.5f teacher=%.3f mode_capture=%.2f%% "
             "corridor_capture=%.2f%% pred_step=%.3fm target_step=%.3fm v_parallel=%.3f "
-            "val_mle=%.3fm val_p90=%.3fm val_mode_capture=%.2f%% val_corridor=%.2f%% "
+            "recovery_gate=%.3f leg_switch=%.3f val_mle=%.3fm val_p90=%.3fm "
+            "val_mode_capture=%.2f%% val_corridor=%.2f%% "
             "best=%.3fm patience=%d/%d"
             % (
                 epoch, int(epochs), average_loss, ratio, train_capture,
                 train_corridor, pred_step_mean, target_step_mean, v_parallel_mean,
+                recovery_gate_mean, leg_switch_mean,
                 validation["mle"], validation["p90"], validation["capture_pct"],
                 validation["corridor_capture_pct"], best_score, patience,
                 int(patience_limit),
@@ -1408,9 +1515,9 @@ def run_route_inference(
         final_velocity = kf.velocity()
 
         # Waypoint transition is decided only after the current UAV image has
-        # generated a route-global posterior. It is never decided from the
-        # polynomial/Kalman prediction alone.
-        leg_index = advance_leg_from_visual(route, leg_before_visual, global_obs)
+        # passed through the learned current-vs-next-leg classifier. Prediction
+        # alone can never change the active leg.
+        leg_index = advance_leg_from_model(route, leg_before_visual, output)
         if leg_index != leg_before_visual:
             transitions += int(leg_index - leg_before_visual)
 
@@ -1446,6 +1553,12 @@ def run_route_inference(
                 "hardms_y": float(local_candidate.hardms_xy[0, 1].item()),
                 "global_top1_x": float(global_obs.global_top1_xy[0, 0].item()),
                 "global_top1_y": float(global_obs.global_top1_xy[0, 1].item()),
+                "local_anchor_x": float(output.local_anchor_xy[0, 0].item()),
+                "local_anchor_y": float(output.local_anchor_xy[0, 1].item()),
+                "recovery_anchor_x": float(output.recovery_anchor_xy[0, 0].item()),
+                "recovery_anchor_y": float(output.recovery_anchor_xy[0, 1].item()),
+                "recovery_probability": float(output.recovery_probability[0, 0].item()),
+                "leg_switch_probability": float(output.leg_switch_probability[0, 0].item()),
                 "measurement_anchor_x": float(output.measurement_anchor_xy[0, 0].item()),
                 "measurement_anchor_y": float(output.measurement_anchor_xy[0, 1].item()),
                 "measurement_x": float(measurement[0]),
@@ -1501,7 +1614,7 @@ def run_route_inference(
 
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = config.OUTPUT_DIR / (
-        route_name + "_waypoint_routeglobal_recovery_gru_kalman_frames.csv"
+        route_name + "_waypoint_local_primary_recovery_gru_kalman_frames.csv"
     )
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
@@ -1544,7 +1657,7 @@ def load_temporal_model(device):
         raise RuntimeError(
             "Temporal checkpoint architecture mismatch: %r" % payload.get("architecture")
         )
-    model = WaypointRouteGlobalRecoveryGRU().to(device)
+    model = WaypointLocalPrimaryRecoveryGRU().to(device)
     model.load_state_dict(payload["model"])
     model.eval()
     return model
@@ -1602,10 +1715,10 @@ def eval_pipeline(device):
         "uses_waypoint_frame_index_at_inference": False,
         "motion_state": ["signed_v_parallel", "v_cross", "a_parallel", "a_cross"],
         "temporal_visual_input": "previous/current UAV embeddings",
-        "visual_measurement": "local 6x6 + route-global waypoint-corridor posterior + learned residual/covariance",
+        "visual_measurement": "local-primary 6x6 + learned current/next-leg recovery gate + learned residual/covariance",
         "polynomial": "p_next = p_final + v + 0.5*a",
-        "waypoint_transition": "current-frame route-global posterior only",
-        "recovery": "heavy-tailed motion prior never removes route-global visual hypotheses",
+        "waypoint_transition": "learned current-vs-next-leg classifier after current-frame visual evidence",
+        "recovery": "current/next-leg recovery is backup-only; learned selector preserves local tracking",
         "final_filter": "external Kalman [x,y,vx,vy]",
     }
     for route_name in ["route_B", "route_C"]:
@@ -1661,7 +1774,7 @@ def main():
     )
     print(
         "GRU state: route-frame velocity/acceleration; polynomial SOFT prior; "
-        "local 6x6 + route-global visual posterior; external Kalman final position.",
+        "local-primary 6x6 + learned current/next-leg recovery; external Kalman final position.",
         flush=True,
     )
     print("=" * 100, flush=True)

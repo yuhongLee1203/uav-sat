@@ -2,12 +2,12 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-ARCHITECTURE_NAME = "WaypointRouteGlobalRecoveryGRUKalman_v23"
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "waypoint_routeglobal_recovery_gru_kalman_v23"
+ARCHITECTURE_NAME = "WaypointLocalPrimaryRecoveryGRUKalman_v24"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "waypoint_local_primary_recovery_gru_kalman_v24"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_routeglobal_recovery_gru_A_only.pt"
-LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_routeglobal_recovery_gru_A_only_latest.pt"
+TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_local_primary_recovery_gru_A_only.pt"
+LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_local_primary_recovery_gru_A_only_latest.pt"
 
 ROUTE_ROOTS = [
     Path("/yh/study/new_data_2/model_dataset_new_1_flight"),
@@ -77,18 +77,29 @@ MIN_TRAIN_CAPTURE_RATE = 0.95
 # is a heavy-tailed soft prior: it can prefer nearby patches, but never removes
 # distant route hypotheses, so visual recovery remains possible after drift.
 # -----------------------------------------------------------------------------
-ROUTE_CORRIDOR_HALF_WIDTH_M = 60.0
+ROUTE_CORRIDOR_HALF_WIDTH_M = 45.0
 ROUTE_GLOBAL_TOPK = 96
 ROUTE_GLOBAL_MODE_RADIUS_M = 18.0
-ROUTE_GLOBAL_TEMPERATURE = 0.45
+ROUTE_GLOBAL_TEMPERATURE = 1.00
 ROUTE_GLOBAL_EMBED_BATCH = 4096
 ROUTE_PRIOR_SIGMA_XY_MIN_M = 22.0
 ROUTE_PRIOR_SIGMA_XY_MAX_M = 180.0
 ROUTE_PRIOR_COVARIANCE_SCALE = 2.0
 ROUTE_PRIOR_PROGRESS_SIGMA_M = 55.0
-ROUTE_PRIOR_UNIFORM_FLOOR = 0.05
-ROUTE_PRIOR_LOG_WEIGHT = 1.0
-WAYPOINT_PASS_PROBABILITY = 0.50
+ROUTE_PRIOR_UNIFORM_FLOOR = 0.15
+ROUTE_PRIOR_LOG_WEIGHT = 0.35
+WAYPOINT_PASS_PROBABILITY = 0.60
+# v24: route-global is recovery only. The learned gate is supervised from
+# which anchor (local vs current/next-leg recovery) is closer to GT during A training.
+RECOVERY_GATE_MARGIN_M = 4.0
+RECOVERY_GATE_TEMPERATURE_M = 4.0
+LOSS_RECOVERY_GATE = 0.35
+LOSS_LEG_SWITCH = 0.25
+# Recovery augmentation deliberately displaces the local search center during
+# Route-A training so the selector sees genuine local-failure examples.
+RECOVERY_AUGMENT_PROBABILITY = 0.25
+RECOVERY_AUGMENT_MIN_M = 35.0
+RECOVERY_AUGMENT_MAX_M = 120.0
 
 TRAIN_FRACTION = 0.70
 VAL_FRACTION = 0.15
@@ -112,7 +123,7 @@ WAYPOINT_MIN_LEG_LENGTH_M = 1.0
 # -----------------------------------------------------------------------------
 RNN_HIDDEN_DIM = 256
 RNN_FEATURE_DIM = 128
-RNN_NUMERIC_DIM = 22
+RNN_NUMERIC_DIM = 24
 RNN_DROPOUT = 0.10
 MAX_FORWARD_SPEED_M_PER_FRAME = 10.0
 MAX_CROSS_SPEED_M_PER_FRAME = 5.0
