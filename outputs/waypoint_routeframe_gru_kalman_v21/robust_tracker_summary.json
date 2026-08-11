@@ -1,0 +1,55 @@
+{
+  "architecture": "WaypointRouteFrameGRUKalman_v21",
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "known_at_inference": [
+    "start_coordinate",
+    "waypoint_coordinates"
+  ],
+  "uses_waypoint_frame_index_at_inference": false,
+  "motion_state": [
+    "v_parallel",
+    "v_cross",
+    "a_parallel",
+    "a_cross"
+  ],
+  "polynomial": "p_next = p_final + v + 0.5*a",
+  "final_filter": "external Kalman [x,y,vx,vy]",
+  "route_B": {
+    "MLE_m": 771.5613571485143,
+    "MedLE_m": 760.8256463701532,
+    "P90_m": 1262.1633149728752,
+    "P95_m": 1299.9968969092827,
+    "P99_m": 1358.3606216338944,
+    "LSR@5_pct": 0.04393673110720562,
+    "LSR@10_pct": 0.13181019332161686,
+    "LSR@15_pct": 0.21968365553602814,
+    "LSR@20_pct": 0.4393673110720563,
+    "CandidateCapture_pct": 0.35149384885764495,
+    "MeanFinalStep_m": 0.12405826623702171,
+    "P95FinalStep_m": 0.7460587508231251,
+    "Waypoints": 16,
+    "CSV": "/yh/study/uav-sat/outputs/waypoint_routeframe_gru_kalman_v21/route_B_waypoint_routeframe_gru_kalman_frames.csv"
+  },
+  "route_C": {
+    "MLE_m": 321.3227951272853,
+    "MedLE_m": 308.92759837860814,
+    "P90_m": 550.0019703303716,
+    "P95_m": 625.9984331016924,
+    "P99_m": 702.3529444112867,
+    "LSR@5_pct": 0.39745627980922094,
+    "LSR@10_pct": 0.7949125596184419,
+    "LSR@15_pct": 0.9538950715421303,
+    "LSR@20_pct": 1.5103338632750398,
+    "CandidateCapture_pct": 1.3513513513513513,
+    "MeanFinalStep_m": 0.27308724049167515,
+    "P95FinalStep_m": 1.546971922813963,
+    "Waypoints": 12,
+    "CSV": "/yh/study/uav-sat/outputs/waypoint_routeframe_gru_kalman_v21/route_C_waypoint_routeframe_gru_kalman_frames.csv"
+  }
+}
