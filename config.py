@@ -2,10 +2,10 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "continuous_progress_visual_rnn_v11"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "stable_visual_inertial_rnn_v14"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "continuous_progress_visual_rnn_A_only.pt"
+TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "stable_visual_inertial_rnn_A_only.pt"
 
 ROUTE_ROOTS = [
     Path("/yh/study/new_data_2/model_dataset_new_1_flight"),
@@ -30,9 +30,13 @@ SAT_JSON = Path(
     "sim_map_competition_roi_crop_worldfile_epsg3826.json"
 )
 
+# =============================================================================
+# Existing Route-A-only visual retrieval
+# =============================================================================
 BACKBONE_NAME = "hf-hub:timm/MobileCLIP2-S2-OpenCLIP"
 CLIP_DIM = 512
 EMBED_DIM = 512
+
 IMAGE_SIZE = 256
 UAV_CENTER_CROP_SIZE = 256
 UAV_CENTER_MAX_SQUARE_CROP = False
@@ -41,6 +45,7 @@ TRAIN_UAV_AUGMENT = False
 
 SAT_CROP_SIZE = 320
 SAT_STRIDE = 32
+
 USE_COORD_ENCODER = False
 USE_QAH_MS_RELATION = False
 USE_BASIN_RANK_MS = False
@@ -60,38 +65,78 @@ MEANSHIFT_BANDWIDTH_M = 8.0
 MEANSHIFT_ITERATIONS = 3
 
 GRID_SIZE = 6
-LOCAL_PRIOR_JITTER_M = 12.0
+CANDIDATE_COUNT = 36
 CANDIDATE_CAPTURE_RADIUS_M = 7.5
+
+LOCAL_PRIOR_JITTER_M = 12.0
 MIN_TRAIN_CAPTURE_RATE = 0.95
 TRAIN_FRACTION = 0.70
 VAL_FRACTION = 0.15
 TEST_FRACTION = 0.15
 SPLIT_GUARD_FRAMES = 16
 
-# v11: plain recurrent network.
+# =============================================================================
+# v14 Stable Visual-Inertial RNN
+# =============================================================================
+#
+# Sensor/model input:
+#   - current UAV image embedding
+#   - current 6x6 SAT image embeddings/similarities
+#   - previous image-derived RNN hidden state
+#   - previous image-derived motion state
+#
+# NOT neural inputs:
+#   - current/previous GT
+#   - GPS
+#   - IMU
+#   - yaw
+#   - timestamp
+#   - waypoint index
+#   - frame index
+#
+# Why FULL 6x6:
+# Forward-half hard masking repeatedly made errors unrecoverable. v14 retains
+# all 36 patches. Previous RNN motion is given as a SOFT learned directional
+# prior when refining the 36 visual candidates. Rear/side patches remain legal.
+# =============================================================================
+
 RNN_HIDDEN_DIM = 256
 RNN_FEATURE_DIM = 128
 RNN_DROPOUT = 0.10
-RNN_HEADING_RESIDUAL_MAX_DEG = 25.0
 
-# Full 6x6 is constructed, but only the forward half is passed to the RNN.
-FORWARD_CANDIDATE_COUNT = 18
+# User-requested maximum motion state and output displacement.
+MAX_STEP_M_PER_FRAME = 10.0
 
-# Hard displacement bound requested by the experiment.
-# Zero motion is valid.
-MAX_STEP_M_PER_FRAME = 3.0
+# Residual only performs sub-anchor refinement. It cannot become a free
+# position generator.
+MAX_RESIDUAL_M = 2.75
 
-# Candidate -> route progress projection window.
-CANDIDATE_PROJECT_BACK_M = 1.0
-CANDIDATE_PROJECT_FORWARD_M = 16.0
+# Relative search-grid geometry scale used only for deterministic positional
+# encoding of SAT candidate centers.
+CANDIDATE_OFFSET_SCALE_M = 14.0
 
-# Second-order polynomial inertia:
-# delta_poly = 2*delta_(t-1) - delta_(t-2)
-# It is only an upper cap; it can never create movement without image support.
-INERTIA_ACCEL_MARGIN_M = 1.25
+# Learned temporal candidate refinement can only make a bounded change to the
+# already-trained visual similarity.
+CANDIDATE_REFINEMENT_SCALE = 0.45
 
-# Recurrent history is allowed to refine raw image similarity only slightly.
-CANDIDATE_REFINEMENT_SCALE = 0.35
+# Stop target for motion supervision.
+STOP_STEP_THRESHOLD_M = 0.30
+STOP_POS_WEIGHT_MAX = 20.0
+
+# =============================================================================
+# Stable scheduled-sampling training
+# =============================================================================
+#
+# GT may choose the SEARCH CENTER during early Route-A training, but it is
+# NEVER passed into RNN forward_step().
+#
+# This is scheduled sampling / teacher centering, not GT-as-model-input.
+# Closed-loop validation always uses 0% teacher.
+# =============================================================================
+
+TEACHER_CENTER_WARMUP_EPOCHS = 5
+TEACHER_CENTER_END_EPOCH = 25
+TEACHER_CENTER_JITTER_M = 3.0
 
 TEMPORAL_EPOCHS = 50
 TEMPORAL_LR = 2e-4
@@ -100,40 +145,49 @@ TBPTT_STEPS = 32
 GRAD_CLIP_NORM = 5.0
 
 TEMPORAL_TRAIN_FRACTION = 0.82
-TEMPORAL_EARLY_STOPPING_PATIENCE = 7
-TEMPORAL_MIN_EPOCHS_BEFORE_STOP = 12
+TEMPORAL_EARLY_STOPPING_PATIENCE = 8
+TEMPORAL_MIN_EPOCHS_BEFORE_STOP = 15
 
-# GT is never a model input/search center.
-TEACHER_FORCING_RATIO = 0.0
+# Losses. No gigantic quadratic "ahead" loss.
+LOSS_POSITION = 1.00
+LOSS_MOTION = 0.45
+LOSS_STOP = 0.20
+LOSS_ACCELERATION = 0.10
+LOSS_CANDIDATE_CE = 0.35
+LOSS_RESIDUAL = 0.05
+LOSS_VARIANCE_NLL = 0.02
 
-# Prevent the RNN from becoming a memorized frame counter.
-TRAIN_HIDDEN_RESET_PROB = 0.03
-TRAIN_REPEAT_FRAME_PROB = 0.08
-
-LOSS_PROGRESS = 1.00
-LOSS_POSITION = 0.35
-LOSS_STEP = 0.70
-LOSS_CANDIDATE_CE = 0.30
-LOSS_HEADING = 0.08
-LOSS_AHEAD = 0.55
-LOSS_VARIANCE_NLL = 0.03
-AHEAD_TOLERANCE_M = 3.0
-
-# Label-only sequential GT projection bound.
-GT_LABEL_MAX_FORWARD_M = 6.0
-
-# 1D progress-only Kalman. There is no velocity state.
-KALMAN_INIT_PROGRESS_VAR = 4.0
-KALMAN_Q_PROGRESS = 0.20
-KALMAN_R_MIN_VAR = 0.25
+# =============================================================================
+# Final position-only Kalman
+# =============================================================================
+#
+# State [x,y], F=I. No vx/vy and therefore no Kalman fixed-speed behavior.
+# =============================================================================
+KALMAN_INIT_VAR = 3.0
+KALMAN_Q_VAR = 0.60
+KALMAN_R_MIN_VAR = 0.20
 KALMAN_R_MAX_VAR = 16.0
 
 JUMP_TOLERANCE_M = 3.0
+
+# =============================================================================
+# Heading
+# =============================================================================
+#
+# Heading is derived from the RNN motion vector in ENU:
+# atan2(delta_y, delta_x). It is undefined at true/estimated stop.
+# Renderer projects the world-coordinate arrow endpoint through the map mapper,
+# avoiding the old ~90-degree screen-coordinate error.
+# =============================================================================
+HEADING_MIN_MOTION_M = 0.25
+HEADING_RENDER_ARROW_LENGTH_M = 12.0
+
+# =============================================================================
+# Rendering
+# =============================================================================
 VIDEO_FPS = 12.0
 VIDEO_WIDTH = 1800
 VIDEO_HEIGHT = 900
-FRAME_LABEL_INTERVAL = 100
-PROCESS_SNAPSHOT_COUNT = 12
 
 SEED = 2031
 DEVICE = "cuda"

@@ -10,46 +10,40 @@ TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-50}"
 REUSE_VISUAL="${REUSE_VISUAL:-1}"
 FORCE_FULL_RETRAIN="${FORCE_FULL_RETRAIN:-0}"
 
-OUTPUT_DIR="outputs/continuous_progress_visual_rnn_v11"
+OUTPUT_DIR="outputs/stable_visual_inertial_rnn_v14"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
-TEMPORAL_CKPT="${CHECKPOINT_DIR}/continuous_progress_visual_rnn_A_only.pt"
+TEMPORAL_CKPT="${CHECKPOINT_DIR}/stable_visual_inertial_rnn_A_only.pt"
 
-ROUTE_B_CSV="${OUTPUT_DIR}/route_B_continuous_progress_rnn_frames.csv"
-ROUTE_C_CSV="${OUTPUT_DIR}/route_C_continuous_progress_rnn_frames.csv"
+ROUTE_B_CSV="${OUTPUT_DIR}/route_B_stable_visual_inertial_rnn_frames.csv"
+ROUTE_C_CSV="${OUTPUT_DIR}/route_C_stable_visual_inertial_rnn_frames.csv"
 SUMMARY_JSON="${OUTPUT_DIR}/robust_tracker_summary.json"
 
 mkdir -p "${CHECKPOINT_DIR}"
 
 case "${MODE}" in
-  train|eval|train_eval) ;;
+  train|eval|train_eval)
+    ;;
   *)
     echo "ERROR: MODE must be train, eval, or train_eval" >&2
     exit 2
     ;;
 esac
 
-if ! [[ "${TEMPORAL_EPOCHS}" =~ ^[0-9]+$ ]] || [[ "${TEMPORAL_EPOCHS}" -lt 1 ]]; then
-  echo "ERROR: TEMPORAL_EPOCHS must be >= 1" >&2
-  exit 3
-fi
-
 echo "===================================================================================================="
-echo "CONTINUOUS-PROGRESS VISUAL RNN v11"
+echo "STABLE VISUAL-INERTIAL RNN v14"
 echo "===================================================================================================="
-echo "MODE             : ${MODE}"
-echo "GPU              : ${GPU}"
-echo "Reuse visual     : ${REUSE_VISUAL}"
-echo "Force full       : ${FORCE_FULL_RETRAIN}"
-echo "Visual epochs    : ${VISUAL_EPOCHS}"
-echo "Temporal epochs  : ${TEMPORAL_EPOCHS}"
-echo "Output           : ${OUTPUT_DIR}"
-echo "Visual checkpoint: ${VISUAL_CKPT}"
-echo "RNN checkpoint   : ${TEMPORAL_CKPT}"
+echo "MODE            : ${MODE}"
+echo "GPU             : ${GPU}"
+echo "Reuse visual    : ${REUSE_VISUAL}"
+echo "Force full      : ${FORCE_FULL_RETRAIN}"
+echo "Visual epochs   : ${VISUAL_EPOCHS}"
+echo "Temporal epochs : ${TEMPORAL_EPOCHS}"
+echo "Output          : ${OUTPUT_DIR}"
 echo "===================================================================================================="
 
 python3 - <<'PY'
-for name in ("torch", "filterpy", "cv2", "matplotlib", "pandas"):
+for name in ("torch", "filterpy", "cv2", "pandas"):
     __import__(name)
     print("import OK:", name)
 
@@ -57,19 +51,25 @@ import config
 import robust_tracker
 import visual_model
 
-assert robust_tracker.ARCHITECTURE_NAME == "ContinuousProgressVisualRNN_v11"
-assert hasattr(visual_model, "ContinuousProgressVisualRNN")
-assert float(config.MAX_STEP_M_PER_FRAME) <= 3.0
-assert float(config.TEACHER_FORCING_RATIO) == 0.0
+assert robust_tracker.ARCHITECTURE_NAME == "StableVisualInertialRNN_v14"
+assert hasattr(visual_model, "StableVisualInertialRNN")
+assert int(config.CANDIDATE_COUNT) == 36
+assert int(config.GRID_SIZE) == 6
+assert float(config.MAX_STEP_M_PER_FRAME) == 10.0
+
 print("architecture OK:", robust_tracker.ARCHITECTURE_NAME)
-print("RNN unit OK: nn.RNNCell")
-print("teacher forcing:", config.TEACHER_FORCING_RATIO)
-print("max step:", config.MAX_STEP_M_PER_FRAME, "m/frame")
+print("RNN unit          : nn.RNNCell")
+print("search            : full 6x6 / 36")
+print("max motion/output : 10 m/frame")
+print("hard forward mask : DISABLED")
 PY
 
 find_visual_checkpoint () {
   local candidates=(
     "${VISUAL_CKPT}"
+    "outputs/timestamp_velocity_visual_rnn_v13/checkpoints/visual_retrieval_A_only.pt"
+    "outputs/direct_displacement_visual_rnn_v12/checkpoints/visual_retrieval_A_only.pt"
+    "outputs/continuous_progress_visual_rnn_v11/checkpoints/visual_retrieval_A_only.pt"
     "outputs/reversible_topology_recovery_lstm_v10/checkpoints/visual_retrieval_A_only.pt"
     "outputs/image_causal_forward_lstm_v9/checkpoints/visual_retrieval_A_only.pt"
     "outputs/route_tangent_forward_lstm_v8/checkpoints/visual_retrieval_A_only.pt"
@@ -78,12 +78,14 @@ find_visual_checkpoint () {
   )
 
   local candidate
+
   for candidate in "${candidates[@]}"; do
     if [[ -s "${candidate}" ]]; then
       printf '%s\n' "${candidate}"
       return 0
     fi
   done
+
   return 1
 }
 
@@ -94,6 +96,7 @@ prepare_visual () {
   fi
 
   local found=""
+
   if found="$(find_visual_checkpoint)"; then
     if [[ "${found}" != "${VISUAL_CKPT}" ]]; then
       cp -p "${found}" "${VISUAL_CKPT}"
@@ -101,7 +104,7 @@ prepare_visual () {
       echo "  ${found}"
       echo "  -> ${VISUAL_CKPT}"
     else
-      echo "Reuse existing v11 visual checkpoint:"
+      echo "Reuse existing v14 visual checkpoint:"
       echo "  ${VISUAL_CKPT}"
     fi
     return 0
@@ -132,8 +135,9 @@ run_tracker () {
     "$@"
 }
 
-verify_eval_outputs () {
+verify_outputs () {
   local failed=0
+
   for path in \
     "${TEMPORAL_CKPT}" \
     "${ROUTE_B_CSV}" \
@@ -149,8 +153,6 @@ verify_eval_outputs () {
   done
 
   if [[ "${failed}" != "0" ]]; then
-    echo "ERROR: v11 did not produce all required outputs." >&2
-    find "${OUTPUT_DIR}" -maxdepth 2 -type f -printf '  %p\n' 2>/dev/null | sort >&2 || true
     exit 20
   fi
 }
@@ -163,11 +165,6 @@ case "${MODE}" in
       run_tracker train --reuse-visual
     else
       run_tracker train
-    fi
-
-    if [[ ! -s "${TEMPORAL_CKPT}" ]]; then
-      echo "ERROR: temporal training returned without checkpoint: ${TEMPORAL_CKPT}" >&2
-      exit 21
     fi
     ;;
 
@@ -184,9 +181,8 @@ case "${MODE}" in
       run_tracker train_eval
     fi
 
-    verify_eval_outputs
-    echo
-    echo "[RENDER] Route B/C"
+    verify_outputs
+
     python3 -u render_results_video.py --route all
     ;;
 
@@ -199,9 +195,8 @@ case "${MODE}" in
     fi
 
     if [[ ! -s "${TEMPORAL_CKPT}" ]]; then
-      echo "ERROR: eval requires v11 temporal checkpoint:" >&2
+      echo "ERROR: eval requires v14 temporal checkpoint:" >&2
       echo "  ${TEMPORAL_CKPT}" >&2
-      echo "Run MODE=train_eval first." >&2
       exit 23
     fi
 
@@ -211,10 +206,8 @@ case "${MODE}" in
       "${SUMMARY_JSON}"
 
     run_tracker eval
-    verify_eval_outputs
+    verify_outputs
 
-    echo
-    echo "[RENDER] Route B/C"
     python3 -u render_results_video.py --route all
     ;;
 esac
@@ -223,12 +216,7 @@ echo
 echo "===================================================================================================="
 echo "DONE"
 echo "===================================================================================================="
-echo "Temporal checkpoint:"
-echo "  ${TEMPORAL_CKPT}"
-echo "Route-B CSV:"
-echo "  ${ROUTE_B_CSV}"
-echo "Route-C CSV:"
-echo "  ${ROUTE_C_CSV}"
-echo "Summary:"
-echo "  ${SUMMARY_JSON}"
-echo "===================================================================================================="
+echo "Temporal checkpoint: ${TEMPORAL_CKPT}"
+echo "Route-B CSV       : ${ROUTE_B_CSV}"
+echo "Route-C CSV       : ${ROUTE_C_CSV}"
+echo "Summary           : ${SUMMARY_JSON}"

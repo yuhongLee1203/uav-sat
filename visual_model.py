@@ -126,33 +126,42 @@ class AllMapGeoCLIP(nn.Module):
 
 
 @dataclass
-class ContinuousProgressRNNOutput:
+class StableVisualInertialRNNOutput:
     refined_logits: torch.Tensor
     candidate_probability: torch.Tensor
-    move_gate: torch.Tensor
-    heading_residual_rad: torch.Tensor
+    motion_xy: torch.Tensor
+    motion_unstopped_xy: torch.Tensor
+    stop_logit: torch.Tensor
+    stop_probability: torch.Tensor
+    residual_xy: torch.Tensor
     measurement_variance: torch.Tensor
     hidden: torch.Tensor
+    uav_state: torch.Tensor
+    score_state: torch.Tensor
 
 
-class ContinuousProgressVisualRNN(nn.Module):
+class StableVisualInertialRNN(nn.Module):
     """
     Plain nn.RNNCell.
 
-    Network inputs are image-derived only:
-      current UAV embedding
-      searched SAT embeddings
-      UAV/SAT similarities
-      previous recurrent hidden state
+    Current sensor inputs are visual only. previous_motion_xy is previous model
+    state derived from images, not an external sensor.
 
-    Absolute XY, waypoint index, route progress, frame index and GT/GPS are not
-    passed into forward_step().
+    The RNN motion does NOT directly set current XY. Current XY is always
+    anchored by one of the 36 current-image SAT candidates plus a small bounded
+    residual. This prevents the "RNN keeps driving the coordinate forward"
+    failures of v12/v13.
+
+    previous_motion_xy is used to softly refine the candidate distribution, so
+    temporal inertia/direction can help without deleting rear candidates.
     """
 
     def __init__(self):
         super().__init__()
+
         feature_dim = int(config.RNN_FEATURE_DIM)
         hidden_dim = int(config.RNN_HIDDEN_DIM)
+        score_dim = int(config.CANDIDATE_COUNT) * 2
 
         self.uav_projection = nn.Sequential(
             nn.Linear(config.EMBED_DIM, feature_dim),
@@ -164,15 +173,29 @@ class ContinuousProgressVisualRNN(nn.Module):
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
-        self.visual_stats_projection = nn.Sequential(
-            nn.Linear(5, feature_dim),
+        self.score_projection = nn.Sequential(
+            nn.Linear(score_dim, feature_dim),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
+        )
+        self.uav_delta_projection = nn.Sequential(
+            nn.Linear(config.EMBED_DIM, feature_dim),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
+        )
+        self.score_delta_projection = nn.Sequential(
+            nn.Linear(score_dim, feature_dim),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
+        )
+        self.motion_state_projection = nn.Sequential(
+            nn.Linear(2, feature_dim),
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
 
-        # Requested simple RNN: no LSTM, no GRU.
         self.rnn = nn.RNNCell(
-            feature_dim * 3,
+            feature_dim * 6,
             hidden_dim,
             nonlinearity="tanh",
         )
@@ -182,39 +205,55 @@ class ContinuousProgressVisualRNN(nn.Module):
         self.candidate_sat_projection = nn.Linear(config.EMBED_DIM, 96)
         self.candidate_hidden_projection = nn.Linear(hidden_dim, 96)
 
-        self.candidate_score_head = nn.Sequential(
-            nn.Linear(96 + 96 + 96 + 1, 160),
-            nn.GELU(),
-            nn.Linear(160, 80),
-            nn.GELU(),
-            nn.Linear(80, 1),
+        candidate_dim = (
+            96
+            + 96
+            + 96
+            + 1
+            + 2
+            + 2
+            + 1
         )
-        # Epoch 1 starts from raw trained visual retrieval, not random reranking.
+        self.candidate_score_head = nn.Sequential(
+            nn.Linear(candidate_dim, 192),
+            nn.GELU(),
+            nn.Linear(192, 96),
+            nn.GELU(),
+            nn.Linear(96, 1),
+        )
         nn.init.zeros_(self.candidate_score_head[-1].weight)
         nn.init.zeros_(self.candidate_score_head[-1].bias)
 
-        self.move_head = nn.Sequential(
+        self.motion_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
-            nn.Linear(hidden_dim // 2, 1),
+            nn.Linear(hidden_dim // 2, 2),
         )
-        nn.init.zeros_(self.move_head[-1].weight)
-        nn.init.constant_(self.move_head[-1].bias, -0.6)
+        nn.init.zeros_(self.motion_head[-1].weight)
+        nn.init.zeros_(self.motion_head[-1].bias)
 
-        self.heading_head = nn.Sequential(
+        self.stop_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
             nn.Linear(hidden_dim // 2, 1),
         )
-        nn.init.zeros_(self.heading_head[-1].weight)
-        nn.init.zeros_(self.heading_head[-1].bias)
+        nn.init.zeros_(self.stop_head[-1].weight)
+        nn.init.zeros_(self.stop_head[-1].bias)
+
+        self.residual_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Linear(hidden_dim // 2, 2),
+        )
+        nn.init.zeros_(self.residual_head[-1].weight)
+        nn.init.zeros_(self.residual_head[-1].bias)
 
         self.variance_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
-            nn.Linear(hidden_dim // 2, 1),
+            nn.Linear(hidden_dim // 2, 2),
         )
-        initial_var = 3.0
+        initial_var = 2.0
         inv_softplus = math.log(math.exp(initial_var) - 1.0)
         nn.init.zeros_(self.variance_head[-1].weight)
         nn.init.constant_(self.variance_head[-1].bias, inv_softplus)
@@ -228,78 +267,192 @@ class ContinuousProgressVisualRNN(nn.Module):
         )
 
     @staticmethod
-    def visual_stats(logits):
+    def visual_score_state(logits):
         probability = torch.softmax(logits, dim=1)
-        count = max(2, int(logits.shape[1]))
-        entropy = -(probability * probability.clamp_min(1e-8).log()).sum(dim=1)
-        entropy = entropy / math.log(float(count))
-        top2 = probability.topk(k=min(2, int(probability.shape[1])), dim=1).values
-        maximum = top2[:, 0]
-        margin = top2[:, 0] - top2[:, 1] if top2.shape[1] > 1 else top2[:, 0]
-        mean = logits.mean(dim=1)
-        std = logits.std(dim=1, unbiased=False)
-        return torch.stack(
-            [
-                entropy,
-                margin,
-                maximum,
-                torch.tanh(mean / 20.0),
-                torch.tanh(std / 10.0),
-            ],
+        standardized = (
+            logits - logits.mean(dim=1, keepdim=True)
+        ) / logits.std(
             dim=1,
+            keepdim=True,
+            unbiased=False,
+        ).clamp_min(1e-4)
+        return torch.cat([probability, standardized], dim=1)
+
+    @staticmethod
+    def bound_vector(raw_xy, maximum):
+        norm = torch.linalg.norm(raw_xy, dim=1, keepdim=True)
+        scale = (
+            float(maximum)
+            * torch.tanh(norm)
+            / norm.clamp_min(1e-6)
+        )
+        return raw_xy * scale
+
+    def refine_candidates(
+        self,
+        z_uav,
+        z_sat,
+        raw_logits,
+        candidate_offsets_xy,
+        previous_motion_xy,
+        hidden,
+    ):
+        batch, count, _ = z_sat.shape
+
+        q = self.candidate_uav_projection(z_uav).unsqueeze(1).expand(
+            -1, count, -1
+        )
+        k = self.candidate_sat_projection(z_sat)
+        h = self.candidate_hidden_projection(hidden).unsqueeze(1).expand(
+            -1, count, -1
         )
 
-    def refine_candidates(self, z_uav, z_sat, raw_logits, previous_hidden):
-        batch, count, _ = z_sat.shape
-        q = self.candidate_uav_projection(z_uav).unsqueeze(1).expand(-1, count, -1)
-        k = self.candidate_sat_projection(z_sat)
-        h = self.candidate_hidden_projection(previous_hidden).unsqueeze(1).expand(-1, count, -1)
         raw = torch.tanh(raw_logits.unsqueeze(-1) / 20.0)
-        pair = torch.cat([q * k, torch.abs(q - k), h, raw], dim=2)
-        residual = self.candidate_score_head(
-            pair.reshape(-1, pair.shape[-1])
-        ).reshape(batch, count)
-        return raw_logits + float(config.CANDIDATE_REFINEMENT_SCALE) * torch.tanh(residual)
 
-    def forward_step(self, z_uav, z_sat, raw_logits, hidden):
+        offset = (
+            candidate_offsets_xy
+            / float(config.CANDIDATE_OFFSET_SCALE_M)
+        ).clamp(-2.0, 2.0)
+
+        motion = (
+            previous_motion_xy
+            / float(config.MAX_STEP_M_PER_FRAME)
+        ).clamp(-1.0, 1.0)
+        motion_pair = motion.unsqueeze(1).expand(-1, count, -1)
+
+        offset_norm = F.normalize(
+            candidate_offsets_xy,
+            dim=2,
+            eps=1e-6,
+        )
+        motion_norm = F.normalize(
+            previous_motion_xy,
+            dim=1,
+            eps=1e-6,
+        ).unsqueeze(1)
+        alignment = (offset_norm * motion_norm).sum(
+            dim=2,
+            keepdim=True,
+        )
+
+        feature = torch.cat(
+            [
+                q * k,
+                torch.abs(q - k),
+                h,
+                raw,
+                offset,
+                motion_pair,
+                alignment,
+            ],
+            dim=2,
+        )
+
+        residual = self.candidate_score_head(
+            feature.reshape(-1, feature.shape[-1])
+        ).reshape(batch, count)
+
+        # The trained visual similarity remains the dominant term.
+        return (
+            raw_logits
+            + float(config.CANDIDATE_REFINEMENT_SCALE)
+            * torch.tanh(residual)
+        )
+
+    def forward_step(
+        self,
+        z_uav,
+        z_sat,
+        raw_logits,
+        candidate_offsets_xy,
+        previous_motion_xy,
+        hidden=None,
+        previous_uav_state=None,
+        previous_score_state=None,
+    ):
         if hidden is None:
-            hidden = self.initial_state(z_uav.shape[0], z_uav.device, z_uav.dtype)
+            hidden = self.initial_state(
+                z_uav.shape[0],
+                z_uav.device,
+                z_uav.dtype,
+            )
 
         refined_logits = self.refine_candidates(
-            z_uav,
-            z_sat,
-            raw_logits,
-            hidden,
+            z_uav=z_uav,
+            z_sat=z_sat,
+            raw_logits=raw_logits,
+            candidate_offsets_xy=candidate_offsets_xy,
+            previous_motion_xy=previous_motion_xy,
+            hidden=hidden,
         )
+
         probability = torch.softmax(refined_logits, dim=1)
-        sat_context = (probability.unsqueeze(-1) * z_sat).sum(dim=1)
-        stats = self.visual_stats(refined_logits)
+        sat_context = (
+            probability.unsqueeze(-1) * z_sat
+        ).sum(dim=1)
+
+        score_state = self.visual_score_state(refined_logits)
+
+        if previous_uav_state is None:
+            uav_delta = torch.zeros_like(z_uav)
+        else:
+            uav_delta = z_uav - previous_uav_state
+
+        if previous_score_state is None:
+            score_delta = torch.zeros_like(score_state)
+        else:
+            score_delta = score_state - previous_score_state
+
+        normalized_previous_motion = (
+            previous_motion_xy / float(config.MAX_STEP_M_PER_FRAME)
+        ).clamp(-1.0, 1.0)
 
         recurrent_input = torch.cat(
             [
                 self.uav_projection(z_uav),
                 self.sat_context_projection(sat_context),
-                self.visual_stats_projection(stats),
+                self.score_projection(score_state),
+                self.uav_delta_projection(uav_delta),
+                self.score_delta_projection(score_delta),
+                self.motion_state_projection(normalized_previous_motion),
             ],
             dim=1,
         )
+
         new_hidden = self.rnn(recurrent_input, hidden)
         head_hidden = self.dropout(new_hidden)
 
-        move_gate = torch.sigmoid(self.move_head(head_hidden))
-        heading_residual_rad = torch.tanh(self.heading_head(head_hidden)) * math.radians(
-            float(config.RNN_HEADING_RESIDUAL_MAX_DEG)
+        raw_motion = self.motion_head(head_hidden)
+        motion_unstopped = self.bound_vector(
+            raw_motion,
+            float(config.MAX_STEP_M_PER_FRAME),
         )
+
+        stop_logit = self.stop_head(head_hidden)
+        stop_probability = torch.sigmoid(stop_logit)
+
+        motion_xy = motion_unstopped * (1.0 - stop_probability)
+
+        residual_xy = (
+            torch.tanh(self.residual_head(head_hidden))
+            * float(config.MAX_RESIDUAL_M)
+        )
+
         variance = (
             F.softplus(self.variance_head(head_hidden))
             + float(config.KALMAN_R_MIN_VAR)
         ).clamp(max=float(config.KALMAN_R_MAX_VAR))
 
-        return ContinuousProgressRNNOutput(
+        return StableVisualInertialRNNOutput(
             refined_logits=refined_logits,
             candidate_probability=probability,
-            move_gate=move_gate,
-            heading_residual_rad=heading_residual_rad,
+            motion_xy=motion_xy,
+            motion_unstopped_xy=motion_unstopped,
+            stop_logit=stop_logit,
+            stop_probability=stop_probability,
+            residual_xy=residual_xy,
             measurement_variance=variance,
             hidden=new_hidden,
+            uav_state=z_uav,
+            score_state=score_state,
         )

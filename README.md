@@ -1,100 +1,96 @@
-# Continuous-Progress Visual RNN v11
+# Stable Visual-Inertial RNN v14
 
-This version removes the unstable discrete topology state used by v8-v10.
+## Design decision
+
+This version intentionally returns to FULL 6x6 local visual search.
+
+The previous forward-half models could permanently lose the correct location
+when heading or predicted position was wrong. v14 never deletes the rear/side
+candidates. The previous RNN motion is supplied as a learned soft directional
+prior to the 36-candidate scorer.
 
 ## Architecture
 
 ```text
-known W0 + ordered mission waypoints
-        |
-continuous route progress s
-        |
-route heading + previous RNN heading residual
-        |
-existing 6x6 local SAT lattice
-        |
-keep forward half only = 18 patches
-        |
-current UAV image <-> current SAT images
-        |
-learned visual candidate refinement
-        |
-hard selected image candidate
-        |
+known start W0
+   |
+previous FINAL visual/Kalman XY
+   |
+FULL 6x6 SAT search = 36 patches
+   |
+current UAV embedding + 36 SAT embeddings/similarities
++ previous image-derived RNN hidden/motion
+   |
 plain nn.RNNCell
-        |
-move gate + heading residual + uncertainty + next hidden state
-        |
-image-supported route-progress update
-        |
-0 <= delta_s <= 3 m/frame
-        |
-second-order polynomial inertia CAP
-        |
-visual progress s
-        |
-1D progress-only Kalman (no velocity)
-        |
-route(s) -> final XY
+   |
+   +-- refined 36 visual candidate scores
+   +-- next-frame image-derived motion state (0..10 m/frame)
+   +-- stop probability
+   +-- small sub-anchor XY residual
+   +-- measurement uncertainty
+   |
+hard current-image SAT anchor + bounded residual
+   |
+current visual XY
+   |
+position-only Kalman [x,y], no vx/vy
+   |
+FINAL XY
 ```
 
-## Important properties
+The RNN motion cannot directly move current XY. It affects temporal state and
+soft candidate ranking only. Current localization therefore remains anchored by
+the current UAV/SAT visual match.
 
-- No LSTM.
-- No GRU.
-- No PREVIOUS/CURRENT/NEXT leg classifier.
-- No waypoint transition classifier.
-- No per-frame leg argmax.
-- No advance/rollback oscillation.
-- No fixed nominal speed.
-- No velocity state.
-- Zero movement is valid.
-- Hard maximum movement is 3 m/frame.
-- The RNN receives image-derived features only.
-- GT/GPS is never a network input or inference search center.
-- Teacher forcing is 0.00 from epoch 1.
-- B/C waypoint frame_index is not used.
-- The active waypoint pair comes only from continuous monotonic route progress.
-- The RNN hidden state is passed directly from one frame to the next.
-- Closed-loop Route-A validation chooses the best temporal checkpoint and
-  supports early stopping.
+## Training
 
-## Direction
+Route A only.
 
-The base search direction is the tangent from the current waypoint toward the
-next waypoint. The RNN outputs an image-derived bounded heading residual.
-The NEXT frame uses:
+GT is used as supervised labels and, during the early scheduled-sampling
+curriculum, as a training-only candidate search center. GT is never passed into
+`StableVisualInertialRNN.forward_step()`.
 
-`search heading = route heading + previous RNN heading residual`
+Teacher-center schedule:
 
-Therefore the CSV/video exposes:
+- epochs 1-5: 1.00
+- epochs 6-24: linearly decays
+- epoch 25 onward: 0.00, fully closed-loop
 
-- `route_heading_deg`
-- `heading_residual_deg`
-- `estimated_heading_deg`
-- `search_heading_deg`
+Validation is always fully closed-loop and best-validation checkpoint selection
+is used.
 
-At a 180-degree waypoint turn, continuous progress crosses the waypoint only
-once. The route heading then flips to the next waypoint direction; there is no
-discrete topology classifier that can oscillate every frame.
+There is no large squared ahead-loss.
 
-## Polynomial inertia
+## Speed / stopping
 
-The temporal second-order prediction is:
+The RNN motion vector is bounded by vector magnitude:
 
-`delta_poly = 2*delta_(t-1) - delta_(t-2)`
+`0 <= |delta_xy| <= 10 m/frame`
 
-It is used only as a maximum allowed movement cap. It can never push the UAV
-forward unless the current UAV/SAT visual candidate also supports forward
-progress.
+Zero is explicitly supported through the stop head. Route-A motion targets are
+not clipped at 3 m/frame.
 
-## GT usage
+The final localization step is also radially capped at 10 m/frame as requested.
 
-GT exists in `RouteCache` because Route-A needs supervised labels and B/C needs
-evaluation metrics. Prediction is completed before the B/C GT row is read.
-The temporal checkpoint records:
+## Heading
 
-- `current_gt_as_model_input = False`
-- `previous_gt_as_model_input = False`
-- `test_gt_as_model_input = False`
-- `teacher_forcing_ratio = 0.0`
+Heading is not a separate arbitrary classifier. For a non-stop frame it is
+
+`atan2(rnn_motion_dy, rnn_motion_dx)`
+
+in ENU coordinates.
+
+At a stop, heading is marked invalid instead of inventing an angle.
+
+The renderer creates an arrow endpoint in world ENU coordinates and sends it
+through the satellite-map geotransform. This avoids the old 90-degree
+screen-coordinate drawing error.
+
+## Video
+
+Only two map colors are used:
+
+- green = GT
+- magenta = FINAL prediction
+
+No waypoint line, no waypoint markers, and no SAT-candidate triangle/diamond.

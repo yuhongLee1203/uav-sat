@@ -1,0 +1,76 @@
+{
+  "route_B": {
+    "architecture": "DirectDisplacementVisualRNN_v12",
+    "network": "nn.RNNCell",
+    "model_input": "UAV/SAT image features + previous RNN hidden only",
+    "current_gt_as_model_input": false,
+    "previous_gt_as_model_input": false,
+    "test_gt_as_model_input": false,
+    "test_waypoint_frame_index_used": false,
+    "max_step_m_per_frame": 3.0,
+    "forward_candidate_count": 18,
+    "RawDirectRNN": {
+      "MLE_m": 562.1865413630281,
+      "MedLE_m": 541.9632108311471,
+      "P90_m": 882.8277567643697,
+      "P95_m": 947.8520734224772,
+      "LSR@5_pct": 0.04393673110720562,
+      "LSR@10_pct": 0.13181019332161686,
+      "LSR@15_pct": 0.17574692442882248,
+      "LSR@20_pct": 0.26362038664323373,
+      "RPE_step_mean_m": 2.833831614944733,
+      "JumpRate_pct": 0.0,
+      "MaxError_m": 1071.645353810456
+    },
+    "RouteStateKalman": {
+      "MLE_m": 563.8943772920454,
+      "MedLE_m": 543.6318620682099,
+      "P90_m": 885.1560758695355,
+      "P95_m": 950.5133019374252,
+      "LSR@5_pct": 0.04393673110720562,
+      "LSR@10_pct": 0.08787346221441124,
+      "LSR@15_pct": 0.17574692442882248,
+      "LSR@20_pct": 0.21968365553602814,
+      "RPE_step_mean_m": 2.8345691212249053,
+      "JumpRate_pct": 0.0,
+      "MaxError_m": 1074.3208059286155
+    }
+  },
+  "route_C": {
+    "architecture": "DirectDisplacementVisualRNN_v12",
+    "network": "nn.RNNCell",
+    "model_input": "UAV/SAT image features + previous RNN hidden only",
+    "current_gt_as_model_input": false,
+    "previous_gt_as_model_input": false,
+    "test_gt_as_model_input": false,
+    "test_waypoint_frame_index_used": false,
+    "max_step_m_per_frame": 3.0,
+    "forward_candidate_count": 18,
+    "RawDirectRNN": {
+      "MLE_m": 255.62657991173953,
+      "MedLE_m": 216.68796239762992,
+      "P90_m": 488.68122239973025,
+      "P95_m": 575.7893630744593,
+      "LSR@5_pct": 0.1589825119236884,
+      "LSR@10_pct": 0.3179650238473768,
+      "LSR@15_pct": 0.47694753577106513,
+      "LSR@20_pct": 0.5564387917329093,
+      "RPE_step_mean_m": 1.9226310149077708,
+      "JumpRate_pct": 0.0,
+      "MaxError_m": 660.500713521976
+    },
+    "RouteStateKalman": {
+      "MLE_m": 256.556091798445,
+      "MedLE_m": 218.3660061852819,
+      "P90_m": 491.3569998374377,
+      "P95_m": 578.4651645113445,
+      "LSR@5_pct": 0.0794912559618442,
+      "LSR@10_pct": 0.23847376788553257,
+      "LSR@15_pct": 0.39745627980922094,
+      "LSR@20_pct": 0.5564387917329093,
+      "RPE_step_mean_m": 1.9239656353183716,
+      "JumpRate_pct": 0.0,
+      "MaxError_m": 663.1765039481916
+    }
+  }
+}
