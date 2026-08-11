@@ -1,0 +1,57 @@
+{
+  "architecture": "WaypointTemporalMotionGRUKalman_v22",
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "known_at_inference": [
+    "start_coordinate",
+    "waypoint_coordinates"
+  ],
+  "uses_waypoint_frame_index_at_inference": false,
+  "motion_state": [
+    "signed_v_parallel",
+    "v_cross",
+    "a_parallel",
+    "a_cross"
+  ],
+  "temporal_visual_input": "previous/current UAV embeddings",
+  "visual_measurement": "temperature-soft candidate expectation + learned residual/covariance",
+  "polynomial": "p_next = p_final + v + 0.5*a",
+  "final_filter": "external Kalman [x,y,vx,vy]",
+  "route_B": {
+    "MLE_m": 264.29168476689256,
+    "MedLE_m": 190.5544021089563,
+    "P90_m": 615.4865101251614,
+    "P95_m": 687.0289859307454,
+    "P99_m": 716.2244898183465,
+    "LSR@5_pct": 0.04393673110720562,
+    "LSR@10_pct": 0.35149384885764495,
+    "LSR@15_pct": 1.054481546572935,
+    "LSR@20_pct": 2.6362038664323375,
+    "CandidateCapture_pct": 5.93145869947276,
+    "MeanFinalStep_m": 1.6323123865865004,
+    "P95FinalStep_m": 4.067177141913496,
+    "Waypoints": 16,
+    "CSV": "/yh/study/uav-sat/outputs/waypoint_temporal_motion_gru_kalman_v22/route_B_waypoint_temporal_motion_gru_kalman_frames.csv"
+  },
+  "route_C": {
+    "MLE_m": 155.77979151298646,
+    "MedLE_m": 132.786500129741,
+    "P90_m": 322.4407575410164,
+    "P95_m": 436.7447181887109,
+    "P99_m": 514.7371406117754,
+    "LSR@5_pct": 0.7949125596184419,
+    "LSR@10_pct": 1.987281399046105,
+    "LSR@15_pct": 3.5771065182829886,
+    "LSR@20_pct": 4.848966613672496,
+    "CandidateCapture_pct": 8.982511923688394,
+    "MeanFinalStep_m": 2.5020871219937857,
+    "P95FinalStep_m": 4.098778532091987,
+    "Waypoints": 12,
+    "CSV": "/yh/study/uav-sat/outputs/waypoint_temporal_motion_gru_kalman_v22/route_C_waypoint_temporal_motion_gru_kalman_frames.csv"
+  }
+}

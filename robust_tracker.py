@@ -13,10 +13,10 @@ import torch.nn.functional as F
 import config
 from data import RouteDataset, meters_from_latlon
 from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_only
-from visual_model import WaypointConditionedGRU
+from visual_model import WaypointTemporalMotionGRU
 
 
-ARCHITECTURE_NAME = "WaypointRouteFrameGRUKalman_v21"
+ARCHITECTURE_NAME = "WaypointTemporalMotionGRUKalman_v22"
 
 
 @dataclass
@@ -158,6 +158,8 @@ class PolynomialKalman2D:
                 float(config.KALMAN_Q_VELOCITY),
             ]
         ).astype(np.float64)
+        self.last_nis = 0.0
+        self.last_r_scale = 1.0
 
     @staticmethod
     def _bound(vector, maximum):
@@ -205,6 +207,21 @@ class PolynomialKalman2D:
             S_inv = np.linalg.inv(S)
         except np.linalg.LinAlgError:
             S_inv = np.linalg.pinv(S)
+        nis = float(innovation.T @ S_inv @ innovation)
+        threshold = max(float(config.KALMAN_NIS_SOFT_THRESHOLD), 1e-6)
+        r_scale = min(
+            float(config.KALMAN_NIS_MAX_R_SCALE),
+            max(1.0, nis / threshold),
+        )
+        if r_scale > 1.0:
+            R = R * r_scale
+            S = self.H @ self.P @ self.H.T + R
+            try:
+                S_inv = np.linalg.inv(S)
+            except np.linalg.LinAlgError:
+                S_inv = np.linalg.pinv(S)
+        self.last_nis = nis
+        self.last_r_scale = r_scale
         K = self.P @ self.H.T @ S_inv
         self.x = self.x + K @ innovation
         I = np.eye(4, dtype=np.float64)
@@ -424,6 +441,7 @@ def forward_temporal(
     route_frame,
     previous_velocity_route,
     previous_acceleration_route,
+    previous_z_uav,
     hidden,
     device,
 ):
@@ -432,8 +450,10 @@ def forward_temporal(
     )
     output = model.forward_step(
         z_uav=candidate.z_uav,
+        previous_z_uav=previous_z_uav,
         sat_context=sat_context,
         raw_probability=candidate.raw_prob,
+        candidate_centers=candidate.centers,
         hardms_xy=candidate.hardms_xy,
         raw_top1_xy=candidate.raw_top1_xy,
         hardms_support=candidate.hardms_support,
@@ -489,7 +509,7 @@ def temporal_loss(
         output.acceleration_route, target_acceleration_route
     )
 
-    raw_error = torch.linalg.norm(candidate.hardms_xy - gt_xy, dim=1, keepdim=True)
+    raw_error = torch.linalg.norm(output.measurement_anchor_xy - gt_xy, dim=1, keepdim=True)
     sigma = float(config.CONFIDENCE_TARGET_SIGMA_M)
     confidence_target = torch.exp(-0.5 * raw_error.square() / (sigma * sigma))
     if not captured:
@@ -503,6 +523,20 @@ def temporal_loss(
         + 0.5 * output.acceleration_route[:, 1].abs().mean()
     )
 
+    pred_norm = torch.linalg.norm(output.next_step_route, dim=1)
+    target_norm = torch.linalg.norm(target_next_step_route, dim=1)
+    valid_direction = target_norm > 0.10
+    if bool(valid_direction.any()):
+        direction_cos = F.cosine_similarity(
+            output.next_step_route[valid_direction],
+            target_next_step_route[valid_direction],
+            dim=1,
+        )
+        direction_loss = (1.0 - direction_cos).mean()
+    else:
+        direction_loss = zero
+    speed_loss = F.smooth_l1_loss(pred_norm, target_norm)
+
     total = (
         float(config.LOSS_MEASUREMENT) * measurement_loss
         + float(config.LOSS_NEXT_STEP) * next_step_loss
@@ -511,12 +545,19 @@ def temporal_loss(
         + float(config.LOSS_VARIANCE_NLL) * variance_nll
         + float(config.LOSS_CONFIDENCE) * confidence_loss
         + float(config.LOSS_CROSS_MOTION_REG) * cross_reg
+        + float(config.LOSS_DIRECTION) * direction_loss
+        + float(config.LOSS_SPEED) * speed_loss
     )
     return total, {
         "measurement": float(measurement_loss.detach().cpu()),
         "next": float(next_step_loss.detach().cpu()),
         "velocity": float(velocity_loss.detach().cpu()),
         "acceleration": float(acceleration_loss.detach().cpu()),
+        "direction": float(direction_loss.detach().cpu()),
+        "speed": float(speed_loss.detach().cpu()),
+        "pred_step_m": float(pred_norm.mean().detach().cpu()),
+        "target_step_m": float(target_norm.mean().detach().cpu()),
+        "pred_v_parallel": float(output.velocity_route[:, 0].mean().detach().cpu()),
         "nll": float(variance_nll.detach().cpu()),
         "confidence": float(confidence_loss.detach().cpu()),
         "capture": 1.0 if captured else 0.0,
@@ -572,6 +613,7 @@ def evaluate_closed_loop_episode(
         else route.closest_leg(initial_xy)
     )
     hidden = None
+    previous_z_uav = None
     previous_velocity_route = torch.zeros(1, 2, device=device)
     previous_acceleration_route = torch.zeros(1, 2, device=device)
     previous_velocity_xy = np.zeros(2, dtype=np.float64)
@@ -606,6 +648,7 @@ def evaluate_closed_loop_episode(
             frame,
             previous_velocity_route,
             previous_acceleration_route,
+            previous_z_uav,
             hidden,
             device,
         )
@@ -623,6 +666,7 @@ def evaluate_closed_loop_episode(
         previous_acceleration_route = output.acceleration_route.detach()
         previous_velocity_xy = output.velocity_xy[0].detach().cpu().numpy()
         previous_acceleration_xy = output.acceleration_xy[0].detach().cpu().numpy()
+        previous_z_uav = candidate.z_uav.detach()
 
     if not errors:
         return {"mle": float("inf"), "p90": float("inf"), "capture_pct": 0.0}
@@ -637,35 +681,79 @@ def evaluate_closed_loop_episode(
 def evaluate_validation_episodes(
     model, visual, cache, route, val_range, device, leg_labels=None
 ):
-    start, end = val_range
-    length = max(1, end - start)
-    episode_length = min(int(config.VAL_EPISODE_LENGTH), length)
-    count = max(1, int(config.VAL_EPISODE_COUNT))
-    max_start = max(start, end - episode_length)
-    if count == 1 or max_start <= start:
-        starts = [start]
-    else:
-        starts = np.linspace(start, max_start, count).round().astype(int).tolist()
+    """Deployment-faithful Route-A validation.
 
-    metrics = []
-    for episode_start in starts:
-        episode_end = min(end, episode_start + episode_length)
-        metrics.append(
-            evaluate_closed_loop_episode(
-                model,
-                visual,
-                cache,
-                route,
-                int(episode_start),
-                int(episode_end),
-                device,
-                leg_labels=leg_labels,
+    The rollout always starts from the single known route start and remains
+    fully closed-loop through the training prefix. Metrics are accumulated only
+    inside the held-out validation interval. No GT reset is performed at the
+    beginning of validation episodes.
+    """
+    model.eval()
+    metric_start, metric_end = int(val_range[0]), int(val_range[1])
+    initial_xy = route.points[0].copy()
+    kf = PolynomialKalman2D(initial_xy)
+    leg_index = 0
+    hidden = None
+    previous_z_uav = None
+    previous_final = initial_xy.copy()
+    previous_velocity_route = torch.zeros(1, 2, device=device)
+    previous_acceleration_route = torch.zeros(1, 2, device=device)
+    previous_velocity_xy = np.zeros(2, dtype=np.float64)
+    previous_acceleration_xy = np.zeros(2, dtype=np.float64)
+    errors = []
+    captures = []
+
+    for index in range(metric_end):
+        if index == 0:
+            predicted_current = kf.position()
+        else:
+            predicted_current = kf.predict(
+                previous_velocity_xy, previous_acceleration_xy
             )
+        leg_index = route.advance(predicted_current, leg_index)
+        route_frame = route.frame(predicted_current, leg_index)
+        search_center = predicted_current.copy()
+        uav_clip = cache.uav_clip[index : index + 1].to(device).float()
+        gt = cache.gt_xy[index : index + 1].to(device).float()
+        candidate, sat_context, capture = visual_observation(
+            visual, uav_clip, tensor2(search_center, device), gt
         )
+        output, _, _ = forward_temporal(
+            model,
+            candidate,
+            sat_context,
+            tensor2(search_center, device),
+            tensor2(previous_final, device),
+            route_frame,
+            previous_velocity_route,
+            previous_acceleration_route,
+            previous_z_uav,
+            hidden,
+            device,
+        )
+        measurement = output.measurement_xy[0].detach().cpu().numpy()
+        variance = output.measurement_variance_xy[0].detach().cpu().numpy()
+        final_xy = kf.update(measurement, variance)
+
+        if index >= metric_start:
+            gt_np = gt[0].detach().cpu().numpy()
+            errors.append(float(np.linalg.norm(final_xy - gt_np)))
+            captures.append(float(capture.float().item()))
+
+        previous_final = final_xy.copy()
+        previous_velocity_route = output.velocity_route.detach()
+        previous_acceleration_route = output.acceleration_route.detach()
+        previous_velocity_xy = output.velocity_xy[0].detach().cpu().numpy()
+        previous_acceleration_xy = output.acceleration_xy[0].detach().cpu().numpy()
+        previous_z_uav = candidate.z_uav.detach()
+        hidden = output.hidden
+
+    if not errors:
+        return {"mle": float("inf"), "p90": float("inf"), "capture_pct": 0.0}
     return {
-        "mle": float(np.mean([item["mle"] for item in metrics])),
-        "p90": float(np.mean([item["p90"] for item in metrics])),
-        "capture_pct": float(np.mean([item["capture_pct"] for item in metrics])),
+        "mle": float(np.mean(errors)),
+        "p90": float(np.quantile(errors, 0.90)),
+        "capture_pct": float(np.mean(captures) * 100.0),
     }
 
 
@@ -678,7 +766,7 @@ def train_temporal_model(
     patience_limit,
     resume=False,
 ):
-    model = WaypointConditionedGRU().to(device)
+    model = WaypointTemporalMotionGRU().to(device)
     parameters = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(
         parameters,
@@ -738,6 +826,7 @@ def train_temporal_model(
             kf = PolynomialKalman2D(initial_xy)
             leg_index = int(leg_labels[chunk_start])
             hidden = None
+            previous_z_uav = None
             previous_final = initial_xy.copy()
             previous_velocity_route = torch.zeros(1, 2, device=device)
             previous_acceleration_route = torch.zeros(1, 2, device=device)
@@ -756,12 +845,12 @@ def train_temporal_model(
                 leg_index = route.advance(predicted_current, leg_index)
                 route_frame = route.frame(predicted_current, leg_index)
 
-                use_teacher = random.random() < ratio
-                if use_teacher:
-                    gt_center = cache.gt_xy[index].cpu().numpy().astype(np.float64)
-                    search_center = gt_center + random_jitter(config.TRAIN_CENTER_JITTER_M)
-                else:
-                    search_center = predicted_current.copy()
+                gt_center = cache.gt_xy[index].cpu().numpy().astype(np.float64)
+                teacher_center = gt_center + random_jitter(config.TRAIN_CENTER_JITTER_M)
+                search_center = (
+                    float(ratio) * teacher_center
+                    + (1.0 - float(ratio)) * predicted_current
+                )
 
                 uav_clip = cache.uav_clip[index : index + 1].to(device).float()
                 gt = cache.gt_xy[index : index + 1].to(device).float()
@@ -780,6 +869,7 @@ def train_temporal_model(
                     route_frame,
                     previous_velocity_route,
                     previous_acceleration_route,
+                    previous_z_uav,
                     hidden,
                     device,
                 )
@@ -816,6 +906,7 @@ def train_temporal_model(
                 previous_acceleration_xy = (
                     output.acceleration_xy[0].detach().cpu().numpy()
                 )
+                previous_z_uav = candidate.z_uav.detach()
                 hidden = output.hidden
 
             if chunk_loss is None:
@@ -860,7 +951,7 @@ def train_temporal_model(
                     "eval_routes": ["route_B", "route_C"],
                     "uses_waypoint_coordinates": True,
                     "uses_waypoint_frame_index_at_inference": False,
-                    "early_stop_metric": "Route-A held-out closed-loop episode MLE",
+                    "early_stop_metric": "Route-A known-start full closed-loop held-out MLE",
                 },
                 config.TEMPORAL_CHECKPOINT,
             )
@@ -882,8 +973,12 @@ def train_temporal_model(
 
         average_loss = float(np.mean(epoch_losses)) if epoch_losses else float("nan")
         train_capture = float(np.mean(epoch_capture) * 100.0) if epoch_capture else 0.0
+        pred_step_mean = float(np.mean([row["pred_step_m"] for row in component_rows])) if component_rows else 0.0
+        target_step_mean = float(np.mean([row["target_step_m"] for row in component_rows])) if component_rows else 0.0
+        v_parallel_mean = float(np.mean([row["pred_v_parallel"] for row in component_rows])) if component_rows else 0.0
         print(
             "temporal epoch=%03d/%d loss=%.5f teacher=%.3f train_capture=%.2f%% "
+            "pred_step=%.3fm target_step=%.3fm v_parallel=%.3f "
             "val_mle=%.3fm val_p90=%.3fm val_capture=%.2f%% best=%.3fm patience=%d/%d"
             % (
                 epoch,
@@ -891,6 +986,9 @@ def train_temporal_model(
                 average_loss,
                 ratio,
                 train_capture,
+                pred_step_mean,
+                target_step_mean,
+                v_parallel_mean,
                 validation["mle"],
                 validation["p90"],
                 validation["capture_pct"],
@@ -963,6 +1061,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     kf = PolynomialKalman2D(initial_xy)
     leg_index = 0
     hidden = None
+    previous_z_uav = None
     previous_final = initial_xy.copy()
     previous_velocity_route = torch.zeros(1, 2, device=device)
     previous_acceleration_route = torch.zeros(1, 2, device=device)
@@ -999,6 +1098,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
             route_frame,
             previous_velocity_route,
             previous_acceleration_route,
+            previous_z_uav,
             hidden,
             device,
         )
@@ -1035,11 +1135,17 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "raw_top1_y": float(candidate.raw_top1_xy[0, 1].item()),
                 "hardms_x": float(candidate.hardms_xy[0, 0].item()),
                 "hardms_y": float(candidate.hardms_xy[0, 1].item()),
+                "measurement_anchor_x": float(output.measurement_anchor_xy[0, 0].item()),
+                "measurement_anchor_y": float(output.measurement_anchor_xy[0, 1].item()),
                 "measurement_x": float(measurement[0]),
                 "measurement_y": float(measurement[1]),
                 "measurement_var_x": float(variance[0]),
                 "measurement_var_y": float(variance[1]),
+                "response_var_parallel": float(output.response_variance_route[0, 0].item()),
+                "response_var_cross": float(output.response_variance_route[0, 1].item()),
                 "confidence": float(output.confidence[0, 0].item()),
+                "kalman_nis": float(kf.last_nis),
+                "kalman_r_scale": float(kf.last_r_scale),
                 "v_parallel": float(output.velocity_route[0, 0].item()),
                 "v_cross": float(output.velocity_route[0, 1].item()),
                 "a_parallel": float(output.acceleration_route[0, 0].item()),
@@ -1072,11 +1178,12 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         previous_acceleration_route = output.acceleration_route.detach()
         previous_velocity_xy = output.velocity_xy[0].cpu().numpy()
         previous_acceleration_xy = output.acceleration_xy[0].cpu().numpy()
+        previous_z_uav = candidate.z_uav.detach()
         hidden = output.hidden
 
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = config.OUTPUT_DIR / (
-        route_name + "_waypoint_routeframe_gru_kalman_frames.csv"
+        route_name + "_waypoint_temporal_motion_gru_kalman_frames.csv"
     )
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
@@ -1113,7 +1220,7 @@ def load_temporal_model(device):
         raise RuntimeError(
             "Temporal checkpoint architecture mismatch: %r" % payload.get("architecture")
         )
-    model = WaypointConditionedGRU().to(device)
+    model = WaypointTemporalMotionGRU().to(device)
     model.load_state_dict(payload["model"])
     model.eval()
     return model
@@ -1167,7 +1274,9 @@ def eval_pipeline(device):
         "eval_routes": ["route_B", "route_C"],
         "known_at_inference": ["start_coordinate", "waypoint_coordinates"],
         "uses_waypoint_frame_index_at_inference": False,
-        "motion_state": ["v_parallel", "v_cross", "a_parallel", "a_cross"],
+        "motion_state": ["signed_v_parallel", "v_cross", "a_parallel", "a_cross"],
+        "temporal_visual_input": "previous/current UAV embeddings",
+        "visual_measurement": "temperature-soft candidate expectation + learned residual/covariance",
         "polynomial": "p_next = p_final + v + 0.5*a",
         "final_filter": "external Kalman [x,y,vx,vy]",
     }

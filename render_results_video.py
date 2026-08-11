@@ -196,7 +196,7 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
             heading = row.get("movement_heading_deg", float("nan"))
             heading_text = "n/a" if pd.isna(heading) else "%.1f deg" % float(heading)
             lines = [
-                "GT = GREEN    FINAL KALMAN = MAGENTA    WAYPOINT = YELLOW",
+                "GT = GREEN    FINAL ROBUST KALMAN = MAGENTA    WAYPOINT = YELLOW",
                 "frame=%d  target=W%d  leg=%d"
                 % (
                     int(row["frame_id"]),
@@ -215,11 +215,12 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
                     float(row["v_cross"]),
                     heading_text,
                 ),
-                "poly step=%.2fm  final step=%.2fm  error=%.2fm"
+                "poly step=%.2fm  final step=%.2fm  error=%.2fm  NISxR=%.2f"
                 % (
                     float(row["model_next_step_m"]),
                     float(row["final_step_m"]),
                     float(row["error_final_m"]),
+                    float(row.get("kalman_r_scale", 1.0)),
                 ),
             ]
             for line_index, text in enumerate(lines):
@@ -241,7 +242,7 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
 
 def render_route(route_name):
     csv_path = config.OUTPUT_DIR / (
-        route_name + "_waypoint_routeframe_gru_kalman_frames.csv"
+        route_name + "_waypoint_temporal_motion_gru_kalman_frames.csv"
     )
     if not csv_path.exists():
         raise FileNotFoundError(

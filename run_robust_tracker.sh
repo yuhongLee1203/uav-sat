@@ -50,19 +50,20 @@ case "${MODE}" in
   *) echo "ERROR: --mode must be train, eval, or train_eval" >&2; exit 2 ;;
 esac
 
-OUTPUT_DIR="outputs/waypoint_routeframe_gru_kalman_v21"
+OUTPUT_DIR="outputs/waypoint_temporal_motion_gru_kalman_v22"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
-TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_routeframe_gru_A_only.pt"
-LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_routeframe_gru_A_only_latest.pt"
-ROUTE_B_CSV="${OUTPUT_DIR}/route_B_waypoint_routeframe_gru_kalman_frames.csv"
-ROUTE_C_CSV="${OUTPUT_DIR}/route_C_waypoint_routeframe_gru_kalman_frames.csv"
+TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_temporal_motion_gru_A_only.pt"
+LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_temporal_motion_gru_A_only_latest.pt"
+ROUTE_B_CSV="${OUTPUT_DIR}/route_B_waypoint_temporal_motion_gru_kalman_frames.csv"
+ROUTE_C_CSV="${OUTPUT_DIR}/route_C_waypoint_temporal_motion_gru_kalman_frames.csv"
 SUMMARY_JSON="${OUTPUT_DIR}/robust_tracker_summary.json"
 mkdir -p "${CHECKPOINT_DIR}"
 
 find_visual_checkpoint() {
   local candidates=(
     "${VISUAL_CKPT}"
+    "outputs/waypoint_routeframe_gru_kalman_v21/checkpoints/visual_retrieval_A_only.pt"
     "outputs/crf_inertial_rnn_kalman_v20/checkpoints/visual_retrieval_A_only.pt"
     "outputs/twostage_autoregressive_hardms_rnn_kalman_v19/checkpoints/visual_retrieval_A_only.pt"
     "outputs/rnn_state_polynomial_hardms_kalman_v18/checkpoints/visual_retrieval_A_only.pt"
@@ -103,18 +104,18 @@ verify_python() {
 import config
 import robust_tracker
 import visual_model
-assert config.ARCHITECTURE_NAME == "WaypointRouteFrameGRUKalman_v21"
-assert robust_tracker.ARCHITECTURE_NAME == "WaypointRouteFrameGRUKalman_v21"
-assert hasattr(visual_model, "WaypointConditionedGRU")
+assert config.ARCHITECTURE_NAME == "WaypointTemporalMotionGRUKalman_v22"
+assert robust_tracker.ARCHITECTURE_NAME == "WaypointTemporalMotionGRUKalman_v22"
+assert hasattr(visual_model, "WaypointTemporalMotionGRU")
 assert int(config.GRID_SIZE) == 6
 assert int(config.CANDIDATE_COUNT) == 36
-print("architecture : WaypointRouteFrameGRUKalman_v21")
-print("RNN          : GRUCell")
-print("motion state : v_parallel, v_cross, a_parallel, a_cross")
+print("architecture : WaypointTemporalMotionGRUKalman_v22")
+print("RNN          : two-frame GRUCell (previous/current UAV embedding)")
+print("motion state : signed v_parallel, v_cross, a_parallel, a_cross")
 print("polynomial   : p_next = p_final + v + 0.5*a")
-print("visual       : HardMS + learned residual/confidence/covariance")
+print("visual       : search-centered relative response + learned residual/confidence/covariance")
 print("final output : external Kalman [x,y,vx,vy]")
-print("early stop   : held-out Route-A CLOSED-LOOP episode MLE")
+print("early stop   : Route-A known-start full CLOSED-LOOP held-out MLE")
 print("waypoint     : coordinates only; frame_index is not inference input")
 PY
 }
@@ -156,7 +157,7 @@ verify_eval_outputs() {
 }
 
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "Waypoint-conditioned Route-Frame GRU + Polynomial Motion Prior + External Kalman v21"
+echo "Waypoint Two-Frame Motion GRU + Polynomial Motion Prior + Robust External Kalman v22"
 printf '%*s\n' 108 '' | tr ' ' '='
 echo "MODE             : ${MODE}"
 echo "GPU              : ${GPU}"
