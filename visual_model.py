@@ -99,7 +99,8 @@ class AllMapGeoCLIP(nn.Module):
         return F.adaptive_avg_pool2d(feature.float(), (output_size, output_size))
 
     def encode_uav_from_clip(self, clip_feat, yaw=None):
-        return F.normalize(self.uav_head(clip_feat.float()), dim=1)
+        embedding = self.uav_head(clip_feat.float())
+        return F.normalize(embedding, dim=1)
 
     def encode_uav(self, uav, yaw=None):
         return self.encode_uav_from_clip(self.encode_clip_image(uav))
@@ -110,7 +111,8 @@ class AllMapGeoCLIP(nn.Module):
             sat_input = torch.cat([sat_clip_feat.float(), coord_feat], dim=1)
         else:
             sat_input = sat_clip_feat.float()
-        return F.normalize(self.sat_head(sat_input), dim=1)
+        embedding = self.sat_head(sat_input)
+        return F.normalize(embedding, dim=1)
 
     def encode_relation(self, z_uav, z_sat, logits):
         if self.qah_relation_head is None:
@@ -124,104 +126,180 @@ class AllMapGeoCLIP(nn.Module):
 
 
 @dataclass
-class ReversibleRouteOutput:
-    fusion_logits: torch.Tensor
-    fusion_probability: torch.Tensor
-    leg_logits: torch.Tensor
-    leg_probability: torch.Tensor
+class ContinuousProgressRNNOutput:
+    refined_logits: torch.Tensor
+    candidate_probability: torch.Tensor
+    move_gate: torch.Tensor
+    heading_residual_rad: torch.Tensor
     measurement_variance: torch.Tensor
     hidden: torch.Tensor
-    cell: torch.Tensor
 
 
-class ReversibleTopologyRecoveryLSTM(nn.Module):
+class ContinuousProgressVisualRNN(nn.Module):
+    """
+    Plain nn.RNNCell.
+
+    Network inputs are image-derived only:
+      current UAV embedding
+      searched SAT embeddings
+      UAV/SAT similarities
+      previous recurrent hidden state
+
+    Absolute XY, waypoint index, route progress, frame index and GT/GPS are not
+    passed into forward_step().
+    """
+
     def __init__(self):
         super().__init__()
-        feature_dim = int(config.LSTM_FEATURE_DIM)
-        hidden_dim = int(config.LSTM_HIDDEN_DIM)
-        self.uav_projection = nn.Sequential(nn.Linear(config.EMBED_DIM, feature_dim), nn.GELU(), nn.LayerNorm(feature_dim))
-        pair_dim = config.EMBED_DIM * 4 + 1
-        self.pair_projection = nn.Sequential(nn.Linear(pair_dim, feature_dim), nn.GELU(), nn.LayerNorm(feature_dim))
-        self.local_projection = nn.Sequential(nn.Linear(config.EMBED_DIM, feature_dim), nn.GELU(), nn.LayerNorm(feature_dim))
-        self.recovery_projection = nn.Sequential(nn.Linear(config.EMBED_DIM, feature_dim), nn.GELU(), nn.LayerNorm(feature_dim))
-        numeric_dim = 4 + 4 + int(config.LEG_EVIDENCE_DIM) + int(config.ROUTE_CONTEXT_DIM)
-        self.numeric_projection = nn.Sequential(nn.Linear(numeric_dim, feature_dim), nn.GELU(), nn.LayerNorm(feature_dim))
-        self.lstm = nn.LSTMCell(feature_dim * 5, hidden_dim)
-        self.dropout = nn.Dropout(float(config.LSTM_DROPOUT))
-        self.fusion_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim // 2), nn.GELU(), nn.Linear(hidden_dim // 2, int(config.HYPOTHESIS_COUNT)))
-        nn.init.zeros_(self.fusion_head[-1].weight)
-        nn.init.zeros_(self.fusion_head[-1].bias)
-        self.leg_head = nn.Sequential(nn.Linear(hidden_dim + int(config.LEG_EVIDENCE_DIM), hidden_dim // 2), nn.GELU(), nn.Linear(hidden_dim // 2, int(config.LEG_STATE_COUNT)))
-        nn.init.zeros_(self.leg_head[-1].weight)
-        nn.init.zeros_(self.leg_head[-1].bias)
-        with torch.no_grad():
-            self.leg_head[-1].bias[int(config.LEG_CURRENT)] = 1.0
-        self.variance_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim // 2), nn.GELU(), nn.Linear(hidden_dim // 2, 2))
-        initial_var = 5.0
+        feature_dim = int(config.RNN_FEATURE_DIM)
+        hidden_dim = int(config.RNN_HIDDEN_DIM)
+
+        self.uav_projection = nn.Sequential(
+            nn.Linear(config.EMBED_DIM, feature_dim),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
+        )
+        self.sat_context_projection = nn.Sequential(
+            nn.Linear(config.EMBED_DIM, feature_dim),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
+        )
+        self.visual_stats_projection = nn.Sequential(
+            nn.Linear(5, feature_dim),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
+        )
+
+        # Requested simple RNN: no LSTM, no GRU.
+        self.rnn = nn.RNNCell(
+            feature_dim * 3,
+            hidden_dim,
+            nonlinearity="tanh",
+        )
+        self.dropout = nn.Dropout(float(config.RNN_DROPOUT))
+
+        self.candidate_uav_projection = nn.Linear(config.EMBED_DIM, 96)
+        self.candidate_sat_projection = nn.Linear(config.EMBED_DIM, 96)
+        self.candidate_hidden_projection = nn.Linear(hidden_dim, 96)
+
+        self.candidate_score_head = nn.Sequential(
+            nn.Linear(96 + 96 + 96 + 1, 160),
+            nn.GELU(),
+            nn.Linear(160, 80),
+            nn.GELU(),
+            nn.Linear(80, 1),
+        )
+        # Epoch 1 starts from raw trained visual retrieval, not random reranking.
+        nn.init.zeros_(self.candidate_score_head[-1].weight)
+        nn.init.zeros_(self.candidate_score_head[-1].bias)
+
+        self.move_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Linear(hidden_dim // 2, 1),
+        )
+        nn.init.zeros_(self.move_head[-1].weight)
+        nn.init.constant_(self.move_head[-1].bias, -0.6)
+
+        self.heading_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Linear(hidden_dim // 2, 1),
+        )
+        nn.init.zeros_(self.heading_head[-1].weight)
+        nn.init.zeros_(self.heading_head[-1].bias)
+
+        self.variance_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Linear(hidden_dim // 2, 1),
+        )
+        initial_var = 3.0
         inv_softplus = math.log(math.exp(initial_var) - 1.0)
         nn.init.zeros_(self.variance_head[-1].weight)
         nn.init.constant_(self.variance_head[-1].bias, inv_softplus)
 
     def initial_state(self, batch_size, device, dtype):
-        hidden = torch.zeros(int(batch_size), int(config.LSTM_HIDDEN_DIM), device=device, dtype=dtype)
-        return hidden, torch.zeros_like(hidden)
+        return torch.zeros(
+            int(batch_size),
+            int(config.RNN_HIDDEN_DIM),
+            device=device,
+            dtype=dtype,
+        )
 
     @staticmethod
-    def masked_probability(logits, valid_mask):
-        masked = torch.where(valid_mask, logits, torch.full_like(logits, -1e4))
-        return torch.softmax(masked, dim=1)
+    def visual_stats(logits):
+        probability = torch.softmax(logits, dim=1)
+        count = max(2, int(logits.shape[1]))
+        entropy = -(probability * probability.clamp_min(1e-8).log()).sum(dim=1)
+        entropy = entropy / math.log(float(count))
+        top2 = probability.topk(k=min(2, int(probability.shape[1])), dim=1).values
+        maximum = top2[:, 0]
+        margin = top2[:, 0] - top2[:, 1] if top2.shape[1] > 1 else top2[:, 0]
+        mean = logits.mean(dim=1)
+        std = logits.std(dim=1, unbiased=False)
+        return torch.stack(
+            [
+                entropy,
+                margin,
+                maximum,
+                torch.tanh(mean / 20.0),
+                torch.tanh(std / 10.0),
+            ],
+            dim=1,
+        )
 
-    @staticmethod
-    def visual_stats(logits, valid_mask):
-        probability = ReversibleTopologyRecoveryLSTM.masked_probability(logits, valid_mask)
-        valid_count = valid_mask.sum(dim=1).clamp_min(2).float()
-        entropy = -(probability * probability.clamp_min(1e-8).log()).sum(dim=1) / valid_count.log()
-        top2 = probability.topk(k=min(2, probability.shape[1]), dim=1).values
-        if top2.shape[1] == 1:
-            margin = top2[:, 0]
-            maximum = top2[:, 0]
-        else:
-            margin = top2[:, 0] - top2[:, 1]
-            maximum = top2[:, 0]
-        mask_float = valid_mask.float()
-        count = mask_float.sum(dim=1).clamp_min(1.0)
-        mean = (logits * mask_float).sum(dim=1) / count
-        variance = (((logits - mean.unsqueeze(1)) ** 2) * mask_float).sum(dim=1) / count
-        std = torch.tanh(variance.sqrt() / 10.0)
-        return torch.stack([entropy, margin, maximum, std], dim=1)
+    def refine_candidates(self, z_uav, z_sat, raw_logits, previous_hidden):
+        batch, count, _ = z_sat.shape
+        q = self.candidate_uav_projection(z_uav).unsqueeze(1).expand(-1, count, -1)
+        k = self.candidate_sat_projection(z_sat)
+        h = self.candidate_hidden_projection(previous_hidden).unsqueeze(1).expand(-1, count, -1)
+        raw = torch.tanh(raw_logits.unsqueeze(-1) / 20.0)
+        pair = torch.cat([q * k, torch.abs(q - k), h, raw], dim=2)
+        residual = self.candidate_score_head(
+            pair.reshape(-1, pair.shape[-1])
+        ).reshape(batch, count)
+        return raw_logits + float(config.CANDIDATE_REFINEMENT_SCALE) * torch.tanh(residual)
 
-    @staticmethod
-    def weighted_context(logits, valid_mask, z_sat):
-        p = ReversibleTopologyRecoveryLSTM.masked_probability(logits, valid_mask)
-        return (p.unsqueeze(-1) * z_sat).sum(dim=1)
+    def forward_step(self, z_uav, z_sat, raw_logits, hidden):
+        if hidden is None:
+            hidden = self.initial_state(z_uav.shape[0], z_uav.device, z_uav.dtype)
 
-    def forward_step(self, z_uav, previous_z_uav, local_z_sat, local_raw_logits, local_valid_mask,
-                     recovery_z_sat, recovery_raw_logits, recovery_valid_mask,
-                     leg_evidence, leg_valid_mask, route_context, hidden, cell):
-        batch = z_uav.shape[0]
-        if hidden is None or cell is None:
-            hidden, cell = self.initial_state(batch, z_uav.device, z_uav.dtype)
-        if previous_z_uav is None:
-            previous_z_uav = z_uav
-        local_context = self.weighted_context(local_raw_logits, local_valid_mask, local_z_sat)
-        recovery_context = self.weighted_context(recovery_raw_logits, recovery_valid_mask, recovery_z_sat)
-        local_stats = self.visual_stats(local_raw_logits, local_valid_mask)
-        recovery_stats = self.visual_stats(recovery_raw_logits, recovery_valid_mask)
-        pair_cos = (z_uav * previous_z_uav).sum(dim=1, keepdim=True)
-        pair = torch.cat([z_uav, previous_z_uav, torch.abs(z_uav - previous_z_uav), z_uav * previous_z_uav, pair_cos], dim=1)
-        numeric = torch.cat([local_stats, recovery_stats, leg_evidence, route_context], dim=1)
-        recurrent_input = torch.cat([
-            self.uav_projection(z_uav), self.pair_projection(pair), self.local_projection(local_context),
-            self.recovery_projection(recovery_context), self.numeric_projection(numeric)
-        ], dim=1)
-        hidden, cell = self.lstm(recurrent_input, (hidden, cell))
-        head_hidden = self.dropout(hidden)
-        fusion_logits = self.fusion_head(head_hidden)
-        fusion_probability = torch.softmax(fusion_logits / float(config.BRANCH_SOFTMAX_TEMPERATURE), dim=1)
-        raw_leg_logits = self.leg_head(torch.cat([head_hidden, leg_evidence], dim=1))
-        leg_logits = torch.where(leg_valid_mask, raw_leg_logits, torch.full_like(raw_leg_logits, -1e4))
-        leg_probability = torch.softmax(leg_logits, dim=1)
-        measurement_variance = (F.softplus(self.variance_head(head_hidden)) + float(config.KALMAN_R_MIN_VAR)).clamp(max=float(config.KALMAN_R_MAX_VAR))
-        return ReversibleRouteOutput(fusion_logits=fusion_logits, fusion_probability=fusion_probability,
-                                     leg_logits=leg_logits, leg_probability=leg_probability,
-                                     measurement_variance=measurement_variance, hidden=hidden, cell=cell)
+        refined_logits = self.refine_candidates(
+            z_uav,
+            z_sat,
+            raw_logits,
+            hidden,
+        )
+        probability = torch.softmax(refined_logits, dim=1)
+        sat_context = (probability.unsqueeze(-1) * z_sat).sum(dim=1)
+        stats = self.visual_stats(refined_logits)
+
+        recurrent_input = torch.cat(
+            [
+                self.uav_projection(z_uav),
+                self.sat_context_projection(sat_context),
+                self.visual_stats_projection(stats),
+            ],
+            dim=1,
+        )
+        new_hidden = self.rnn(recurrent_input, hidden)
+        head_hidden = self.dropout(new_hidden)
+
+        move_gate = torch.sigmoid(self.move_head(head_hidden))
+        heading_residual_rad = torch.tanh(self.heading_head(head_hidden)) * math.radians(
+            float(config.RNN_HEADING_RESIDUAL_MAX_DEG)
+        )
+        variance = (
+            F.softplus(self.variance_head(head_hidden))
+            + float(config.KALMAN_R_MIN_VAR)
+        ).clamp(max=float(config.KALMAN_R_MAX_VAR))
+
+        return ContinuousProgressRNNOutput(
+            refined_logits=refined_logits,
+            candidate_probability=probability,
+            move_gate=move_gate,
+            heading_residual_rad=heading_residual_rad,
+            measurement_variance=variance,
+            hidden=new_hidden,
+        )
