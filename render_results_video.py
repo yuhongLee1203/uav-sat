@@ -281,7 +281,7 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
 
 def render_route(route_name):
     csv_path = config.OUTPUT_DIR / (
-        route_name + "_controlled_gtprior_causal_heading_rnn_polynomial_kalman_frames.csv"
+        route_name + "_controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
     )
     if not csv_path.exists():
         raise FileNotFoundError(

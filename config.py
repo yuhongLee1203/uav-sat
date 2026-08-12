@@ -2,12 +2,12 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameCausalHeadingGRUPolynomialConstrainedKalman_v31"
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "controlled_gtprior_causal_heading_rnn_polynomial_kalman_v31"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameCausalHeadingContinuousWaypointGRUPolynomialKalman_v32"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_v32"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_causal_heading_state_gru_A_only.pt"
-LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_causal_heading_state_gru_A_only_latest.pt"
+TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_continuous_waypoint_state_gru_A_only.pt"
+LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_continuous_waypoint_state_gru_A_only_latest.pt"
 
 ROUTE_ROOTS = [
     Path("/yh/study/new_data_2/model_dataset_new_1_flight"),
@@ -17,7 +17,7 @@ ROUTE_ROOTS = [
 ROUTE_NAMES = ["route_A", "route_B", "route_C"]
 
 # -----------------------------------------------------------------------------
-# v31 controlled GT-prior causal-heading protocol. This is deliberately NOT W0-only navigation.
+# v32 controlled GT-prior causal-heading continuous-waypoint protocol. This is deliberately NOT W0-only navigation.
 # Every frame uses GT + deterministic jitter as the local SAT search prior.
 # RNN -> second-order polynomial -> visual measurement -> external Kalman is kept.
 # The final route progress is capped at the current GT progress for visualization
@@ -32,7 +32,7 @@ CONTROLLED_GT_PRIOR_JITTER_RADIUS_RATE = 0.017
 CONTROLLED_GT_PRIOR_JITTER_MIN_FRACTION = 0.40
 CONTROLLED_GT_PRIOR_JITTER_MAX_FRACTION = 0.75
 CONTROLLED_FINAL_PROGRESS_CAP_TO_GT = True
-CONTROLLED_PROTOCOL_NAME = "GT+smooth-jitter_controlled_local_prior_3frame_causal_heading_RNN_polynomial_constrained_Kalman"
+CONTROLLED_PROTOCOL_NAME = "GT+smooth-jitter_controlled_local_prior_3frame_causal_heading_continuous_waypoint_RNN_polynomial_Kalman"
 
 WAYPOINT_DIR = PROJECT_ROOT / "route_waypoints"
 WAYPOINT_FILES = {
@@ -87,7 +87,7 @@ CANDIDATE_CAPTURE_RADIUS_M = 7.5
 MIN_TRAIN_CAPTURE_RATE = 0.95
 
 # -----------------------------------------------------------------------------
-# v31 controlled local acquisition. Exactly one 6x6 SAT window is used per frame
+# v32 controlled local acquisition. Exactly one 6x6 SAT window is used per frame
 # and its center is current-frame GT + bounded deterministic jitter. The legacy
 # acquisition fields stay for checkpoint/code compatibility but the bank size is 1.
 # -----------------------------------------------------------------------------
@@ -142,6 +142,7 @@ RNN_NUMERIC_DIM = 22
 RNN_DROPOUT = 0.10
 MAX_FORWARD_SPEED_M_PER_FRAME = 14.0
 MAX_CROSS_SPEED_M_PER_FRAME = 5.0
+MAX_FINAL_CROSS_TRACK_M = 10.0
 MAX_FORWARD_ACCEL_M_PER_FRAME2 = 5.0
 MAX_CROSS_ACCEL_M_PER_FRAME2 = 4.0
 MAX_POLYNOMIAL_STEP_M_PER_FRAME = 14.0
@@ -208,7 +209,7 @@ KALMAN_NIS_SOFT_THRESHOLD = 9.21
 KALMAN_NIS_MAX_R_SCALE = 40.0
 KALMAN_NIS_CONFIDENCE_BOOST = 2.0
 
-# v31 no-jump causal-heading controlled estimator. The single-hypothesis acquisition score is
+# v32 continuous-waypoint no-jump controlled estimator. The single-hypothesis acquisition score is
 # never used as confidence because with one hypothesis it is identically 1.
 # Confidence is derived from the 6x6 local posterior itself.
 VISUAL_CONFIDENCE_FLOOR = 0.08
@@ -238,14 +239,20 @@ KALMAN_FINAL_STEP_MAX_M = 7.00
 
 # Smooth the lateral route frame around waypoint corners so a nonzero cross-track
 # estimate does not rotate discontinuously when s crosses a waypoint boundary.
-ROUTE_FRAME_SMOOTH_RADIUS_M = 0.0
+ROUTE_FRAME_SMOOTH_RADIUS_M = 24.0
+ROUTE_FRAME_POSTTURN_ONLY = True
+ROUTE_PROJECTION_SWITCH_RADIUS_M = 24.0
+ROUTE_PROJECTION_SWITCH_MARGIN_M = 2.0
+ROUTE_PROJECTION_PROGRESS_STEP_FACTOR = 1.75
+ROUTE_PROJECTION_PROGRESS_STEP_SLACK_M = 1.0
 
 # Composite early-stop score for the controlled local-prior validation protocol.
 EARLY_SCORE_SPEED_WEIGHT = 2.0
 EARLY_SCORE_PROGRESS_WEIGHT = 0.15
 EARLY_SCORE_MISS_WEIGHT = 0.06
 
-JUMP_TOLERANCE_M = 3.0
+JUMP_TOLERANCE_M = 1.0
+LEGACY_STEP_THRESHOLD_M = 3.0
 VIDEO_FPS = 12.0
 VIDEO_WIDTH = 1800
 VIDEO_HEIGHT = 900
@@ -255,13 +262,17 @@ DEVICE = "cuda"
 FEATURE_CACHE_DTYPE = "float16"
 
 # -----------------------------------------------------------------------------
-# v31 causal GT-motion envelope. This controlled protocol intentionally uses the
+# v32 controlled pace envelope. This controlled protocol intentionally uses the
 # current GT trajectory only as a speed/turn safety envelope, because the user
 # requested that the displayed prediction never outrun or pre-turn the GT.
 # It is not an autonomous-navigation protocol.
 # -----------------------------------------------------------------------------
 CONTROLLED_GT_MOTION_ENVELOPE = True
-CONTROLLED_MAX_STEP_RATIO = 1.00
+CONTROLLED_MAX_STEP_RATIO = 1.25
+CONTROLLED_PACE_ASSIST = True
+CONTROLLED_PACE_MIN_RATIO = 0.92
+CONTROLLED_PACE_CATCHUP_GAIN = 0.08
+CONTROLLED_PACE_MAX_EXTRA_M = 0.75
 CONTROLLED_MIN_STEP_ALLOWANCE_M = 0.0
 CONTROLLED_CAUSAL_HEADING = True
 CONTROLLED_NO_PRETURN = True

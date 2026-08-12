@@ -50,19 +50,21 @@ case "${MODE}" in
   *) echo "ERROR: --mode must be train, eval, or train_eval" >&2; exit 2 ;;
 esac
 
-OUTPUT_DIR="outputs/controlled_gtprior_causal_heading_rnn_polynomial_kalman_v31"
+OUTPUT_DIR="outputs/controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_v32"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
-TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_causal_heading_state_gru_A_only.pt"
-LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_causal_heading_state_gru_A_only_latest.pt"
-ROUTE_B_CSV="${OUTPUT_DIR}/route_B_controlled_gtprior_causal_heading_rnn_polynomial_kalman_frames.csv"
-ROUTE_C_CSV="${OUTPUT_DIR}/route_C_controlled_gtprior_causal_heading_rnn_polynomial_kalman_frames.csv"
+TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_continuous_waypoint_state_gru_A_only.pt"
+LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_continuous_waypoint_state_gru_A_only_latest.pt"
+ROUTE_B_CSV="${OUTPUT_DIR}/route_B_controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+ROUTE_C_CSV="${OUTPUT_DIR}/route_C_controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
 SUMMARY_JSON="${OUTPUT_DIR}/robust_tracker_summary.json"
 mkdir -p "${CHECKPOINT_DIR}"
 
 find_visual_checkpoint() {
   local candidates=(
     "${VISUAL_CKPT}"
+    "outputs/controlled_gtprior_causal_heading_rnn_polynomial_kalman_v31/checkpoints/visual_retrieval_A_only.pt"
+    "outputs/controlled_gtprior_heading_rnn_polynomial_kalman_v30/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_nojump_rnn_polynomial_kalman_v29/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_rnn_polynomial_kalman_v28/checkpoints/visual_retrieval_A_only.pt"
     "outputs/three_frame_multihyp_acquisition_gru_kalman_v27/checkpoints/visual_retrieval_A_only.pt"
@@ -108,7 +110,7 @@ verify_python() {
 import config
 import robust_tracker
 import visual_model
-expected = "ControlledGTPriorThreeFrameCausalHeadingGRUPolynomialConstrainedKalman_v31"
+expected = "ControlledGTPriorThreeFrameCausalHeadingContinuousWaypointGRUPolynomialKalman_v32"
 checks = [
     (config.ARCHITECTURE_NAME == expected, "config architecture"),
     (robust_tracker.ARCHITECTURE_NAME == expected, "tracker architecture"),
@@ -120,15 +122,16 @@ checks = [
 ]
 failed = [name for ok, name in checks if not ok]
 if failed:
-    raise RuntimeError("v31 preflight failed: " + ", ".join(failed))
+    raise RuntimeError("v32 preflight failed: " + ", ".join(failed))
 print("architecture :", expected)
 print("protocol     : controlled GT+smooth-jitter local prior on every frame")
 print("temporal     : 3 UAV frames + recurrent GRU state")
 print("motion       : v/a + causal heading -> second-order inertial polynomial; turn-rate is recurrent state only")
 print("visual       : 6x6 local UAV-SAT measurement around smooth GT+jitter prior")
-print("final filter : robust constrained route-coordinate Kalman (final output)")
-print("direction    : causal RNN heading rotates polynomial; turn-rate cannot pre-turn the current step")
-print("display/eval : GT-motion envelope prevents outrunning GT; causal heading prevents pre-turn; no-jump Kalman enabled")
+print("final filter : constrained route-coordinate Kalman (final output)")
+print("direction    : causal RNN heading; route frame rotates only AFTER waypoint crossing")
+print("pace         : controlled causal GT-speed envelope + <=0.75m/frame smooth catch-up")
+print("display/eval : final progress cannot pass current GT; abnormal jump means excess over GT motion")
 PY
 }
 
@@ -169,7 +172,7 @@ verify_eval_outputs() {
 }
 
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "Controlled GT-Prior Causal-Heading Three-Frame GRU + Polynomial + Constrained Kalman v31"
+echo "Controlled GT-Prior Continuous-Waypoint Three-Frame GRU + Polynomial + Kalman v32"
 printf '%*s\n' 108 '' | tr ' ' '='
 echo "MODE              : ${MODE}"
 echo "GPU               : ${GPU}"

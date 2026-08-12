@@ -16,7 +16,7 @@ from visual_localizer import CandidateBatch, FrozenVisualLocalizer, train_visual
 from visual_model import ThreeFrameRouteStateGRU
 
 
-ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameCausalHeadingGRUPolynomialConstrainedKalman_v31"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameCausalHeadingContinuousWaypointGRUPolynomialKalman_v32"
 
 
 @dataclass
@@ -132,26 +132,39 @@ class WaypointRoute:
         return frame.start_xy + frame.leg_progress_m * frame.unit
 
     def smooth_route_cross(self, s_m):
-        """Continuous route cross-axis around waypoint corners.
+        """Causal, post-waypoint-only route frame.
 
-        The old piecewise leg cross-axis rotated instantaneously at a waypoint.
-        With non-zero e this can create an apparent XY jump even when (s,e) is
-        smooth. v31 sets the smoothing radius to zero so the route tangent cannot rotate before the waypoint.
+        A piecewise route frame is discontinuous at a waypoint: the same nonzero
+        cross-track state ``e`` is multiplied by a different cross axis on the
+        very next frame, which created the 10--74 m XY spikes seen in v31.  v32
+        never rotates before a waypoint.  After the filtered progress crosses a
+        waypoint, the frame rotates continuously from the previous leg to the
+        new leg over ``ROUTE_FRAME_SMOOTH_RADIUS_M`` metres.
         """
         s = float(np.clip(s_m, 0.0, self.total_length_m))
+        frame = self.frame_from_se(s, 0.0)
+        leg = int(frame.leg_index)
         radius = max(float(getattr(config, "ROUTE_FRAME_SMOOTH_RADIUS_M", 0.0)), 0.0)
-        if radius <= 1e-6:
-            return self.frame_from_se(s, 0.0).cross.copy()
-        s0 = max(0.0, s - radius)
-        s1 = min(self.total_length_m, s + radius)
-        p0 = self.centerline_xy(s0)
-        p1 = self.centerline_xy(s1)
-        tangent = p1 - p0
-        norm = float(np.linalg.norm(tangent))
+        if radius <= 1e-6 or leg <= 0 or not bool(getattr(config, "ROUTE_FRAME_POSTTURN_ONLY", True)):
+            return frame.cross.copy()
+
+        boundary = float(self.cumulative_s[leg])
+        distance_after = float(max(s - boundary, 0.0))
+        if distance_after >= radius:
+            return frame.cross.copy()
+
+        alpha = float(np.clip(distance_after / max(radius, 1e-6), 0.0, 1.0))
+        # Smoothstep: zero angular velocity exactly at the waypoint, then a
+        # gradual causal rotation.  There is no dependence on future progress.
+        alpha = alpha * alpha * (3.0 - 2.0 * alpha)
+        previous_unit = self.units[leg - 1]
+        current_unit = self.units[leg]
+        blended = (1.0 - alpha) * previous_unit + alpha * current_unit
+        norm = float(np.linalg.norm(blended))
         if norm <= 1e-9:
-            unit = self.frame_from_se(s, 0.0).unit.copy()
+            unit = current_unit.copy()
         else:
-            unit = tangent / norm
+            unit = blended / norm
         return np.asarray([-unit[1], unit[0]], dtype=np.float64)
 
     def smooth_route_unit(self, s_m):
@@ -200,37 +213,63 @@ class WaypointRoute:
         return float(best[1]), float(best[2]), int(best[3])
 
     def project_gt_monotonic(self, gt_xy):
+        """Sequential GT projection without future-leg teleportation.
+
+        v31 advanced legs by testing whether a point lay beyond the infinite
+        extension of the current segment.  On folded agricultural routes that
+        can be true hundreds of metres before the actual waypoint, producing
+        800+ m progress jumps while XY moved less than one metre.  v32 only
+        considers the current and immediately-next leg and only changes leg near
+        their shared waypoint.  Progress itself is additionally bounded by the
+        observed causal XY displacement, so a route-coordinate target can never
+        teleport farther than the image trajectory did.
+        """
         positions = np.asarray(gt_xy, dtype=np.float64).reshape(-1, 2)
         rows = []
         leg = 0
         previous_s = 0.0
-        for position in positions:
-            while leg < len(self.points) - 2:
-                _, _, raw_along, _ = self.project_on_leg(position, leg)
-                if raw_along < self.leg_lengths[leg]:
-                    break
-                leg += 1
-            candidates = sorted(
-                set(
-                    int(np.clip(value, 0, len(self.points) - 2))
-                    for value in [leg - 1, leg, leg + 1]
-                )
-            )
-            best = None
-            for candidate_leg in candidates:
-                s, e, _, centerline_distance = self.project_on_leg(position, candidate_leg)
-                if s + 2.0 < previous_s:
-                    continue
-                if best is None or centerline_distance < best[0]:
-                    best = (centerline_distance, s, e, candidate_leg)
-            if best is None:
-                s, e, _, _ = self.project_on_leg(position, leg)
-                best = (0.0, max(previous_s, s), e, leg)
-            s = max(previous_s, float(best[1]))
-            e = float(best[2])
-            leg = max(leg, int(best[3]))
-            rows.append([s, e, leg])
-            previous_s = s
+        previous_position = positions[0].copy() if len(positions) else np.zeros(2)
+        switch_radius = float(getattr(config, "ROUTE_PROJECTION_SWITCH_RADIUS_M", 24.0))
+        switch_margin = float(getattr(config, "ROUTE_PROJECTION_SWITCH_MARGIN_M", 2.0))
+        step_factor = float(getattr(config, "ROUTE_PROJECTION_PROGRESS_STEP_FACTOR", 1.75))
+        step_slack = float(getattr(config, "ROUTE_PROJECTION_PROGRESS_STEP_SLACK_M", 1.0))
+
+        for index, position in enumerate(positions):
+            current_s, current_e, current_raw, current_distance = self.project_on_leg(position, leg)
+
+            if leg < len(self.points) - 2:
+                next_s, next_e, next_raw, next_distance = self.project_on_leg(position, leg + 1)
+                waypoint_distance = float(np.linalg.norm(position - self.points[leg + 1]))
+                current_near_end = current_raw >= self.leg_lengths[leg] - switch_radius
+                next_started = next_raw >= -switch_radius
+                next_clearly_better = next_distance + switch_margin < current_distance
+                passed_endpoint = current_raw >= self.leg_lengths[leg]
+                if (
+                    waypoint_distance <= switch_radius
+                    and current_near_end
+                    and next_started
+                    and (next_clearly_better or passed_endpoint)
+                ):
+                    leg += 1
+                    current_s, current_e, current_raw, current_distance = (
+                        next_s, next_e, next_raw, next_distance
+                    )
+
+            candidate_s = max(previous_s, float(current_s))
+            if index > 0:
+                physical_step = float(np.linalg.norm(position - previous_position))
+                max_progress_step = max(step_slack, physical_step * step_factor + step_slack)
+                candidate_s = min(candidate_s, previous_s + max_progress_step)
+            candidate_s = float(np.clip(candidate_s, 0.0, self.total_length_m))
+
+            # Re-evaluate e on the leg implied by the continuous progress.  This
+            # keeps (s,e) geometrically consistent without permitting a leg skip.
+            progress_leg = self.leg_for_s(candidate_s)
+            _, e, _, _ = self.project_on_leg(position, progress_leg)
+            rows.append([candidate_s, float(e), int(progress_leg)])
+            previous_s = candidate_s
+            previous_position = position.copy()
+
         return np.asarray(rows, dtype=np.float64)
 
 
@@ -239,7 +278,7 @@ class RouteKalman:
     """Robust constrained external Kalman in [s, e, vs, ve].
 
     The learned RNN state drives the second-order polynomial prediction. The
-    visual model then supplies a position measurement. v31 keeps Kalman as the
+    visual model then supplies a position measurement. v32 keeps Kalman as the
     final estimator, but constrains the measurement innovation and posterior
     correction so one ambiguous local SAT patch cannot teleport the trajectory.
     """
@@ -331,10 +370,37 @@ class RouteKalman:
             step *= float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / max(norm, 1e-9)
             norm = float(np.linalg.norm(step))
         if max_step_m is not None and bool(getattr(config, "CONTROLLED_GT_MOTION_ENVELOPE", False)):
+            gt_step = max(float(max_step_m), 0.0)
             controlled_limit = max(
                 float(config.CONTROLLED_MIN_STEP_ALLOWANCE_M),
-                float(max_step_m) * float(config.CONTROLLED_MAX_STEP_RATIO),
+                min(
+                    gt_step * float(config.CONTROLLED_MAX_STEP_RATIO),
+                    gt_step + float(config.CONTROLLED_PACE_MAX_EXTRA_M),
+                ),
             )
+
+            # Controlled pace assist: v31 only supplied an upper envelope, so a
+            # slightly slow RNN stayed permanently behind GT.  Because this is
+            # explicitly the GT-prior protocol, v32 also supplies a *lower* causal
+            # pace envelope and a small bounded catch-up term.  The later
+            # max_progress_s clamp still guarantees that the estimate cannot pass
+            # the current GT progress.
+            if bool(getattr(config, "CONTROLLED_PACE_ASSIST", False)) and gt_step > 1e-6:
+                progress_gap = 0.0
+                if max_progress_s is not None:
+                    progress_gap = max(float(max_progress_s) - float(self.x[0]), 0.0)
+                catchup = min(
+                    float(config.CONTROLLED_PACE_MAX_EXTRA_M),
+                    progress_gap * float(config.CONTROLLED_PACE_CATCHUP_GAIN),
+                )
+                desired_forward = min(
+                    controlled_limit,
+                    gt_step * float(config.CONTROLLED_PACE_MIN_RATIO) + catchup,
+                )
+                if step[0] < desired_forward:
+                    step[0] = desired_forward
+                norm = float(np.linalg.norm(step))
+
             if norm > controlled_limit + 1e-12:
                 if controlled_limit <= 1e-12:
                     step[:] = 0.0
@@ -344,7 +410,11 @@ class RouteKalman:
         self.last_previous_position = self.x[:2].copy()
         self.last_motion_step = step.copy()
         self.x[0] = float(np.clip(self.x[0] + step[0], 0.0, float(total_length_m)))
-        self.x[1] = float(self.x[1] + step[1])
+        self.x[1] = float(np.clip(
+            self.x[1] + step[1],
+            -float(config.MAX_FINAL_CROSS_TRACK_M),
+            float(config.MAX_FINAL_CROSS_TRACK_M),
+        ))
         if max_progress_s is not None:
             self.x[0] = min(self.x[0], float(max_progress_s))
         self.x[2] = float(np.clip(
@@ -483,13 +553,15 @@ class RouteKalman:
             float(config.KALMAN_FINAL_STEP_MAX_M),
         ))
         if max_final_step_m is not None and bool(getattr(config, "CONTROLLED_GT_MOTION_ENVELOPE", False)):
-            allowed_step = min(
-                allowed_step,
-                max(
-                    float(config.CONTROLLED_MIN_STEP_ALLOWANCE_M),
-                    float(max_final_step_m) * float(config.CONTROLLED_MAX_STEP_RATIO),
+            gt_step = max(float(max_final_step_m), 0.0)
+            controlled_cap = max(
+                float(config.CONTROLLED_MIN_STEP_ALLOWANCE_M),
+                min(
+                    gt_step * float(config.CONTROLLED_MAX_STEP_RATIO),
+                    gt_step + float(config.CONTROLLED_PACE_MAX_EXTRA_M),
                 ),
             )
+            allowed_step = min(allowed_step, controlled_cap)
         step_norm = float(np.linalg.norm(total_step))
         self.last_step_limited = bool(step_norm > allowed_step + 1e-9)
         self.last_step_limit_m = allowed_step
@@ -501,6 +573,11 @@ class RouteKalman:
         self.x[0] = float(np.clip(self.x[0], 0.0, float(total_length_m)))
         if max_progress_s is not None:
             self.x[0] = min(self.x[0], float(max_progress_s))
+        self.x[1] = float(np.clip(
+            self.x[1],
+            -float(config.MAX_FINAL_CROSS_TRACK_M),
+            float(config.MAX_FINAL_CROSS_TRACK_M),
+        ))
         self.x[2] = float(np.clip(
             self.x[2], 0.0, float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
         ))
@@ -805,7 +882,7 @@ def cap_prediction_to_current_gt(kf, predicted_se, gt_se):
 
 
 def cap_kalman_to_current_gt(kf, final_se, gt_se):
-    """Compatibility cap; v31 also constrains predict/update inside Kalman."""
+    """Compatibility cap; v32 also constrains predict/update inside Kalman."""
     result = np.asarray(final_se, dtype=np.float64).copy()
     capped = False
     if bool(config.CONTROLLED_FINAL_PROGRESS_CAP_TO_GT):
@@ -836,7 +913,7 @@ def build_gt_route_state(cache, route):
 
     The previous heading-aware version used t->t+1 displacement and even t+1 heading changes as the target at
     frame t, which teaches the network to move/turn before the current GT frame
-    has actually done so. v31 uses only the motion already observed up to t.
+    has actually done so. v32 uses only the motion already observed up to t.
     """
     rows = route.project_gt_monotonic(cache.gt_xy.cpu().numpy())
     se = rows[:, :2]
@@ -860,7 +937,13 @@ def build_gt_route_state(cache, route):
         -float(config.MAX_CROSS_SPEED_M_PER_FRAME),
         float(config.MAX_CROSS_SPEED_M_PER_FRAME),
     )
-    step = np.stack([ds, de], axis=1)
+    # Speed supervision follows the actual causal frame-to-frame GT distance.
+    # v31 trained forward speed from route-progress delta, which becomes too
+    # small around corners and made the RNN systematically lag the video.
+    forward_motion = np.clip(
+        gt_step_norm, 0.0, float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
+    )
+    step = np.stack([forward_motion, de], axis=1)
     velocity = step.copy()
     acceleration = np.zeros((n, 2), dtype=np.float64)
     if n > 1:
@@ -1925,6 +2008,8 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     captures = []
     bank_captures = []
     final_steps = []
+    gt_steps = []
+    abnormal_jumps = []
     speed_errors = []
     progress_errors = []
     heading_errors = []
@@ -2038,6 +2123,11 @@ def run_route_inference(route_name, visual, model, cache, route, device):
             else float(np.linalg.norm(final_xy - previous_final_xy))
         )
         final_steps.append(final_step)
+        gt_step_for_jump = float(gt_state["gt_step_norm"][index])
+        gt_steps.append(gt_step_for_jump)
+        excess_step_over_gt = max(0.0, final_step - gt_step_for_jump)
+        abnormal_jump = bool(excess_step_over_gt > float(config.JUMP_TOLERANCE_M))
+        abnormal_jumps.append(float(abnormal_jump))
         target_v = float(gt_state["velocity"][index, 0])
         target_step = float(gt_state["step"][index, 0])
         speed_error = abs(
@@ -2188,6 +2278,9 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "final_x": float(final_xy[0]),
                 "final_y": float(final_xy[1]),
                 "final_step_m": float(final_step),
+                "gt_step_for_jump_m": float(gt_step_for_jump),
+                "excess_step_over_gt_m": float(excess_step_over_gt),
+                "abnormal_jump": int(abnormal_jump),
                 "error_final_m": float(error),
             }
         )
@@ -2209,7 +2302,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = config.OUTPUT_DIR / (
         route_name
-        + "_controlled_gtprior_causal_heading_rnn_polynomial_kalman_frames.csv"
+        + "_controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
     )
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
@@ -2236,10 +2329,21 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     summary["LongestBankMissFrames"] = int(longest_bank_miss)
     summary["MeanFinalStep_m"] = float(np.mean(final_steps))
     summary["MaxFinalStep_m"] = float(np.max(final_steps)) if final_steps else 0.0
+    # A fixed 3 m threshold mislabeled normal flight as a jump (Route B GT
+    # itself moves >3 m on most frames).  v32 reports a jump only when the final
+    # estimator moves more than the actual causal GT motion by the tolerance.
     summary["JumpTolerance_m"] = float(config.JUMP_TOLERANCE_M)
-    summary["JumpRate_pct"] = float(
-        np.mean(np.asarray(final_steps[1:], dtype=np.float64) > float(config.JUMP_TOLERANCE_M)) * 100.0
+    summary["JumpDefinition"] = "final_step > current_GT_step + tolerance"
+    summary["JumpRate_pct"] = float(np.mean(abnormal_jumps[1:]) * 100.0) if len(abnormal_jumps) > 1 else 0.0
+    summary["MeanExcessStepOverGT_m"] = float(np.mean([
+        max(0.0, p - g) for p, g in zip(final_steps, gt_steps)
+    ])) if final_steps else 0.0
+    summary["LegacyStepOver3mRate_pct"] = float(
+        np.mean(np.asarray(final_steps[1:], dtype=np.float64) > float(config.LEGACY_STEP_THRESHOLD_M)) * 100.0
     ) if len(final_steps) > 1 else 0.0
+    summary["GTStepOver3mRate_pct"] = float(
+        np.mean(np.asarray(gt_steps[1:], dtype=np.float64) > float(config.LEGACY_STEP_THRESHOLD_M)) * 100.0
+    ) if len(gt_steps) > 1 else 0.0
     summary["KalmanStepLimited_pct"] = float(
         np.mean([float(row.get("kalman_step_limited", 0)) for row in rows]) * 100.0
     ) if rows else 0.0
