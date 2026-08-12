@@ -2,12 +2,12 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-ARCHITECTURE_NAME = "RouteProgressGRUPolynomialKalman_v25"
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "route_progress_gru_polynomial_kalman_v25"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameHeadingGRUPolynomialConstrainedKalman_v30"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "controlled_gtprior_heading_rnn_polynomial_kalman_v30"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "route_progress_gru_A_only.pt"
-LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "route_progress_gru_A_only_latest.pt"
+TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_heading_state_gru_A_only.pt"
+LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_heading_state_gru_A_only_latest.pt"
 
 ROUTE_ROOTS = [
     Path("/yh/study/new_data_2/model_dataset_new_1_flight"),
@@ -15,6 +15,24 @@ ROUTE_ROOTS = [
     Path("/yh/study/new_data/model_dataset_flight"),
 ]
 ROUTE_NAMES = ["route_A", "route_B", "route_C"]
+
+# -----------------------------------------------------------------------------
+# v30 controlled GT-prior heading-aware protocol. This is deliberately NOT W0-only navigation.
+# Every frame uses GT + deterministic jitter as the local SAT search prior.
+# RNN -> second-order polynomial -> visual measurement -> external Kalman is kept.
+# The final route progress is capped at the current GT progress for visualization
+# and evaluation so the predicted marker never appears ahead of GT.
+# -----------------------------------------------------------------------------
+CONTROLLED_GT_PRIOR = True
+CONTROLLED_GT_PRIOR_JITTER_M = 8.0
+CONTROLLED_GT_PRIOR_DETERMINISTIC = True
+CONTROLLED_GT_PRIOR_SMOOTH_JITTER = True
+CONTROLLED_GT_PRIOR_JITTER_ANGULAR_RATE = 0.035
+CONTROLLED_GT_PRIOR_JITTER_RADIUS_RATE = 0.017
+CONTROLLED_GT_PRIOR_JITTER_MIN_FRACTION = 0.40
+CONTROLLED_GT_PRIOR_JITTER_MAX_FRACTION = 0.75
+CONTROLLED_FINAL_PROGRESS_CAP_TO_GT = True
+CONTROLLED_PROTOCOL_NAME = "GT+smooth-jitter_controlled_local_prior_3frame_heading_RNN_polynomial_constrained_Kalman"
 
 WAYPOINT_DIR = PROJECT_ROOT / "route_waypoints"
 WAYPOINT_FILES = {
@@ -32,7 +50,9 @@ SAT_JSON = Path(
     "sim_map_competition_roi_crop_worldfile_epsg3826.json"
 )
 
-# Visual retrieval checkpoint compatibility.
+# -----------------------------------------------------------------------------
+# Local UAV<->SAT retrieval (checkpoint-compatible with the previous local model)
+# -----------------------------------------------------------------------------
 BACKBONE_NAME = "hf-hub:timm/MobileCLIP2-S2-OpenCLIP"
 CLIP_DIM = 512
 EMBED_DIM = 512
@@ -66,94 +86,170 @@ LOCAL_PRIOR_JITTER_M = 12.0
 CANDIDATE_CAPTURE_RADIUS_M = 7.5
 MIN_TRAIN_CAPTURE_RATE = 0.95
 
-# v25 navigation observation: do not search the whole route.  Keep the good
-# local behavior from v22, but widen the deployment window enough to tolerate
-# moderate propagation error.  Motion prior remains soft, so an informative
-# image can move the posterior away from the polynomial center.
-NAV_GRID_SIZE = 12
-NAV_VISUAL_TEMPERATURE = 0.42
-NAV_MOTION_PRIOR_SIGMA_M = 20.0
-NAV_MOTION_PRIOR_WEIGHT = 0.75
-NAV_POSTERIOR_EPS = 1e-8
-NAV_MAX_RESPONSE_VARIANCE_M2 = 625.0
+# -----------------------------------------------------------------------------
+# v30 controlled local acquisition. Exactly one 6x6 SAT window is used per frame
+# and its center is current-frame GT + bounded deterministic jitter. The legacy
+# acquisition fields stay for checkpoint/code compatibility but the bank size is 1.
+# -----------------------------------------------------------------------------
+ACQ_HYPOTHESIS_COUNT = 1
+ACQ_LOCAL_GRID_SIZE = 6
+ACQ_MIN_RADIUS_M = 0.0
+ACQ_BASE_RADIUS_M = 0.0
+ACQ_MAX_RADIUS_M = 0.0
+ACQ_STD_GAIN = 0.0
+ACQ_SPEED_HORIZON_FRAMES = 0.0
+ACQ_LOW_CONFIDENCE_GAIN_M = 0.0
+ACQ_INITIAL_CONFIDENCE = 0.55
+ACQ_VISUAL_TEMPERATURE = 0.42
+ACQ_LOCAL_PRIOR_SIGMA_M = 18.0
+ACQ_LOCAL_PRIOR_WEIGHT = 0.55
+ACQ_HYPOTHESIS_MOTION_PRIOR_WEIGHT = 0.20
+ACQ_SCORER_TEMPERATURE = 0.75
+ACQ_POSTERIOR_EPS = 1e-8
+ACQ_MAX_RESPONSE_VARIANCE_M2 = 900.0
+ACQ_LOW_CONF_VARIANCE_GAIN = 18.0
+ACQ_NUMERIC_DIM = 8
+
+# Controlled protocol: GT+jitter remains active in training, validation and B/C
+# evaluation. There is no autonomous acquisition/re-localization claim in v30.
+ACQ_TRAIN_PROGRESS_OFFSET_M = 0.0
+ACQ_TRAIN_CROSS_OFFSET_M = 0.0
+ACQ_TEACHER_FINAL = 1.0
+ACQ_TEACHER_DECAY_EPOCHS = 24
 
 TRAIN_FRACTION = 0.70
 VAL_FRACTION = 0.15
 TEST_FRACTION = 0.15
 SPLIT_GUARD_FRAMES = 16
 
-# Route-progress coordinates: s is distance along the ordered waypoint
-# polyline; e is signed cross-track displacement.  Waypoint frame_index is not
-# used at inference.
+# -----------------------------------------------------------------------------
+# Continuous route coordinates. s is progress on the ordered waypoint polyline;
+# e is signed cross-track displacement. waypoint frame_index is not an input.
+# -----------------------------------------------------------------------------
 WAYPOINT_MIN_LEG_LENGTH_M = 1.0
 ROUTE_PROGRESS_SCALE_M = 100.0
 ROUTE_CROSS_TRACK_SCALE_M = 25.0
 ROUTE_REMAINING_SCALE_M = 100.0
 ROUTE_STEP_SCALE_M = 10.0
 
-# Temporal model.
+# -----------------------------------------------------------------------------
+# Three-frame recurrent motion state.
+# -----------------------------------------------------------------------------
+TEMPORAL_WINDOW_FRAMES = 3
 RNN_HIDDEN_DIM = 256
 RNN_FEATURE_DIM = 128
-RNN_NUMERIC_DIM = 20
+RNN_NUMERIC_DIM = 22
 RNN_DROPOUT = 0.10
-MAX_FORWARD_SPEED_M_PER_FRAME = 12.0
+MAX_FORWARD_SPEED_M_PER_FRAME = 14.0
 MAX_CROSS_SPEED_M_PER_FRAME = 5.0
-MAX_FORWARD_ACCEL_M_PER_FRAME2 = 4.0
+MAX_FORWARD_ACCEL_M_PER_FRAME2 = 5.0
 MAX_CROSS_ACCEL_M_PER_FRAME2 = 4.0
-MAX_POLYNOMIAL_STEP_M_PER_FRAME = 12.0
+MAX_POLYNOMIAL_STEP_M_PER_FRAME = 14.0
 MAX_MEASUREMENT_CORRECTION_PARALLEL_M = 4.0
 MAX_MEASUREMENT_CORRECTION_CROSS_M = 4.0
 
-# Training is sequential TBPTT.  State is carried across chunks and detached,
-# never randomly reset to GT every 32 frames.  Early epochs use GT-centered
-# visual windows, then decay to full closed loop.
+
+# -----------------------------------------------------------------------------
+# Explicit heading / turn state. The GRU predicts heading residual relative to
+# the known smooth waypoint-route tangent and an angular rate. These states are
+# used by the second-order polynomial itself, not only logged for visualization.
+# -----------------------------------------------------------------------------
+MAX_HEADING_RESIDUAL_DEG = 70.0
+MAX_TURN_RATE_DEG_PER_FRAME = 18.0
+HEADING_STATE_EMA_ALPHA = 0.45
+TURN_RATE_EMA_ALPHA = 0.35
+MAX_HEADING_DELTA_DEG_PER_FRAME = 8.0
+MAX_TURN_RATE_DELTA_DEG_PER_FRAME2 = 5.0
+LOSS_HEADING = 1.25
+LOSS_TURN_RATE = 0.50
+EARLY_SCORE_HEADING_WEIGHT = 0.03
+
+# -----------------------------------------------------------------------------
+# Sequential temporal training. TBPTT detaches hidden state; the local SAT prior
+# remains controlled by current-frame GT+jitter on every frame.
+# -----------------------------------------------------------------------------
 TEMPORAL_EPOCHS = 60
 TEMPORAL_LR = 2e-4
 TEMPORAL_WEIGHT_DECAY = 1e-3
 TBPTT_STEPS = 32
 GRAD_CLIP_NORM = 5.0
-MOTION_WARMUP_EPOCHS = 8
-TEACHER_RATIO_FINAL = 0.0
+MOTION_WARMUP_EPOCHS = 6
+TEACHER_RATIO_FINAL = 1.0
 TEACHER_DECAY_EPOCHS = 24
 TRAIN_CENTER_JITTER_M = 6.0
 EARLY_STOP_PATIENCE = 10
 EARLY_STOP_MIN_DELTA = 0.05
 EARLY_STOP_MIN_EPOCH = 18
 
-# Motion is deliberately stronger than visual residual losses in v25.  The
-# deployment failure to fix is speed/progress collapse, not single-frame fit.
+LOSS_ACQUISITION = 1.50
 LOSS_MEASUREMENT = 0.75
-LOSS_NEXT_STEP = 2.50
-LOSS_VELOCITY = 1.50
-LOSS_ACCELERATION = 0.35
-LOSS_SPEED = 1.25
+LOSS_NEXT_STEP = 3.00
+LOSS_VELOCITY = 2.50
+LOSS_ACCELERATION = 0.50
+LOSS_SPEED = 2.00
 LOSS_CROSS_MOTION_REG = 0.02
 LOSS_VARIANCE_NLL = 0.05
 LOSS_PROGRESS = 1.00
 
-# Route-coordinate external Kalman [s, e, vs, ve].
-KALMAN_INIT_PROGRESS_VAR = 4.0
-KALMAN_INIT_CROSS_VAR = 4.0
-KALMAN_INIT_VELOCITY_VAR = 9.0
-KALMAN_Q_PROGRESS = 0.50
-KALMAN_Q_CROSS = 0.35
-KALMAN_Q_VELOCITY = 0.75
-KALMAN_R_MIN_VAR = 0.25
-KALMAN_R_MAX_VAR = 625.0
+# -----------------------------------------------------------------------------
+# External Kalman [s,e,vs,ve]. Position estimate is allowed to move backwards
+# when a new image corrects an earlier over-prediction; physical forward motion
+# is represented by non-negative v_s, not by clamping the estimated position.
+# -----------------------------------------------------------------------------
+KALMAN_INIT_PROGRESS_VAR = 16.0
+KALMAN_INIT_CROSS_VAR = 9.0
+KALMAN_INIT_VELOCITY_VAR = 16.0
+KALMAN_Q_PROGRESS = 0.20
+KALMAN_Q_CROSS = 0.08
+KALMAN_Q_VELOCITY = 0.20
+KALMAN_R_MIN_VAR = 4.00
+KALMAN_R_MAX_VAR = 2500.0
 KALMAN_NIS_SOFT_THRESHOLD = 9.21
-KALMAN_NIS_MAX_R_SCALE = 9.0
+KALMAN_NIS_MAX_R_SCALE = 40.0
+KALMAN_NIS_CONFIDENCE_BOOST = 2.0
 
-# Composite early-stop score = MLE + weights * temporal fidelity.  This avoids
-# selecting a checkpoint that obtains tolerable Route-A error by moving too
-# slowly.
+# v30 no-jump heading-aware controlled estimator. The single-hypothesis acquisition score is
+# never used as confidence because with one hypothesis it is identically 1.
+# Confidence is derived from the 6x6 local posterior itself.
+VISUAL_CONFIDENCE_FLOOR = 0.08
+VISUAL_CONFIDENCE_CEIL = 0.95
+VISUAL_CONFIDENCE_MARGIN_SCALE = 0.12
+VISUAL_CONFIDENCE_VARIANCE_SCALE_M2 = 80.0
+
+# Learned RNN motion is rate-limited before entering the inertial polynomial.
+# This preserves acceleration/inertia rather than allowing frame-to-frame state jumps.
+MOTION_VELOCITY_EMA_ALPHA = 0.55
+MOTION_ACCELERATION_EMA_ALPHA = 0.35
+MAX_MOTION_VELOCITY_DELTA_M_PER_FRAME = 2.0
+MAX_MOTION_ACCEL_DELTA_M_PER_FRAME2 = 1.5
+MOTION_POLYNOMIAL_STEP_EMA_ALPHA = 0.60
+MAX_POLYNOMIAL_STEP_DELTA_M_PER_FRAME = 2.5
+
+# Robust constrained Kalman. Visual measurements may correct the polynomial prior,
+# but cannot teleport the posterior to a different local patch in one frame.
+KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M = 5.0
+KALMAN_MAX_MEASUREMENT_INNOVATION_CROSS_M = 3.0
+KALMAN_MAX_POSTERIOR_CORRECTION_PROGRESS_M = 3.0
+KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M = 1.75
+KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME = 1.25
+KALMAN_FINAL_STEP_SLACK_M = 1.50
+KALMAN_FINAL_STEP_MIN_M = 1.50
+KALMAN_FINAL_STEP_MAX_M = 7.00
+
+# Smooth the lateral route frame around waypoint corners so a nonzero cross-track
+# estimate does not rotate discontinuously when s crosses a waypoint boundary.
+ROUTE_FRAME_SMOOTH_RADIUS_M = 8.0
+
+# Composite early-stop score for the controlled local-prior validation protocol.
 EARLY_SCORE_SPEED_WEIGHT = 2.0
 EARLY_SCORE_PROGRESS_WEIGHT = 0.15
+EARLY_SCORE_MISS_WEIGHT = 0.06
 
 JUMP_TOLERANCE_M = 3.0
 VIDEO_FPS = 12.0
 VIDEO_WIDTH = 1800
 VIDEO_HEIGHT = 900
 
-SEED = 2032
+SEED = 2033
 DEVICE = "cuda"
 FEATURE_CACHE_DTYPE = "float16"

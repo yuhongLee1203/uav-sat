@@ -101,17 +101,18 @@ class RouteProgressGRUOutput:
     velocity_se: torch.Tensor
     acceleration_se: torch.Tensor
     next_step_se: torch.Tensor
+    heading_residual_rad: torch.Tensor
+    turn_rate_rad: torch.Tensor
     hidden: torch.Tensor
     state: torch.Tensor
 
 
-class RouteProgressGRU(nn.Module):
-    """Recurrent motion/measurement model in continuous route coordinates.
+class ThreeFrameRouteStateGRU(nn.Module):
+    """Three-frame recurrent route-state model with learned acquisition scoring.
 
-    s: ordered progress along the waypoint polyline.
-    e: signed cross-track displacement.
-    No learned waypoint classifier is needed; waypoint index is a deterministic
-    consequence of the final filtered s after the current visual update.
+    Short-term motion evidence comes from three UAV embeddings. Long-term state
+    is carried by the GRU hidden state. A separate recurrent acquisition scorer
+    ranks multiple *local* SAT windows before the main motion/measurement update.
     """
 
     def __init__(self):
@@ -128,7 +129,9 @@ class RouteProgressGRU(nn.Module):
             )
 
         self.uav_projection = projection(config.EMBED_DIM)
-        self.delta_uav_projection = projection(config.EMBED_DIM)
+        self.clip_mean_projection = projection(config.EMBED_DIM)
+        self.delta_recent_projection = projection(config.EMBED_DIM)
+        self.delta_accel_projection = projection(config.EMBED_DIM)
         self.sat_projection = projection(config.EMBED_DIM)
         self.numeric_projection = nn.Sequential(
             nn.Linear(int(config.RNN_NUMERIC_DIM), feature_dim),
@@ -137,7 +140,8 @@ class RouteProgressGRU(nn.Module):
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
-        self.gru = nn.GRUCell(feature_dim * 4, hidden_dim)
+
+        self.gru = nn.GRUCell(feature_dim * 6, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
         def head(out_dim):
@@ -149,14 +153,40 @@ class RouteProgressGRU(nn.Module):
             )
 
         self.motion_head = head(4)
+        self.heading_head = head(2)
         self.correction_head = head(2)
         self.variance_head = head(2)
 
-        # Start near a small positive forward speed, not an arbitrary 3 m/frame.
+        # Local posterior / recurrent acquisition scorer. It sees current 3-frame motion,
+        # the previous recurrent state, each local SAT context and local score
+        # quality. It does NOT search the whole route as one flat global gallery.
+        self.acq_hidden_projection = projection(hidden_dim)
+        self.acq_numeric_projection = nn.Sequential(
+            nn.Linear(int(config.ACQ_NUMERIC_DIM), feature_dim),
+            nn.GELU(),
+            nn.Linear(feature_dim, feature_dim),
+            nn.GELU(),
+            nn.LayerNorm(feature_dim),
+        )
+        self.acq_scorer = nn.Sequential(
+            nn.Linear(feature_dim * 6, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Linear(hidden_dim // 2, 1),
+        )
+
+        # Avoid a large arbitrary initial speed. A small positive bias makes the
+        # state numerically well behaved while acquisition provides the initial
+        # displacement evidence.
         nn.init.zeros_(self.motion_head[-1].weight)
         nn.init.zeros_(self.motion_head[-1].bias)
-        init_speed = 1.0
+        init_speed = 0.75
         self.motion_head[-1].bias.data[0] = math.log(math.exp(init_speed) - 1.0)
+
+        nn.init.zeros_(self.heading_head[-1].weight)
+        nn.init.zeros_(self.heading_head[-1].bias)
 
         nn.init.zeros_(self.correction_head[-1].weight)
         nn.init.zeros_(self.correction_head[-1].bias)
@@ -179,10 +209,77 @@ class RouteProgressGRU(nn.Module):
         top2 = torch.topk(probability, k=2, dim=1).values
         return top2[:, 0:1] - top2[:, 1:2]
 
+    def _three_frame_features(self, z_uav, previous_z_uav, previous2_z_uav):
+        if previous_z_uav is None:
+            previous_z_uav = z_uav
+        if previous2_z_uav is None:
+            previous2_z_uav = previous_z_uav
+        delta_old = previous_z_uav - previous2_z_uav
+        delta_recent = z_uav - previous_z_uav
+        delta_accel = delta_recent - delta_old
+        clip_mean = (previous2_z_uav + previous_z_uav + z_uav) / 3.0
+        return previous_z_uav, previous2_z_uav, delta_recent, delta_accel, clip_mean
+
+    def score_hypotheses(
+        self,
+        z_uav,
+        previous_z_uav,
+        previous2_z_uav,
+        sat_context,
+        entropy,
+        margin,
+        response_variance_se,
+        hypothesis_anchor_se,
+        predicted_se,
+        top1_distance_m,
+        hardms_support,
+        hidden: Optional[torch.Tensor] = None,
+    ):
+        """Return one learned score per local acquisition hypothesis."""
+        if z_uav.shape[0] != 1:
+            raise ValueError("score_hypotheses expects one UAV frame")
+        if hidden is None:
+            hidden = self.initial_hidden(1, z_uav.device, z_uav.dtype)
+
+        _, _, delta_recent, delta_accel, _ = self._three_frame_features(
+            z_uav, previous_z_uav, previous2_z_uav
+        )
+        count = int(sat_context.shape[0])
+        uav_h = self.uav_projection(z_uav).expand(count, -1)
+        recent_h = self.delta_recent_projection(delta_recent).expand(count, -1)
+        accel_h = self.delta_accel_projection(delta_accel).expand(count, -1)
+        sat_h = self.sat_projection(sat_context)
+        hidden_h = self.acq_hidden_projection(hidden).expand(count, -1)
+
+        offset = hypothesis_anchor_se - predicted_se.expand(count, -1)
+        numeric = torch.cat(
+            [
+                entropy.reshape(-1, 1),
+                margin.reshape(-1, 1),
+                torch.log1p(response_variance_se.clamp_min(0.0)) / 7.0,
+                offset[:, 0:1] / float(config.ROUTE_PROGRESS_SCALE_M),
+                offset[:, 1:2] / float(config.ROUTE_CROSS_TRACK_SCALE_M),
+                top1_distance_m.reshape(-1, 1) / 30.0,
+                hardms_support.reshape(-1, 1),
+            ],
+            dim=1,
+        )
+        if int(numeric.shape[1]) != int(config.ACQ_NUMERIC_DIM):
+            raise RuntimeError(
+                "Acquisition numeric dimension mismatch: got %d expected %d"
+                % (int(numeric.shape[1]), int(config.ACQ_NUMERIC_DIM))
+            )
+        numeric_h = self.acq_numeric_projection(numeric)
+        features = torch.cat(
+            [uav_h, recent_h, accel_h, sat_h, hidden_h, numeric_h], dim=1
+        )
+        return self.acq_scorer(features).reshape(-1)
+
     def forward_step(
         self,
         z_uav,
         previous_z_uav,
+        previous2_z_uav,
         sat_context,
         posterior_probability,
         visual_anchor_se,
@@ -191,6 +288,7 @@ class RouteProgressGRU(nn.Module):
         previous_measurement_se,
         previous_velocity_se,
         previous_acceleration_se,
+        previous_heading_state,
         polynomial_step_se,
         route_remaining_m,
         predicted_cross_m,
@@ -202,12 +300,13 @@ class RouteProgressGRU(nn.Module):
     ):
         if hidden is None:
             hidden = self.initial_hidden(z_uav.shape[0], z_uav.device, z_uav.dtype)
-        if previous_z_uav is None:
-            previous_z_uav = z_uav
+        previous_z_uav, previous2_z_uav, delta_recent, delta_accel, clip_mean = (
+            self._three_frame_features(z_uav, previous_z_uav, previous2_z_uav)
+        )
         if previous_measurement_se is None:
             previous_measurement_se = visual_anchor_se.detach()
 
-        p = posterior_probability.clamp_min(float(config.NAV_POSTERIOR_EPS))
+        p = posterior_probability.clamp_min(float(config.ACQ_POSTERIOR_EPS))
         entropy = -(p * p.log()).sum(dim=1, keepdim=True)
         entropy = entropy / max(math.log(max(2, p.shape[1])), 1e-6)
         margin = self._safe_margin(p)
@@ -219,7 +318,7 @@ class RouteProgressGRU(nn.Module):
             [
                 entropy,
                 margin,
-                torch.log1p(response_variance_se.clamp_min(0.0)) / 6.0,
+                torch.log1p(response_variance_se.clamp_min(0.0)) / 7.0,
                 torch.cat(
                     [
                         innovation_se[:, 0:1] / float(config.ROUTE_STEP_SCALE_M),
@@ -236,12 +335,14 @@ class RouteProgressGRU(nn.Module):
                 ),
                 previous_velocity_se / float(config.ROUTE_STEP_SCALE_M),
                 previous_acceleration_se / float(config.ROUTE_STEP_SCALE_M),
+                previous_heading_state[:, 0:1] / math.radians(float(config.MAX_HEADING_RESIDUAL_DEG)),
+                previous_heading_state[:, 1:2] / math.radians(float(config.MAX_TURN_RATE_DEG_PER_FRAME)),
                 route_remaining_m / float(config.ROUTE_REMAINING_SCALE_M),
                 predicted_cross_m / float(config.ROUTE_CROSS_TRACK_SCALE_M),
                 total_progress_fraction,
                 leg_progress_fraction,
                 polynomial_step_se / float(config.ROUTE_STEP_SCALE_M),
-                top1_distance_m / 25.0,
+                top1_distance_m / 30.0,
                 hardms_support.reshape(-1, 1),
             ],
             dim=1,
@@ -255,7 +356,9 @@ class RouteProgressGRU(nn.Module):
         recurrent_input = torch.cat(
             [
                 self.uav_projection(z_uav),
-                self.delta_uav_projection(z_uav - previous_z_uav),
+                self.clip_mean_projection(clip_mean),
+                self.delta_recent_projection(delta_recent),
+                self.delta_accel_projection(delta_accel),
                 self.sat_projection(sat_context),
                 self.numeric_projection(numeric),
             ],
@@ -265,8 +368,6 @@ class RouteProgressGRU(nn.Module):
         h = self.dropout(new_hidden)
 
         raw_motion = self.motion_head(h)
-        # Ordered waypoints define the intended forward direction.  Predict a
-        # non-negative along-route speed and a signed cross-track speed.
         v_parallel = F.softplus(raw_motion[:, 0:1]).clamp(
             max=float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
         )
@@ -282,10 +383,28 @@ class RouteProgressGRU(nn.Module):
         velocity = torch.cat([v_parallel, v_cross], dim=1)
         acceleration = torch.cat([a_parallel, a_cross], dim=1)
 
-        next_parallel = (v_parallel + 0.5 * a_parallel).clamp(
+        # Explicit direction state. heading_residual is relative to the smooth
+        # waypoint-route tangent; turn_rate anticipates the direction change in
+        # the next frame. Both are learned from the 3-frame visual sequence and
+        # recurrent state.
+        raw_heading = self.heading_head(h)
+        heading_residual = torch.tanh(raw_heading[:, 0:1]) * math.radians(
+            float(config.MAX_HEADING_RESIDUAL_DEG)
+        )
+        turn_rate = torch.tanh(raw_heading[:, 1:2]) * math.radians(
+            float(config.MAX_TURN_RATE_DEG_PER_FRAME)
+        )
+
+        base_forward = (v_parallel + 0.5 * a_parallel).clamp(
             min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
         )
-        next_cross = v_cross + 0.5 * a_cross
+        base_cross = v_cross + 0.5 * a_cross
+        effective_heading = heading_residual + 0.5 * turn_rate
+        cos_h = torch.cos(effective_heading)
+        sin_h = torch.sin(effective_heading)
+        next_parallel = base_forward * cos_h - base_cross * sin_h
+        next_cross = base_forward * sin_h + base_cross * cos_h
+        next_parallel = next_parallel.clamp(min=0.0)
         next_step = torch.cat([next_parallel, next_cross], dim=1)
         norm = torch.linalg.norm(next_step, dim=1, keepdim=True).clamp_min(1e-6)
         scale = torch.clamp(
@@ -315,7 +434,7 @@ class RouteProgressGRU(nn.Module):
         )
 
         state = torch.cat(
-            [velocity, acceleration, correction, measurement_variance], dim=1
+            [velocity, acceleration, heading_residual, turn_rate, correction, measurement_variance], dim=1
         )
         return RouteProgressGRUOutput(
             measurement_se=measurement,
@@ -324,13 +443,16 @@ class RouteProgressGRU(nn.Module):
             velocity_se=velocity,
             acceleration_se=acceleration,
             next_step_se=next_step,
+            heading_residual_rad=heading_residual,
+            turn_rate_rad=turn_rate,
             hidden=new_hidden,
             state=state,
         )
 
 
-# Compatibility aliases for older imports while v25 is being dropped in.
-WaypointLocalPrimaryRecoveryGRU = RouteProgressGRU
-WaypointRouteGlobalRecoveryGRU = RouteProgressGRU
-WaypointTemporalMotionGRU = RouteProgressGRU
-WaypointConditionedGRU = RouteProgressGRU
+# Compatibility aliases for the existing pipeline.
+RouteProgressGRU = ThreeFrameRouteStateGRU
+WaypointLocalPrimaryRecoveryGRU = ThreeFrameRouteStateGRU
+WaypointRouteGlobalRecoveryGRU = ThreeFrameRouteStateGRU
+WaypointTemporalMotionGRU = ThreeFrameRouteStateGRU
+WaypointConditionedGRU = ThreeFrameRouteStateGRU

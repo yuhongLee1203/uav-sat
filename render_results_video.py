@@ -193,8 +193,29 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
                 cv2.LINE_AA,
             )
 
+            # Estimated ground-track heading is part of the model state and is
+            # used by the polynomial predictor. Draw it from the final position.
+            if "estimated_heading_deg" in rows.columns:
+                heading_rad = math.radians(float(row.get("polynomial_heading_deg", row.get("estimated_heading_deg", 0.0))))
+                arrow_len_m = 14.0
+                arrow_xy = np.asarray([[
+                    float(row["final_x"]) + arrow_len_m * math.cos(heading_rad),
+                    float(row["final_y"]) + arrow_len_m * math.sin(heading_rad),
+                ]], dtype=np.float64)
+                arrow_canvas = xy_to_canvas(arrow_xy)[0]
+                cv2.arrowedLine(
+                    canvas,
+                    (int(pred_point[0]), int(pred_point[1])),
+                    (int(arrow_canvas[0]), int(arrow_canvas[1])),
+                    PRED_COLOR,
+                    2,
+                    cv2.LINE_AA,
+                    tipLength=0.25,
+                )
+
             lines = [
-                "GT = GREEN    FINAL ROUTE-KALMAN = MAGENTA    WAYPOINT = YELLOW",
+                "CONTROLLED GT+SMOOTH-JITTER / HEADING-AWARE POLYNOMIAL / KALMAN FINAL",
+                "GT = GREEN    FINAL CONSTRAINED KALMAN = MAGENTA    WAYPOINT = YELLOW",
                 "frame=%d  target=W%d  pred_leg=%d  gt_leg=%d"
                 % (
                     int(row["frame_id"]),
@@ -210,12 +231,27 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
                     float(row.get("gt_step_parallel", 0.0)),
                     float(row.get("speed_error_m_per_frame", 0.0)),
                 ),
-                "progress=%.1f gt=%.1f progress_err=%.1f  capture=%d"
+                "heading=%.1fdeg gt=%.1fdeg turn=%.1fdeg/f err=%.1fdeg"
+                % (
+                    float(row.get("estimated_heading_deg", 0.0)),
+                    float(row.get("gt_heading_deg", 0.0)),
+                    float(row.get("turn_rate_deg_per_frame", 0.0)),
+                    float(row.get("heading_error_deg", 0.0)),
+                ),
+                "progress=%.1f gt=%.1f progress_err=%.1f  selected=%d bank=%d"
                 % (
                     float(row["final_progress_s"]),
                     float(row.get("gt_progress_s", 0.0)),
                     float(row.get("progress_error_m", 0.0)),
-                    int(row.get("candidate_capture", 0)),
+                    int(row.get("selected_candidate_capture", row.get("candidate_capture", 0))),
+                    int(row.get("bank_candidate_capture", 0)),
+                ),
+                "visual_conf=%.3f step_limit=%.2fm limited=%d  selected_s=%.1f"
+                % (
+                    float(row.get("local_visual_confidence", row.get("acquisition_confidence", 0.0))),
+                    float(row.get("kalman_step_limit_m", 0.0)),
+                    int(row.get("kalman_step_limited", 0)),
+                    float(row.get("selected_hypothesis_center_s", 0.0)),
                 ),
                 "final_step=%.2fm err=%.2fm H=%.2f margin=%.4f Rscale=%.2f"
                 % (
@@ -245,7 +281,7 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
 
 def render_route(route_name):
     csv_path = config.OUTPUT_DIR / (
-        route_name + "_route_progress_gru_polynomial_kalman_frames.csv"
+        route_name + "_controlled_gtprior_heading_rnn_polynomial_kalman_frames.csv"
     )
     if not csv_path.exists():
         raise FileNotFoundError(

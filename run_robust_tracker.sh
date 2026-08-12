@@ -7,7 +7,7 @@ GPU="${GPU:-0}"
 VISUAL_EPOCHS="${VISUAL_EPOCHS:-30}"
 TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-60}"
 PATIENCE="${PATIENCE:-10}"
-JITTER_M="${JITTER_M:-12}"
+JITTER_M="${JITTER_M:-8}"
 REUSE_VISUAL="${REUSE_VISUAL:-1}"
 FORCE_FULL_RETRAIN="${FORCE_FULL_RETRAIN:-0}"
 RESUME_TEMPORAL="${RESUME_TEMPORAL:-0}"
@@ -32,8 +32,8 @@ Usage: bash run_robust_tracker.sh [options]
   --gpu N
   --visual-epochs N
   --temporal-epochs N   (alias: --epochs N)
-  --patience N          composite closed-loop early-stop patience
-  --jitter-m M
+  --patience N          controlled-validation early-stop patience
+  --jitter-m M          GT-prior jitter radius in metres
   --reuse-visual 0|1
   --force-full-retrain
   --resume-temporal
@@ -50,19 +50,24 @@ case "${MODE}" in
   *) echo "ERROR: --mode must be train, eval, or train_eval" >&2; exit 2 ;;
 esac
 
-OUTPUT_DIR="outputs/route_progress_gru_polynomial_kalman_v25"
+OUTPUT_DIR="outputs/controlled_gtprior_heading_rnn_polynomial_kalman_v30"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
-TEMPORAL_CKPT="${CHECKPOINT_DIR}/route_progress_gru_A_only.pt"
-LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/route_progress_gru_A_only_latest.pt"
-ROUTE_B_CSV="${OUTPUT_DIR}/route_B_route_progress_gru_polynomial_kalman_frames.csv"
-ROUTE_C_CSV="${OUTPUT_DIR}/route_C_route_progress_gru_polynomial_kalman_frames.csv"
+TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_heading_state_gru_A_only.pt"
+LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_heading_state_gru_A_only_latest.pt"
+ROUTE_B_CSV="${OUTPUT_DIR}/route_B_controlled_gtprior_heading_rnn_polynomial_kalman_frames.csv"
+ROUTE_C_CSV="${OUTPUT_DIR}/route_C_controlled_gtprior_heading_rnn_polynomial_kalman_frames.csv"
 SUMMARY_JSON="${OUTPUT_DIR}/robust_tracker_summary.json"
 mkdir -p "${CHECKPOINT_DIR}"
 
 find_visual_checkpoint() {
   local candidates=(
     "${VISUAL_CKPT}"
+    "outputs/controlled_gtprior_nojump_rnn_polynomial_kalman_v29/checkpoints/visual_retrieval_A_only.pt"
+    "outputs/controlled_gtprior_rnn_polynomial_kalman_v28/checkpoints/visual_retrieval_A_only.pt"
+    "outputs/three_frame_multihyp_acquisition_gru_kalman_v27/checkpoints/visual_retrieval_A_only.pt"
+    "outputs/three_frame_state_gru_polynomial_kalman_v26/checkpoints/visual_retrieval_A_only.pt"
+    "outputs/route_progress_gru_polynomial_kalman_v25/checkpoints/visual_retrieval_A_only.pt"
     "outputs/waypoint_local_primary_recovery_gru_kalman_v24/checkpoints/visual_retrieval_A_only.pt"
     "outputs/waypoint_routeglobal_recovery_gru_kalman_v23/checkpoints/visual_retrieval_A_only.pt"
     "outputs/waypoint_temporal_motion_gru_kalman_v22/checkpoints/visual_retrieval_A_only.pt"
@@ -103,21 +108,27 @@ verify_python() {
 import config
 import robust_tracker
 import visual_model
-assert config.ARCHITECTURE_NAME == "RouteProgressGRUPolynomialKalman_v25"
-assert robust_tracker.ARCHITECTURE_NAME == "RouteProgressGRUPolynomialKalman_v25"
-assert hasattr(visual_model, "RouteProgressGRU")
-assert int(config.GRID_SIZE) == 6
-assert int(config.NAV_GRID_SIZE) == 12
-print("architecture : RouteProgressGRUPolynomialKalman_v25")
-print("route state  : continuous s/e on ordered waypoint polyline")
-print("RNN          : previous/current UAV + local visual posterior -> v/a")
-print("motion       : non-negative forward v + signed cross v/a")
-print("polynomial   : [s,e]_next = [s,e] + v + 0.5*a")
-print("visual       : 12x12 LOCAL posterior around polynomial prediction")
-print("waypoint     : derived from FINAL filtered progress s; no classifier")
-print("training     : sequential TBPTT; no shuffled GT chunk restart")
-print("early stop   : MLE + speed MAE + progress MAE composite")
-print("final output : external route-coordinate Kalman -> XY")
+expected = "ControlledGTPriorThreeFrameHeadingGRUPolynomialConstrainedKalman_v30"
+checks = [
+    (config.ARCHITECTURE_NAME == expected, "config architecture"),
+    (robust_tracker.ARCHITECTURE_NAME == expected, "tracker architecture"),
+    (hasattr(visual_model, "ThreeFrameRouteStateGRU"), "ThreeFrameRouteStateGRU"),
+    (bool(config.CONTROLLED_GT_PRIOR), "controlled GT prior enabled"),
+    (bool(config.CONTROLLED_FINAL_PROGRESS_CAP_TO_GT), "final progress cap enabled"),
+    (int(config.GRID_SIZE) == 6, "6x6 local retrieval"),
+    (int(config.ACQ_HYPOTHESIS_COUNT) == 1, "single GT+jitter local window"),
+]
+failed = [name for ok, name in checks if not ok]
+if failed:
+    raise RuntimeError("v30 preflight failed: " + ", ".join(failed))
+print("architecture :", expected)
+print("protocol     : controlled GT+smooth-jitter local prior on every frame")
+print("temporal     : 3 UAV frames + recurrent GRU state")
+print("motion       : v/a + heading + turn-rate -> heading-aware second-order inertial polynomial")
+print("visual       : 6x6 local UAV-SAT measurement around smooth GT+jitter prior")
+print("final filter : robust constrained route-coordinate Kalman (final output)")
+print("direction    : RNN heading residual + turn-rate explicitly rotates polynomial step")
+print("display/eval : predict + final progress capped to current GT; no-jump constraints enabled")
 PY
 }
 
@@ -158,14 +169,14 @@ verify_eval_outputs() {
 }
 
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "Route Progress GRU + Polynomial + External Kalman v25"
+echo "Controlled GT-Prior Heading-Aware Three-Frame GRU + Polynomial + Constrained Kalman v30"
 printf '%*s\n' 108 '' | tr ' ' '='
 echo "MODE              : ${MODE}"
 echo "GPU               : ${GPU}"
 echo "Visual epochs     : ${VISUAL_EPOCHS}"
 echo "Temporal epochs   : ${TEMPORAL_EPOCHS}"
 echo "EarlyStop patience: ${PATIENCE}"
-echo "Jitter            : ${JITTER_M} m"
+echo "GT-prior jitter   : ${JITTER_M} m"
 echo "Reuse visual      : ${REUSE_VISUAL}"
 echo "Resume temporal   : ${RESUME_TEMPORAL}"
 echo "Output            : ${OUTPUT_DIR}"

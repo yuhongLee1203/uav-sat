@@ -12,11 +12,11 @@ import torch.nn.functional as F
 
 import config
 from data import RouteDataset, meters_from_latlon
-from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_only
-from visual_model import RouteProgressGRU
+from visual_localizer import CandidateBatch, FrozenVisualLocalizer, train_visual_retrieval_a_only
+from visual_model import ThreeFrameRouteStateGRU
 
 
-ARCHITECTURE_NAME = "RouteProgressGRUPolynomialKalman_v25"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameHeadingGRUPolynomialConstrainedKalman_v30"
 
 
 @dataclass
@@ -58,6 +58,18 @@ class VisualObservation:
     margin: torch.Tensor
     top1_distance_m: torch.Tensor
     capture: torch.Tensor
+    bank_capture: torch.Tensor
+    acquisition_logits: torch.Tensor
+    acquisition_probability: torch.Tensor
+    acquisition_selected_index: int
+    acquisition_target_index: int
+    acquisition_confidence: torch.Tensor
+    acquisition_margin: torch.Tensor
+    acquisition_radius_m: float
+    hypothesis_count: int
+    selected_center_se: torch.Tensor
+    selected_by_teacher: bool
+
 
 
 class WaypointRoute:
@@ -115,10 +127,45 @@ class WaypointRoute:
             remaining_m=float(max(length - along, 0.0)),
         )
 
+    def centerline_xy(self, s_m):
+        frame = self.frame_from_se(s_m, 0.0)
+        return frame.start_xy + frame.leg_progress_m * frame.unit
+
+    def smooth_route_cross(self, s_m):
+        """Continuous route cross-axis around waypoint corners.
+
+        The old piecewise leg cross-axis rotated instantaneously at a waypoint.
+        With non-zero e this can create an apparent XY jump even when (s,e) is
+        smooth. v30 estimates a local tangent from two nearby centerline points.
+        """
+        s = float(np.clip(s_m, 0.0, self.total_length_m))
+        radius = max(float(getattr(config, "ROUTE_FRAME_SMOOTH_RADIUS_M", 0.0)), 0.0)
+        if radius <= 1e-6:
+            return self.frame_from_se(s, 0.0).cross.copy()
+        s0 = max(0.0, s - radius)
+        s1 = min(self.total_length_m, s + radius)
+        p0 = self.centerline_xy(s0)
+        p1 = self.centerline_xy(s1)
+        tangent = p1 - p0
+        norm = float(np.linalg.norm(tangent))
+        if norm <= 1e-9:
+            unit = self.frame_from_se(s, 0.0).unit.copy()
+        else:
+            unit = tangent / norm
+        return np.asarray([-unit[1], unit[0]], dtype=np.float64)
+
+    def smooth_route_unit(self, s_m):
+        cross = self.smooth_route_cross(s_m)
+        return np.asarray([cross[1], -cross[0]], dtype=np.float64)
+
+    def route_heading_rad(self, s_m):
+        unit = self.smooth_route_unit(s_m)
+        return float(math.atan2(unit[1], unit[0]))
+
     def xy_from_se(self, s_m, e_m):
-        frame = self.frame_from_se(s_m, e_m)
-        center = frame.start_xy + frame.leg_progress_m * frame.unit
-        return center + float(e_m) * frame.cross
+        center = self.centerline_xy(s_m)
+        cross = self.smooth_route_cross(s_m)
+        return center + float(e_m) * cross
 
     def project_on_leg(self, position_xy, leg):
         leg = int(np.clip(leg, 0, len(self.points) - 2))
@@ -187,8 +234,15 @@ class WaypointRoute:
         return np.asarray(rows, dtype=np.float64)
 
 
+
 class RouteKalman:
-    """External Kalman in [s, e, vs, ve] after model output."""
+    """Robust constrained external Kalman in [s, e, vs, ve].
+
+    The learned RNN state drives the second-order polynomial prediction. The
+    visual model then supplies a position measurement. v30 keeps Kalman as the
+    final estimator, but constrains the measurement innovation and posterior
+    correction so one ambiguous local SAT patch cannot teleport the trajectory.
+    """
 
     def __init__(self, initial_s=0.0, initial_e=0.0):
         self.x = np.asarray([initial_s, initial_e, 0.0, 0.0], dtype=np.float64)
@@ -210,8 +264,7 @@ class RouteKalman:
             dtype=np.float64,
         )
         self.H = np.asarray(
-            [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]],
-            dtype=np.float64,
+            [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]], dtype=np.float64
         )
         self.Q = np.diag(
             [
@@ -223,7 +276,17 @@ class RouteKalman:
         ).astype(np.float64)
         self.last_nis = 0.0
         self.last_r_scale = 1.0
-        self._progress_floor = float(initial_s)
+        self.last_visual_confidence = 0.0
+        self.last_raw_measurement = self.x[:2].copy()
+        self.last_used_measurement = self.x[:2].copy()
+        self.last_measurement_clip = np.zeros(2, dtype=np.float64)
+        self.last_prior_position = self.x[:2].copy()
+        self.last_prior_velocity = self.x[2:4].copy()
+        self.last_previous_position = self.x[:2].copy()
+        self.last_motion_step = np.zeros(2, dtype=np.float64)
+        self.last_step_limited = False
+        self.last_step_limit_m = 0.0
+        self.last_posterior_projection_m = 0.0
 
     def se(self):
         return self.x[:2].copy()
@@ -231,17 +294,35 @@ class RouteKalman:
     def velocity(self):
         return self.x[2:4].copy()
 
-    def predict(self, velocity_se, acceleration_se, total_length_m):
-        velocity = np.asarray(velocity_se, dtype=np.float64).reshape(2)
-        acceleration = np.asarray(acceleration_se, dtype=np.float64).reshape(2)
+    def progress_std(self):
+        return float(np.sqrt(max(float(self.P[0, 0]), 1e-9)))
+
+    def predict(self, velocity_se, acceleration_se, total_length_m, max_progress_s=None, polynomial_step_se=None):
+        velocity = np.asarray(velocity_se, dtype=np.float64).reshape(2).copy()
+        acceleration = np.asarray(acceleration_se, dtype=np.float64).reshape(2).copy()
         velocity[0] = float(np.clip(
             velocity[0], 0.0, float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
         ))
         velocity[1] = float(np.clip(
-            velocity[1], -float(config.MAX_CROSS_SPEED_M_PER_FRAME),
-            float(config.MAX_CROSS_SPEED_M_PER_FRAME)
+            velocity[1],
+            -float(config.MAX_CROSS_SPEED_M_PER_FRAME),
+            float(config.MAX_CROSS_SPEED_M_PER_FRAME),
         ))
-        step = velocity + 0.5 * acceleration
+        acceleration[0] = float(np.clip(
+            acceleration[0],
+            -float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
+            float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
+        ))
+        acceleration[1] = float(np.clip(
+            acceleration[1],
+            -float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
+            float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
+        ))
+
+        if polynomial_step_se is None:
+            step = velocity + 0.5 * acceleration
+        else:
+            step = np.asarray(polynomial_step_se, dtype=np.float64).reshape(2).copy()
         step[0] = float(np.clip(
             step[0], 0.0, float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
         ))
@@ -249,11 +330,12 @@ class RouteKalman:
         if norm > float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME):
             step *= float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / max(norm, 1e-9)
 
-        self._progress_floor = float(self.x[0])
-        self.x[0] = float(np.clip(
-            self.x[0] + step[0], self._progress_floor, float(total_length_m)
-        ))
+        self.last_previous_position = self.x[:2].copy()
+        self.last_motion_step = step.copy()
+        self.x[0] = float(np.clip(self.x[0] + step[0], 0.0, float(total_length_m)))
         self.x[1] = float(self.x[1] + step[1])
+        if max_progress_s is not None:
+            self.x[0] = min(self.x[0], float(max_progress_s))
         self.x[2] = float(np.clip(
             velocity[0] + acceleration[0],
             0.0,
@@ -265,15 +347,64 @@ class RouteKalman:
             float(config.MAX_CROSS_SPEED_M_PER_FRAME),
         ))
         self.P = self.F @ self.P @ self.F.T + self.Q
+        self.last_prior_position = self.x[:2].copy()
+        self.last_prior_velocity = self.x[2:4].copy()
         return self.se()
 
-    def update(self, measurement_se, variance_se, total_length_m):
-        z = np.asarray(measurement_se, dtype=np.float64).reshape(2)
+    def update(
+        self,
+        measurement_se,
+        variance_se,
+        total_length_m,
+        acquisition_confidence=1.0,
+        max_progress_s=None,
+    ):
+        raw_z = np.asarray(measurement_se, dtype=np.float64).reshape(2)
         variance = np.asarray(variance_se, dtype=np.float64).reshape(2)
+        confidence = float(np.clip(
+            acquisition_confidence,
+            float(config.VISUAL_CONFIDENCE_FLOOR),
+            float(config.VISUAL_CONFIDENCE_CEIL),
+        ))
+        self.last_visual_confidence = confidence
+        self.last_raw_measurement = raw_z.copy()
+
+        prior_position = self.x[:2].copy()
+        raw_innovation = raw_z - prior_position
+        progress_limit = float(config.KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M) * (
+            0.45 + 0.55 * confidence
+        )
+        cross_limit = float(config.KALMAN_MAX_MEASUREMENT_INNOVATION_CROSS_M) * (
+            0.45 + 0.55 * confidence
+        )
+        clipped_innovation = np.asarray(
+            [
+                np.clip(raw_innovation[0], -progress_limit, progress_limit),
+                np.clip(raw_innovation[1], -cross_limit, cross_limit),
+            ],
+            dtype=np.float64,
+        )
+        z = prior_position + clipped_innovation
+        self.last_used_measurement = z.copy()
+        self.last_measurement_clip = raw_innovation - clipped_innovation
+
+        # A single controlled hypothesis has acquisition probability 1 by
+        # construction, so confidence must come from local posterior quality.
+        # Low confidence enlarges R; large raw innovation also enlarges R.
         variance = np.clip(
             variance, float(config.KALMAN_R_MIN_VAR), float(config.KALMAN_R_MAX_VAR)
         )
+        confidence_scale = 1.0 / max(confidence * confidence, 0.05)
+        over_progress = abs(raw_innovation[0]) / max(progress_limit, 1e-6)
+        over_cross = abs(raw_innovation[1]) / max(cross_limit, 1e-6)
+        jump_scale = max(1.0, over_progress, over_cross)
+        variance = np.clip(
+            variance * confidence_scale * jump_scale,
+            float(config.KALMAN_R_MIN_VAR),
+            float(config.KALMAN_R_MAX_VAR),
+        )
         R = np.diag(variance)
+
         innovation = z - self.H @ self.x
         S = self.H @ self.P @ self.H.T + R
         try:
@@ -282,6 +413,7 @@ class RouteKalman:
             S_inv = np.linalg.pinv(S)
         nis = float(innovation.T @ S_inv @ innovation)
         threshold = max(float(config.KALMAN_NIS_SOFT_THRESHOLD), 1e-6)
+        threshold *= 1.0 + confidence * float(config.KALMAN_NIS_CONFIDENCE_BOOST)
         r_scale = min(
             float(config.KALMAN_NIS_MAX_R_SCALE), max(1.0, nis / threshold)
         )
@@ -292,26 +424,70 @@ class RouteKalman:
                 S_inv = np.linalg.inv(S)
             except np.linalg.LinAlgError:
                 S_inv = np.linalg.pinv(S)
+
         self.last_nis = nis
         self.last_r_scale = r_scale
         K = self.P @ self.H.T @ S_inv
-        self.x = self.x + K @ innovation
+        candidate_x = self.x + K @ innovation
+
+        # Constrained Kalman posterior: visual evidence corrects the polynomial
+        # prior, but the correction is bounded in route coordinates.
+        posterior_correction = candidate_x[:2] - prior_position
+        max_post_s = float(config.KALMAN_MAX_POSTERIOR_CORRECTION_PROGRESS_M) * (
+            0.50 + 0.50 * confidence
+        )
+        max_post_e = float(config.KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M) * (
+            0.50 + 0.50 * confidence
+        )
+        bounded_correction = np.asarray(
+            [
+                np.clip(posterior_correction[0], -max_post_s, max_post_s),
+                np.clip(posterior_correction[1], -max_post_e, max_post_e),
+            ],
+            dtype=np.float64,
+        )
+        candidate_x[:2] = prior_position + bounded_correction
+        self.last_posterior_projection_m = float(
+            np.linalg.norm(posterior_correction - bounded_correction)
+        )
+
+        # Do not let one visual update abruptly change velocity either.
+        dv = candidate_x[2:4] - self.last_prior_velocity
+        max_dv = float(config.KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME)
+        dv = np.clip(dv, -max_dv, max_dv)
+        candidate_x[2:4] = self.last_prior_velocity + dv
+
+        self.x = candidate_x
         I = np.eye(4, dtype=np.float64)
         IKH = I - K @ self.H
         self.P = IKH @ self.P @ IKH.T + K @ R @ K.T
 
-        # Ordered waypoint navigation is monotonic in route progress.  The
-        # current image may correct an over-prediction back to the previous
-        # final progress, but never create backward route motion.
-        self.x[0] = float(np.clip(
-            max(self._progress_floor, self.x[0]), 0.0, float(total_length_m)
+        # Final step corridor is centered on the RNN polynomial step. This is
+        # still the constrained Kalman posterior, not a separate output smoother.
+        total_step = self.x[:2] - self.last_previous_position
+        allowed_step = float(np.clip(
+            np.linalg.norm(self.last_motion_step) + float(config.KALMAN_FINAL_STEP_SLACK_M),
+            float(config.KALMAN_FINAL_STEP_MIN_M),
+            float(config.KALMAN_FINAL_STEP_MAX_M),
         ))
+        step_norm = float(np.linalg.norm(total_step))
+        self.last_step_limited = bool(step_norm > allowed_step + 1e-9)
+        self.last_step_limit_m = allowed_step
+        if self.last_step_limited:
+            self.x[:2] = self.last_previous_position + total_step * (
+                allowed_step / max(step_norm, 1e-9)
+            )
+
+        self.x[0] = float(np.clip(self.x[0], 0.0, float(total_length_m)))
+        if max_progress_s is not None:
+            self.x[0] = min(self.x[0], float(max_progress_s))
         self.x[2] = float(np.clip(
             self.x[2], 0.0, float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
         ))
         self.x[3] = float(np.clip(
-            self.x[3], -float(config.MAX_CROSS_SPEED_M_PER_FRAME),
-            float(config.MAX_CROSS_SPEED_M_PER_FRAME)
+            self.x[3],
+            -float(config.MAX_CROSS_SPEED_M_PER_FRAME),
+            float(config.MAX_CROSS_SPEED_M_PER_FRAME),
         ))
         return self.se()
 
@@ -454,6 +630,183 @@ def random_jitter(maximum_m):
     return np.asarray([radius * math.cos(angle), radius * math.sin(angle)])
 
 
+def controlled_gt_prior_se(cache, route, gt_state, index):
+    """Return GT+jitter local-prior center. GT is intentionally used by protocol."""
+    gt_xy = cache.gt_xy[index].cpu().numpy().astype(np.float64)
+    maximum = float(config.CONTROLLED_GT_PRIOR_JITTER_M)
+    if maximum <= 0.0:
+        jitter = np.zeros(2, dtype=np.float64)
+    elif bool(config.CONTROLLED_GT_PRIOR_DETERMINISTIC):
+        frame_id = int(cache.frame_ids[index].item())
+        route_code = sum(ord(ch) for ch in str(cache.route_name))
+        if bool(getattr(config, "CONTROLLED_GT_PRIOR_SMOOTH_JITTER", False)):
+            # v29: temporally correlated deterministic jitter. v28 changed the
+            # jitter direction by roughly 85 degrees per frame, which made the
+            # local search window itself jump around GT. Here both angle and
+            # radius evolve slowly while remaining bounded by maximum.
+            angular_rate = float(config.CONTROLLED_GT_PRIOR_JITTER_ANGULAR_RATE)
+            radius_rate = float(config.CONTROLLED_GT_PRIOR_JITTER_RADIUS_RATE)
+            angle = 0.11 * route_code + angular_rate * float(frame_id)
+            radius_phase = 0.07 * route_code + radius_rate * float(frame_id)
+            lo = float(config.CONTROLLED_GT_PRIOR_JITTER_MIN_FRACTION)
+            hi = float(config.CONTROLLED_GT_PRIOR_JITTER_MAX_FRACTION)
+            radius_fraction = lo + (hi - lo) * (0.5 + 0.5 * math.sin(radius_phase))
+            radius = maximum * radius_fraction
+            jitter = np.asarray(
+                [radius * math.cos(angle), radius * math.sin(angle)],
+                dtype=np.float64,
+            )
+        else:
+            phase = 0.61803398875 * float(frame_id + 1) + 0.17320508076 * route_code
+            radius = maximum * (0.35 + 0.65 * (0.5 + 0.5 * math.sin(phase * 0.73)))
+            angle = phase * 2.399963229728653
+            jitter = np.asarray(
+                [radius * math.cos(angle), radius * math.sin(angle)],
+                dtype=np.float64,
+            )
+    else:
+        jitter = random_jitter(maximum)
+    prior_xy = gt_xy + jitter
+    preferred_leg = int(gt_state["legs"][index])
+    s_m, e_m, _ = route.project_xy_local(prior_xy, preferred_leg)
+    return np.asarray([s_m, e_m], dtype=np.float64), prior_xy, jitter
+
+
+def visual_confidence_from_observation(observation):
+    """Confidence from the actual 6x6 local posterior, never hypothesis count."""
+    p = observation.posterior.detach().float().clamp_min(float(config.ACQ_POSTERIOR_EPS))
+    entropy = float(
+        (-(p * p.log()).sum(dim=1) / max(math.log(max(2, p.shape[1])), 1e-6))[0].item()
+    )
+    if p.shape[1] >= 2:
+        top2 = torch.topk(p, k=2, dim=1).values
+        margin = float((top2[:, 0] - top2[:, 1])[0].item())
+    else:
+        margin = 1.0
+    response_var = float(observation.response_variance_se[0].mean().detach().cpu().item())
+    margin_score = float(np.clip(
+        margin / max(float(config.VISUAL_CONFIDENCE_MARGIN_SCALE), 1e-6), 0.0, 1.0
+    ))
+    variance_score = math.exp(
+        -response_var / max(float(config.VISUAL_CONFIDENCE_VARIANCE_SCALE_M2), 1e-6)
+    )
+    confidence = 0.55 * (1.0 - entropy) + 0.30 * margin_score + 0.15 * variance_score
+    return float(np.clip(
+        confidence,
+        float(config.VISUAL_CONFIDENCE_FLOOR),
+        float(config.VISUAL_CONFIDENCE_CEIL),
+    ))
+
+
+def stabilize_motion_state(
+    previous_velocity, previous_acceleration, previous_polynomial_step,
+    raw_velocity, raw_acceleration, raw_polynomial_step,
+):
+    """Rate-limit learned v/a and the heading-aware polynomial step."""
+    pv = previous_velocity.detach()
+    pa = previous_acceleration.detach()
+    ps = previous_polynomial_step.detach()
+    rv = raw_velocity.detach()
+    ra = raw_acceleration.detach()
+    rs = raw_polynomial_step.detach()
+
+    max_dv = float(config.MAX_MOTION_VELOCITY_DELTA_M_PER_FRAME)
+    max_da = float(config.MAX_MOTION_ACCEL_DELTA_M_PER_FRAME2)
+    velocity_candidate = pv + torch.clamp(rv - pv, min=-max_dv, max=max_dv)
+    acceleration_candidate = pa + torch.clamp(ra - pa, min=-max_da, max=max_da)
+
+    alpha_v = float(config.MOTION_VELOCITY_EMA_ALPHA)
+    alpha_a = float(config.MOTION_ACCELERATION_EMA_ALPHA)
+    velocity = (1.0 - alpha_v) * pv + alpha_v * velocity_candidate
+    acceleration = (1.0 - alpha_a) * pa + alpha_a * acceleration_candidate
+    velocity[:, 0] = velocity[:, 0].clamp(
+        min=0.0, max=float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
+    )
+    velocity[:, 1] = velocity[:, 1].clamp(
+        min=-float(config.MAX_CROSS_SPEED_M_PER_FRAME),
+        max=float(config.MAX_CROSS_SPEED_M_PER_FRAME),
+    )
+    acceleration[:, 0] = acceleration[:, 0].clamp(
+        min=-float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
+        max=float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
+    )
+    acceleration[:, 1] = acceleration[:, 1].clamp(
+        min=-float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
+        max=float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
+    )
+
+    max_ds = float(config.MAX_POLYNOMIAL_STEP_DELTA_M_PER_FRAME)
+    step_candidate = ps + torch.clamp(rs - ps, min=-max_ds, max=max_ds)
+    alpha_s = float(config.MOTION_POLYNOMIAL_STEP_EMA_ALPHA)
+    step = (1.0 - alpha_s) * ps + alpha_s * step_candidate
+    step[:, 0] = step[:, 0].clamp(min=0.0)
+    norm = torch.linalg.norm(step, dim=1, keepdim=True).clamp_min(1e-6)
+    scale = torch.clamp(float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / norm, max=1.0)
+    step = step * scale
+    return velocity.detach(), acceleration.detach(), step.detach()
+
+
+def stabilize_heading_state(previous_state, raw_heading_residual, raw_turn_rate):
+    prev = previous_state.detach()
+    raw = torch.cat([raw_heading_residual.detach(), raw_turn_rate.detach()], dim=1)
+    max_heading_delta = math.radians(float(config.MAX_HEADING_DELTA_DEG_PER_FRAME))
+    max_turn_delta = math.radians(float(config.MAX_TURN_RATE_DELTA_DEG_PER_FRAME2))
+    heading_delta = torch.atan2(
+        torch.sin(raw[:, 0:1] - prev[:, 0:1]),
+        torch.cos(raw[:, 0:1] - prev[:, 0:1]),
+    ).clamp(min=-max_heading_delta, max=max_heading_delta)
+    turn_delta = (raw[:, 1:2] - prev[:, 1:2]).clamp(
+        min=-max_turn_delta, max=max_turn_delta
+    )
+    heading_candidate = prev[:, 0:1] + heading_delta
+    turn_candidate = prev[:, 1:2] + turn_delta
+    ah = float(config.HEADING_STATE_EMA_ALPHA)
+    at = float(config.TURN_RATE_EMA_ALPHA)
+    heading = prev[:, 0:1] + ah * torch.atan2(
+        torch.sin(heading_candidate - prev[:, 0:1]),
+        torch.cos(heading_candidate - prev[:, 0:1]),
+    )
+    turn = (1.0 - at) * prev[:, 1:2] + at * turn_candidate
+    max_heading = math.radians(float(config.MAX_HEADING_RESIDUAL_DEG))
+    max_turn = math.radians(float(config.MAX_TURN_RATE_DEG_PER_FRAME))
+    heading = heading.clamp(min=-max_heading, max=max_heading)
+    turn = turn.clamp(min=-max_turn, max=max_turn)
+    return torch.cat([heading, turn], dim=1).detach()
+
+
+def cap_prediction_to_current_gt(kf, predicted_se, gt_se):
+    """Controlled protocol constraint requested for visualization/evaluation."""
+    result = np.asarray(predicted_se, dtype=np.float64).copy()
+    if bool(config.CONTROLLED_FINAL_PROGRESS_CAP_TO_GT):
+        result[0] = min(float(result[0]), float(gt_se[0]))
+        kf.x[0] = float(result[0])
+        kf.last_prior_position[0] = float(result[0])
+    return result
+
+
+def cap_kalman_to_current_gt(kf, final_se, gt_se):
+    """Compatibility cap; v30 also constrains predict/update inside Kalman."""
+    result = np.asarray(final_se, dtype=np.float64).copy()
+    capped = False
+    if bool(config.CONTROLLED_FINAL_PROGRESS_CAP_TO_GT):
+        gt_s = float(gt_se[0])
+        if result[0] > gt_s:
+            result[0] = gt_s
+            kf.x[0] = gt_s
+            capped = True
+    return result, capped
+
+
+# -----------------------------------------------------------------------------
+# Heading helpers
+# -----------------------------------------------------------------------------
+
+def wrap_angle_rad(value):
+    return float(math.atan2(math.sin(float(value)), math.cos(float(value))))
+
+def angle_error_rad(a, b):
+    return wrap_angle_rad(float(a) - float(b))
+
 # -----------------------------------------------------------------------------
 # Route-coordinate targets independent of the model's current/possibly-wrong leg
 # -----------------------------------------------------------------------------
@@ -483,12 +836,49 @@ def build_gt_route_state(cache, route):
         next_step = step[index]
         velocity[index] = 0.5 * (prev_step + next_step)
         acceleration[index] = next_step - prev_step
+
+    # Absolute ground-track heading is supervised only during training/evaluation.
+    # The model predicts heading from the 3-frame UAV sequence + recurrent state.
+    gt_xy = cache.gt_xy.cpu().numpy().astype(np.float64)
+    heading_abs = np.zeros(len(cache), dtype=np.float64)
+    last_heading = route.route_heading_rad(float(se[0, 0]))
+    for index in range(len(cache)):
+        if len(cache) <= 1:
+            delta = np.zeros(2, dtype=np.float64)
+        elif index < len(cache) - 1:
+            delta = gt_xy[index + 1] - gt_xy[index]
+        else:
+            delta = gt_xy[index] - gt_xy[index - 1]
+        if float(np.linalg.norm(delta)) > 1e-4:
+            last_heading = float(math.atan2(delta[1], delta[0]))
+        heading_abs[index] = last_heading
+
+    heading_residual = np.zeros(len(cache), dtype=np.float64)
+    max_residual = math.radians(float(config.MAX_HEADING_RESIDUAL_DEG))
+    for index in range(len(cache)):
+        route_heading = route.route_heading_rad(float(se[index, 0]))
+        heading_residual[index] = np.clip(
+            angle_error_rad(heading_abs[index], route_heading),
+            -max_residual, max_residual,
+        )
+
+    turn_rate = np.zeros(len(cache), dtype=np.float64)
+    if len(cache) > 1:
+        for index in range(len(cache) - 1):
+            turn_rate[index] = angle_error_rad(heading_abs[index + 1], heading_abs[index])
+        turn_rate[-1] = turn_rate[-2]
+    max_turn = math.radians(float(config.MAX_TURN_RATE_DEG_PER_FRAME))
+    turn_rate = np.clip(turn_rate, -max_turn, max_turn)
+
     return {
         "se": se,
         "legs": legs,
         "step": step,
         "velocity": velocity,
         "acceleration": acceleration,
+        "heading_abs": heading_abs,
+        "heading_residual": heading_residual,
+        "turn_rate": turn_rate,
     }
 
 
@@ -497,84 +887,299 @@ def build_gt_route_state(cache, route):
 # -----------------------------------------------------------------------------
 
 @torch.no_grad()
-def visual_observation(visual, uav_clip, center_xy, route, predicted_se, gt_xy=None):
+
+def _acquisition_radius(progress_std_m, previous_confidence, forward_speed):
+    confidence = float(np.clip(previous_confidence, 0.0, 1.0))
+    radius = (
+        float(config.ACQ_BASE_RADIUS_M)
+        + float(config.ACQ_STD_GAIN) * float(max(progress_std_m, 0.0))
+        + float(config.ACQ_SPEED_HORIZON_FRAMES) * float(max(forward_speed, 0.0))
+        + float(config.ACQ_LOW_CONFIDENCE_GAIN_M) * (1.0 - confidence)
+    )
+    return float(np.clip(
+        radius,
+        float(config.ACQ_MIN_RADIUS_M),
+        float(config.ACQ_MAX_RADIUS_M),
+    ))
+
+
+def _hypothesis_center_se(route, center_se, radius_m):
+    center = np.asarray(center_se, dtype=np.float64).reshape(2)
+    count = max(1, int(config.ACQ_HYPOTHESIS_COUNT))
+    if count == 1:
+        offsets = np.asarray([0.0], dtype=np.float64)
+    else:
+        offsets = np.linspace(-float(radius_m), float(radius_m), count)
+    progress = np.clip(center[0] + offsets, 0.0, route.total_length_m)
+    # Remove duplicates near route endpoints while preserving order.
+    values = []
+    for s_m in progress.tolist():
+        if not values or abs(float(s_m) - float(values[-1])) > 1e-4:
+            values.append(float(s_m))
+    return np.asarray([[s_m, float(center[1])] for s_m in values], dtype=np.float64)
+
+
+def _slice_candidate(candidate, index):
+    i = int(index)
+    return CandidateBatch(
+        indices=candidate.indices[i : i + 1],
+        centers=candidate.centers[i : i + 1],
+        z_uav=candidate.z_uav[i : i + 1],
+        z_sat=candidate.z_sat[i : i + 1],
+        raw_logits=candidate.raw_logits[i : i + 1],
+        raw_prob=candidate.raw_prob[i : i + 1],
+        raw_top1_xy=candidate.raw_top1_xy[i : i + 1],
+        hardms_xy=candidate.hardms_xy[i : i + 1],
+        hardms_support=candidate.hardms_support[i : i + 1],
+    )
+
+
+def visual_observation(
+    model,
+    visual,
+    uav_clip,
+    search_center_se,
+    route,
+    predicted_se,
+    previous_z_uav,
+    previous2_z_uav,
+    hidden,
+    previous_acquisition_confidence,
+    kalman_progress_std,
+    previous_forward_speed,
+    device,
+    gt_xy=None,
+    gt_se=None,
+    teacher_select=False,
+):
+    """Multi-hypothesis acquisition made from many local windows.
+
+    The visual retrieval network is never asked to rank one flat whole-route
+    gallery. Each hypothesis is a local window, matching its training protocol.
+    The recurrent acquisition scorer chooses the hypothesis using three-frame
+    temporal evidence plus the previous GRU state.
+    """
+    radius = _acquisition_radius(
+        progress_std_m=kalman_progress_std,
+        previous_confidence=previous_acquisition_confidence,
+        forward_speed=previous_forward_speed,
+    )
+    centers_se_np = _hypothesis_center_se(route, search_center_se, radius)
+    hypothesis_count = int(centers_se_np.shape[0])
+    centers_xy_np = np.stack(
+        [route.xy_from_se(row[0], row[1]) for row in centers_se_np], axis=0
+    )
+    centers_xy = torch.tensor(
+        centers_xy_np, dtype=torch.float32, device=device
+    )
+    repeated_uav = uav_clip.repeat(hypothesis_count, 1)
     candidate = visual.candidate_batch(
-        uav_clip=uav_clip,
-        center_xy=center_xy,
-        grid_size=int(config.NAV_GRID_SIZE),
+        uav_clip=repeated_uav,
+        center_xy=centers_xy,
+        grid_size=int(config.ACQ_LOCAL_GRID_SIZE),
     )
-    predicted = center_xy.reshape(1, 1, 2)
-    distance2 = (candidate.centers - predicted).square().sum(dim=2)
+
+    predicted_centers = centers_xy[:, None, :]
+    distance2 = (candidate.centers - predicted_centers).square().sum(dim=2)
     log_visual = torch.log(
-        candidate.raw_prob.clamp_min(float(config.NAV_POSTERIOR_EPS))
+        candidate.raw_prob.clamp_min(float(config.ACQ_POSTERIOR_EPS))
     )
-    prior = -distance2 / (2.0 * float(config.NAV_MOTION_PRIOR_SIGMA_M) ** 2)
+    local_prior = -distance2 / (
+        2.0 * float(config.ACQ_LOCAL_PRIOR_SIGMA_M) ** 2
+    )
     posterior = torch.softmax(
-        log_visual / float(config.NAV_VISUAL_TEMPERATURE)
-        + float(config.NAV_MOTION_PRIOR_WEIGHT) * prior,
+        log_visual / float(config.ACQ_VISUAL_TEMPERATURE)
+        + float(config.ACQ_LOCAL_PRIOR_WEIGHT) * local_prior,
         dim=1,
     )
-    anchor_xy = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)
-    sat_context = (posterior.unsqueeze(-1) * candidate.z_sat).sum(dim=1)
+    anchor_xy_all = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)
+    sat_context_all = (posterior.unsqueeze(-1) * candidate.z_sat).sum(dim=1)
 
-    p = posterior.clamp_min(float(config.NAV_POSTERIOR_EPS))
-    entropy = -(p * p.log()).sum(dim=1)
-    entropy = entropy / max(math.log(max(2, posterior.shape[1])), 1e-6)
+    p = posterior.clamp_min(float(config.ACQ_POSTERIOR_EPS))
+    entropy_all = -(p * p.log()).sum(dim=1)
+    entropy_all = entropy_all / max(
+        math.log(max(2, posterior.shape[1])), 1e-6
+    )
     if posterior.shape[1] >= 2:
-        top2 = torch.topk(posterior, k=2, dim=1).values
-        margin = top2[:, 0] - top2[:, 1]
+        top2_local = torch.topk(posterior, k=2, dim=1).values
+        margin_all = top2_local[:, 0] - top2_local[:, 1]
     else:
-        margin = torch.ones_like(entropy)
+        margin_all = torch.ones_like(entropy_all)
 
-    predicted_leg = route.leg_for_s(float(predicted_se[0]))
-    anchor_np = anchor_xy[0].detach().cpu().numpy()
-    anchor_s, anchor_e, _ = route.project_xy_local(anchor_np, predicted_leg)
-    anchor_se = torch.tensor(
-        [[anchor_s, anchor_e]], dtype=torch.float32, device=anchor_xy.device
+    anchor_se_rows = []
+    variance_rows = []
+    for h in range(hypothesis_count):
+        preferred_leg = route.leg_for_s(float(centers_se_np[h, 0]))
+        anchor_np = anchor_xy_all[h].detach().cpu().numpy()
+        anchor_s, anchor_e, _ = route.project_xy_local(anchor_np, preferred_leg)
+        anchor_se_rows.append([anchor_s, anchor_e])
+
+        frame = route.frame_from_se(float(centers_se_np[h, 0]), float(centers_se_np[h, 1]))
+        unit = torch.tensor(
+            frame.unit, dtype=torch.float32, device=device
+        ).reshape(1, 2)
+        cross = torch.tensor(
+            frame.cross, dtype=torch.float32, device=device
+        ).reshape(1, 2)
+        delta = candidate.centers[h] - anchor_xy_all[h : h + 1]
+        along_delta = (delta * unit).sum(dim=1)
+        cross_delta = (delta * cross).sum(dim=1)
+        var_parallel = (posterior[h] * along_delta.square()).sum()
+        var_cross = (posterior[h] * cross_delta.square()).sum()
+        variance_rows.append(torch.stack([var_parallel, var_cross]))
+
+    anchor_se_all = torch.tensor(
+        anchor_se_rows, dtype=torch.float32, device=device
     )
-
-    frame = route.frame_from_se(float(predicted_se[0]), float(predicted_se[1]))
-    unit = torch.tensor(frame.unit, dtype=torch.float32, device=anchor_xy.device).reshape(1, 1, 2)
-    cross = torch.tensor(frame.cross, dtype=torch.float32, device=anchor_xy.device).reshape(1, 1, 2)
-    delta = candidate.centers - anchor_xy[:, None, :]
-    along_delta = (delta * unit).sum(dim=2)
-    cross_delta = (delta * cross).sum(dim=2)
-    var_parallel = (posterior * along_delta.square()).sum(dim=1)
-    var_cross = (posterior * cross_delta.square()).sum(dim=1)
-    response_var = torch.stack([var_parallel, var_cross], dim=1).clamp(
+    response_var_all = torch.stack(variance_rows, dim=0).clamp(
         min=float(config.KALMAN_R_MIN_VAR),
-        max=float(config.NAV_MAX_RESPONSE_VARIANCE_M2),
+        max=float(config.ACQ_MAX_RESPONSE_VARIANCE_M2),
     )
 
-    raw_top1 = candidate.raw_top1_xy
-    top1_distance = torch.linalg.norm(raw_top1 - center_xy, dim=1)
+    top1_distance_all = torch.linalg.norm(
+        candidate.raw_top1_xy - centers_xy, dim=1
+    )
+    z_uav_single = candidate.z_uav[0:1]
+    acquisition_logits = model.score_hypotheses(
+        z_uav=z_uav_single,
+        previous_z_uav=previous_z_uav,
+        previous2_z_uav=previous2_z_uav,
+        sat_context=sat_context_all,
+        entropy=entropy_all,
+        margin=margin_all,
+        response_variance_se=response_var_all,
+        hypothesis_anchor_se=anchor_se_all,
+        predicted_se=tensor2(predicted_se, device),
+        top1_distance_m=top1_distance_all,
+        hardms_support=candidate.hardms_support,
+        hidden=hidden,
+    )
+
+    # Soft motion prior only breaks ties. Visual/temporal evidence can choose a
+    # distant local window and recover from speed error.
+    progress_offset = (
+        anchor_se_all[:, 0] - float(predicted_se[0])
+    ) / max(float(radius), 1.0)
+    acquisition_logits = acquisition_logits + float(
+        config.ACQ_HYPOTHESIS_MOTION_PRIOR_WEIGHT
+    ) * (-0.5 * progress_offset.square())
+    acquisition_probability = torch.softmax(
+        acquisition_logits / float(config.ACQ_SCORER_TEMPERATURE), dim=0
+    )
+
     if gt_xy is None:
-        capture = torch.ones(1, dtype=torch.bool, device=anchor_xy.device)
+        capture_all = torch.zeros(
+            hypothesis_count, dtype=torch.bool, device=device
+        )
     else:
-        capture = visual.candidate_contains_gt_anchor(candidate.indices, gt_xy)
+        repeated_gt = gt_xy.reshape(1, 2).expand(hypothesis_count, -1)
+        capture_all = visual.candidate_contains_gt_anchor(
+            candidate.indices, repeated_gt
+        )
 
-    return VisualObservation(
-        candidate=candidate,
-        posterior=posterior,
-        anchor_xy=anchor_xy,
-        anchor_se=anchor_se,
-        response_variance_se=response_var,
-        sat_context=sat_context,
-        entropy=entropy,
-        margin=margin,
-        top1_distance_m=top1_distance,
-        capture=capture,
+    target_index = -1
+    if gt_se is not None:
+        gt_se_np = np.asarray(gt_se, dtype=np.float64).reshape(2)
+        center_distance = (
+            np.abs(centers_se_np[:, 0] - gt_se_np[0])
+            + 0.25 * np.abs(centers_se_np[:, 1] - gt_se_np[1])
+        )
+        capture_np = capture_all.detach().cpu().numpy().astype(bool)
+        if np.any(capture_np):
+            masked = np.where(capture_np, center_distance, np.inf)
+            target_index = int(np.argmin(masked))
+        else:
+            target_index = int(np.argmin(center_distance))
+
+    model_selected_index = int(acquisition_probability.argmax().item())
+    if bool(teacher_select) and target_index >= 0:
+        selected_index = int(target_index)
+        selected_by_teacher = True
+    else:
+        selected_index = model_selected_index
+        selected_by_teacher = False
+
+    if acquisition_probability.numel() >= 2:
+        top2_acq = torch.topk(acquisition_probability, k=2).values
+        acquisition_margin = top2_acq[0] - top2_acq[1]
+    else:
+        acquisition_margin = torch.ones((), device=device)
+
+    model_confidence = acquisition_probability[selected_index]
+    effective_confidence = (
+        torch.maximum(
+            model_confidence,
+            torch.tensor(0.85, dtype=model_confidence.dtype, device=device),
+        )
+        if selected_by_teacher
+        else model_confidence
     )
+
+    weighted_anchor = (
+        acquisition_probability[:, None] * anchor_se_all
+    ).sum(dim=0)
+    between_var = (
+        acquisition_probability[:, None]
+        * (anchor_se_all - weighted_anchor[None, :]).square()
+    ).sum(dim=0)
+
+    selected_variance = response_var_all[selected_index].clone()
+    selected_variance = (
+        selected_variance
+        * (
+            1.0
+            + (1.0 - effective_confidence)
+            * float(config.ACQ_LOW_CONF_VARIANCE_GAIN)
+        )
+        + (1.0 - effective_confidence) * between_var
+    ).clamp(
+        min=float(config.KALMAN_R_MIN_VAR),
+        max=float(config.KALMAN_R_MAX_VAR),
+    )
+
+    selected_candidate = _slice_candidate(candidate, selected_index)
+    selected_capture = capture_all[selected_index : selected_index + 1]
+    bank_capture = capture_all.any().reshape(1)
+    return VisualObservation(
+        candidate=selected_candidate,
+        posterior=posterior[selected_index : selected_index + 1],
+        anchor_xy=anchor_xy_all[selected_index : selected_index + 1],
+        anchor_se=anchor_se_all[selected_index : selected_index + 1],
+        response_variance_se=selected_variance.reshape(1, 2),
+        sat_context=sat_context_all[selected_index : selected_index + 1],
+        entropy=entropy_all[selected_index : selected_index + 1],
+        margin=margin_all[selected_index : selected_index + 1],
+        top1_distance_m=top1_distance_all[selected_index : selected_index + 1],
+        capture=selected_capture,
+        bank_capture=bank_capture,
+        acquisition_logits=acquisition_logits,
+        acquisition_probability=acquisition_probability,
+        acquisition_selected_index=int(selected_index),
+        acquisition_target_index=int(target_index),
+        acquisition_confidence=model_confidence.reshape(1),
+        acquisition_margin=acquisition_margin.reshape(1),
+        acquisition_radius_m=float(radius),
+        hypothesis_count=int(hypothesis_count),
+        selected_center_se=torch.tensor(
+            centers_se_np[selected_index : selected_index + 1],
+            dtype=torch.float32,
+            device=device,
+        ),
+        selected_by_teacher=bool(selected_by_teacher),
+    )
+
 
 
 def model_forward(
     model,
     observation,
     previous_z_uav,
+    previous2_z_uav,
     predicted_se,
     previous_measurement_se,
     previous_velocity_se,
     previous_acceleration_se,
+    previous_heading_state,
     previous_polynomial_step_se,
     route,
     hidden,
@@ -594,6 +1199,7 @@ def model_forward(
     return model.forward_step(
         z_uav=observation.candidate.z_uav,
         previous_z_uav=previous_z_uav,
+        previous2_z_uav=previous2_z_uav,
         sat_context=observation.sat_context,
         posterior_probability=observation.posterior,
         visual_anchor_se=observation.anchor_se,
@@ -602,6 +1208,7 @@ def model_forward(
         previous_measurement_se=previous_measurement_se,
         previous_velocity_se=previous_velocity_se,
         previous_acceleration_se=previous_acceleration_se,
+        previous_heading_state=previous_heading_state,
         polynomial_step_se=previous_polynomial_step_se,
         route_remaining_m=remaining,
         predicted_cross_m=predicted_cross,
@@ -613,7 +1220,17 @@ def model_forward(
     )
 
 
-def temporal_loss(output, observation, target_se, target_velocity, target_acceleration, target_step):
+
+def temporal_loss(
+    output,
+    observation,
+    target_se,
+    target_velocity,
+    target_acceleration,
+    target_step,
+    target_heading_residual,
+    target_turn_rate,
+):
     device = output.measurement_se.device
     captured = bool(observation.capture.reshape(-1)[0].item())
     zero = output.measurement_se.sum() * 0.0
@@ -621,6 +1238,26 @@ def temporal_loss(output, observation, target_se, target_velocity, target_accele
     target_v_t = tensor2(target_velocity, device)
     target_a_t = tensor2(target_acceleration, device)
     target_step_t = tensor2(target_step, device)
+    target_heading_t = torch.tensor([[float(target_heading_residual)]], dtype=torch.float32, device=device)
+    target_turn_t = torch.tensor([[float(target_turn_rate)]], dtype=torch.float32, device=device)
+
+    if observation.acquisition_target_index >= 0:
+        acquisition_target = torch.tensor(
+            [int(observation.acquisition_target_index)],
+            dtype=torch.long,
+            device=device,
+        )
+        acquisition_loss = F.cross_entropy(
+            observation.acquisition_logits.reshape(1, -1),
+            acquisition_target,
+        )
+        acquisition_correct = float(
+            int(observation.acquisition_probability.argmax().item())
+            == int(observation.acquisition_target_index)
+        )
+    else:
+        acquisition_loss = zero
+        acquisition_correct = 0.0
 
     if captured:
         measurement_loss = F.smooth_l1_loss(output.measurement_se, target_se_t)
@@ -628,7 +1265,9 @@ def temporal_loss(output, observation, target_se, target_velocity, target_accele
         variance = output.measurement_variance_se.clamp_min(
             float(config.KALMAN_R_MIN_VAR)
         )
-        variance_nll = 0.5 * (residual.square() / variance + variance.log()).mean()
+        variance_nll = 0.5 * (
+            residual.square() / variance + variance.log()
+        ).mean()
     else:
         measurement_loss = zero
         variance_nll = zero
@@ -636,6 +1275,8 @@ def temporal_loss(output, observation, target_se, target_velocity, target_accele
     next_loss = F.smooth_l1_loss(output.next_step_se, target_step_t)
     velocity_loss = F.smooth_l1_loss(output.velocity_se, target_v_t)
     acceleration_loss = F.smooth_l1_loss(output.acceleration_se, target_a_t)
+    heading_loss = (1.0 - torch.cos(output.heading_residual_rad - target_heading_t)).mean()
+    turn_rate_loss = F.smooth_l1_loss(output.turn_rate_rad, target_turn_t)
     speed_loss = F.smooth_l1_loss(
         output.next_step_se[:, 0], target_step_t[:, 0]
     )
@@ -643,26 +1284,39 @@ def temporal_loss(output, observation, target_se, target_velocity, target_accele
         output.velocity_se[:, 1].abs().mean()
         + 0.5 * output.acceleration_se[:, 1].abs().mean()
     )
-    # Explicit progress fidelity.  This is independent of any predicted leg.
-    progress_loss = F.smooth_l1_loss(
-        output.measurement_se[:, 0], target_se_t[:, 0]
-    ) if captured else zero
+    progress_loss = (
+        F.smooth_l1_loss(output.measurement_se[:, 0], target_se_t[:, 0])
+        if captured
+        else zero
+    )
 
     total = (
-        float(config.LOSS_MEASUREMENT) * measurement_loss
+        float(config.LOSS_ACQUISITION) * acquisition_loss
+        + float(config.LOSS_MEASUREMENT) * measurement_loss
         + float(config.LOSS_NEXT_STEP) * next_loss
         + float(config.LOSS_VELOCITY) * velocity_loss
         + float(config.LOSS_ACCELERATION) * acceleration_loss
+        + float(config.LOSS_HEADING) * heading_loss
+        + float(config.LOSS_TURN_RATE) * turn_rate_loss
         + float(config.LOSS_SPEED) * speed_loss
         + float(config.LOSS_CROSS_MOTION_REG) * cross_reg
         + float(config.LOSS_VARIANCE_NLL) * variance_nll
         + float(config.LOSS_PROGRESS) * progress_loss
     )
     return total, {
+        "acquisition": float(acquisition_loss.detach().cpu()),
+        "acq_correct": acquisition_correct,
+        "acq_conf": float(visual_confidence_from_observation(observation)),
+        "acq_radius": float(observation.acquisition_radius_m),
+        "bank_capture": float(observation.bank_capture.float().item()),
         "measurement": float(measurement_loss.detach().cpu()),
         "next": float(next_loss.detach().cpu()),
         "velocity": float(velocity_loss.detach().cpu()),
         "acceleration": float(acceleration_loss.detach().cpu()),
+        "heading": float(heading_loss.detach().cpu()),
+        "turn_rate": float(turn_rate_loss.detach().cpu()),
+        "pred_heading_deg": float(torch.rad2deg(output.heading_residual_rad).mean().detach().cpu()),
+        "target_heading_deg": float(math.degrees(float(target_heading_residual))),
         "speed": float(speed_loss.detach().cpu()),
         "pred_step": float(output.next_step_se[:, 0].mean().detach().cpu()),
         "target_step": float(target_step_t[:, 0].mean().detach().cpu()),
@@ -672,9 +1326,12 @@ def temporal_loss(output, observation, target_se, target_velocity, target_accele
     }
 
 
+
 # -----------------------------------------------------------------------------
 # Sequential closed-loop validation/training
 # -----------------------------------------------------------------------------
+
+@torch.no_grad()
 
 @torch.no_grad()
 def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, device):
@@ -683,11 +1340,23 @@ def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, de
     kf = RouteKalman(0.0, 0.0)
     hidden = None
     previous_z = None
+    previous2_z = None
     previous_measurement_se = None
     previous_velocity = torch.zeros(1, 2, device=device)
     previous_acceleration = torch.zeros(1, 2, device=device)
+    previous_heading_state = torch.zeros(1, 2, device=device)
     previous_poly_step = torch.zeros(1, 2, device=device)
-    errors, speed_errors, progress_errors, captures = [], [], [], []
+    previous_acq_confidence = float(config.ACQ_INITIAL_CONFIDENCE)
+
+    errors = []
+    speed_errors = []
+    progress_errors = []
+    heading_errors = []
+    captures = []
+    bank_captures = []
+    acq_correct = []
+    acq_confidences = []
+    acq_radii = []
 
     for index in range(metric_end):
         if index == 0:
@@ -697,65 +1366,154 @@ def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, de
                 previous_velocity[0].cpu().numpy(),
                 previous_acceleration[0].cpu().numpy(),
                 route.total_length_m,
+                max_progress_s=float(gt_state["se"][index, 0]),
+                polynomial_step_se=previous_poly_step[0].cpu().numpy(),
             )
-        search_xy = route.xy_from_se(predicted_se[0], predicted_se[1])
+        predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
+
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
         gt = cache.gt_xy[index : index + 1].to(device).float()
+        controlled_center_se, _, _ = controlled_gt_prior_se(cache, route, gt_state, index)
         obs = visual_observation(
-            visual, uav_clip, tensor2(search_xy, device), route, predicted_se, gt
+            model=model,
+            visual=visual,
+            uav_clip=uav_clip,
+            search_center_se=controlled_center_se,
+            route=route,
+            predicted_se=predicted_se,
+            previous_z_uav=previous_z,
+            previous2_z_uav=previous2_z,
+            hidden=hidden,
+            previous_acquisition_confidence=previous_acq_confidence,
+            kalman_progress_std=kf.progress_std(),
+            previous_forward_speed=float(previous_velocity[0, 0].item()),
+            device=device,
+            gt_xy=gt,
+            gt_se=gt_state["se"][index],
+            teacher_select=True,
         )
         output = model_forward(
-            model, obs, previous_z, predicted_se, previous_measurement_se,
-            previous_velocity, previous_acceleration, previous_poly_step,
-            route, hidden, device,
+            model,
+            obs,
+            previous_z,
+            previous2_z,
+            predicted_se,
+            previous_measurement_se,
+            previous_velocity,
+            previous_acceleration,
+            previous_heading_state,
+            previous_poly_step,
+            route,
+            hidden,
+            device,
         )
+        confidence_for_filter = visual_confidence_from_observation(obs)
         final_se = kf.update(
             output.measurement_se[0].cpu().numpy(),
             output.measurement_variance_se[0].cpu().numpy(),
             route.total_length_m,
+            acquisition_confidence=confidence_for_filter,
+            max_progress_s=float(gt_state["se"][index, 0]),
         )
+        final_se, _ = cap_kalman_to_current_gt(kf, final_se, gt_state["se"][index])
+
         if index >= metric_start:
             final_xy = route.xy_from_se(final_se[0], final_se[1])
             gt_xy = cache.gt_xy[index].cpu().numpy()
             errors.append(float(np.linalg.norm(final_xy - gt_xy)))
             speed_errors.append(
-                abs(float(output.velocity_se[0, 0].item()) - float(gt_state["velocity"][index, 0]))
+                abs(
+                    float(output.velocity_se[0, 0].item())
+                    - float(gt_state["velocity"][index, 0])
+                )
             )
-            progress_errors.append(abs(float(final_se[0]) - float(gt_state["se"][index, 0])))
+            progress_errors.append(
+                abs(float(final_se[0]) - float(gt_state["se"][index, 0]))
+            )
+            heading_errors.append(abs(math.degrees(angle_error_rad(
+                float(output.heading_residual_rad[0, 0].item()),
+                float(gt_state["heading_residual"][index]),
+            ))))
             captures.append(float(obs.capture.float().item()))
+            bank_captures.append(float(obs.bank_capture.float().item()))
+            if obs.acquisition_target_index >= 0:
+                acq_correct.append(
+                    float(
+                        int(obs.acquisition_probability.argmax().item())
+                        == int(obs.acquisition_target_index)
+                    )
+                )
+            acq_confidences.append(float(confidence_for_filter))
+            acq_radii.append(float(obs.acquisition_radius_m))
 
+        previous2_z = previous_z
         previous_z = obs.candidate.z_uav.detach()
-        previous_measurement_se = obs.anchor_se.detach()
-        previous_velocity = output.velocity_se.detach()
-        previous_acceleration = output.acceleration_se.detach()
-        previous_poly_step = output.next_step_se.detach()
+        previous_measurement_se = tensor2(kf.last_used_measurement, device).detach()
+        previous_velocity, previous_acceleration, previous_poly_step = stabilize_motion_state(
+            previous_velocity, previous_acceleration, previous_poly_step,
+            output.velocity_se, output.acceleration_se, output.next_step_se,
+        )
+        previous_heading_state = stabilize_heading_state(
+            previous_heading_state, output.heading_residual_rad, output.turn_rate_rad
+        )
         hidden = output.hidden
+        previous_acq_confidence = float(confidence_for_filter)
 
     if not errors:
         return {
-            "mle": float("inf"), "p90": float("inf"), "speed_mae": float("inf"),
-            "progress_mae": float("inf"), "capture_pct": 0.0, "score": float("inf")
+            "mle": float("inf"),
+            "p90": float("inf"),
+            "speed_mae": float("inf"),
+            "progress_mae": float("inf"),
+            "heading_mae_deg": float("inf"),
+            "capture_pct": 0.0,
+            "bank_capture_pct": 0.0,
+            "acq_accuracy_pct": 0.0,
+            "acq_confidence": 0.0,
+            "acq_radius_m": 0.0,
+            "score": float("inf"),
         }
+
     mle = float(np.mean(errors))
     speed_mae = float(np.mean(speed_errors))
     progress_mae = float(np.mean(progress_errors))
+    heading_mae_deg = float(np.mean(heading_errors)) if heading_errors else float("inf")
+    capture_pct = float(np.mean(captures) * 100.0)
+    bank_capture_pct = float(np.mean(bank_captures) * 100.0)
     score = (
         mle
         + float(config.EARLY_SCORE_SPEED_WEIGHT) * speed_mae
         + float(config.EARLY_SCORE_PROGRESS_WEIGHT) * progress_mae
+        + float(config.EARLY_SCORE_HEADING_WEIGHT) * heading_mae_deg
+        + float(config.EARLY_SCORE_MISS_WEIGHT) * (100.0 - capture_pct)
     )
     return {
         "mle": mle,
         "p90": float(np.quantile(errors, 0.90)),
         "speed_mae": speed_mae,
         "progress_mae": progress_mae,
-        "capture_pct": float(np.mean(captures) * 100.0),
+        "heading_mae_deg": heading_mae_deg,
+        "capture_pct": capture_pct,
+        "bank_capture_pct": bank_capture_pct,
+        "acq_accuracy_pct": float(np.mean(acq_correct) * 100.0) if acq_correct else 0.0,
+        "acq_confidence": float(np.mean(acq_confidences)) if acq_confidences else 0.0,
+        "acq_radius_m": float(np.mean(acq_radii)) if acq_radii else 0.0,
         "score": float(score),
     }
 
 
-def train_temporal_model(visual, cache, route, device, epochs, patience_limit, resume=False):
-    model = RouteProgressGRU().to(device)
+
+
+def train_temporal_model(
+    visual,
+    cache,
+    route,
+    device,
+    epochs,
+    patience_limit,
+    resume=False,
+):
+    model = ThreeFrameRouteStateGRU().to(device)
     parameters = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(
         parameters,
@@ -801,14 +1559,30 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
 
     for epoch in range(start_epoch, int(epochs) + 1):
         model.train()
-        ratio = teacher_ratio_for_epoch(epoch)
+        center_teacher_ratio = teacher_ratio_for_epoch(epoch)
+        if epoch <= int(config.MOTION_WARMUP_EPOCHS):
+            acquisition_teacher_ratio = 1.0
+        else:
+            elapsed = max(0, epoch - int(config.MOTION_WARMUP_EPOCHS))
+            fraction = min(
+                1.0,
+                elapsed / max(float(config.ACQ_TEACHER_DECAY_EPOCHS), 1.0),
+            )
+            acquisition_teacher_ratio = (
+                1.0
+                + fraction * (float(config.ACQ_TEACHER_FINAL) - 1.0)
+            )
+
         kf = RouteKalman(0.0, 0.0)
         hidden = None
         previous_z = None
+        previous2_z = None
         previous_measurement_se = None
         previous_velocity = torch.zeros(1, 2, device=device)
         previous_acceleration = torch.zeros(1, 2, device=device)
+        previous_heading_state = torch.zeros(1, 2, device=device)
         previous_poly_step = torch.zeros(1, 2, device=device)
+        previous_acq_confidence = float(config.ACQ_INITIAL_CONFIDENCE)
         chunk_loss = None
         chunk_count = 0
         losses = []
@@ -823,22 +1597,51 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
                     previous_velocity[0].detach().cpu().numpy(),
                     previous_acceleration[0].detach().cpu().numpy(),
                     route.total_length_m,
+                    max_progress_s=float(gt_state["se"][index, 0]),
+                    polynomial_step_se=previous_poly_step[0].detach().cpu().numpy(),
                 )
+            predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
 
-            predicted_xy = route.xy_from_se(predicted_se[0], predicted_se[1])
-            gt_xy_np = cache.gt_xy[index].cpu().numpy().astype(np.float64)
-            teacher_xy = gt_xy_np + random_jitter(config.TRAIN_CENTER_JITTER_M)
-            search_xy = float(ratio) * teacher_xy + (1.0 - float(ratio)) * predicted_xy
+            gt_se_np = np.asarray(gt_state["se"][index], dtype=np.float64)
+            search_center_se, _, _ = controlled_gt_prior_se(
+                cache, route, gt_state, index
+            )
+            teacher_select = True
 
             uav_clip = cache.uav_clip[index : index + 1].to(device).float()
             gt_xy = cache.gt_xy[index : index + 1].to(device).float()
             obs = visual_observation(
-                visual, uav_clip, tensor2(search_xy, device), route, predicted_se, gt_xy
+                model=model,
+                visual=visual,
+                uav_clip=uav_clip,
+                search_center_se=search_center_se,
+                route=route,
+                predicted_se=predicted_se,
+                previous_z_uav=previous_z,
+                previous2_z_uav=previous2_z,
+                hidden=hidden,
+                previous_acquisition_confidence=previous_acq_confidence,
+                kalman_progress_std=kf.progress_std(),
+                previous_forward_speed=float(previous_velocity[0, 0].item()),
+                device=device,
+                gt_xy=gt_xy,
+                gt_se=gt_state["se"][index],
+                teacher_select=teacher_select,
             )
             output = model_forward(
-                model, obs, previous_z, predicted_se, previous_measurement_se,
-                previous_velocity, previous_acceleration, previous_poly_step,
-                route, hidden, device,
+                model,
+                obs,
+                previous_z,
+                previous2_z,
+                predicted_se,
+                previous_measurement_se,
+                previous_velocity,
+                previous_acceleration,
+                previous_heading_state,
+                previous_poly_step,
+                route,
+                hidden,
+                device,
             )
 
             step_loss, components = temporal_loss(
@@ -848,23 +1651,37 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
                 target_velocity=gt_state["velocity"][index],
                 target_acceleration=gt_state["acceleration"][index],
                 target_step=gt_state["step"][index],
+                target_heading_residual=gt_state["heading_residual"][index],
+                target_turn_rate=gt_state["turn_rate"][index],
             )
             chunk_loss = step_loss if chunk_loss is None else chunk_loss + step_loss
             chunk_count += 1
             component_rows.append(components)
 
-            final_se = kf.update(
+            filter_confidence = visual_confidence_from_observation(obs)
+            train_final_se = kf.update(
                 output.measurement_se[0].detach().cpu().numpy(),
                 output.measurement_variance_se[0].detach().cpu().numpy(),
                 route.total_length_m,
+                acquisition_confidence=filter_confidence,
+                max_progress_s=float(gt_state["se"][index, 0]),
             )
-            _ = final_se
+            train_final_se, _ = cap_kalman_to_current_gt(
+                kf, train_final_se, gt_state["se"][index]
+            )
+
+            previous2_z = previous_z
             previous_z = obs.candidate.z_uav.detach()
-            previous_measurement_se = obs.anchor_se.detach()
-            previous_velocity = output.velocity_se.detach()
-            previous_acceleration = output.acceleration_se.detach()
-            previous_poly_step = output.next_step_se.detach()
+            previous_measurement_se = tensor2(kf.last_used_measurement, device).detach()
+            previous_velocity, previous_acceleration, previous_poly_step = stabilize_motion_state(
+                previous_velocity, previous_acceleration, previous_poly_step,
+                output.velocity_se, output.acceleration_se, output.next_step_se,
+            )
+            previous_heading_state = stabilize_heading_state(
+                previous_heading_state, output.heading_residual_rad, output.turn_rate_rad
+            )
             hidden = output.hidden
+            previous_acq_confidence = float(filter_confidence)
 
             boundary = (
                 chunk_count >= int(config.TBPTT_STEPS)
@@ -874,18 +1691,27 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
                 normalized = chunk_loss / float(max(1, chunk_count))
                 if not torch.isfinite(normalized):
                     raise FloatingPointError(
-                        "non-finite temporal loss at epoch %d frame %d" % (epoch, index)
+                        "non-finite temporal loss at epoch %d frame %d"
+                        % (epoch, index)
                     )
                 normalized.backward()
-                torch.nn.utils.clip_grad_norm_(parameters, float(config.GRAD_CLIP_NORM))
+                torch.nn.utils.clip_grad_norm_(
+                    parameters, float(config.GRAD_CLIP_NORM)
+                )
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
                 losses.append(float(normalized.detach().cpu()))
-                # Standard sequential TBPTT: detach recurrent state but do not
-                # reset Kalman/progress/velocity or shuffle to a GT restart.
+
+                # Sequential TBPTT only detaches computation. Navigation state is
+                # never reset to GT at a chunk boundary.
                 hidden = hidden.detach()
+                if previous_z is not None:
+                    previous_z = previous_z.detach()
+                if previous2_z is not None:
+                    previous2_z = previous2_z.detach()
                 previous_velocity = previous_velocity.detach()
                 previous_acceleration = previous_acceleration.detach()
+                previous_heading_state = previous_heading_state.detach()
                 previous_poly_step = previous_poly_step.detach()
                 previous_measurement_se = previous_measurement_se.detach()
                 chunk_loss = None
@@ -899,7 +1725,8 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
         if improved:
             best_score = score
             best_state = {
-                key: value.detach().cpu().clone() for key, value in model.state_dict().items()
+                key: value.detach().cpu().clone()
+                for key, value in model.state_dict().items()
             }
             patience = 0
             torch.save(
@@ -912,10 +1739,18 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
                     "train_routes": ["route_A"],
                     "validation_routes": ["route_A"],
                     "eval_routes": ["route_B", "route_C"],
-                    "known_at_inference": ["start_coordinate", "waypoint_coordinates"],
+                    "known_at_inference": [
+                        "current_frame_gt_coordinate_for_controlled_local_prior",
+                        "waypoint_coordinates",
+                    ],
                     "uses_waypoint_frame_index_at_inference": False,
-                    "waypoint_state": "continuous filtered route progress s; no learned leg switch classifier",
-                    "training": "sequential TBPTT without random GT chunk restarts",
+                    "protocol": str(config.CONTROLLED_PROTOCOL_NAME),
+                    "acquisition": (
+                        "single controlled 6x6 local window centered at current-frame GT + bounded jitter"
+                    ),
+                    "training": (
+                        "Route-A sequential TBPTT with controlled GT+smooth-jitter local-prior supervision"
+                    ),
                 },
                 config.TEMPORAL_CHECKPOINT,
             )
@@ -939,25 +1774,66 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
         target_step = float(np.mean([r["target_step"] for r in component_rows]))
         pred_velocity = float(np.mean([r["pred_velocity"] for r in component_rows]))
         target_velocity = float(np.mean([r["target_velocity"] for r in component_rows]))
+        pred_heading_deg = float(np.mean([r["pred_heading_deg"] for r in component_rows]))
+        target_heading_deg = float(np.mean([r["target_heading_deg"] for r in component_rows]))
         capture = float(np.mean([r["capture"] for r in component_rows]) * 100.0)
+        bank_capture = float(
+            np.mean([r["bank_capture"] for r in component_rows]) * 100.0
+        )
+        acq_acc = float(
+            np.mean([r["acq_correct"] for r in component_rows]) * 100.0
+        )
+        acq_conf = float(np.mean([r["acq_conf"] for r in component_rows]))
+        acq_radius = float(np.mean([r["acq_radius"] for r in component_rows]))
+
         print(
-            "temporal epoch=%03d/%d loss=%.5f teacher=%.3f capture=%.2f%% "
+            "temporal epoch=%03d/%d loss=%.5f center_teacher=%.3f acq_teacher=%.3f "
+            "capture=%.2f%% bank_capture=%.2f%% acq_acc=%.2f%% acq_conf=%.3f radius=%.1fm "
             "pred_step=%.3f target_step=%.3f pred_v=%.3f target_v=%.3f "
             "val_mle=%.3fm val_p90=%.3fm val_speed_mae=%.3f "
-            "val_progress_mae=%.3fm val_capture=%.2f%% score=%.3f best=%.3f patience=%d/%d"
+            "heading=%.1f/%.1fdeg val_progress_mae=%.3fm val_heading_mae=%.1fdeg "
+            "val_capture=%.2f%% val_bank=%.2f%% val_acq_acc=%.2f%% "
+            "score=%.3f best=%.3f patience=%d/%d"
             % (
-                epoch, int(epochs), float(np.mean(losses)) if losses else float("nan"),
-                ratio, capture, pred_step, target_step, pred_velocity, target_velocity,
-                validation["mle"], validation["p90"], validation["speed_mae"],
-                validation["progress_mae"], validation["capture_pct"], score,
-                best_score, patience, int(patience_limit),
+                epoch,
+                int(epochs),
+                float(np.mean(losses)) if losses else float("nan"),
+                center_teacher_ratio,
+                acquisition_teacher_ratio,
+                capture,
+                bank_capture,
+                acq_acc,
+                acq_conf,
+                acq_radius,
+                pred_step,
+                target_step,
+                pred_velocity,
+                target_velocity,
+                validation["mle"],
+                validation["p90"],
+                validation["speed_mae"],
+                pred_heading_deg,
+                target_heading_deg,
+                validation["progress_mae"],
+                validation["heading_mae_deg"],
+                validation["capture_pct"],
+                validation["bank_capture_pct"],
+                validation["acq_accuracy_pct"],
+                score,
+                best_score,
+                patience,
+                int(patience_limit),
             ),
             flush=True,
         )
 
-        if epoch >= int(config.EARLY_STOP_MIN_EPOCH) and patience >= int(patience_limit):
+        if (
+            epoch >= int(config.EARLY_STOP_MIN_EPOCH)
+            and patience >= int(patience_limit)
+        ):
             print(
-                "EARLY STOP: composite closed-loop score did not improve by %.3f for %d epochs."
+                "EARLY STOP: controlled local-prior validation score did not "
+                "improve by %.3f for %d epochs."
                 % (float(config.EARLY_STOP_MIN_DELTA), int(patience_limit)),
                 flush=True,
             )
@@ -967,6 +1843,7 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
         raise RuntimeError("Temporal training did not produce a best checkpoint")
     model.load_state_dict(best_state)
     return model, best_score
+
 
 
 # -----------------------------------------------------------------------------
@@ -989,18 +1866,40 @@ def metric_summary(errors):
 
 
 @torch.no_grad()
+
+@torch.no_grad()
 def run_route_inference(route_name, visual, model, cache, route, device):
     model.eval()
     gt_state = build_gt_route_state(cache, route)
     kf = RouteKalman(0.0, 0.0)
     hidden = None
     previous_z = None
+    previous2_z = None
     previous_measurement_se = None
     previous_velocity = torch.zeros(1, 2, device=device)
     previous_acceleration = torch.zeros(1, 2, device=device)
+    previous_heading_state = torch.zeros(1, 2, device=device)
     previous_poly_step = torch.zeros(1, 2, device=device)
-    rows, errors, captures, final_steps, speed_errors, progress_errors = [], [], [], [], [], []
+    previous_acq_confidence = float(config.ACQ_INITIAL_CONFIDENCE)
+
+    rows = []
+    errors = []
+    captures = []
+    bank_captures = []
+    final_steps = []
+    speed_errors = []
+    progress_errors = []
+    heading_errors = []
+    acq_confidences = []
+    acq_radii = []
+    acq_correct = []
     previous_final_xy = route.xy_from_se(0.0, 0.0)
+    selected_miss_streak = 0
+    bank_miss_streak = 0
+    longest_selected_miss = 0
+    longest_bank_miss = 0
+    first_selected_miss_frame = None
+    first_bank_miss_frame = None
 
     for index in range(len(cache)):
         if index == 0:
@@ -1010,41 +1909,132 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 previous_velocity[0].cpu().numpy(),
                 previous_acceleration[0].cpu().numpy(),
                 route.total_length_m,
+                max_progress_s=float(gt_state["se"][index, 0]),
+                polynomial_step_se=previous_poly_step[0].cpu().numpy(),
             )
+        predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
+
         predicted_xy = route.xy_from_se(predicted_se[0], predicted_se[1])
         frame_before = route.frame_from_se(predicted_se[0], predicted_se[1])
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
         gt_xy_t = cache.gt_xy[index : index + 1].to(device).float()
+        controlled_center_se, controlled_prior_xy, controlled_jitter_xy = controlled_gt_prior_se(
+            cache, route, gt_state, index
+        )
+
         obs = visual_observation(
-            visual, uav_clip, tensor2(predicted_xy, device), route, predicted_se, gt_xy_t
+            model=model,
+            visual=visual,
+            uav_clip=uav_clip,
+            search_center_se=controlled_center_se,
+            route=route,
+            predicted_se=predicted_se,
+            previous_z_uav=previous_z,
+            previous2_z_uav=previous2_z,
+            hidden=hidden,
+            previous_acquisition_confidence=previous_acq_confidence,
+            kalman_progress_std=kf.progress_std(),
+            previous_forward_speed=float(previous_velocity[0, 0].item()),
+            device=device,
+            gt_xy=gt_xy_t,
+            gt_se=gt_state["se"][index],
+            teacher_select=True,
         )
         output = model_forward(
-            model, obs, previous_z, predicted_se, previous_measurement_se,
-            previous_velocity, previous_acceleration, previous_poly_step,
-            route, hidden, device,
+            model,
+            obs,
+            previous_z,
+            previous2_z,
+            predicted_se,
+            previous_measurement_se,
+            previous_velocity,
+            previous_acceleration,
+            previous_heading_state,
+            previous_poly_step,
+            route,
+            hidden,
+            device,
         )
+        acquisition_confidence = visual_confidence_from_observation(obs)
         final_se = kf.update(
             output.measurement_se[0].cpu().numpy(),
             output.measurement_variance_se[0].cpu().numpy(),
             route.total_length_m,
+            acquisition_confidence=acquisition_confidence,
+            max_progress_s=float(gt_state["se"][index, 0]),
+        )
+        final_se, progress_capped_to_gt = cap_kalman_to_current_gt(
+            kf, final_se, gt_state["se"][index]
         )
         final_xy = route.xy_from_se(final_se[0], final_se[1])
         frame_after = route.frame_from_se(final_se[0], final_se[1])
+
         gt_xy = cache.gt_xy[index].cpu().numpy()
         error = float(np.linalg.norm(final_xy - gt_xy))
         errors.append(error)
-        captures.append(float(obs.capture.float().item()))
-        final_step = 0.0 if index == 0 else float(np.linalg.norm(final_xy - previous_final_xy))
+        selected_capture = bool(obs.capture.reshape(-1)[0].item())
+        bank_capture = bool(obs.bank_capture.reshape(-1)[0].item())
+        captures.append(float(selected_capture))
+        bank_captures.append(float(bank_capture))
+
+        if selected_capture:
+            selected_miss_streak = 0
+        else:
+            selected_miss_streak += 1
+            if first_selected_miss_frame is None:
+                first_selected_miss_frame = int(cache.frame_ids[index].item())
+        if bank_capture:
+            bank_miss_streak = 0
+        else:
+            bank_miss_streak += 1
+            if first_bank_miss_frame is None:
+                first_bank_miss_frame = int(cache.frame_ids[index].item())
+        longest_selected_miss = max(longest_selected_miss, selected_miss_streak)
+        longest_bank_miss = max(longest_bank_miss, bank_miss_streak)
+
+        final_step = (
+            0.0
+            if index == 0
+            else float(np.linalg.norm(final_xy - previous_final_xy))
+        )
         final_steps.append(final_step)
         target_v = float(gt_state["velocity"][index, 0])
         target_step = float(gt_state["step"][index, 0])
-        speed_error = abs(float(output.velocity_se[0, 0].item()) - target_v)
-        progress_error = abs(float(final_se[0]) - float(gt_state["se"][index, 0]))
+        speed_error = abs(
+            float(output.velocity_se[0, 0].item()) - target_v
+        )
+        progress_error = abs(
+            float(final_se[0]) - float(gt_state["se"][index, 0])
+        )
+        heading_residual_rad = float(output.heading_residual_rad[0, 0].item())
+        turn_rate_rad = float(output.turn_rate_rad[0, 0].item())
+        route_heading_rad = route.route_heading_rad(float(final_se[0]))
+        estimated_heading_rad = wrap_angle_rad(route_heading_rad + heading_residual_rad)
+        polynomial_heading_rad = wrap_angle_rad(
+            route_heading_rad + heading_residual_rad + 0.5 * turn_rate_rad
+        )
+        gt_heading_rad = float(gt_state["heading_abs"][index])
+        heading_error_deg = abs(math.degrees(angle_error_rad(estimated_heading_rad, gt_heading_rad)))
         speed_errors.append(speed_error)
         progress_errors.append(progress_error)
+        heading_errors.append(heading_error_deg)
+        acq_confidences.append(acquisition_confidence)
+        acq_radii.append(float(obs.acquisition_radius_m))
+        if obs.acquisition_target_index >= 0:
+            acq_correct.append(
+                float(
+                    int(obs.acquisition_probability.argmax().item())
+                    == int(obs.acquisition_target_index)
+                )
+            )
 
-        p = obs.posterior.clamp_min(float(config.NAV_POSTERIOR_EPS))
-        entropy = float((-(p * p.log()).sum(dim=1) / max(math.log(max(2, p.shape[1])), 1e-6))[0].item())
+        p = obs.posterior.clamp_min(float(config.ACQ_POSTERIOR_EPS))
+        entropy = float(
+            (
+                -(p * p.log()).sum(dim=1)
+                / max(math.log(max(2, p.shape[1])), 1e-6)
+            )[0].item()
+        )
         if p.shape[1] >= 2:
             top2 = torch.topk(p, k=2, dim=1).values
             margin = float((top2[:, 0] - top2[:, 1])[0].item())
@@ -1053,6 +2043,14 @@ def run_route_inference(route_name, visual, model, cache, route, device):
 
         rows.append(
             {
+                "protocol": str(config.CONTROLLED_PROTOCOL_NAME),
+                "controlled_gt_prior": 1,
+                "gt_prior_jitter_limit_m": float(config.CONTROLLED_GT_PRIOR_JITTER_M),
+                "prior_center_x": float(controlled_prior_xy[0]),
+                "prior_center_y": float(controlled_prior_xy[1]),
+                "prior_jitter_x": float(controlled_jitter_xy[0]),
+                "prior_jitter_y": float(controlled_jitter_xy[1]),
+                "progress_capped_to_gt": int(progress_capped_to_gt),
                 "frame_id": int(cache.frame_ids[index].item()),
                 "image_path": cache.image_paths[index],
                 "gt_x": float(gt_xy[0]),
@@ -1062,11 +2060,28 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "gt_waypoint_leg": int(gt_state["legs"][index]),
                 "gt_step_parallel": target_step,
                 "gt_velocity_parallel": target_v,
+                "gt_heading_deg": float(math.degrees(gt_heading_rad)),
+                "gt_turn_rate_deg_per_frame": float(math.degrees(gt_state["turn_rate"][index])),
                 "predicted_progress_s": float(predicted_se[0]),
                 "predicted_cross_e": float(predicted_se[1]),
                 "predicted_x": float(predicted_xy[0]),
                 "predicted_y": float(predicted_xy[1]),
-                "search_grid_size": int(config.NAV_GRID_SIZE),
+                "kalman_progress_std_m": float(kf.progress_std()),
+                "acquisition_hypothesis_count": int(obs.hypothesis_count),
+                "acquisition_radius_m": float(obs.acquisition_radius_m),
+                "acquisition_selected_index": int(obs.acquisition_selected_index),
+                "acquisition_target_index": int(obs.acquisition_target_index),
+                "acquisition_confidence": float(acquisition_confidence),
+                "acquisition_margin": float(obs.acquisition_margin.item()),
+                "selected_hypothesis_center_s": float(
+                    obs.selected_center_se[0, 0].item()
+                ),
+                "selected_hypothesis_center_e": float(
+                    obs.selected_center_se[0, 1].item()
+                ),
+                "selected_candidate_capture": int(selected_capture),
+                "bank_candidate_capture": int(bank_capture),
+                "search_grid_size": int(config.ACQ_LOCAL_GRID_SIZE),
                 "raw_top1_x": float(obs.candidate.raw_top1_xy[0, 0].item()),
                 "raw_top1_y": float(obs.candidate.raw_top1_xy[0, 1].item()),
                 "hardms_x": float(obs.candidate.hardms_xy[0, 0].item()),
@@ -1079,24 +2094,51 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "visual_margin": margin,
                 "visual_var_s": float(obs.response_variance_se[0, 0].item()),
                 "visual_var_e": float(obs.response_variance_se[0, 1].item()),
-                "candidate_capture": int(bool(obs.capture.reshape(-1)[0].item())),
+                "candidate_capture": int(selected_capture),
                 "measurement_s": float(output.measurement_se[0, 0].item()),
                 "measurement_e": float(output.measurement_se[0, 1].item()),
-                "measurement_var_s": float(output.measurement_variance_se[0, 0].item()),
-                "measurement_var_e": float(output.measurement_variance_se[0, 1].item()),
+                "measurement_var_s": float(
+                    output.measurement_variance_se[0, 0].item()
+                ),
+                "measurement_var_e": float(
+                    output.measurement_variance_se[0, 1].item()
+                ),
+                "local_visual_confidence": float(acquisition_confidence),
+                "kalman_raw_measurement_s": float(kf.last_raw_measurement[0]),
+                "kalman_raw_measurement_e": float(kf.last_raw_measurement[1]),
+                "kalman_used_measurement_s": float(kf.last_used_measurement[0]),
+                "kalman_used_measurement_e": float(kf.last_used_measurement[1]),
+                "kalman_measurement_clip_s": float(kf.last_measurement_clip[0]),
+                "kalman_measurement_clip_e": float(kf.last_measurement_clip[1]),
+                "kalman_posterior_projection_m": float(kf.last_posterior_projection_m),
+                "kalman_step_limited": int(kf.last_step_limited),
+                "kalman_step_limit_m": float(kf.last_step_limit_m),
+                "kalman_motion_step_s": float(kf.last_motion_step[0]),
+                "kalman_motion_step_e": float(kf.last_motion_step[1]),
                 "v_parallel": float(output.velocity_se[0, 0].item()),
                 "v_cross": float(output.velocity_se[0, 1].item()),
                 "a_parallel": float(output.acceleration_se[0, 0].item()),
                 "a_cross": float(output.acceleration_se[0, 1].item()),
-                "poly_next_step_parallel": float(output.next_step_se[0, 0].item()),
-                "poly_next_step_cross": float(output.next_step_se[0, 1].item()),
+                "heading_residual_deg": float(math.degrees(heading_residual_rad)),
+                "turn_rate_deg_per_frame": float(math.degrees(turn_rate_rad)),
+                "estimated_heading_deg": float(math.degrees(estimated_heading_rad)),
+                "polynomial_heading_deg": float(math.degrees(polynomial_heading_rad)),
+                "heading_error_deg": float(heading_error_deg),
+                "poly_next_step_parallel": float(
+                    output.next_step_se[0, 0].item()
+                ),
+                "poly_next_step_cross": float(
+                    output.next_step_se[0, 1].item()
+                ),
                 "kalman_nis": float(kf.last_nis),
                 "kalman_r_scale": float(kf.last_r_scale),
                 "final_progress_s": float(final_se[0]),
                 "final_cross_e": float(final_se[1]),
                 "waypoint_leg_before_update": int(frame_before.leg_index),
                 "waypoint_leg": int(frame_after.leg_index),
-                "target_waypoint": int(min(frame_after.leg_index + 1, len(route.points) - 1)),
+                "target_waypoint": int(
+                    min(frame_after.leg_index + 1, len(route.points) - 1)
+                ),
                 "route_remaining_m": float(frame_after.remaining_m),
                 "route_leg_progress": float(frame_after.leg_progress_fraction),
                 "progress_error_m": float(progress_error),
@@ -1109,16 +2151,23 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         )
 
         previous_final_xy = final_xy.copy()
+        previous2_z = previous_z
         previous_z = obs.candidate.z_uav.detach()
-        previous_measurement_se = obs.anchor_se.detach()
-        previous_velocity = output.velocity_se.detach()
-        previous_acceleration = output.acceleration_se.detach()
-        previous_poly_step = output.next_step_se.detach()
+        previous_measurement_se = tensor2(kf.last_used_measurement, device).detach()
+        previous_velocity, previous_acceleration, previous_poly_step = stabilize_motion_state(
+            previous_velocity, previous_acceleration, previous_poly_step,
+            output.velocity_se, output.acceleration_se, output.next_step_se,
+        )
+        previous_heading_state = stabilize_heading_state(
+            previous_heading_state, output.heading_residual_rad, output.turn_rate_rad
+        )
         hidden = output.hidden
+        previous_acq_confidence = acquisition_confidence
 
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = config.OUTPUT_DIR / (
-        route_name + "_route_progress_gru_polynomial_kalman_frames.csv"
+        route_name
+        + "_controlled_gtprior_heading_rnn_polynomial_kalman_frames.csv"
     )
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
@@ -1126,26 +2175,66 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         writer.writerows(rows)
 
     summary = metric_summary(errors)
-    summary["CandidateCapture_pct"] = float(np.mean(captures) * 100.0)
+    summary["Protocol"] = str(config.CONTROLLED_PROTOCOL_NAME)
+    summary["SelectedCandidateCapture_pct"] = float(
+        np.mean(captures) * 100.0
+    )
+    summary["BankCandidateCapture_pct"] = float(
+        np.mean(bank_captures) * 100.0
+    )
+    summary["AcquisitionAccuracy_pct"] = float(
+        np.mean(acq_correct) * 100.0
+    ) if acq_correct else 0.0
+    summary["HeadingMAE_deg"] = float(np.mean(heading_errors)) if heading_errors else float("nan")
+    summary["MeanAcquisitionConfidence"] = float(np.mean(acq_confidences))
+    summary["MeanAcquisitionRadius_m"] = float(np.mean(acq_radii))
+    summary["FirstSelectedMissFrame"] = first_selected_miss_frame
+    summary["FirstBankMissFrame"] = first_bank_miss_frame
+    summary["LongestSelectedMissFrames"] = int(longest_selected_miss)
+    summary["LongestBankMissFrames"] = int(longest_bank_miss)
     summary["MeanFinalStep_m"] = float(np.mean(final_steps))
+    summary["MaxFinalStep_m"] = float(np.max(final_steps)) if final_steps else 0.0
+    summary["JumpTolerance_m"] = float(config.JUMP_TOLERANCE_M)
+    summary["JumpRate_pct"] = float(
+        np.mean(np.asarray(final_steps[1:], dtype=np.float64) > float(config.JUMP_TOLERANCE_M)) * 100.0
+    ) if len(final_steps) > 1 else 0.0
+    summary["KalmanStepLimited_pct"] = float(
+        np.mean([float(row.get("kalman_step_limited", 0)) for row in rows]) * 100.0
+    ) if rows else 0.0
+    summary["MeanVisualConfidence"] = float(
+        np.mean([float(row.get("local_visual_confidence", 0.0)) for row in rows])
+    ) if rows else 0.0
     summary["MeanSpeedError_m_per_frame"] = float(np.mean(speed_errors))
     summary["MeanProgressError_m"] = float(np.mean(progress_errors))
     summary["FinalPredictedWaypointLeg"] = int(rows[-1]["waypoint_leg"])
     summary["FinalGTWaypointLeg"] = int(rows[-1]["gt_waypoint_leg"])
     summary["Waypoints"] = int(len(route.points))
     summary["CSV"] = str(csv_path)
+
     print(
-        "%s final MLE=%.3fm P90=%.3fm LSR@15=%.2f%% capture=%.2f%% "
-        "speed_mae=%.3fm/frame progress_mae=%.3fm final_leg=%d gt_leg=%d"
+        "%s final MLE=%.3fm P90=%.3fm LSR@15=%.2f%% selected_capture=%.2f%% "
+        "bank_capture=%.2f%% acq_acc=%.2f%% speed_mae=%.3fm/frame "
+        "progress_mae=%.3fm heading_mae=%.1fdeg jump_rate=%.2f%% max_step=%.2fm final_leg=%d gt_leg=%d"
         % (
-            route_name, summary["MLE_m"], summary["P90_m"], summary["LSR@15_pct"],
-            summary["CandidateCapture_pct"], summary["MeanSpeedError_m_per_frame"],
-            summary["MeanProgressError_m"], summary["FinalPredictedWaypointLeg"],
+            route_name,
+            summary["MLE_m"],
+            summary["P90_m"],
+            summary["LSR@15_pct"],
+            summary["SelectedCandidateCapture_pct"],
+            summary["BankCandidateCapture_pct"],
+            summary["AcquisitionAccuracy_pct"],
+            summary["MeanSpeedError_m_per_frame"],
+            summary["MeanProgressError_m"],
+            summary["HeadingMAE_deg"],
+            summary["JumpRate_pct"],
+            summary["MaxFinalStep_m"],
+            summary["FinalPredictedWaypointLeg"],
             summary["FinalGTWaypointLeg"],
         ),
         flush=True,
     )
     return summary
+
 
 
 def load_temporal_model(device):
@@ -1156,7 +2245,7 @@ def load_temporal_model(device):
         raise RuntimeError(
             "Temporal checkpoint architecture mismatch: %r" % payload.get("architecture")
         )
-    model = RouteProgressGRU().to(device)
+    model = ThreeFrameRouteStateGRU().to(device)
     model.load_state_dict(payload["model"])
     model.eval()
     return model
@@ -1195,7 +2284,8 @@ def train_pipeline(args, device):
         patience_limit=int(args.patience),
         resume=bool(args.resume_temporal),
     )
-    print("best composite closed-loop validation score=%.3f" % best_score, flush=True)
+    print("best controlled-validation score=%.3f" % best_score, flush=True)
+
 
 
 def eval_pipeline(device):
@@ -1203,16 +2293,37 @@ def eval_pipeline(device):
     model = load_temporal_model(device)
     all_summary = {
         "architecture": ARCHITECTURE_NAME,
+        "protocol": "GT+smooth-jitter_controlled_local_prior",
         "train_routes": ["route_A"],
         "eval_routes": ["route_B", "route_C"],
-        "known_at_inference": ["start_coordinate", "waypoint_coordinates"],
+        "known_at_inference": [
+            "current_frame_gt_coordinate_for_controlled_local_prior",
+            "waypoint_coordinates",
+        ],
         "uses_waypoint_frame_index_at_inference": False,
+        "uses_gt_center_at_inference": True,
         "route_state": "continuous [s,e,vs,ve] on ordered waypoint polyline",
-        "motion_model": "two-frame GRU -> v/a -> second-order polynomial",
-        "visual_measurement": "12x12 local posterior around polynomial prediction; no route-global retrieval",
-        "waypoint_transition": "deterministic from final filtered route progress after current visual update",
-        "training": "sequential TBPTT; no random GT chunk restart",
-        "final_filter": "external route-coordinate Kalman",
+        "motion_model": (
+            "three-frame short-term visual motion + recurrent state GRU "
+            "-> v/a -> second-order polynomial"
+        ),
+        "acquisition": (
+            "single 6x6 LOCAL SAT window centered at current-frame GT + bounded jitter; "
+            "this is a controlled local-prior protocol, not autonomous acquisition"
+        ),
+        "visual_measurement": (
+            "selected local posterior + recurrent correction/variance"
+        ),
+        "waypoint_transition": (
+            "deterministic from filtered continuous route progress after current visual update"
+        ),
+        "training": (
+            "Route-A-only sequential TBPTT under the same controlled GT+smooth-jitter local-prior protocol"
+        ),
+        "final_filter": (
+            "external route-coordinate Kalman; position may correct backward "
+            "after an over-prediction while forward velocity remains non-negative"
+        ),
     }
     for route_name in ["route_B", "route_C"]:
         route_index = config.ROUTE_NAMES.index(route_name)
@@ -1234,6 +2345,7 @@ def eval_pipeline(device):
     print("summary: %s" % summary_path, flush=True)
 
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -1249,35 +2361,46 @@ def parse_args():
     return parser.parse_args()
 
 
+
 def main():
     args = parse_args()
+    # --jitter-m controls both local visual training jitter and the controlled
+    # GT-prior jitter used at validation/evaluation time.
+    config.LOCAL_PRIOR_JITTER_M = float(args.jitter_m)
+    config.CONTROLLED_GT_PRIOR_JITTER_M = float(args.jitter_m)
     set_seed(config.SEED)
     device = resolve_device()
-    print("=" * 100, flush=True)
+    print("=" * 108, flush=True)
     print(ARCHITECTURE_NAME, flush=True)
     print("device=%s" % device, flush=True)
     print(
-        "Known inference inputs: start coordinate + ordered waypoint coordinates only; "
-        "waypoint frame_index/timestamps are NOT used.",
+        "Protocol: CONTROLLED GT+smooth-jitter local prior. The current-frame GT coordinate "
+        "is intentionally used only to center the local SAT search window; this is not autonomous localization.",
         flush=True,
     )
     print(
-        "GRU motion -> second-order polynomial -> 12x12 local visual posterior -> "
-        "route-coordinate external Kalman -> final XY.",
+        "3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> "
+        "6x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.",
         flush=True,
     )
     print(
-        "Waypoint index comes from final filtered continuous route progress s; "
-        "there is no learned single-frame waypoint switch classifier.",
+        "Evaluation intentionally does not solve global acquisition/re-localization: "
+        "every frame receives a bounded GT-centered local prior.",
         flush=True,
     )
-    print("=" * 100, flush=True)
+    print(
+        "Estimated position may be corrected backward after an over-prediction; "
+        "physical forward intent is represented by non-negative route velocity.",
+        flush=True,
+    )
+    print("=" * 108, flush=True)
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     config.CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if args.mode in ("train", "train_eval"):
         train_pipeline(args, device)
     if args.mode in ("eval", "train_eval"):
         eval_pipeline(device)
+
 
 
 if __name__ == "__main__":
