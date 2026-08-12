@@ -16,7 +16,7 @@ from visual_localizer import CandidateBatch, FrozenVisualLocalizer, train_visual
 from visual_model import ThreeFrameRouteStateGRU
 
 
-ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameHeadingGRUPolynomialConstrainedKalman_v30"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameCausalHeadingGRUPolynomialConstrainedKalman_v31"
 
 
 @dataclass
@@ -136,7 +136,7 @@ class WaypointRoute:
 
         The old piecewise leg cross-axis rotated instantaneously at a waypoint.
         With non-zero e this can create an apparent XY jump even when (s,e) is
-        smooth. v30 estimates a local tangent from two nearby centerline points.
+        smooth. v31 sets the smoothing radius to zero so the route tangent cannot rotate before the waypoint.
         """
         s = float(np.clip(s_m, 0.0, self.total_length_m))
         radius = max(float(getattr(config, "ROUTE_FRAME_SMOOTH_RADIUS_M", 0.0)), 0.0)
@@ -239,7 +239,7 @@ class RouteKalman:
     """Robust constrained external Kalman in [s, e, vs, ve].
 
     The learned RNN state drives the second-order polynomial prediction. The
-    visual model then supplies a position measurement. v30 keeps Kalman as the
+    visual model then supplies a position measurement. v31 keeps Kalman as the
     final estimator, but constrains the measurement innovation and posterior
     correction so one ambiguous local SAT patch cannot teleport the trajectory.
     """
@@ -297,7 +297,7 @@ class RouteKalman:
     def progress_std(self):
         return float(np.sqrt(max(float(self.P[0, 0]), 1e-9)))
 
-    def predict(self, velocity_se, acceleration_se, total_length_m, max_progress_s=None, polynomial_step_se=None):
+    def predict(self, velocity_se, acceleration_se, total_length_m, max_progress_s=None, polynomial_step_se=None, max_step_m=None):
         velocity = np.asarray(velocity_se, dtype=np.float64).reshape(2).copy()
         acceleration = np.asarray(acceleration_se, dtype=np.float64).reshape(2).copy()
         velocity[0] = float(np.clip(
@@ -329,6 +329,17 @@ class RouteKalman:
         norm = float(np.linalg.norm(step))
         if norm > float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME):
             step *= float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / max(norm, 1e-9)
+            norm = float(np.linalg.norm(step))
+        if max_step_m is not None and bool(getattr(config, "CONTROLLED_GT_MOTION_ENVELOPE", False)):
+            controlled_limit = max(
+                float(config.CONTROLLED_MIN_STEP_ALLOWANCE_M),
+                float(max_step_m) * float(config.CONTROLLED_MAX_STEP_RATIO),
+            )
+            if norm > controlled_limit + 1e-12:
+                if controlled_limit <= 1e-12:
+                    step[:] = 0.0
+                else:
+                    step *= controlled_limit / max(norm, 1e-9)
 
         self.last_previous_position = self.x[:2].copy()
         self.last_motion_step = step.copy()
@@ -358,6 +369,7 @@ class RouteKalman:
         total_length_m,
         acquisition_confidence=1.0,
         max_progress_s=None,
+        max_final_step_m=None,
     ):
         raw_z = np.asarray(measurement_se, dtype=np.float64).reshape(2)
         variance = np.asarray(variance_se, dtype=np.float64).reshape(2)
@@ -470,6 +482,14 @@ class RouteKalman:
             float(config.KALMAN_FINAL_STEP_MIN_M),
             float(config.KALMAN_FINAL_STEP_MAX_M),
         ))
+        if max_final_step_m is not None and bool(getattr(config, "CONTROLLED_GT_MOTION_ENVELOPE", False)):
+            allowed_step = min(
+                allowed_step,
+                max(
+                    float(config.CONTROLLED_MIN_STEP_ALLOWANCE_M),
+                    float(max_final_step_m) * float(config.CONTROLLED_MAX_STEP_RATIO),
+                ),
+            )
         step_norm = float(np.linalg.norm(total_step))
         self.last_step_limited = bool(step_norm > allowed_step + 1e-9)
         self.last_step_limit_m = allowed_step
@@ -785,7 +805,7 @@ def cap_prediction_to_current_gt(kf, predicted_se, gt_se):
 
 
 def cap_kalman_to_current_gt(kf, final_se, gt_se):
-    """Compatibility cap; v30 also constrains predict/update inside Kalman."""
+    """Compatibility cap; v31 also constrains predict/update inside Kalman."""
     result = np.asarray(final_se, dtype=np.float64).copy()
     capped = False
     if bool(config.CONTROLLED_FINAL_PROGRESS_CAP_TO_GT):
@@ -812,61 +832,73 @@ def angle_error_rad(a, b):
 # -----------------------------------------------------------------------------
 
 def build_gt_route_state(cache, route):
+    """Build strictly causal motion/heading targets for the controlled protocol.
+
+    The previous heading-aware version used t->t+1 displacement and even t+1 heading changes as the target at
+    frame t, which teaches the network to move/turn before the current GT frame
+    has actually done so. v31 uses only the motion already observed up to t.
+    """
     rows = route.project_gt_monotonic(cache.gt_xy.cpu().numpy())
     se = rows[:, :2]
     legs = rows[:, 2].astype(np.int64)
-    ds = np.zeros(len(cache), dtype=np.float64)
-    de = np.zeros(len(cache), dtype=np.float64)
-    if len(cache) > 1:
-        ds[:-1] = np.maximum(0.0, se[1:, 0] - se[:-1, 0])
-        de[:-1] = se[1:, 1] - se[:-1, 1]
-        ds[-1] = ds[-2]
-        de[-1] = de[-2]
+    n = len(cache)
+
+    ds = np.zeros(n, dtype=np.float64)
+    de = np.zeros(n, dtype=np.float64)
+    gt_xy = cache.gt_xy.cpu().numpy().astype(np.float64)
+    gt_step_xy = np.zeros((n, 2), dtype=np.float64)
+    gt_step_norm = np.zeros(n, dtype=np.float64)
+    if n > 1:
+        ds[1:] = np.maximum(0.0, se[1:, 0] - se[:-1, 0])
+        de[1:] = se[1:, 1] - se[:-1, 1]
+        gt_step_xy[1:] = gt_xy[1:] - gt_xy[:-1]
+        gt_step_norm[1:] = np.linalg.norm(gt_step_xy[1:], axis=1)
+
     ds = np.clip(ds, 0.0, float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME))
     de = np.clip(
         de,
         -float(config.MAX_CROSS_SPEED_M_PER_FRAME),
         float(config.MAX_CROSS_SPEED_M_PER_FRAME),
     )
-    velocity = np.zeros((len(cache), 2), dtype=np.float64)
-    acceleration = np.zeros((len(cache), 2), dtype=np.float64)
     step = np.stack([ds, de], axis=1)
-    for index in range(len(cache)):
-        prev_step = step[index - 1] if index > 0 else step[index]
-        next_step = step[index]
-        velocity[index] = 0.5 * (prev_step + next_step)
-        acceleration[index] = next_step - prev_step
+    velocity = step.copy()
+    acceleration = np.zeros((n, 2), dtype=np.float64)
+    if n > 1:
+        acceleration[1:] = velocity[1:] - velocity[:-1]
+    acceleration[:, 0] = np.clip(
+        acceleration[:, 0],
+        -float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
+        float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
+    )
+    acceleration[:, 1] = np.clip(
+        acceleration[:, 1],
+        -float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
+        float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
+    )
 
-    # Absolute ground-track heading is supervised only during training/evaluation.
-    # The model predicts heading from the 3-frame UAV sequence + recurrent state.
-    gt_xy = cache.gt_xy.cpu().numpy().astype(np.float64)
-    heading_abs = np.zeros(len(cache), dtype=np.float64)
+    # Strictly causal ground-track heading: at frame t use GT(t)-GT(t-1).
+    # There is no t+1 look-ahead, so the heading target cannot pre-turn.
+    heading_abs = np.zeros(n, dtype=np.float64)
     last_heading = route.route_heading_rad(float(se[0, 0]))
-    for index in range(len(cache)):
-        if len(cache) <= 1:
-            delta = np.zeros(2, dtype=np.float64)
-        elif index < len(cache) - 1:
-            delta = gt_xy[index + 1] - gt_xy[index]
-        else:
-            delta = gt_xy[index] - gt_xy[index - 1]
+    heading_abs[0] = last_heading
+    for index in range(1, n):
+        delta = gt_xy[index] - gt_xy[index - 1]
         if float(np.linalg.norm(delta)) > 1e-4:
             last_heading = float(math.atan2(delta[1], delta[0]))
         heading_abs[index] = last_heading
 
-    heading_residual = np.zeros(len(cache), dtype=np.float64)
+    heading_residual = np.zeros(n, dtype=np.float64)
     max_residual = math.radians(float(config.MAX_HEADING_RESIDUAL_DEG))
-    for index in range(len(cache)):
+    for index in range(n):
         route_heading = route.route_heading_rad(float(se[index, 0]))
         heading_residual[index] = np.clip(
             angle_error_rad(heading_abs[index], route_heading),
             -max_residual, max_residual,
         )
 
-    turn_rate = np.zeros(len(cache), dtype=np.float64)
-    if len(cache) > 1:
-        for index in range(len(cache) - 1):
-            turn_rate[index] = angle_error_rad(heading_abs[index + 1], heading_abs[index])
-        turn_rate[-1] = turn_rate[-2]
+    turn_rate = np.zeros(n, dtype=np.float64)
+    for index in range(1, n):
+        turn_rate[index] = angle_error_rad(heading_abs[index], heading_abs[index - 1])
     max_turn = math.radians(float(config.MAX_TURN_RATE_DEG_PER_FRAME))
     turn_rate = np.clip(turn_rate, -max_turn, max_turn)
 
@@ -879,6 +911,8 @@ def build_gt_route_state(cache, route):
         "heading_abs": heading_abs,
         "heading_residual": heading_residual,
         "turn_rate": turn_rate,
+        "gt_step_xy": gt_step_xy,
+        "gt_step_norm": gt_step_norm,
     }
 
 
@@ -1368,6 +1402,7 @@ def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, de
                 route.total_length_m,
                 max_progress_s=float(gt_state["se"][index, 0]),
                 polynomial_step_se=previous_poly_step[0].cpu().numpy(),
+                max_step_m=float(gt_state["gt_step_norm"][index]),
             )
         predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
 
@@ -1414,6 +1449,7 @@ def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, de
             route.total_length_m,
             acquisition_confidence=confidence_for_filter,
             max_progress_s=float(gt_state["se"][index, 0]),
+            max_final_step_m=float(gt_state["gt_step_norm"][index]),
         )
         final_se, _ = cap_kalman_to_current_gt(kf, final_se, gt_state["se"][index])
 
@@ -1599,6 +1635,7 @@ def train_temporal_model(
                     route.total_length_m,
                     max_progress_s=float(gt_state["se"][index, 0]),
                     polynomial_step_se=previous_poly_step[0].detach().cpu().numpy(),
+                    max_step_m=float(gt_state["gt_step_norm"][index]),
                 )
             predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
 
@@ -1665,6 +1702,7 @@ def train_temporal_model(
                 route.total_length_m,
                 acquisition_confidence=filter_confidence,
                 max_progress_s=float(gt_state["se"][index, 0]),
+                max_final_step_m=float(gt_state["gt_step_norm"][index]),
             )
             train_final_se, _ = cap_kalman_to_current_gt(
                 kf, train_final_se, gt_state["se"][index]
@@ -1911,6 +1949,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 route.total_length_m,
                 max_progress_s=float(gt_state["se"][index, 0]),
                 polynomial_step_se=previous_poly_step[0].cpu().numpy(),
+                max_step_m=float(gt_state["gt_step_norm"][index]),
             )
         predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
 
@@ -1962,6 +2001,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
             route.total_length_m,
             acquisition_confidence=acquisition_confidence,
             max_progress_s=float(gt_state["se"][index, 0]),
+            max_final_step_m=float(gt_state["gt_step_norm"][index]),
         )
         final_se, progress_capped_to_gt = cap_kalman_to_current_gt(
             kf, final_se, gt_state["se"][index]
@@ -2011,7 +2051,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         route_heading_rad = route.route_heading_rad(float(final_se[0]))
         estimated_heading_rad = wrap_angle_rad(route_heading_rad + heading_residual_rad)
         polynomial_heading_rad = wrap_angle_rad(
-            route_heading_rad + heading_residual_rad + 0.5 * turn_rate_rad
+            route_heading_rad + heading_residual_rad
         )
         gt_heading_rad = float(gt_state["heading_abs"][index])
         heading_error_deg = abs(math.degrees(angle_error_rad(estimated_heading_rad, gt_heading_rad)))
@@ -2059,6 +2099,8 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "gt_cross_e": float(gt_state["se"][index, 1]),
                 "gt_waypoint_leg": int(gt_state["legs"][index]),
                 "gt_step_parallel": target_step,
+                "gt_step_norm_m": float(gt_state["gt_step_norm"][index]),
+                "controlled_gt_motion_envelope": int(bool(config.CONTROLLED_GT_MOTION_ENVELOPE)),
                 "gt_velocity_parallel": target_v,
                 "gt_heading_deg": float(math.degrees(gt_heading_rad)),
                 "gt_turn_rate_deg_per_frame": float(math.degrees(gt_state["turn_rate"][index])),
@@ -2167,7 +2209,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = config.OUTPUT_DIR / (
         route_name
-        + "_controlled_gtprior_heading_rnn_polynomial_kalman_frames.csv"
+        + "_controlled_gtprior_causal_heading_rnn_polynomial_kalman_frames.csv"
     )
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))

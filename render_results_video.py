@@ -231,7 +231,7 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
                     float(row.get("gt_step_parallel", 0.0)),
                     float(row.get("speed_error_m_per_frame", 0.0)),
                 ),
-                "heading=%.1fdeg gt=%.1fdeg turn=%.1fdeg/f err=%.1fdeg"
+                "causal heading=%.1fdeg gt=%.1fdeg turn=%.1fdeg/f err=%.1fdeg"
                 % (
                     float(row.get("estimated_heading_deg", 0.0)),
                     float(row.get("gt_heading_deg", 0.0)),
@@ -281,7 +281,7 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
 
 def render_route(route_name):
     csv_path = config.OUTPUT_DIR / (
-        route_name + "_controlled_gtprior_heading_rnn_polynomial_kalman_frames.csv"
+        route_name + "_controlled_gtprior_causal_heading_rnn_polynomial_kalman_frames.csv"
     )
     if not csv_path.exists():
         raise FileNotFoundError(

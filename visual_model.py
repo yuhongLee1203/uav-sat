@@ -383,23 +383,39 @@ class ThreeFrameRouteStateGRU(nn.Module):
         velocity = torch.cat([v_parallel, v_cross], dim=1)
         acceleration = torch.cat([a_parallel, a_cross], dim=1)
 
-        # Explicit direction state. heading_residual is relative to the smooth
-        # waypoint-route tangent; turn_rate anticipates the direction change in
-        # the next frame. Both are learned from the 3-frame visual sequence and
-        # recurrent state.
+        # v31 uses a strictly causal direction state. The raw heading/turn
+        # predictions are rate-limited against the previous recurrent heading
+        # state *before* they are allowed to rotate the polynomial. Turn-rate is
+        # a state describing rotation already observed in the recent frames; it
+        # is NOT added as a look-ahead term, so the estimator cannot pre-turn.
         raw_heading = self.heading_head(h)
-        heading_residual = torch.tanh(raw_heading[:, 0:1]) * math.radians(
+        raw_heading_residual = torch.tanh(raw_heading[:, 0:1]) * math.radians(
             float(config.MAX_HEADING_RESIDUAL_DEG)
         )
-        turn_rate = torch.tanh(raw_heading[:, 1:2]) * math.radians(
+        raw_turn_rate = torch.tanh(raw_heading[:, 1:2]) * math.radians(
             float(config.MAX_TURN_RATE_DEG_PER_FRAME)
         )
+        prev_heading = previous_heading_state[:, 0:1]
+        prev_turn = previous_heading_state[:, 1:2]
+        heading_delta = torch.atan2(
+            torch.sin(raw_heading_residual - prev_heading),
+            torch.cos(raw_heading_residual - prev_heading),
+        ).clamp(
+            min=-math.radians(float(config.MAX_HEADING_DELTA_DEG_PER_FRAME)),
+            max= math.radians(float(config.MAX_HEADING_DELTA_DEG_PER_FRAME)),
+        )
+        turn_delta = (raw_turn_rate - prev_turn).clamp(
+            min=-math.radians(float(config.MAX_TURN_RATE_DELTA_DEG_PER_FRAME2)),
+            max= math.radians(float(config.MAX_TURN_RATE_DELTA_DEG_PER_FRAME2)),
+        )
+        heading_residual = prev_heading + float(config.HEADING_STATE_EMA_ALPHA) * heading_delta
+        turn_rate = prev_turn + float(config.TURN_RATE_EMA_ALPHA) * turn_delta
 
         base_forward = (v_parallel + 0.5 * a_parallel).clamp(
             min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
         )
         base_cross = v_cross + 0.5 * a_cross
-        effective_heading = heading_residual + 0.5 * turn_rate
+        effective_heading = heading_residual
         cos_h = torch.cos(effective_heading)
         sin_h = torch.sin(effective_heading)
         next_parallel = base_forward * cos_h - base_cross * sin_h
