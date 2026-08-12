@@ -193,38 +193,37 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
                 cv2.LINE_AA,
             )
 
-            heading = row.get("movement_heading_deg", float("nan"))
-            heading_text = "n/a" if pd.isna(heading) else "%.1f deg" % float(heading)
             lines = [
-                "GT = GREEN    FINAL ROBUST KALMAN = MAGENTA    WAYPOINT = YELLOW",
-                "frame=%d  target=W%d  leg=%d"
+                "GT = GREEN    FINAL ROUTE-KALMAN = MAGENTA    WAYPOINT = YELLOW",
+                "frame=%d  target=W%d  pred_leg=%d  gt_leg=%d"
                 % (
                     int(row["frame_id"]),
                     int(row["target_waypoint"]),
                     int(row["waypoint_leg"]),
+                    int(row.get("gt_waypoint_leg", -1)),
                 ),
-                "conf=%.3f local=%d global=%d corridor=%d pass=%.2f"
-                % (
-                    float(row["confidence"]),
-                    int(row.get("local_candidate_capture", 0)),
-                    int(row["candidate_capture"]),
-                    int(row.get("route_corridor_capture", 0)),
-                    float(row.get("waypoint_pass_probability", 0.0)),
-                ),
-                "v_parallel=%.2f  v_cross=%.2f  heading=%s"
+                "v=%.2f gt_v=%.2f  step=%.2f gt_step=%.2f  speed_err=%.2f"
                 % (
                     float(row["v_parallel"]),
-                    float(row["v_cross"]),
-                    heading_text,
+                    float(row.get("gt_velocity_parallel", 0.0)),
+                    float(row["poly_next_step_parallel"]),
+                    float(row.get("gt_step_parallel", 0.0)),
+                    float(row.get("speed_error_m_per_frame", 0.0)),
                 ),
-                "poly=%.2fm final=%.2fm err=%.2fm recovery=%.1fm H=%.2f mode=%.2f"
+                "progress=%.1f gt=%.1f progress_err=%.1f  capture=%d"
                 % (
-                    float(row["model_next_step_m"]),
+                    float(row["final_progress_s"]),
+                    float(row.get("gt_progress_s", 0.0)),
+                    float(row.get("progress_error_m", 0.0)),
+                    int(row.get("candidate_capture", 0)),
+                ),
+                "final_step=%.2fm err=%.2fm H=%.2f margin=%.4f Rscale=%.2f"
+                % (
                     float(row["final_step_m"]),
                     float(row["error_final_m"]),
-                    float(row.get("recovery_distance_m", 0.0)),
-                    float(row.get("global_entropy", 0.0)),
-                    float(row.get("global_mode_mass", 0.0)),
+                    float(row.get("visual_entropy", 0.0)),
+                    float(row.get("visual_margin", 0.0)),
+                    float(row.get("kalman_r_scale", 1.0)),
                 ),
             ]
             for line_index, text in enumerate(lines):
@@ -246,7 +245,7 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
 
 def render_route(route_name):
     csv_path = config.OUTPUT_DIR / (
-        route_name + "_waypoint_local_primary_recovery_gru_kalman_frames.csv"
+        route_name + "_route_progress_gru_polynomial_kalman_frames.csv"
     )
     if not csv_path.exists():
         raise FileNotFoundError(

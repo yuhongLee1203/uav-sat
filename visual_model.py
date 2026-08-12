@@ -34,11 +34,7 @@ class FourierCoordEncoder(nn.Module):
 
 
 class AllMapGeoCLIP(nn.Module):
-    """Visual retrieval model kept checkpoint-compatible with v20.
-
-    MobileCLIP remains frozen. Only the UAV/SAT projection heads and logit scale
-    are task-specific parameters, exactly as expected by visual_localizer.py.
-    """
+    """Checkpoint-compatible visual retrieval model."""
 
     def __init__(self):
         super().__init__()
@@ -78,9 +74,7 @@ class AllMapGeoCLIP(nn.Module):
     def encode_clip_spatial(self, image, output_size=None):
         output_size = int(output_size or config.MOTION_SPATIAL_SIZE)
         feature = self.encode_clip_image(image).unsqueeze(-1).unsqueeze(-1)
-        return F.adaptive_avg_pool2d(
-            feature.float(), (output_size, output_size)
-        )
+        return F.adaptive_avg_pool2d(feature.float(), (output_size, output_size))
 
     def encode_uav_from_clip(self, clip_feat, yaw=None):
         embedding = self.uav_head(clip_feat.float())
@@ -100,37 +94,24 @@ class AllMapGeoCLIP(nn.Module):
 
 
 @dataclass
-class WaypointGRUOutput:
-    measurement_xy: torch.Tensor
-    measurement_anchor_xy: torch.Tensor
-    local_anchor_xy: torch.Tensor
-    recovery_anchor_xy: torch.Tensor
-    correction_route: torch.Tensor
-    measurement_variance_xy: torch.Tensor
-    measurement_variance_route: torch.Tensor
-    response_variance_route: torch.Tensor
-    confidence: torch.Tensor
-    recovery_probability: torch.Tensor
-    leg_switch_probability: torch.Tensor
-    velocity_route: torch.Tensor
-    acceleration_route: torch.Tensor
-    next_step_route: torch.Tensor
-    velocity_xy: torch.Tensor
-    acceleration_xy: torch.Tensor
-    next_step_xy: torch.Tensor
-    candidate_probability: torch.Tensor
+class RouteProgressGRUOutput:
+    measurement_se: torch.Tensor
+    correction_se: torch.Tensor
+    measurement_variance_se: torch.Tensor
+    velocity_se: torch.Tensor
+    acceleration_se: torch.Tensor
+    next_step_se: torch.Tensor
     hidden: torch.Tensor
     state: torch.Tensor
 
 
-class WaypointLocalPrimaryRecoveryGRU(nn.Module):
-    """Local-primary temporal estimator with learned visual recovery.
+class RouteProgressGRU(nn.Module):
+    """Recurrent motion/measurement model in continuous route coordinates.
 
-    The 6x6 local retrieval remains the default measurement source.  The
-    current/next-leg route-corridor branch is only a recovery hypothesis.  A
-    learned recovery gate decides how much of that hypothesis should enter the
-    measurement.  A second learned head predicts whether the current image is
-    on the next waypoint leg; prediction alone can never advance a waypoint.
+    s: ordered progress along the waypoint polyline.
+    e: signed cross-track displacement.
+    No learned waypoint classifier is needed; waypoint index is a deterministic
+    consequence of the final filtered s after the current visual update.
     """
 
     def __init__(self):
@@ -148,8 +129,7 @@ class WaypointLocalPrimaryRecoveryGRU(nn.Module):
 
         self.uav_projection = projection(config.EMBED_DIM)
         self.delta_uav_projection = projection(config.EMBED_DIM)
-        self.local_sat_projection = projection(config.EMBED_DIM)
-        self.recovery_sat_projection = projection(config.EMBED_DIM)
+        self.sat_projection = projection(config.EMBED_DIM)
         self.numeric_projection = nn.Sequential(
             nn.Linear(int(config.RNN_NUMERIC_DIM), feature_dim),
             nn.GELU(),
@@ -157,40 +137,35 @@ class WaypointLocalPrimaryRecoveryGRU(nn.Module):
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
-        self.gru = nn.GRUCell(feature_dim * 5, hidden_dim)
+        self.gru = nn.GRUCell(feature_dim * 4, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
-        def head(output_dim):
+        def head(out_dim):
             return nn.Sequential(
                 nn.Linear(hidden_dim, hidden_dim // 2),
                 nn.GELU(),
                 nn.Dropout(dropout),
-                nn.Linear(hidden_dim // 2, output_dim),
+                nn.Linear(hidden_dim // 2, out_dim),
             )
 
         self.motion_head = head(4)
         self.correction_head = head(2)
         self.variance_head = head(2)
-        self.confidence_head = head(1)
-        self.recovery_gate_head = head(1)
-        self.leg_switch_head = head(1)
 
+        # Start near a small positive forward speed, not an arbitrary 3 m/frame.
         nn.init.zeros_(self.motion_head[-1].weight)
         nn.init.zeros_(self.motion_head[-1].bias)
+        init_speed = 1.0
+        self.motion_head[-1].bias.data[0] = math.log(math.exp(init_speed) - 1.0)
+
         nn.init.zeros_(self.correction_head[-1].weight)
         nn.init.zeros_(self.correction_head[-1].bias)
         nn.init.zeros_(self.variance_head[-1].weight)
-        initial_var = 4.0
-        inv_softplus = math.log(math.exp(initial_var) - 1.0)
-        nn.init.constant_(self.variance_head[-1].bias, inv_softplus)
-        nn.init.zeros_(self.confidence_head[-1].weight)
-        nn.init.constant_(self.confidence_head[-1].bias, -1.0)
-        # Strong local-primary initialization. Recovery must be learned from
-        # evidence instead of disturbing correct local tracking from frame 0.
-        nn.init.zeros_(self.recovery_gate_head[-1].weight)
-        nn.init.constant_(self.recovery_gate_head[-1].bias, -3.0)
-        nn.init.zeros_(self.leg_switch_head[-1].weight)
-        nn.init.constant_(self.leg_switch_head[-1].bias, -3.0)
+        initial_extra_var = 1.0
+        nn.init.constant_(
+            self.variance_head[-1].bias,
+            math.log(math.exp(initial_extra_var) - 1.0),
+        )
 
     def initial_hidden(self, batch_size, device, dtype):
         return torch.zeros(
@@ -198,100 +173,76 @@ class WaypointLocalPrimaryRecoveryGRU(nn.Module):
         )
 
     @staticmethod
-    def _entropy(probability):
-        count = max(int(probability.shape[1]), 2)
-        return -(probability * probability.clamp_min(1e-8).log()).sum(dim=1) / math.log(float(count))
+    def _safe_margin(probability):
+        if probability.shape[1] < 2:
+            return torch.ones(probability.shape[0], 1, device=probability.device)
+        top2 = torch.topk(probability, k=2, dim=1).values
+        return top2[:, 0:1] - top2[:, 1:2]
 
-    @staticmethod
-    def _margin(probability):
-        values = probability.topk(k=min(2, int(probability.shape[1])), dim=1).values
-        if values.shape[1] == 1:
-            return values[:, 0]
-        return values[:, 0] - values[:, 1]
-
-    @staticmethod
-    def _project_route(vector_xy, route_unit, cross_unit):
-        parallel = (vector_xy * route_unit).sum(dim=-1, keepdim=True)
-        cross = (vector_xy * cross_unit).sum(dim=-1, keepdim=True)
-        return torch.cat([parallel, cross], dim=-1)
-
-    @staticmethod
-    def _route_to_xy(vector_route, route_unit, cross_unit):
-        return vector_route[:, 0:1] * route_unit + vector_route[:, 1:2] * cross_unit
-
-    @staticmethod
-    def _clip_norm(vector, maximum):
-        norm = torch.linalg.norm(vector, dim=1, keepdim=True)
-        scale = torch.clamp(float(maximum) / norm.clamp_min(1e-6), max=1.0)
-        return vector * scale
-
-    def _numeric_features(
+    def forward_step(
         self,
-        local_probability,
-        local_anchor_xy,
-        local_hardms_xy,
-        local_top1_xy,
-        local_hardms_support,
-        global_anchor_xy,
-        global_response_variance_route,
-        global_entropy,
-        global_margin,
-        global_mode_mass,
-        waypoint_pass_probability,
-        search_center_xy,
-        route_unit,
-        cross_unit,
-        route_remaining_m,
-        route_cross_track_m,
-        route_progress,
-        previous_velocity_route,
-        previous_acceleration_route,
         z_uav,
         previous_z_uav,
+        sat_context,
+        posterior_probability,
+        visual_anchor_se,
+        response_variance_se,
+        predicted_se,
+        previous_measurement_se,
+        previous_velocity_se,
+        previous_acceleration_se,
+        polynomial_step_se,
+        route_remaining_m,
+        predicted_cross_m,
+        total_progress_fraction,
+        leg_progress_fraction,
+        top1_distance_m,
+        hardms_support,
+        hidden: Optional[torch.Tensor] = None,
     ):
-        local_innovation = self._project_route(
-            local_anchor_xy - search_center_xy, route_unit, cross_unit
-        ) / float(config.ROUTE_STEP_SCALE_M)
-        recovery_innovation = self._project_route(
-            global_anchor_xy - search_center_xy, route_unit, cross_unit
-        ) / float(config.ROUTE_DISTANCE_SCALE_M)
-        local_top1_disagreement = torch.linalg.norm(
-            local_hardms_xy - local_top1_xy, dim=1, keepdim=True
-        ) / float(config.ROUTE_STEP_SCALE_M)
-        temporal_cosine = F.cosine_similarity(z_uav, previous_z_uav, dim=1).unsqueeze(1)
-        global_std_route = torch.sqrt(
-            global_response_variance_route.clamp_min(0.0)
-        ) / float(config.ROUTE_DISTANCE_SCALE_M)
-        local_innovation_norm = torch.linalg.norm(
-            local_anchor_xy - search_center_xy, dim=1, keepdim=True
-        ) / float(config.ROUTE_STEP_SCALE_M)
-        local_recovery_distance = torch.linalg.norm(
-            local_anchor_xy - global_anchor_xy, dim=1, keepdim=True
-        ) / float(config.ROUTE_DISTANCE_SCALE_M)
+        if hidden is None:
+            hidden = self.initial_hidden(z_uav.shape[0], z_uav.device, z_uav.dtype)
+        if previous_z_uav is None:
+            previous_z_uav = z_uav
+        if previous_measurement_se is None:
+            previous_measurement_se = visual_anchor_se.detach()
+
+        p = posterior_probability.clamp_min(float(config.NAV_POSTERIOR_EPS))
+        entropy = -(p * p.log()).sum(dim=1, keepdim=True)
+        entropy = entropy / max(math.log(max(2, p.shape[1])), 1e-6)
+        margin = self._safe_margin(p)
+
+        innovation_se = visual_anchor_se - predicted_se
+        visual_step_se = visual_anchor_se - previous_measurement_se
 
         numeric = torch.cat(
             [
-                self._entropy(local_probability).unsqueeze(1),
-                self._margin(local_probability).unsqueeze(1),
-                local_hardms_support.reshape(-1, 1),
-                local_innovation,
-                recovery_innovation,
-                local_top1_disagreement,
-                route_remaining_m / float(config.ROUTE_DISTANCE_SCALE_M),
-                route_cross_track_m / float(config.ROUTE_CROSS_TRACK_SCALE_M),
-                route_progress,
-                previous_velocity_route[:, 0:1] / float(config.MAX_FORWARD_SPEED_M_PER_FRAME),
-                previous_velocity_route[:, 1:2] / float(config.MAX_CROSS_SPEED_M_PER_FRAME),
-                previous_acceleration_route[:, 0:1] / float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
-                previous_acceleration_route[:, 1:2] / float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
-                temporal_cosine,
-                global_entropy.reshape(-1, 1),
-                global_margin.reshape(-1, 1),
-                global_mode_mass.reshape(-1, 1),
-                global_std_route,
-                waypoint_pass_probability.reshape(-1, 1),
-                local_innovation_norm,
-                local_recovery_distance,
+                entropy,
+                margin,
+                torch.log1p(response_variance_se.clamp_min(0.0)) / 6.0,
+                torch.cat(
+                    [
+                        innovation_se[:, 0:1] / float(config.ROUTE_STEP_SCALE_M),
+                        innovation_se[:, 1:2] / float(config.ROUTE_CROSS_TRACK_SCALE_M),
+                    ],
+                    dim=1,
+                ),
+                torch.cat(
+                    [
+                        visual_step_se[:, 0:1] / float(config.ROUTE_STEP_SCALE_M),
+                        visual_step_se[:, 1:2] / float(config.ROUTE_CROSS_TRACK_SCALE_M),
+                    ],
+                    dim=1,
+                ),
+                previous_velocity_se / float(config.ROUTE_STEP_SCALE_M),
+                previous_acceleration_se / float(config.ROUTE_STEP_SCALE_M),
+                route_remaining_m / float(config.ROUTE_REMAINING_SCALE_M),
+                predicted_cross_m / float(config.ROUTE_CROSS_TRACK_SCALE_M),
+                total_progress_fraction,
+                leg_progress_fraction,
+                polynomial_step_se / float(config.ROUTE_STEP_SCALE_M),
+                top1_distance_m / 25.0,
+                hardms_support.reshape(-1, 1),
             ],
             dim=1,
         )
@@ -300,146 +251,86 @@ class WaypointLocalPrimaryRecoveryGRU(nn.Module):
                 "RNN numeric dimension mismatch: got %d expected %d"
                 % (int(numeric.shape[1]), int(config.RNN_NUMERIC_DIM))
             )
-        return numeric
 
-    def forward_step(
-        self,
-        z_uav,
-        previous_z_uav,
-        local_sat_context,
-        global_sat_context,
-        local_probability,
-        global_probability,
-        local_anchor_xy,
-        local_hardms_xy,
-        local_top1_xy,
-        local_hardms_support,
-        global_anchor_xy,
-        global_response_variance_route,
-        global_entropy,
-        global_margin,
-        global_mode_mass,
-        waypoint_pass_probability,
-        search_center_xy,
-        previous_final_xy,
-        route_unit,
-        cross_unit,
-        route_remaining_m,
-        route_cross_track_m,
-        route_progress,
-        previous_velocity_route,
-        previous_acceleration_route,
-        hidden=None,
-    ):
-        if hidden is None:
-            hidden = self.initial_hidden(z_uav.shape[0], z_uav.device, z_uav.dtype)
-        if previous_z_uav is None:
-            previous_z_uav = z_uav
-
-        numeric = self._numeric_features(
-            local_probability, local_anchor_xy, local_hardms_xy, local_top1_xy,
-            local_hardms_support, global_anchor_xy, global_response_variance_route,
-            global_entropy, global_margin, global_mode_mass, waypoint_pass_probability,
-            search_center_xy, route_unit, cross_unit, route_remaining_m,
-            route_cross_track_m, route_progress, previous_velocity_route,
-            previous_acceleration_route, z_uav, previous_z_uav,
-        )
         recurrent_input = torch.cat(
             [
                 self.uav_projection(z_uav),
                 self.delta_uav_projection(z_uav - previous_z_uav),
-                self.local_sat_projection(local_sat_context),
-                self.recovery_sat_projection(global_sat_context),
+                self.sat_projection(sat_context),
                 self.numeric_projection(numeric),
-            ], dim=1,
+            ],
+            dim=1,
         )
         new_hidden = self.gru(recurrent_input, hidden)
         h = self.dropout(new_hidden)
 
         raw_motion = self.motion_head(h)
-        velocity_route = torch.cat(
-            [
-                torch.tanh(raw_motion[:, 0:1]) * float(config.MAX_FORWARD_SPEED_M_PER_FRAME),
-                torch.tanh(raw_motion[:, 1:2]) * float(config.MAX_CROSS_SPEED_M_PER_FRAME),
-            ], dim=1,
+        # Ordered waypoints define the intended forward direction.  Predict a
+        # non-negative along-route speed and a signed cross-track speed.
+        v_parallel = F.softplus(raw_motion[:, 0:1]).clamp(
+            max=float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
         )
-        acceleration_route = torch.cat(
-            [
-                torch.tanh(raw_motion[:, 2:3]) * float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
-                torch.tanh(raw_motion[:, 3:4]) * float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
-            ], dim=1,
+        v_cross = torch.tanh(raw_motion[:, 1:2]) * float(
+            config.MAX_CROSS_SPEED_M_PER_FRAME
         )
-        next_step_route = self._clip_norm(
-            velocity_route + 0.5 * acceleration_route,
-            float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME),
+        a_parallel = torch.tanh(raw_motion[:, 2:3]) * float(
+            config.MAX_FORWARD_ACCEL_M_PER_FRAME2
         )
+        a_cross = torch.tanh(raw_motion[:, 3:4]) * float(
+            config.MAX_CROSS_ACCEL_M_PER_FRAME2
+        )
+        velocity = torch.cat([v_parallel, v_cross], dim=1)
+        acceleration = torch.cat([a_parallel, a_cross], dim=1)
 
-        recovery_probability = torch.sigmoid(self.recovery_gate_head(h)).clamp(0.001, 0.999)
-        leg_switch_probability = torch.sigmoid(self.leg_switch_head(h)).clamp(0.001, 0.999)
-        measurement_anchor_xy = (
-            (1.0 - recovery_probability) * local_anchor_xy
-            + recovery_probability * global_anchor_xy
+        next_parallel = (v_parallel + 0.5 * a_parallel).clamp(
+            min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
         )
+        next_cross = v_cross + 0.5 * a_cross
+        next_step = torch.cat([next_parallel, next_cross], dim=1)
+        norm = torch.linalg.norm(next_step, dim=1, keepdim=True).clamp_min(1e-6)
+        scale = torch.clamp(
+            float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / norm, max=1.0
+        )
+        next_step = next_step * scale
 
         raw_correction = torch.tanh(self.correction_head(h))
-        correction_route = torch.cat(
+        correction = torch.cat(
             [
-                raw_correction[:, 0:1] * float(config.MAX_MEASUREMENT_CORRECTION_PARALLEL_M),
-                raw_correction[:, 1:2] * float(config.MAX_MEASUREMENT_CORRECTION_CROSS_M),
-            ], dim=1,
+                raw_correction[:, 0:1]
+                * float(config.MAX_MEASUREMENT_CORRECTION_PARALLEL_M),
+                raw_correction[:, 1:2]
+                * float(config.MAX_MEASUREMENT_CORRECTION_CROSS_M),
+            ],
+            dim=1,
         )
-        correction_xy = self._route_to_xy(correction_route, route_unit, cross_unit)
-        measurement_xy = measurement_anchor_xy + correction_xy
+        measurement = visual_anchor_se + correction
 
-        confidence = torch.sigmoid(self.confidence_head(h)).clamp(0.01, 0.995)
-        learned_var = F.softplus(self.variance_head(h)) + float(config.KALMAN_R_MIN_VAR)
-        # Local is the default and receives only learned uncertainty. Recovery
-        # response spread is injected in proportion to the learned gate.
-        variance_route = (
-            learned_var
-            + recovery_probability * global_response_variance_route
-        ) / confidence.square().clamp_min(1e-4)
-        variance_route = variance_route.clamp(
-            min=float(config.KALMAN_R_MIN_VAR), max=float(config.KALMAN_R_MAX_VAR)
-        )
-        var_x = route_unit[:, 0:1].square() * variance_route[:, 0:1] + cross_unit[:, 0:1].square() * variance_route[:, 1:2]
-        var_y = route_unit[:, 1:2].square() * variance_route[:, 0:1] + cross_unit[:, 1:2].square() * variance_route[:, 1:2]
-        variance_xy = torch.cat([var_x, var_y], dim=1).clamp(
-            min=float(config.KALMAN_R_MIN_VAR), max=float(config.KALMAN_R_MAX_VAR)
+        extra_variance = F.softplus(self.variance_head(h))
+        measurement_variance = (
+            response_variance_se.clamp_min(float(config.KALMAN_R_MIN_VAR))
+            + extra_variance
+        ).clamp(
+            min=float(config.KALMAN_R_MIN_VAR),
+            max=float(config.KALMAN_R_MAX_VAR),
         )
 
-        velocity_xy = self._route_to_xy(velocity_route, route_unit, cross_unit)
-        acceleration_xy = self._route_to_xy(acceleration_route, route_unit, cross_unit)
-        next_step_xy = self._route_to_xy(next_step_route, route_unit, cross_unit)
         state = torch.cat(
-            [velocity_route, acceleration_route, correction_route, confidence,
-             recovery_probability, leg_switch_probability], dim=1,
+            [velocity, acceleration, correction, measurement_variance], dim=1
         )
-        return WaypointGRUOutput(
-            measurement_xy=measurement_xy,
-            measurement_anchor_xy=measurement_anchor_xy,
-            local_anchor_xy=local_anchor_xy,
-            recovery_anchor_xy=global_anchor_xy,
-            correction_route=correction_route,
-            measurement_variance_xy=variance_xy,
-            measurement_variance_route=variance_route,
-            response_variance_route=global_response_variance_route,
-            confidence=confidence,
-            recovery_probability=recovery_probability,
-            leg_switch_probability=leg_switch_probability,
-            velocity_route=velocity_route,
-            acceleration_route=acceleration_route,
-            next_step_route=next_step_route,
-            velocity_xy=velocity_xy,
-            acceleration_xy=acceleration_xy,
-            next_step_xy=next_step_xy,
-            candidate_probability=local_probability,
+        return RouteProgressGRUOutput(
+            measurement_se=measurement,
+            correction_se=correction,
+            measurement_variance_se=measurement_variance,
+            velocity_se=velocity,
+            acceleration_se=acceleration,
+            next_step_se=next_step,
             hidden=new_hidden,
             state=state,
         )
 
 
-# Compatibility aliases for the tracker import path.
-WaypointRouteGlobalRecoveryGRU = WaypointLocalPrimaryRecoveryGRU
-WaypointTemporalMotionGRU = WaypointLocalPrimaryRecoveryGRU
-WaypointConditionedGRU = WaypointLocalPrimaryRecoveryGRU
+# Compatibility aliases for older imports while v25 is being dropped in.
+WaypointLocalPrimaryRecoveryGRU = RouteProgressGRU
+WaypointRouteGlobalRecoveryGRU = RouteProgressGRU
+WaypointTemporalMotionGRU = RouteProgressGRU
+WaypointConditionedGRU = RouteProgressGRU

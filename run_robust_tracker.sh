@@ -32,7 +32,7 @@ Usage: bash run_robust_tracker.sh [options]
   --gpu N
   --visual-epochs N
   --temporal-epochs N   (alias: --epochs N)
-  --patience N          temporal closed-loop early-stop patience
+  --patience N          composite closed-loop early-stop patience
   --jitter-m M
   --reuse-visual 0|1
   --force-full-retrain
@@ -50,26 +50,24 @@ case "${MODE}" in
   *) echo "ERROR: --mode must be train, eval, or train_eval" >&2; exit 2 ;;
 esac
 
-OUTPUT_DIR="outputs/waypoint_local_primary_recovery_gru_kalman_v24"
+OUTPUT_DIR="outputs/route_progress_gru_polynomial_kalman_v25"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
-TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_local_primary_recovery_gru_A_only.pt"
-LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/waypoint_local_primary_recovery_gru_A_only_latest.pt"
-ROUTE_B_CSV="${OUTPUT_DIR}/route_B_waypoint_local_primary_recovery_gru_kalman_frames.csv"
-ROUTE_C_CSV="${OUTPUT_DIR}/route_C_waypoint_local_primary_recovery_gru_kalman_frames.csv"
+TEMPORAL_CKPT="${CHECKPOINT_DIR}/route_progress_gru_A_only.pt"
+LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/route_progress_gru_A_only_latest.pt"
+ROUTE_B_CSV="${OUTPUT_DIR}/route_B_route_progress_gru_polynomial_kalman_frames.csv"
+ROUTE_C_CSV="${OUTPUT_DIR}/route_C_route_progress_gru_polynomial_kalman_frames.csv"
 SUMMARY_JSON="${OUTPUT_DIR}/robust_tracker_summary.json"
 mkdir -p "${CHECKPOINT_DIR}"
 
 find_visual_checkpoint() {
   local candidates=(
     "${VISUAL_CKPT}"
+    "outputs/waypoint_local_primary_recovery_gru_kalman_v24/checkpoints/visual_retrieval_A_only.pt"
+    "outputs/waypoint_routeglobal_recovery_gru_kalman_v23/checkpoints/visual_retrieval_A_only.pt"
     "outputs/waypoint_temporal_motion_gru_kalman_v22/checkpoints/visual_retrieval_A_only.pt"
     "outputs/waypoint_routeframe_gru_kalman_v21/checkpoints/visual_retrieval_A_only.pt"
     "outputs/crf_inertial_rnn_kalman_v20/checkpoints/visual_retrieval_A_only.pt"
-    "outputs/twostage_autoregressive_hardms_rnn_kalman_v19/checkpoints/visual_retrieval_A_only.pt"
-    "outputs/rnn_state_polynomial_hardms_kalman_v18/checkpoints/visual_retrieval_A_only.pt"
-    "outputs/polynomial_hardms_state_rnn_kalman_v17/checkpoints/visual_retrieval_A_only.pt"
-    "outputs/hardms_state_rnn_kalman_v16/checkpoints/visual_retrieval_A_only.pt"
     "outputs/recurrent_visual_measurement_kalman_v15/checkpoints/visual_retrieval_A_only.pt"
   )
   local candidate
@@ -105,19 +103,21 @@ verify_python() {
 import config
 import robust_tracker
 import visual_model
-assert config.ARCHITECTURE_NAME == "WaypointLocalPrimaryRecoveryGRUKalman_v24"
-assert robust_tracker.ARCHITECTURE_NAME == "WaypointLocalPrimaryRecoveryGRUKalman_v24"
-assert hasattr(visual_model, "WaypointLocalPrimaryRecoveryGRU")
+assert config.ARCHITECTURE_NAME == "RouteProgressGRUPolynomialKalman_v25"
+assert robust_tracker.ARCHITECTURE_NAME == "RouteProgressGRUPolynomialKalman_v25"
+assert hasattr(visual_model, "RouteProgressGRU")
 assert int(config.GRID_SIZE) == 6
-assert int(config.CANDIDATE_COUNT) == 36
-print("architecture : WaypointLocalPrimaryRecoveryGRUKalman_v24")
-print("RNN          : two-frame GRUCell (previous/current UAV embedding)")
-print("motion state : signed v_parallel, v_cross, a_parallel, a_cross")
-print("polynomial   : p_next = p_final + v + 0.5*a")
-print("visual       : local 6x6 PRIMARY + learned current/next-leg recovery gate")
-print("final output : external Kalman [x,y,vx,vy]")
-print("early stop   : Route-A known-start full CLOSED-LOOP held-out MLE")
-print("waypoint     : learned current-vs-next-leg classifier; at most one leg per frame")
+assert int(config.NAV_GRID_SIZE) == 12
+print("architecture : RouteProgressGRUPolynomialKalman_v25")
+print("route state  : continuous s/e on ordered waypoint polyline")
+print("RNN          : previous/current UAV + local visual posterior -> v/a")
+print("motion       : non-negative forward v + signed cross v/a")
+print("polynomial   : [s,e]_next = [s,e] + v + 0.5*a")
+print("visual       : 12x12 LOCAL posterior around polynomial prediction")
+print("waypoint     : derived from FINAL filtered progress s; no classifier")
+print("training     : sequential TBPTT; no shuffled GT chunk restart")
+print("early stop   : MLE + speed MAE + progress MAE composite")
+print("final output : external route-coordinate Kalman -> XY")
 PY
 }
 
@@ -158,17 +158,17 @@ verify_eval_outputs() {
 }
 
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "Waypoint Local-Primary + Learned Recovery GRU + Polynomial + External Kalman v24"
+echo "Route Progress GRU + Polynomial + External Kalman v25"
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "MODE             : ${MODE}"
-echo "GPU              : ${GPU}"
-echo "Visual epochs    : ${VISUAL_EPOCHS}"
-echo "Temporal epochs  : ${TEMPORAL_EPOCHS}"
+echo "MODE              : ${MODE}"
+echo "GPU               : ${GPU}"
+echo "Visual epochs     : ${VISUAL_EPOCHS}"
+echo "Temporal epochs   : ${TEMPORAL_EPOCHS}"
 echo "EarlyStop patience: ${PATIENCE}"
-echo "Jitter           : ${JITTER_M} m"
-echo "Reuse visual     : ${REUSE_VISUAL}"
-echo "Resume temporal  : ${RESUME_TEMPORAL}"
-echo "Output           : ${OUTPUT_DIR}"
+echo "Jitter            : ${JITTER_M} m"
+echo "Reuse visual      : ${REUSE_VISUAL}"
+echo "Resume temporal   : ${RESUME_TEMPORAL}"
+echo "Output            : ${OUTPUT_DIR}"
 printf '%*s\n' 108 '' | tr ' ' '='
 
 verify_python

@@ -1,0 +1,59 @@
+{
+  "architecture": "RouteProgressGRUPolynomialKalman_v25",
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "known_at_inference": [
+    "start_coordinate",
+    "waypoint_coordinates"
+  ],
+  "uses_waypoint_frame_index_at_inference": false,
+  "route_state": "continuous [s,e,vs,ve] on ordered waypoint polyline",
+  "motion_model": "two-frame GRU -> v/a -> second-order polynomial",
+  "visual_measurement": "12x12 local posterior around polynomial prediction; no route-global retrieval",
+  "waypoint_transition": "deterministic from final filtered route progress after current visual update",
+  "training": "sequential TBPTT; no random GT chunk restart",
+  "final_filter": "external route-coordinate Kalman",
+  "route_B": {
+    "MLE_m": 375.8134811058025,
+    "MedLE_m": 395.4695770277816,
+    "P90_m": 690.1897093477288,
+    "P95_m": 754.8815804386692,
+    "P99_m": 896.2998145166998,
+    "LSR@5_pct": 0.04393673110720562,
+    "LSR@10_pct": 0.04393673110720562,
+    "LSR@15_pct": 0.13181019332161686,
+    "LSR@20_pct": 0.17574692442882248,
+    "CandidateCapture_pct": 3.471001757469244,
+    "MeanFinalStep_m": 0.9927333573612827,
+    "MeanSpeedError_m_per_frame": 1.8522283783513478,
+    "MeanProgressError_m": 3367.4346885617206,
+    "FinalPredictedWaypointLeg": 3,
+    "FinalGTWaypointLeg": 14,
+    "Waypoints": 16,
+    "CSV": "/yh/study/uav-sat/outputs/route_progress_gru_polynomial_kalman_v25/route_B_route_progress_gru_polynomial_kalman_frames.csv"
+  },
+  "route_C": {
+    "MLE_m": 397.34543931482915,
+    "MedLE_m": 382.1539841721404,
+    "P90_m": 603.7202448882538,
+    "P95_m": 642.0144111927722,
+    "P99_m": 664.6334140633542,
+    "LSR@5_pct": 0.0794912559618442,
+    "LSR@10_pct": 0.1589825119236884,
+    "LSR@15_pct": 0.3179650238473768,
+    "LSR@20_pct": 0.47694753577106513,
+    "CandidateCapture_pct": 1.0333863275039745,
+    "MeanFinalStep_m": 1.0412708232693915,
+    "MeanSpeedError_m_per_frame": 1.6268988550610572,
+    "MeanProgressError_m": 1102.9788599023364,
+    "FinalPredictedWaypointLeg": 0,
+    "FinalGTWaypointLeg": 10,
+    "Waypoints": 12,
+    "CSV": "/yh/study/uav-sat/outputs/route_progress_gru_polynomial_kalman_v25/route_C_route_progress_gru_polynomial_kalman_frames.csv"
+  }
+}

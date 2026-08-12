@@ -2,12 +2,12 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-ARCHITECTURE_NAME = "WaypointLocalPrimaryRecoveryGRUKalman_v24"
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "waypoint_local_primary_recovery_gru_kalman_v24"
+ARCHITECTURE_NAME = "RouteProgressGRUPolynomialKalman_v25"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "route_progress_gru_polynomial_kalman_v25"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_local_primary_recovery_gru_A_only.pt"
-LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "waypoint_local_primary_recovery_gru_A_only_latest.pt"
+TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "route_progress_gru_A_only.pt"
+LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "route_progress_gru_A_only_latest.pt"
 
 ROUTE_ROOTS = [
     Path("/yh/study/new_data_2/model_dataset_new_1_flight"),
@@ -32,10 +32,7 @@ SAT_JSON = Path(
     "sim_map_competition_roi_crop_worldfile_epsg3826.json"
 )
 
-# -----------------------------------------------------------------------------
-# Frozen MobileCLIP retrieval model. Keep these names compatible with the
-# existing Route-A-only visual checkpoint and visual_localizer.py.
-# -----------------------------------------------------------------------------
+# Visual retrieval checkpoint compatibility.
 BACKBONE_NAME = "hf-hub:timm/MobileCLIP2-S2-OpenCLIP"
 CLIP_DIM = 512
 EMBED_DIM = 512
@@ -59,8 +56,6 @@ VISUAL_CACHE_BATCH_SIZE = 256
 VISUAL_EARLY_STOPPING_PATIENCE = 8
 VISUAL_LABEL_SMOOTHING = 0.05
 VISUAL_COORD_LOSS_WEIGHT = 0.25
-# Route-global recovery needs negatives beyond the local 6x6 window.
-VISUAL_GLOBAL_NEGATIVE_COUNT = 96
 
 MEANSHIFT_SCORE_TAU = 0.30
 MEANSHIFT_BANDWIDTH_M = 8.0
@@ -71,122 +66,94 @@ LOCAL_PRIOR_JITTER_M = 12.0
 CANDIDATE_CAPTURE_RADIUS_M = 7.5
 MIN_TRAIN_CAPTURE_RATE = 0.95
 
-# -----------------------------------------------------------------------------
-# Dual-range retrieval. The 6x6 local branch is preserved, but every frame also
-# scores cached SAT anchors along the known waypoint corridor. The motion model
-# is a heavy-tailed soft prior: it can prefer nearby patches, but never removes
-# distant route hypotheses, so visual recovery remains possible after drift.
-# -----------------------------------------------------------------------------
-ROUTE_CORRIDOR_HALF_WIDTH_M = 45.0
-ROUTE_GLOBAL_TOPK = 96
-ROUTE_GLOBAL_MODE_RADIUS_M = 18.0
-ROUTE_GLOBAL_TEMPERATURE = 1.00
-ROUTE_GLOBAL_EMBED_BATCH = 4096
-ROUTE_PRIOR_SIGMA_XY_MIN_M = 22.0
-ROUTE_PRIOR_SIGMA_XY_MAX_M = 180.0
-ROUTE_PRIOR_COVARIANCE_SCALE = 2.0
-ROUTE_PRIOR_PROGRESS_SIGMA_M = 55.0
-ROUTE_PRIOR_UNIFORM_FLOOR = 0.15
-ROUTE_PRIOR_LOG_WEIGHT = 0.35
-WAYPOINT_PASS_PROBABILITY = 0.60
-# v24: route-global is recovery only. The learned gate is supervised from
-# which anchor (local vs current/next-leg recovery) is closer to GT during A training.
-RECOVERY_GATE_MARGIN_M = 4.0
-RECOVERY_GATE_TEMPERATURE_M = 4.0
-LOSS_RECOVERY_GATE = 0.35
-LOSS_LEG_SWITCH = 0.25
-# Recovery augmentation deliberately displaces the local search center during
-# Route-A training so the selector sees genuine local-failure examples.
-RECOVERY_AUGMENT_PROBABILITY = 0.25
-RECOVERY_AUGMENT_MIN_M = 35.0
-RECOVERY_AUGMENT_MAX_M = 120.0
+# v25 navigation observation: do not search the whole route.  Keep the good
+# local behavior from v22, but widen the deployment window enough to tolerate
+# moderate propagation error.  Motion prior remains soft, so an informative
+# image can move the posterior away from the polynomial center.
+NAV_GRID_SIZE = 12
+NAV_VISUAL_TEMPERATURE = 0.42
+NAV_MOTION_PRIOR_SIGMA_M = 20.0
+NAV_MOTION_PRIOR_WEIGHT = 0.75
+NAV_POSTERIOR_EPS = 1e-8
+NAV_MAX_RESPONSE_VARIANCE_M2 = 625.0
 
 TRAIN_FRACTION = 0.70
 VAL_FRACTION = 0.15
 TEST_FRACTION = 0.15
 SPLIT_GUARD_FRAMES = 16
 
-# -----------------------------------------------------------------------------
-# Waypoint-conditioned route frame.
-# The network never receives waypoint frame_index/timestamps at inference.
-# Only waypoint coordinates and the monotonically progressing leg are used.
-# -----------------------------------------------------------------------------
-ROUTE_DISTANCE_SCALE_M = 100.0
-ROUTE_CROSS_TRACK_SCALE_M = 25.0
-ROUTE_STEP_SCALE_M = 10.0
+# Route-progress coordinates: s is distance along the ordered waypoint
+# polyline; e is signed cross-track displacement.  Waypoint frame_index is not
+# used at inference.
 WAYPOINT_MIN_LEG_LENGTH_M = 1.0
+ROUTE_PROGRESS_SCALE_M = 100.0
+ROUTE_CROSS_TRACK_SCALE_M = 25.0
+ROUTE_REMAINING_SCALE_M = 100.0
+ROUTE_STEP_SCALE_M = 10.0
 
-# -----------------------------------------------------------------------------
-# Recurrent state estimator.
-# The GRU predicts motion in route coordinates:
-# [v_parallel, v_cross, a_parallel, a_cross].
-# -----------------------------------------------------------------------------
+# Temporal model.
 RNN_HIDDEN_DIM = 256
 RNN_FEATURE_DIM = 128
-RNN_NUMERIC_DIM = 24
+RNN_NUMERIC_DIM = 20
 RNN_DROPOUT = 0.10
-MAX_FORWARD_SPEED_M_PER_FRAME = 10.0
+MAX_FORWARD_SPEED_M_PER_FRAME = 12.0
 MAX_CROSS_SPEED_M_PER_FRAME = 5.0
-MAX_FORWARD_ACCEL_M_PER_FRAME2 = 5.0
+MAX_FORWARD_ACCEL_M_PER_FRAME2 = 4.0
 MAX_CROSS_ACCEL_M_PER_FRAME2 = 4.0
-MAX_POLYNOMIAL_STEP_M_PER_FRAME = 10.0
-MAX_MEASUREMENT_CORRECTION_PARALLEL_M = 5.0
-MAX_MEASUREMENT_CORRECTION_CROSS_M = 5.0
+MAX_POLYNOMIAL_STEP_M_PER_FRAME = 12.0
+MAX_MEASUREMENT_CORRECTION_PARALLEL_M = 4.0
+MAX_MEASUREMENT_CORRECTION_CROSS_M = 4.0
 
-# -----------------------------------------------------------------------------
-# Temporal training.
-# Epochs 1..MOTION_WARMUP_EPOCHS use a GT-centered local search. Afterwards the
-# search center becomes increasingly autoregressive. Early stopping is based on
-# held-out Route-A CLOSED-LOOP episodes, not teacher-forced training loss.
-# -----------------------------------------------------------------------------
+# Training is sequential TBPTT.  State is carried across chunks and detached,
+# never randomly reset to GT every 32 frames.  Early epochs use GT-centered
+# visual windows, then decay to full closed loop.
 TEMPORAL_EPOCHS = 60
 TEMPORAL_LR = 2e-4
 TEMPORAL_WEIGHT_DECAY = 1e-3
 TBPTT_STEPS = 32
 GRAD_CLIP_NORM = 5.0
-MOTION_WARMUP_EPOCHS = 5
+MOTION_WARMUP_EPOCHS = 8
 TEACHER_RATIO_FINAL = 0.0
-TEACHER_DECAY_EPOCHS = 22
+TEACHER_DECAY_EPOCHS = 24
 TRAIN_CENTER_JITTER_M = 6.0
-VAL_EPISODE_LENGTH = 96
-VAL_EPISODE_COUNT = 4
 EARLY_STOP_PATIENCE = 10
-EARLY_STOP_MIN_DELTA_M = 0.10
-EARLY_STOP_MIN_EPOCH = 15
+EARLY_STOP_MIN_DELTA = 0.05
+EARLY_STOP_MIN_EPOCH = 18
 
-# Losses.
-LOSS_MEASUREMENT = 1.00
-LOSS_NEXT_STEP = 1.50
-LOSS_VELOCITY = 0.45
-LOSS_ACCELERATION = 0.25
-LOSS_VARIANCE_NLL = 0.08
-LOSS_CONFIDENCE = 0.10
-LOSS_CROSS_MOTION_REG = 0.01
-LOSS_DIRECTION = 0.40
-LOSS_SPEED = 0.35
-CONFIDENCE_TARGET_SIGMA_M = 8.0
+# Motion is deliberately stronger than visual residual losses in v25.  The
+# deployment failure to fix is speed/progress collapse, not single-frame fit.
+LOSS_MEASUREMENT = 0.75
+LOSS_NEXT_STEP = 2.50
+LOSS_VELOCITY = 1.50
+LOSS_ACCELERATION = 0.35
+LOSS_SPEED = 1.25
+LOSS_CROSS_MOTION_REG = 0.02
+LOSS_VARIANCE_NLL = 0.05
+LOSS_PROGRESS = 1.00
 
-# -----------------------------------------------------------------------------
-# External Kalman filter [x, y, vx, vy]. The GRU/polynomial supplies the motion
-# prediction; visual measurement + learned covariance supplies z/R.
-# -----------------------------------------------------------------------------
-KALMAN_INIT_POSITION_VAR = 4.0
+# Route-coordinate external Kalman [s, e, vs, ve].
+KALMAN_INIT_PROGRESS_VAR = 4.0
+KALMAN_INIT_CROSS_VAR = 4.0
 KALMAN_INIT_VELOCITY_VAR = 9.0
-KALMAN_Q_POSITION = 0.35
-KALMAN_Q_VELOCITY = 0.60
+KALMAN_Q_PROGRESS = 0.50
+KALMAN_Q_CROSS = 0.35
+KALMAN_Q_VELOCITY = 0.75
 KALMAN_R_MIN_VAR = 0.25
-KALMAN_R_MAX_VAR = 1000000.0
-MAX_FINAL_SPEED_M_PER_FRAME = 12.0
-KALMAN_NIS_SOFT_THRESHOLD = 5.991
-KALMAN_NIS_MAX_R_SCALE = 25.0
-TEMPORAL_MEASUREMENT_TAU = 0.70
+KALMAN_R_MAX_VAR = 625.0
+KALMAN_NIS_SOFT_THRESHOLD = 9.21
+KALMAN_NIS_MAX_R_SCALE = 9.0
 
-# Diagnostics.
+# Composite early-stop score = MLE + weights * temporal fidelity.  This avoids
+# selecting a checkpoint that obtains tolerable Route-A error by moving too
+# slowly.
+EARLY_SCORE_SPEED_WEIGHT = 2.0
+EARLY_SCORE_PROGRESS_WEIGHT = 0.15
+
 JUMP_TOLERANCE_M = 3.0
 VIDEO_FPS = 12.0
 VIDEO_WIDTH = 1800
 VIDEO_HEIGHT = 900
 
-SEED = 2031
+SEED = 2032
 DEVICE = "cuda"
 FEATURE_CACHE_DTYPE = "float16"
