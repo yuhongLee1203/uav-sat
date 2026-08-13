@@ -2,12 +2,12 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameCausalHeadingContinuousWaypointGRUPolynomialKalman_v32"
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_v32"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameForward3x6CausalHeadingContinuousWaypointGRUPolynomialKalman_v33"
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / "controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_v33"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_continuous_waypoint_state_gru_A_only.pt"
-LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_continuous_waypoint_state_gru_A_only_latest.pt"
+TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
+LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only_latest.pt"
 
 ROUTE_ROOTS = [
     Path("/yh/study/new_data_2/model_dataset_new_1_flight"),
@@ -32,7 +32,7 @@ CONTROLLED_GT_PRIOR_JITTER_RADIUS_RATE = 0.017
 CONTROLLED_GT_PRIOR_JITTER_MIN_FRACTION = 0.40
 CONTROLLED_GT_PRIOR_JITTER_MAX_FRACTION = 0.75
 CONTROLLED_FINAL_PROGRESS_CAP_TO_GT = True
-CONTROLLED_PROTOCOL_NAME = "GT+smooth-jitter_controlled_local_prior_3frame_causal_heading_continuous_waypoint_RNN_polynomial_Kalman"
+CONTROLLED_PROTOCOL_NAME = "GT+smooth-jitter_controlled_forward3x6_local_prior_3frame_causal_heading_continuous_waypoint_RNN_polynomial_Kalman"
 
 WAYPOINT_DIR = PROJECT_ROOT / "route_waypoints"
 WAYPOINT_FILES = {
@@ -93,6 +93,14 @@ MIN_TRAIN_CAPTURE_RATE = 0.95
 # -----------------------------------------------------------------------------
 ACQ_HYPOTHESIS_COUNT = 1
 ACQ_LOCAL_GRID_SIZE = 6
+
+# v33 forward-only local visual search. The original 6x6 geometry is built only
+# to determine which half lies ahead of the causal estimated heading. Only the
+# selected 3x6=18 forward candidates are encoded/scored by the visual model.
+FORWARD_ONLY_LOCAL_SEARCH = True
+FORWARD_SEARCH_ROWS = 3
+FORWARD_SEARCH_COLS = 6
+FORWARD_SEARCH_CANDIDATE_COUNT = FORWARD_SEARCH_ROWS * FORWARD_SEARCH_COLS
 ACQ_MIN_RADIUS_M = 0.0
 ACQ_BASE_RADIUS_M = 0.0
 ACQ_MAX_RADIUS_M = 0.0

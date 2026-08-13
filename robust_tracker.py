@@ -12,11 +12,17 @@ import torch.nn.functional as F
 
 import config
 from data import RouteDataset, meters_from_latlon
-from visual_localizer import CandidateBatch, FrozenVisualLocalizer, train_visual_retrieval_a_only
+from visual_localizer import (
+    CandidateBatch,
+    FrozenVisualLocalizer,
+    hard_mean_shift,
+    regular_grid_indices,
+    train_visual_retrieval_a_only,
+)
 from visual_model import ThreeFrameRouteStateGRU
 
 
-ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameCausalHeadingContinuousWaypointGRUPolynomialKalman_v32"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameForward3x6CausalHeadingContinuousWaypointGRUPolynomialKalman_v33"
 
 
 @dataclass
@@ -1036,6 +1042,96 @@ def _hypothesis_center_se(route, center_se, radius_m):
     return np.asarray([[s_m, float(center[1])] for s_m in values], dtype=np.float64)
 
 
+def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_size=6):
+    """Score only the causal-heading forward half of the original 6x6 grid.
+
+    The full 6x6 geometry is used only to decide which 18 centers are forward.
+    Satellite embeddings, cosine logits, posterior probabilities, Top-1, and
+    HardMS are computed only for the selected 18 candidates.  When heading is
+    aligned with a gallery axis this is exactly the front 3 rows x 6 columns.
+    """
+    grid_size = int(grid_size)
+    if grid_size != 6:
+        raise ValueError("forward_3x6_candidate_batch expects base grid_size=6")
+    keep_count = int(config.FORWARD_SEARCH_CANDIDATE_COUNT)
+    if keep_count != 18:
+        raise ValueError("forward search must keep exactly 3x6=18 candidates")
+
+    full_indices = regular_grid_indices(
+        visual.gallery["xy"],
+        visual.gallery["pixel"],
+        visual.pixel_index,
+        center_xy,
+        grid_size,
+        config.SAT_STRIDE,
+        visual.device,
+    )
+    full_centers = visual.gallery["xy"][full_indices]
+
+    headings = torch.as_tensor(
+        heading_rad, dtype=full_centers.dtype, device=full_centers.device
+    ).reshape(-1)
+    batch = int(full_centers.shape[0])
+    if headings.numel() == 1 and batch > 1:
+        headings = headings.expand(batch)
+    if headings.numel() != batch:
+        raise ValueError("heading count must match center batch size")
+
+    forward_unit = torch.stack([torch.cos(headings), torch.sin(headings)], dim=1)
+    cross_unit = torch.stack([-torch.sin(headings), torch.cos(headings)], dim=1)
+    relative = full_centers - center_xy[:, None, :]
+    forward_projection = (relative * forward_unit[:, None, :]).sum(dim=2)
+    cross_projection = (relative * cross_unit[:, None, :]).sum(dim=2)
+
+    selected_local = torch.topk(
+        forward_projection, k=keep_count, dim=1, largest=True, sorted=False
+    ).indices
+    selected_indices = torch.gather(full_indices, 1, selected_local)
+    selected_forward = torch.gather(forward_projection, 1, selected_local)
+    selected_cross = torch.gather(cross_projection, 1, selected_local)
+
+    # Stable front-to-back, left-to-right order.
+    ordering_key = -selected_forward * 1000.0 + selected_cross
+    order = torch.argsort(ordering_key, dim=1)
+    selected_indices = torch.gather(selected_indices, 1, order)
+
+    centers = visual.gallery["xy"][selected_indices]
+    satellite_clip = visual.gallery["clip_feat"][selected_indices]
+    z_uav = visual.model.encode_uav_from_clip(uav_clip)
+    z_sat = visual.model.encode_sat_from_clip(
+        satellite_clip.reshape(-1, satellite_clip.shape[-1]),
+        centers.reshape(-1, 2),
+    ).reshape(centers.shape[0], centers.shape[1], -1)
+    raw_logits = visual.model.logit_scale.exp().clamp(max=100.0) * (
+        z_uav[:, None] * z_sat
+    ).sum(dim=2)
+    raw_prob = torch.softmax(
+        raw_logits / float(config.MEANSHIFT_SCORE_TAU), dim=1
+    )
+    raw_index = raw_logits.argmax(dim=1)
+    raw_top1_xy = centers[
+        torch.arange(centers.shape[0], device=visual.device), raw_index
+    ]
+    hardms_xy, hardms_support = hard_mean_shift(
+        raw_logits,
+        centers,
+        config.MEANSHIFT_SCORE_TAU,
+        config.MEANSHIFT_BANDWIDTH_M,
+        config.MEANSHIFT_ITERATIONS,
+    )
+    return CandidateBatch(
+        indices=selected_indices,
+        centers=centers,
+        z_uav=z_uav,
+        z_sat=z_sat,
+        raw_logits=raw_logits,
+        raw_prob=raw_prob,
+        raw_top1_xy=raw_top1_xy,
+        hardms_xy=hardms_xy,
+        hardms_support=hardms_support,
+    )
+
+
 def _slice_candidate(candidate, index):
     i = int(index)
     return CandidateBatch(
@@ -1064,6 +1160,7 @@ def visual_observation(
     previous_acquisition_confidence,
     kalman_progress_std,
     previous_forward_speed,
+    search_heading_rad,
     device,
     gt_xy=None,
     gt_se=None,
@@ -1090,11 +1187,20 @@ def visual_observation(
         centers_xy_np, dtype=torch.float32, device=device
     )
     repeated_uav = uav_clip.repeat(hypothesis_count, 1)
-    candidate = visual.candidate_batch(
-        uav_clip=repeated_uav,
-        center_xy=centers_xy,
-        grid_size=int(config.ACQ_LOCAL_GRID_SIZE),
-    )
+    if bool(config.FORWARD_ONLY_LOCAL_SEARCH):
+        candidate = forward_3x6_candidate_batch(
+            visual=visual,
+            uav_clip=repeated_uav,
+            center_xy=centers_xy,
+            heading_rad=search_heading_rad,
+            grid_size=int(config.ACQ_LOCAL_GRID_SIZE),
+        )
+    else:
+        candidate = visual.candidate_batch(
+            uav_clip=repeated_uav,
+            center_xy=centers_xy,
+            grid_size=int(config.ACQ_LOCAL_GRID_SIZE),
+        )
 
     predicted_centers = centers_xy[:, None, :]
     distance2 = (candidate.centers - predicted_centers).square().sum(dim=2)
@@ -1492,6 +1598,10 @@ def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, de
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
         gt = cache.gt_xy[index : index + 1].to(device).float()
         controlled_center_se, _, _ = controlled_gt_prior_se(cache, route, gt_state, index)
+        search_heading_rad = wrap_angle_rad(
+            route.route_heading_rad(float(predicted_se[0]))
+            + float(previous_heading_state[0, 0].item())
+        )
         obs = visual_observation(
             model=model,
             visual=visual,
@@ -1505,6 +1615,7 @@ def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, de
             previous_acquisition_confidence=previous_acq_confidence,
             kalman_progress_std=kf.progress_std(),
             previous_forward_speed=float(previous_velocity[0, 0].item()),
+            search_heading_rad=search_heading_rad,
             device=device,
             gt_xy=gt,
             gt_se=gt_state["se"][index],
@@ -1726,6 +1837,10 @@ def train_temporal_model(
             search_center_se, _, _ = controlled_gt_prior_se(
                 cache, route, gt_state, index
             )
+            search_heading_rad = wrap_angle_rad(
+                route.route_heading_rad(float(predicted_se[0]))
+                + float(previous_heading_state[0, 0].item())
+            )
             teacher_select = True
 
             uav_clip = cache.uav_clip[index : index + 1].to(device).float()
@@ -1743,6 +1858,7 @@ def train_temporal_model(
                 previous_acquisition_confidence=previous_acq_confidence,
                 kalman_progress_std=kf.progress_std(),
                 previous_forward_speed=float(previous_velocity[0, 0].item()),
+                search_heading_rad=search_heading_rad,
                 device=device,
                 gt_xy=gt_xy,
                 gt_se=gt_state["se"][index],
@@ -1867,7 +1983,7 @@ def train_temporal_model(
                     "uses_waypoint_frame_index_at_inference": False,
                     "protocol": str(config.CONTROLLED_PROTOCOL_NAME),
                     "acquisition": (
-                        "single controlled 6x6 local window centered at current-frame GT + bounded jitter"
+                        "single controlled causal-heading forward 3x6 local window selected from 6x6 geometry"
                     ),
                     "training": (
                         "Route-A sequential TBPTT with controlled GT+smooth-jitter local-prior supervision"
@@ -2045,6 +2161,10 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         controlled_center_se, controlled_prior_xy, controlled_jitter_xy = controlled_gt_prior_se(
             cache, route, gt_state, index
         )
+        search_heading_rad = wrap_angle_rad(
+            route.route_heading_rad(float(predicted_se[0]))
+            + float(previous_heading_state[0, 0].item())
+        )
 
         obs = visual_observation(
             model=model,
@@ -2059,6 +2179,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
             previous_acquisition_confidence=previous_acq_confidence,
             kalman_progress_std=kf.progress_std(),
             previous_forward_speed=float(previous_velocity[0, 0].item()),
+            search_heading_rad=search_heading_rad,
             device=device,
             gt_xy=gt_xy_t,
             gt_se=gt_state["se"][index],
@@ -2214,6 +2335,9 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "selected_candidate_capture": int(selected_capture),
                 "bank_candidate_capture": int(bank_capture),
                 "search_grid_size": int(config.ACQ_LOCAL_GRID_SIZE),
+                "search_candidate_count": int(config.FORWARD_SEARCH_CANDIDATE_COUNT),
+                "forward_only_search": int(bool(config.FORWARD_ONLY_LOCAL_SEARCH)),
+                "search_heading_deg": float(math.degrees(search_heading_rad)),
                 "raw_top1_x": float(obs.candidate.raw_top1_xy[0, 0].item()),
                 "raw_top1_y": float(obs.candidate.raw_top1_xy[0, 1].item()),
                 "hardms_x": float(obs.candidate.hardms_xy[0, 0].item()),
@@ -2302,7 +2426,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = config.OUTPUT_DIR / (
         route_name
-        + "_controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        + "_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
     )
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
@@ -2439,7 +2563,7 @@ def eval_pipeline(device):
     model = load_temporal_model(device)
     all_summary = {
         "architecture": ARCHITECTURE_NAME,
-        "protocol": "GT+smooth-jitter_controlled_local_prior",
+        "protocol": str(config.CONTROLLED_PROTOCOL_NAME),
         "train_routes": ["route_A"],
         "eval_routes": ["route_B", "route_C"],
         "known_at_inference": [
@@ -2454,8 +2578,8 @@ def eval_pipeline(device):
             "-> v/a -> second-order polynomial"
         ),
         "acquisition": (
-            "single 6x6 LOCAL SAT window centered at current-frame GT + bounded jitter; "
-            "this is a controlled local-prior protocol, not autonomous acquisition"
+            "single causal-heading FORWARD 3x6 LOCAL SAT window: 18 forward candidates "
+            "selected from the original 6x6 geometry; backward 18 candidates are not visually scored"
         ),
         "visual_measurement": (
             "selected local posterior + recurrent correction/variance"
@@ -2526,7 +2650,7 @@ def main():
     )
     print(
         "3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> "
-        "6x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.",
+        "causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.",
         flush=True,
     )
     print(

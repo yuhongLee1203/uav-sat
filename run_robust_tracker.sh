@@ -50,19 +50,20 @@ case "${MODE}" in
   *) echo "ERROR: --mode must be train, eval, or train_eval" >&2; exit 2 ;;
 esac
 
-OUTPUT_DIR="outputs/controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_v32"
+OUTPUT_DIR="outputs/controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_v33"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
-TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_continuous_waypoint_state_gru_A_only.pt"
-LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_continuous_waypoint_state_gru_A_only_latest.pt"
-ROUTE_B_CSV="${OUTPUT_DIR}/route_B_controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
-ROUTE_C_CSV="${OUTPUT_DIR}/route_C_controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
+LATEST_TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only_latest.pt"
+ROUTE_B_CSV="${OUTPUT_DIR}/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+ROUTE_C_CSV="${OUTPUT_DIR}/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
 SUMMARY_JSON="${OUTPUT_DIR}/robust_tracker_summary.json"
 mkdir -p "${CHECKPOINT_DIR}"
 
 find_visual_checkpoint() {
   local candidates=(
     "${VISUAL_CKPT}"
+    "outputs/controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_v32/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_causal_heading_rnn_polynomial_kalman_v31/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_heading_rnn_polynomial_kalman_v30/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_nojump_rnn_polynomial_kalman_v29/checkpoints/visual_retrieval_A_only.pt"
@@ -110,24 +111,26 @@ verify_python() {
 import config
 import robust_tracker
 import visual_model
-expected = "ControlledGTPriorThreeFrameCausalHeadingContinuousWaypointGRUPolynomialKalman_v32"
+expected = "ControlledGTPriorThreeFrameForward3x6CausalHeadingContinuousWaypointGRUPolynomialKalman_v33"
 checks = [
     (config.ARCHITECTURE_NAME == expected, "config architecture"),
     (robust_tracker.ARCHITECTURE_NAME == expected, "tracker architecture"),
     (hasattr(visual_model, "ThreeFrameRouteStateGRU"), "ThreeFrameRouteStateGRU"),
     (bool(config.CONTROLLED_GT_PRIOR), "controlled GT prior enabled"),
     (bool(config.CONTROLLED_FINAL_PROGRESS_CAP_TO_GT), "final progress cap enabled"),
-    (int(config.GRID_SIZE) == 6, "6x6 local retrieval"),
+    (int(config.GRID_SIZE) == 6, "6x6 base geometry"),
     (int(config.ACQ_HYPOTHESIS_COUNT) == 1, "single GT+jitter local window"),
+    (bool(config.FORWARD_ONLY_LOCAL_SEARCH), "forward-only local search enabled"),
+    (int(config.FORWARD_SEARCH_CANDIDATE_COUNT) == 18, "forward 3x6=18 candidates"),
 ]
 failed = [name for ok, name in checks if not ok]
 if failed:
-    raise RuntimeError("v32 preflight failed: " + ", ".join(failed))
+    raise RuntimeError("v33 preflight failed: " + ", ".join(failed))
 print("architecture :", expected)
 print("protocol     : controlled GT+smooth-jitter local prior on every frame")
 print("temporal     : 3 UAV frames + recurrent GRU state")
 print("motion       : v/a + causal heading -> second-order inertial polynomial; turn-rate is recurrent state only")
-print("visual       : 6x6 local UAV-SAT measurement around smooth GT+jitter prior")
+print("visual       : causal-heading forward 3x6 (18 of 36 geometry) UAV-SAT measurement")
 print("final filter : constrained route-coordinate Kalman (final output)")
 print("direction    : causal RNN heading; route frame rotates only AFTER waypoint crossing")
 print("pace         : controlled causal GT-speed envelope + <=0.75m/frame smooth catch-up")
@@ -172,7 +175,7 @@ verify_eval_outputs() {
 }
 
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "Controlled GT-Prior Continuous-Waypoint Three-Frame GRU + Polynomial + Kalman v32"
+echo "Controlled GT-Prior Forward-3x6 Continuous-Waypoint Three-Frame GRU + Polynomial + Kalman v33"
 printf '%*s\n' 108 '' | tr ' ' '='
 echo "MODE              : ${MODE}"
 echo "GPU               : ${GPU}"
