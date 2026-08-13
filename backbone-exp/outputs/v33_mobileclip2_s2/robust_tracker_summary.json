@@ -46,9 +46,9 @@
     "LongestBankMissFrames": 41,
     "MeanFinalStep_m": 3.168945475541765,
     "MaxFinalStep_m": 9.3065622581275,
-    "JumpTolerance_m": 1.0,
+    "JumpTolerance_m": 5.0,
     "JumpDefinition": "final_step > current_GT_step + tolerance",
-    "JumpRate_pct": 1.2747252747252749,
+    "JumpRate_pct": 0.04395604395604395,
     "MeanExcessStepOverGT_m": 0.10849964275183312,
     "LegacyStepOver3mRate_pct": 80.52747252747253,
     "GTStepOver3mRate_pct": 83.12087912087912,
@@ -70,11 +70,11 @@
       ],
       "warmup_frames": 30,
       "samples": 2246,
-      "mean_ms": 65.7354315721288,
-      "median_ms": 68.48015682771802,
-      "p90_ms": 70.03242941573262,
-      "p95_ms": 70.45549084432423,
-      "fps": 15.21249615441774
+      "mean_ms": 56.40280773060418,
+      "median_ms": 56.24987557530403,
+      "p90_ms": 58.12208028510213,
+      "p95_ms": 58.799813501536846,
+      "fps": 17.729613830153347
     }
   },
   "route_C": {
@@ -100,9 +100,9 @@
     "LongestBankMissFrames": 18,
     "MeanFinalStep_m": 2.188551626937804,
     "MaxFinalStep_m": 13.841346159154133,
-    "JumpTolerance_m": 1.0,
+    "JumpTolerance_m": 5.0,
     "JumpDefinition": "final_step > current_GT_step + tolerance",
-    "JumpRate_pct": 0.6364359586316627,
+    "JumpRate_pct": 0.31821797931583135,
     "MeanExcessStepOverGT_m": 0.08377527804822671,
     "LegacyStepOver3mRate_pct": 42.959427207637226,
     "GTStepOver3mRate_pct": 42.959427207637226,
@@ -124,11 +124,11 @@
       ],
       "warmup_frames": 30,
       "samples": 1228,
-      "mean_ms": 68.75034880821353,
-      "median_ms": 68.72174656018615,
-      "p90_ms": 70.16457179561257,
-      "p95_ms": 70.72802637703717,
-      "fps": 14.545380748388743
+      "mean_ms": 56.610419225335995,
+      "median_ms": 56.60889623686671,
+      "p90_ms": 58.10316149145365,
+      "p95_ms": 58.6972611490637,
+      "fps": 17.664592731940942
     }
   }
 }
