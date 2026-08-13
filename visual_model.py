@@ -6,8 +6,45 @@ import open_clip
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import models
 
 import config
+
+
+class TorchvisionImageEncoder(nn.Module):
+    """Frozen ImageNet backbone exposing the encode_image API used by v33."""
+
+    def __init__(self, key):
+        super().__init__()
+        if key == "resnet18":
+            network = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+            network.fc = nn.Identity()
+        elif key == "resnet50":
+            network = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+            network.fc = nn.Identity()
+        elif key == "mobilenet_v3_small":
+            network = models.mobilenet_v3_small(
+                weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
+            )
+            network.classifier = nn.Identity()
+        elif key == "vgg16":
+            network = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
+            network.classifier = nn.Sequential(*list(network.classifier.children())[:-1])
+        else:
+            raise ValueError("unsupported torchvision backbone: %s" % key)
+        self.network = network
+        self.register_buffer(
+            "mean", torch.tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1)
+        )
+        self.register_buffer(
+            "std", torch.tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1)
+        )
+
+    def encode_image(self, image):
+        image = F.interpolate(
+            image.float(), size=(224, 224), mode="bilinear", align_corners=False
+        )
+        return self.network((image - self.mean) / self.std)
 
 
 class FourierCoordEncoder(nn.Module):
@@ -38,16 +75,20 @@ class AllMapGeoCLIP(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.clip, _ = open_clip.create_model_from_pretrained(config.BACKBONE_NAME)
+        if str(config.BACKBONE_NAME).startswith("torchvision:"):
+            self.clip = TorchvisionImageEncoder(config.BACKBONE_KEY)
+        else:
+            self.clip, _ = open_clip.create_model_from_pretrained(config.BACKBONE_NAME)
         for parameter in self.clip.parameters():
             parameter.requires_grad_(False)
 
         self.use_coord_encoder = bool(getattr(config, "USE_COORD_ENCODER", False))
+        head_dim = int(getattr(config, "BACKBONE_HEAD_DIM", config.CLIP_DIM))
         self.uav_head = nn.Sequential(
-            nn.Linear(config.CLIP_DIM, config.CLIP_DIM),
+            nn.Linear(config.CLIP_DIM, head_dim),
             nn.GELU(),
             nn.Dropout(0.1),
-            nn.Linear(config.CLIP_DIM, config.EMBED_DIM),
+            nn.Linear(head_dim, config.EMBED_DIM),
         )
 
         if self.use_coord_encoder:
@@ -58,10 +99,10 @@ class AllMapGeoCLIP(nn.Module):
             sat_in = config.CLIP_DIM
 
         self.sat_head = nn.Sequential(
-            nn.Linear(sat_in, config.CLIP_DIM),
+            nn.Linear(sat_in, head_dim),
             nn.GELU(),
             nn.Dropout(0.1),
-            nn.Linear(config.CLIP_DIM, config.EMBED_DIM),
+            nn.Linear(head_dim, config.EMBED_DIM),
         )
         self.logit_scale = nn.Parameter(torch.ones([]) * math.log(1.0 / 0.07))
 

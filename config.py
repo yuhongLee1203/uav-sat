@@ -1,9 +1,27 @@
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameForward3x6CausalHeadingContinuousWaypointGRUPolynomialKalman_v33"
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / "controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_v33"
+BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobileclip2_s2").strip().lower()
+BACKBONE_SPECS = {
+    "mobileclip2_s2": ("hf-hub:timm/MobileCLIP2-S2-OpenCLIP", 512),
+    "resnet18": ("torchvision:resnet18", 512),
+    "resnet50": ("torchvision:resnet50", 2048),
+    "mobilenet_v3_small": ("torchvision:mobilenet_v3_small", 576),
+    "vgg16": ("torchvision:vgg16", 4096),
+}
+if BACKBONE_KEY not in BACKBONE_SPECS:
+    raise ValueError(
+        "UAVSAT_BACKBONE must be one of %s; got %r"
+        % (sorted(BACKBONE_SPECS), BACKBONE_KEY)
+    )
+
+if os.environ.get("UAVSAT_BACKBONE_BENCHMARK", "0") == "1":
+    OUTPUT_DIR = PROJECT_ROOT / "backbone-exp" / "outputs" / ("v33_" + BACKBONE_KEY)
+else:
+    OUTPUT_DIR = PROJECT_ROOT / "outputs" / "controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_v33"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
 TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
@@ -53,9 +71,9 @@ SAT_JSON = Path(
 # -----------------------------------------------------------------------------
 # Local UAV<->SAT retrieval (checkpoint-compatible with the previous local model)
 # -----------------------------------------------------------------------------
-BACKBONE_NAME = "hf-hub:timm/MobileCLIP2-S2-OpenCLIP"
-CLIP_DIM = 512
+BACKBONE_NAME, CLIP_DIM = BACKBONE_SPECS[BACKBONE_KEY]
 EMBED_DIM = 512
+BACKBONE_HEAD_DIM = 512
 IMAGE_SIZE = 256
 UAV_CENTER_CROP_SIZE = 256
 UAV_CENTER_MAX_SQUARE_CROP = False
@@ -72,7 +90,7 @@ VISUAL_EPOCHS = 30
 VISUAL_LR = 3e-4
 VISUAL_WEIGHT_DECAY = 1e-3
 VISUAL_BATCH_SIZE = 64
-VISUAL_CACHE_BATCH_SIZE = 256
+VISUAL_CACHE_BATCH_SIZE = int(os.environ.get("UAVSAT_VISUAL_CACHE_BATCH_SIZE", "256"))
 VISUAL_EARLY_STOPPING_PATIENCE = 8
 VISUAL_LABEL_SMOOTHING = 0.05
 VISUAL_COORD_LOSS_WEIGHT = 0.25
@@ -268,6 +286,11 @@ VIDEO_HEIGHT = 900
 SEED = 2033
 DEVICE = "cuda"
 FEATURE_CACHE_DTYPE = "float16"
+
+# Optional end-to-end timing. The timer starts at an already transformed UAV
+# tensor and stops after the external Kalman produces final XY.
+MEASURE_END_TO_END_LATENCY = os.environ.get("UAVSAT_MEASURE_LATENCY", "0") == "1"
+LATENCY_WARMUP_FRAMES = int(os.environ.get("UAVSAT_LATENCY_WARMUP", "30"))
 
 # -----------------------------------------------------------------------------
 # v32 controlled pace envelope. This controlled protocol intentionally uses the

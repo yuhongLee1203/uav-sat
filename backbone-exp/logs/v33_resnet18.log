@@ -1,0 +1,224 @@
+[2026-08-13T17:22:04+08:00] ROOT v33 backbone=resnet18 physical_gpu=5
+pipeline=image -> retrieval -> 3-frame GRU -> polynomial -> forward3x6 -> external Kalman
+============================================================================================================
+ControlledGTPriorThreeFrameForward3x6CausalHeadingContinuousWaypointGRUPolynomialKalman_v33
+device=cuda
+Protocol: CONTROLLED GT+smooth-jitter local prior. The current-frame GT coordinate is intentionally used only to center the local SAT search window; this is not autonomous localization.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+satellite backbone cache: 32/95480
+satellite backbone cache: 672/95480
+satellite backbone cache: 1312/95480
+satellite backbone cache: 1952/95480
+satellite backbone cache: 2592/95480
+satellite backbone cache: 3232/95480
+satellite backbone cache: 3872/95480
+satellite backbone cache: 4512/95480
+satellite backbone cache: 5152/95480
+satellite backbone cache: 5792/95480
+satellite backbone cache: 6432/95480
+satellite backbone cache: 7072/95480
+satellite backbone cache: 7712/95480
+satellite backbone cache: 8352/95480
+satellite backbone cache: 8992/95480
+satellite backbone cache: 9632/95480
+satellite backbone cache: 10272/95480
+satellite backbone cache: 10912/95480
+satellite backbone cache: 11552/95480
+satellite backbone cache: 12192/95480
+satellite backbone cache: 12832/95480
+satellite backbone cache: 13472/95480
+satellite backbone cache: 14112/95480
+satellite backbone cache: 14752/95480
+satellite backbone cache: 15392/95480
+satellite backbone cache: 16032/95480
+satellite backbone cache: 16672/95480
+satellite backbone cache: 17312/95480
+satellite backbone cache: 17952/95480
+satellite backbone cache: 18592/95480
+satellite backbone cache: 19232/95480
+satellite backbone cache: 19872/95480
+satellite backbone cache: 20512/95480
+satellite backbone cache: 21152/95480
+satellite backbone cache: 21792/95480
+satellite backbone cache: 22432/95480
+satellite backbone cache: 23072/95480
+satellite backbone cache: 23712/95480
+satellite backbone cache: 24352/95480
+satellite backbone cache: 24992/95480
+satellite backbone cache: 25632/95480
+satellite backbone cache: 26272/95480
+satellite backbone cache: 26912/95480
+satellite backbone cache: 27552/95480
+satellite backbone cache: 28192/95480
+satellite backbone cache: 28832/95480
+satellite backbone cache: 29472/95480
+satellite backbone cache: 30112/95480
+satellite backbone cache: 30752/95480
+satellite backbone cache: 31392/95480
+satellite backbone cache: 32032/95480
+satellite backbone cache: 32672/95480
+satellite backbone cache: 33312/95480
+satellite backbone cache: 33952/95480
+satellite backbone cache: 34592/95480
+satellite backbone cache: 35232/95480
+satellite backbone cache: 35872/95480
+satellite backbone cache: 36512/95480
+satellite backbone cache: 37152/95480
+satellite backbone cache: 37792/95480
+satellite backbone cache: 38432/95480
+satellite backbone cache: 39072/95480
+satellite backbone cache: 39712/95480
+satellite backbone cache: 40352/95480
+satellite backbone cache: 40992/95480
+satellite backbone cache: 41632/95480
+satellite backbone cache: 42272/95480
+satellite backbone cache: 42912/95480
+satellite backbone cache: 43552/95480
+satellite backbone cache: 44192/95480
+satellite backbone cache: 44832/95480
+satellite backbone cache: 45472/95480
+satellite backbone cache: 46112/95480
+satellite backbone cache: 46752/95480
+satellite backbone cache: 47392/95480
+satellite backbone cache: 48032/95480
+satellite backbone cache: 48672/95480
+satellite backbone cache: 49312/95480
+satellite backbone cache: 49952/95480
+satellite backbone cache: 50592/95480
+satellite backbone cache: 51232/95480
+satellite backbone cache: 51872/95480
+satellite backbone cache: 52512/95480
+satellite backbone cache: 53152/95480
+satellite backbone cache: 53792/95480
+satellite backbone cache: 54432/95480
+satellite backbone cache: 55072/95480
+satellite backbone cache: 55712/95480
+satellite backbone cache: 56352/95480
+satellite backbone cache: 56992/95480
+satellite backbone cache: 57632/95480
+satellite backbone cache: 58272/95480
+satellite backbone cache: 58912/95480
+satellite backbone cache: 59552/95480
+satellite backbone cache: 60192/95480
+satellite backbone cache: 60832/95480
+satellite backbone cache: 61472/95480
+satellite backbone cache: 62112/95480
+satellite backbone cache: 62752/95480
+satellite backbone cache: 63392/95480
+satellite backbone cache: 64032/95480
+satellite backbone cache: 64672/95480
+satellite backbone cache: 65312/95480
+satellite backbone cache: 65952/95480
+satellite backbone cache: 66592/95480
+satellite backbone cache: 67232/95480
+satellite backbone cache: 67872/95480
+satellite backbone cache: 68512/95480
+satellite backbone cache: 69152/95480
+satellite backbone cache: 69792/95480
+satellite backbone cache: 70432/95480
+satellite backbone cache: 71072/95480
+satellite backbone cache: 71712/95480
+satellite backbone cache: 72352/95480
+satellite backbone cache: 72992/95480
+satellite backbone cache: 73632/95480
+satellite backbone cache: 74272/95480
+satellite backbone cache: 74912/95480
+satellite backbone cache: 75552/95480
+satellite backbone cache: 76192/95480
+satellite backbone cache: 76832/95480
+satellite backbone cache: 77472/95480
+satellite backbone cache: 78112/95480
+satellite backbone cache: 78752/95480
+satellite backbone cache: 79392/95480
+satellite backbone cache: 80032/95480
+satellite backbone cache: 80672/95480
+satellite backbone cache: 81312/95480
+satellite backbone cache: 81952/95480
+satellite backbone cache: 82592/95480
+satellite backbone cache: 83232/95480
+satellite backbone cache: 83872/95480
+satellite backbone cache: 84512/95480
+satellite backbone cache: 85152/95480
+satellite backbone cache: 85792/95480
+satellite backbone cache: 86432/95480
+satellite backbone cache: 87072/95480
+satellite backbone cache: 87712/95480
+satellite backbone cache: 88352/95480
+satellite backbone cache: 88992/95480
+satellite backbone cache: 89632/95480
+satellite backbone cache: 90272/95480
+satellite backbone cache: 90912/95480
+satellite backbone cache: 91552/95480
+satellite backbone cache: 92192/95480
+satellite backbone cache: 92832/95480
+satellite backbone cache: 93472/95480
+satellite backbone cache: 94112/95480
+satellite backbone cache: 94752/95480
+satellite backbone cache: 95392/95480
+satellite backbone cache: 95480/95480
+satellite gallery size=95480
+Route A backbone cache: 32/1732
+Route A backbone cache: 672/1732
+Route A backbone cache: 1312/1732
+Route A backbone cache: 1732/1732
+Route A visual candidate capture=100.00%
+visual epoch=001/30 loss=4.34854 val_hardms_mle=8.234m val_p90=14.666m val_lsr10=67.98%
+visual epoch=002/30 loss=3.95252 val_hardms_mle=9.306m val_p90=16.644m val_lsr10=63.16%
+visual epoch=003/30 loss=3.71709 val_hardms_mle=9.576m val_p90=16.612m val_lsr10=58.77%
+visual epoch=004/30 loss=3.48247 val_hardms_mle=9.898m val_p90=17.383m val_lsr10=53.51%
+visual epoch=005/30 loss=3.26024 val_hardms_mle=11.372m val_p90=18.870m val_lsr10=42.98%
+visual epoch=006/30 loss=3.04379 val_hardms_mle=11.195m val_p90=19.261m val_lsr10=46.93%
+visual epoch=007/30 loss=2.87527 val_hardms_mle=10.522m val_p90=18.221m val_lsr10=48.68%
+visual epoch=008/30 loss=2.75684 val_hardms_mle=11.211m val_p90=19.062m val_lsr10=43.86%
+visual epoch=009/30 loss=2.62766 val_hardms_mle=11.197m val_p90=19.158m val_lsr10=44.30%
+visual early stopping: Route A validation stopped improving
+best Route A visual validation HardMS MLE=8.234m
+route_A backbone cache: 32/1732
+route_A backbone cache: 352/1732
+route_A backbone cache: 672/1732
+route_A backbone cache: 992/1732
+route_A backbone cache: 1312/1732
+route_A backbone cache: 1632/1732
+route_A backbone cache: 1732/1732
+temporal split train=[0,1196) val=[1228,1456) route_length=4938.3m
+Route-A GT mean forward step=2.937m/frame p90=3.555m/frame
+temporal epoch=001/60 loss=14.09263 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=1.230 target_step=2.937 pred_v=0.847 target_v=2.937 val_mle=3.673m val_p90=7.991m val_speed_mae=2.084 heading=-1.1/0.2deg val_progress_mae=0.921m val_heading_mae=7.6deg val_capture=75.44% val_bank=75.44% val_acq_acc=100.00% score=9.681 best=9.681 patience=0/10
+temporal epoch=002/60 loss=9.70968 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=3.248 target_step=2.937 pred_v=1.560 target_v=2.937 val_mle=4.234m val_p90=9.098m val_speed_mae=1.554 heading=-0.4/0.2deg val_progress_mae=0.898m val_heading_mae=6.7deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=9.127 best=9.127 patience=0/10
+temporal epoch=003/60 loss=8.61215 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.542 radius=0.0m pred_step=3.216 target_step=2.937 pred_v=2.214 target_v=2.937 val_mle=3.815m val_p90=8.465m val_speed_mae=0.817 heading=0.0/0.2deg val_progress_mae=1.031m val_heading_mae=6.7deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=7.253 best=7.253 patience=0/10
+temporal epoch=004/60 loss=7.92010 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.542 radius=0.0m pred_step=3.128 target_step=2.937 pred_v=3.099 target_v=2.937 val_mle=3.809m val_p90=8.464m val_speed_mae=0.549 heading=-0.0/0.2deg val_progress_mae=1.041m val_heading_mae=6.8deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=6.714 best=6.714 patience=0/10
+temporal epoch=005/60 loss=7.85642 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=3.080 target_step=2.937 pred_v=3.085 target_v=2.937 val_mle=3.881m val_p90=8.650m val_speed_mae=0.593 heading=-0.1/0.2deg val_progress_mae=1.058m val_heading_mae=6.8deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=6.876 best=6.714 patience=1/10
+temporal epoch=006/60 loss=7.80723 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=3.051 target_step=2.937 pred_v=2.942 target_v=2.937 val_mle=3.769m val_p90=8.417m val_speed_mae=0.425 heading=-0.1/0.2deg val_progress_mae=0.958m val_heading_mae=6.7deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=6.411 best=6.411 patience=0/10
+temporal epoch=007/60 loss=7.31174 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.542 radius=0.0m pred_step=2.889 target_step=2.937 pred_v=2.939 target_v=2.937 val_mle=3.873m val_p90=8.323m val_speed_mae=0.588 heading=-0.0/0.2deg val_progress_mae=0.512m val_heading_mae=6.9deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=6.779 best=6.411 patience=1/10
+temporal epoch=008/60 loss=6.93093 center_teacher=1.000 acq_teacher=1.000 capture=92.31% bank_capture=92.31% acq_acc=100.00% acq_conf=0.542 radius=0.0m pred_step=2.971 target_step=2.937 pred_v=2.948 target_v=2.937 val_mle=3.835m val_p90=7.958m val_speed_mae=0.648 heading=0.1/0.2deg val_progress_mae=0.368m val_heading_mae=6.7deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=6.833 best=6.411 patience=2/10
+temporal epoch=009/60 loss=7.12687 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=3.015 target_step=2.937 pred_v=3.086 target_v=2.937 val_mle=4.579m val_p90=9.519m val_speed_mae=0.395 heading=-0.2/0.2deg val_progress_mae=0.889m val_heading_mae=7.0deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=7.159 best=6.411 patience=3/10
+temporal epoch=010/60 loss=6.80802 center_teacher=1.000 acq_teacher=1.000 capture=92.31% bank_capture=92.31% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=2.835 target_step=2.937 pred_v=2.830 target_v=2.937 val_mle=4.956m val_p90=9.181m val_speed_mae=0.679 heading=0.3/0.2deg val_progress_mae=0.316m val_heading_mae=6.8deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=8.013 best=6.411 patience=4/10
+temporal epoch=011/60 loss=6.77167 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=2.944 target_step=2.937 pred_v=2.966 target_v=2.937 val_mle=4.494m val_p90=9.410m val_speed_mae=0.514 heading=0.2/0.2deg val_progress_mae=0.515m val_heading_mae=6.7deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=7.247 best=6.411 patience=5/10
+temporal epoch=012/60 loss=6.67504 center_teacher=1.000 acq_teacher=1.000 capture=92.31% bank_capture=92.31% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=2.972 target_step=2.937 pred_v=2.967 target_v=2.937 val_mle=4.315m val_p90=9.305m val_speed_mae=0.410 heading=0.1/0.2deg val_progress_mae=0.732m val_heading_mae=6.8deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=6.897 best=6.411 patience=6/10
+temporal epoch=013/60 loss=6.74917 center_teacher=1.000 acq_teacher=1.000 capture=92.31% bank_capture=92.31% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=3.022 target_step=2.937 pred_v=3.027 target_v=2.937 val_mle=4.205m val_p90=9.185m val_speed_mae=0.404 heading=0.0/0.2deg val_progress_mae=0.870m val_heading_mae=6.7deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=6.792 best=6.411 patience=7/10
+temporal epoch=014/60 loss=6.48165 center_teacher=1.000 acq_teacher=1.000 capture=92.22% bank_capture=92.22% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=3.000 target_step=2.937 pred_v=2.943 target_v=2.937 val_mle=5.155m val_p90=9.656m val_speed_mae=0.430 heading=0.0/0.2deg val_progress_mae=0.821m val_heading_mae=6.9deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=7.793 best=6.411 patience=8/10
+temporal epoch=015/60 loss=6.25733 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=2.968 target_step=2.937 pred_v=2.971 target_v=2.937 val_mle=5.461m val_p90=9.759m val_speed_mae=0.452 heading=0.0/0.2deg val_progress_mae=0.749m val_heading_mae=6.7deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=8.124 best=6.411 patience=9/10
+temporal epoch=016/60 loss=6.02749 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=2.926 target_step=2.937 pred_v=2.903 target_v=2.937 val_mle=6.415m val_p90=9.734m val_speed_mae=0.573 heading=0.4/0.2deg val_progress_mae=0.379m val_heading_mae=6.7deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=9.266 best=6.411 patience=10/10
+temporal epoch=017/60 loss=5.96641 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=3.027 target_step=2.937 pred_v=3.015 target_v=2.937 val_mle=4.749m val_p90=9.050m val_speed_mae=0.437 heading=0.2/0.2deg val_progress_mae=0.518m val_heading_mae=6.8deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=7.352 best=6.411 patience=11/10
+temporal epoch=018/60 loss=5.89447 center_teacher=1.000 acq_teacher=1.000 capture=92.39% bank_capture=92.39% acq_acc=100.00% acq_conf=0.543 radius=0.0m pred_step=2.971 target_step=2.937 pred_v=2.965 target_v=2.937 val_mle=4.627m val_p90=9.342m val_speed_mae=0.405 heading=-0.0/0.2deg val_progress_mae=0.571m val_heading_mae=6.9deg val_capture=75.88% val_bank=75.88% val_acq_acc=100.00% score=7.176 best=6.411 patience=12/10
+EARLY STOP: controlled local-prior validation score did not improve by 0.050 for 10 epochs.
+best controlled-validation score=6.411
+route_B backbone cache: 32/2276
+route_B backbone cache: 352/2276
+route_B backbone cache: 672/2276
+route_B backbone cache: 992/2276
+route_B backbone cache: 1312/2276
+route_B backbone cache: 1632/2276
+route_B backbone cache: 1952/2276
+route_B backbone cache: 2272/2276
+route_B backbone cache: 2276/2276
+route_B final MLE=4.967m P90=9.209m LSR@15=99.96% selected_capture=89.59% bank_capture=89.59% acq_acc=100.00% speed_mae=0.498m/frame progress_mae=1.139m heading_mae=9.6deg jump_rate=1.27% max_step=11.33m final_leg=14 gt_leg=14
+route_C backbone cache: 32/1258
+route_C backbone cache: 352/1258
+route_C backbone cache: 672/1258
+route_C backbone cache: 992/1258
+route_C backbone cache: 1258/1258
+route_C final MLE=4.619m P90=8.684m LSR@15=98.97% selected_capture=91.81% bank_capture=91.81% acq_acc=100.00% speed_mae=1.037m/frame progress_mae=1.167m heading_mae=28.3deg jump_rate=0.24% max_step=10.40m final_leg=10 gt_leg=10
+summary: /yh/study/uav-sat/backbone-exp/outputs/v33_resnet18/robust_tracker_summary.json

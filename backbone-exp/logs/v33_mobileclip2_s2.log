@@ -1,0 +1,27 @@
+[2026-08-13T17:22:04+08:00] ROOT v33 backbone=mobileclip2_s2 physical_gpu=0
+pipeline=image -> retrieval -> 3-frame GRU -> polynomial -> forward3x6 -> external Kalman
+============================================================================================================
+ControlledGTPriorThreeFrameForward3x6CausalHeadingContinuousWaypointGRUPolynomialKalman_v33
+device=cuda
+Protocol: CONTROLLED GT+smooth-jitter local prior. The current-frame GT coordinate is intentionally used only to center the local SAT search window; this is not autonomous localization.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+route_B backbone cache: 32/2276
+route_B backbone cache: 352/2276
+route_B backbone cache: 672/2276
+route_B backbone cache: 992/2276
+route_B backbone cache: 1312/2276
+route_B backbone cache: 1632/2276
+route_B backbone cache: 1952/2276
+route_B backbone cache: 2272/2276
+route_B backbone cache: 2276/2276
+route_B final MLE=4.632m P90=9.141m LSR@15=100.00% selected_capture=89.63% bank_capture=89.63% acq_acc=100.00% speed_mae=0.546m/frame progress_mae=0.557m heading_mae=9.2deg jump_rate=1.27% max_step=9.31m final_leg=14 gt_leg=14
+route_C backbone cache: 32/1258
+route_C backbone cache: 352/1258
+route_C backbone cache: 672/1258
+route_C backbone cache: 992/1258
+route_C backbone cache: 1258/1258
+route_C final MLE=4.698m P90=9.640m LSR@15=98.73% selected_capture=91.81% bank_capture=91.81% acq_acc=100.00% speed_mae=1.044m/frame progress_mae=0.467m heading_mae=27.4deg jump_rate=0.64% max_step=13.84m final_leg=10 gt_leg=10
+summary: /yh/study/uav-sat/backbone-exp/outputs/v33_mobileclip2_s2/robust_tracker_summary.json

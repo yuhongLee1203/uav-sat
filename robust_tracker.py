@@ -3,6 +3,7 @@ import csv
 import json
 import math
 import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -2139,8 +2140,33 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     longest_bank_miss = 0
     first_selected_miss_frame = None
     first_bank_miss_frame = None
+    measure_latency = bool(getattr(config, "MEASURE_END_TO_END_LATENCY", False))
+    latency_warmup = int(getattr(config, "LATENCY_WARMUP_FRAMES", 30))
+    latency_rows_ms = []
+    latency_dataset = None
+    if measure_latency:
+        route_index = config.ROUTE_NAMES.index(route_name)
+        latency_dataset = RouteDataset(
+            Path(config.ROUTE_ROOTS[route_index]),
+            train=False,
+            origin_lat=visual.origin_lat,
+            origin_lon=visual.origin_lon,
+        )
+        if len(latency_dataset) != len(cache):
+            raise RuntimeError("latency dataset/cache length mismatch")
 
     for index in range(len(cache)):
+        prepared_uav = None
+        if latency_dataset is not None:
+            latency_item = latency_dataset[index]
+            if parse_frame_id(latency_item["frame_id"]) != int(cache.frame_ids[index]):
+                raise RuntimeError("latency dataset/cache frame mismatch")
+            # Disk I/O and torchvision preprocessing intentionally happen before
+            # the timer. The timed input is this prepared image tensor.
+            prepared_uav = latency_item["uav"].unsqueeze(0)
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            latency_start = time.perf_counter()
         if index == 0:
             predicted_se = kf.se()
         else:
@@ -2156,7 +2182,10 @@ def run_route_inference(route_name, visual, model, cache, route, device):
 
         predicted_xy = route.xy_from_se(predicted_se[0], predicted_se[1])
         frame_before = route.frame_from_se(predicted_se[0], predicted_se[1])
-        uav_clip = cache.uav_clip[index : index + 1].to(device).float()
+        if prepared_uav is None:
+            uav_clip = cache.uav_clip[index : index + 1].to(device).float()
+        else:
+            uav_clip = visual.encode_uav_clip(prepared_uav)
         gt_xy_t = cache.gt_xy[index : index + 1].to(device).float()
         controlled_center_se, controlled_prior_xy, controlled_jitter_xy = controlled_gt_prior_se(
             cache, route, gt_state, index
@@ -2213,6 +2242,13 @@ def run_route_inference(route_name, visual, model, cache, route, device):
             kf, final_se, gt_state["se"][index]
         )
         final_xy = route.xy_from_se(final_se[0], final_se[1])
+        if prepared_uav is not None:
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            latency_ms = (time.perf_counter() - latency_start) * 1000.0
+            latency_rows_ms.append(float(latency_ms))
+        else:
+            latency_ms = float("nan")
         frame_after = route.frame_from_se(final_se[0], final_se[1])
 
         gt_xy = cache.gt_xy[index].cpu().numpy()
@@ -2406,6 +2442,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "excess_step_over_gt_m": float(excess_step_over_gt),
                 "abnormal_jump": int(abnormal_jump),
                 "error_final_m": float(error),
+                "end_to_end_latency_ms": float(latency_ms),
             }
         )
 
@@ -2480,6 +2517,21 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     summary["FinalGTWaypointLeg"] = int(rows[-1]["gt_waypoint_leg"])
     summary["Waypoints"] = int(len(route.points))
     summary["CSV"] = str(csv_path)
+    if latency_rows_ms:
+        steady = np.asarray(latency_rows_ms[latency_warmup:], dtype=np.float64)
+        if steady.size == 0:
+            steady = np.asarray(latency_rows_ms, dtype=np.float64)
+        summary["EndToEndTiming"] = {
+            "definition": "prepared UAV tensor -> backbone -> v33 retrieval/GRU -> external RouteKalman -> final XY",
+            "excluded": ["image disk I/O", "image preprocessing", "model/checkpoint loading", "satellite gallery construction"],
+            "warmup_frames": int(min(latency_warmup, len(latency_rows_ms))),
+            "samples": int(steady.size),
+            "mean_ms": float(np.mean(steady)),
+            "median_ms": float(np.median(steady)),
+            "p90_ms": float(np.quantile(steady, 0.90)),
+            "p95_ms": float(np.quantile(steady, 0.95)),
+            "fps": float(1000.0 / max(float(np.mean(steady)), 1e-12)),
+        }
 
     print(
         "%s final MLE=%.3fm P90=%.3fm LSR@15=%.2f%% selected_capture=%.2f%% "
@@ -2563,6 +2615,8 @@ def eval_pipeline(device):
     model = load_temporal_model(device)
     all_summary = {
         "architecture": ARCHITECTURE_NAME,
+        "backbone_key": str(config.BACKBONE_KEY),
+        "backbone_name": str(config.BACKBONE_NAME),
         "protocol": str(config.CONTROLLED_PROTOCOL_NAME),
         "train_routes": ["route_A"],
         "eval_routes": ["route_B", "route_C"],
