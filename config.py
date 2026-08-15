@@ -187,8 +187,15 @@ HEADING_STATE_EMA_ALPHA = 0.35
 TURN_RATE_EMA_ALPHA = 0.30
 MAX_HEADING_DELTA_DEG_PER_FRAME = 5.0
 MAX_TURN_RATE_DELTA_DEG_PER_FRAME2 = 5.0
+
+# Core angular supervision. Keep heading because an angle is periodic and is
+# directly used to rotate the second-order polynomial displacement.
 LOSS_HEADING = 1.25
-LOSS_TURN_RATE = 0.50
+
+# Turn-rate is derived again from consecutive reference-position headings and is
+# not directly used by the polynomial rotation in the current implementation.
+# Disable it as an independent supervised objective.
+LOSS_TURN_RATE = 0.0
 EARLY_SCORE_HEADING_WEIGHT = 0.03
 
 # -----------------------------------------------------------------------------
@@ -208,15 +215,50 @@ EARLY_STOP_PATIENCE = 10
 EARLY_STOP_MIN_DELTA = 0.05
 EARLY_STOP_MIN_EPOCH = 18
 
-LOSS_ACQUISITION = 1.50
-LOSS_MEASUREMENT = 0.75
+# -----------------------------------------------------------------------------
+# Clean temporal supervision.
+#
+# The temporal targets are all derived from the same ordered reference-position
+# sequence. Therefore the primary objective should supervise the quantities that
+# are directly needed by the estimator:
+#   1) visual position measurement,
+#   2) final heading-aware next-step displacement,
+#   3) heading,
+#   4) measurement uncertainty.
+#
+# Velocity is retained only as a weak auxiliary constraint so the velocity head
+# remains interpretable. Acceleration, turn-rate, speed, route-progress and the
+# hand-crafted cross-motion penalty are disabled as independent loss terms.
+# The acceleration head is still trained end-to-end through LOSS_NEXT_STEP,
+# because next_step = heading_rotate(v + 0.5*a).
+# -----------------------------------------------------------------------------
+# Only one local hypothesis is used in the current protocol, so categorical
+# acquisition cross-entropy is degenerate (one class) and contributes no
+# useful supervision.
+LOSS_ACQUISITION = 0.0
+LOSS_MEASUREMENT = 1.00
 LOSS_NEXT_STEP = 3.00
-LOSS_VELOCITY = 2.50
-LOSS_ACCELERATION = 0.50
-LOSS_SPEED = 2.00
-LOSS_CROSS_MOTION_REG = 0.02
+
+# Weak auxiliary supervision only; target is derived from frame-to-frame
+# reference displacement rather than an independent velocity sensor.
+LOSS_VELOCITY = 0.25
+
+# No independent acceleration sensor/label. Let acceleration be learned through
+# the end-to-end next-step displacement objective.
+LOSS_ACCELERATION = 0.0
+
+# Redundant with the forward component of LOSS_NEXT_STEP.
+LOSS_SPEED = 0.0
+
+# Hand-crafted preference for near-zero lateral motion; disable it so the data
+# and the next-step target determine lateral motion.
+LOSS_CROSS_MOTION_REG = 0.0
+
+# Required for the learned measurement variance used by Kalman update.
 LOSS_VARIANCE_NLL = 0.05
-LOSS_PROGRESS = 1.00
+
+# Redundant with the longitudinal component of LOSS_MEASUREMENT.
+LOSS_PROGRESS = 0.0
 
 # -----------------------------------------------------------------------------
 # External Kalman [s,e,vs,ve]. Position estimate is allowed to move backwards
