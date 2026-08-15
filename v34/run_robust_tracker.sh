@@ -50,7 +50,7 @@ case "${MODE}" in
   *) echo "ERROR: --mode must be train, eval, or train_eval" >&2; exit 2 ;;
 esac
 
-OUTPUT_DIR="outputs/v35_v34protocol_compact_gru_input_forward3x6_softms_polynomial_kalman"
+OUTPUT_DIR="outputs/controlled_gtprior_forward3x6_softms_continuous_waypoint_rnn_polynomial_kalman_v34"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
 TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
@@ -63,7 +63,6 @@ mkdir -p "${CHECKPOINT_DIR}"
 find_visual_checkpoint() {
   local candidates=(
     "${VISUAL_CKPT}"
-    "outputs/controlled_gtprior_forward3x6_softms_continuous_waypoint_rnn_polynomial_kalman_v34/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_v33/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_v32/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_causal_heading_rnn_polynomial_kalman_v31/checkpoints/visual_retrieval_A_only.pt"
@@ -113,8 +112,7 @@ verify_python() {
 import config
 import robust_tracker
 import visual_model
-expected = "V34ProtocolCompactGRUInputForward3x6SoftMSPolynomialKalman_v35"
-temporal = visual_model.ThreeFrameRouteStateGRU()
+expected = "ControlledGTPriorThreeFrameForward3x6SoftMSCausalHeadingContinuousWaypointGRUPolynomialKalman_v34"
 checks = [
     (config.ARCHITECTURE_NAME == expected, "config architecture"),
     (robust_tracker.ARCHITECTURE_NAME == expected, "tracker architecture"),
@@ -125,18 +123,13 @@ checks = [
     (int(config.ACQ_HYPOTHESIS_COUNT) == 1, "single GT+jitter local window"),
     (bool(config.FORWARD_ONLY_LOCAL_SEARCH), "forward-only local search enabled"),
     (int(config.FORWARD_SEARCH_CANDIDATE_COUNT) == 18, "forward 3x6=18 candidates"),
-    (int(config.RNN_NUMERIC_DIM) == 8, "compact main-GRU numeric input"),
-    (temporal.gru.input_size == 5 * int(config.RNN_FEATURE_DIM), "five main-GRU branches"),
-    (hasattr(temporal, "correction_head"), "v34 correction head preserved"),
-    (hasattr(temporal, "variance_head"), "v34 variance head preserved"),
-    (hasattr(temporal, "acq_scorer"), "v34 acquisition scorer preserved"),
 ]
 failed = [name for ok, name in checks if not ok]
 if failed:
-    raise RuntimeError("v35 v34-protocol compact-GRU preflight failed: " + ", ".join(failed))
+    raise RuntimeError("v34 SoftMS preflight failed: " + ", ".join(failed))
 print("architecture :", expected)
 print("protocol     : controlled GT+smooth-jitter local prior on every frame")
-print("temporal     : v34 unchanged except main GRU input = mean/delta/delta2 + SAT context + compact 8-D state")
+print("temporal     : 3 UAV frames + recurrent GRU state")
 print("motion       : v/a + causal heading -> second-order inertial polynomial; turn-rate is recurrent state only")
 print("visual       : causal-heading forward 3x6 + all-mode density-weighted SoftMS anchor")
 print("final filter : constrained route-coordinate Kalman (final output)")
@@ -183,7 +176,7 @@ verify_eval_outputs() {
 }
 
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "v35: v34 Protocol + Compact Main-GRU Input Only"
+echo "Controlled GT-Prior Forward-3x6 SoftMS Continuous-Waypoint Three-Frame GRU + Polynomial + Kalman v34"
 printf '%*s\n' 108 '' | tr ' ' '='
 echo "MODE              : ${MODE}"
 echo "GPU               : ${GPU}"

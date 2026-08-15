@@ -23,7 +23,7 @@ from visual_localizer import (
 from visual_model import ThreeFrameRouteStateGRU
 
 
-ARCHITECTURE_NAME = "V34ProtocolCompactGRUInputForward3x6SoftMSPolynomialKalman_v35"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameForward3x6SoftMSCausalHeadingContinuousWaypointGRUPolynomialKalman_v34"
 
 
 @dataclass

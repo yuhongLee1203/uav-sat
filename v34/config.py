@@ -3,7 +3,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-ARCHITECTURE_NAME = "V34ProtocolCompactGRUInputForward3x6SoftMSPolynomialKalman_v35"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameForward3x6SoftMSCausalHeadingContinuousWaypointGRUPolynomialKalman_v34"
 BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobileclip2_s2").strip().lower()
 BACKBONE_SPECS = {
     "mobileclip2_s2": ("hf-hub:timm/MobileCLIP2-S2-OpenCLIP", 512),
@@ -19,9 +19,9 @@ if BACKBONE_KEY not in BACKBONE_SPECS:
     )
 
 if os.environ.get("UAVSAT_BACKBONE_BENCHMARK", "0") == "1":
-    OUTPUT_DIR = PROJECT_ROOT / "backbone-exp" / "outputs" / ("v35_v34protocol_compact_gru_" + BACKBONE_KEY)
+    OUTPUT_DIR = PROJECT_ROOT / "backbone-exp" / "outputs" / ("v34_softms_" + BACKBONE_KEY)
 else:
-    OUTPUT_DIR = PROJECT_ROOT / "outputs" / "v35_v34protocol_compact_gru_input_forward3x6_softms_polynomial_kalman"
+    OUTPUT_DIR = PROJECT_ROOT / "outputs" / "controlled_gtprior_forward3x6_softms_continuous_waypoint_rnn_polynomial_kalman_v34"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
 TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
@@ -167,10 +167,7 @@ ROUTE_STEP_SCALE_M = 10.0
 TEMPORAL_WINDOW_FRAMES = 3
 RNN_HIDDEN_DIM = 256
 RNN_FEATURE_DIM = 128
-# Only simplify the main GRU input. Everything else remains the v34 protocol:
-# response variance(2) + visual innovation(2) + previous velocity(2)
-# + previous heading residual/turn-rate(2).
-RNN_NUMERIC_DIM = 8
+RNN_NUMERIC_DIM = 22
 RNN_DROPOUT = 0.10
 MAX_FORWARD_SPEED_M_PER_FRAME = 14.0
 MAX_CROSS_SPEED_M_PER_FRAME = 5.0

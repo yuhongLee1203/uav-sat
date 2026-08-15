@@ -149,11 +149,11 @@ class RouteProgressGRUOutput:
 
 
 class ThreeFrameRouteStateGRU(nn.Module):
-    """v34 model with only its main GRU input compacted.
+    """Three-frame recurrent route-state model with learned acquisition scoring.
 
-    Mean/delta/delta2 retain all three UAV embeddings without a redundant current
-    z branch. The v34 acquisition scorer, heads, losses, SoftMS and Kalman-facing
-    outputs remain unchanged.
+    Short-term motion evidence comes from three UAV embeddings. Long-term state
+    is carried by the GRU hidden state. A separate recurrent acquisition scorer
+    ranks multiple *local* SAT windows before the main motion/measurement update.
     """
 
     def __init__(self):
@@ -182,7 +182,7 @@ class ThreeFrameRouteStateGRU(nn.Module):
             nn.LayerNorm(feature_dim),
         )
 
-        self.gru = nn.GRUCell(feature_dim * 5, hidden_dim)
+        self.gru = nn.GRUCell(feature_dim * 6, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
         def head(out_dim):
@@ -347,10 +347,18 @@ class ThreeFrameRouteStateGRU(nn.Module):
         if previous_measurement_se is None:
             previous_measurement_se = visual_anchor_se.detach()
 
+        p = posterior_probability.clamp_min(float(config.ACQ_POSTERIOR_EPS))
+        entropy = -(p * p.log()).sum(dim=1, keepdim=True)
+        entropy = entropy / max(math.log(max(2, p.shape[1])), 1e-6)
+        margin = self._safe_margin(p)
+
         innovation_se = visual_anchor_se - predicted_se
+        visual_step_se = visual_anchor_se - previous_measurement_se
 
         numeric = torch.cat(
             [
+                entropy,
+                margin,
                 torch.log1p(response_variance_se.clamp_min(0.0)) / 7.0,
                 torch.cat(
                     [
@@ -359,9 +367,24 @@ class ThreeFrameRouteStateGRU(nn.Module):
                     ],
                     dim=1,
                 ),
+                torch.cat(
+                    [
+                        visual_step_se[:, 0:1] / float(config.ROUTE_STEP_SCALE_M),
+                        visual_step_se[:, 1:2] / float(config.ROUTE_CROSS_TRACK_SCALE_M),
+                    ],
+                    dim=1,
+                ),
                 previous_velocity_se / float(config.ROUTE_STEP_SCALE_M),
+                previous_acceleration_se / float(config.ROUTE_STEP_SCALE_M),
                 previous_heading_state[:, 0:1] / math.radians(float(config.MAX_HEADING_RESIDUAL_DEG)),
                 previous_heading_state[:, 1:2] / math.radians(float(config.MAX_TURN_RATE_DEG_PER_FRAME)),
+                route_remaining_m / float(config.ROUTE_REMAINING_SCALE_M),
+                predicted_cross_m / float(config.ROUTE_CROSS_TRACK_SCALE_M),
+                total_progress_fraction,
+                leg_progress_fraction,
+                polynomial_step_se / float(config.ROUTE_STEP_SCALE_M),
+                top1_distance_m / 30.0,
+                softms_support.reshape(-1, 1),
             ],
             dim=1,
         )
@@ -373,6 +396,7 @@ class ThreeFrameRouteStateGRU(nn.Module):
 
         recurrent_input = torch.cat(
             [
+                self.uav_projection(z_uav),
                 self.clip_mean_projection(clip_mean),
                 self.delta_recent_projection(delta_recent),
                 self.delta_accel_projection(delta_accel),
