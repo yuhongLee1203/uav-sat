@@ -50,7 +50,7 @@ case "${MODE}" in
   *) echo "ERROR: --mode must be train, eval, or train_eval" >&2; exit 2 ;;
 esac
 
-OUTPUT_DIR="outputs/controlled_gtprior_forward3x6_softms_continuous_waypoint_rnn_polynomial_kalman_v34"
+OUTPUT_DIR="outputs/controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_v33"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
 TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
@@ -63,7 +63,6 @@ mkdir -p "${CHECKPOINT_DIR}"
 find_visual_checkpoint() {
   local candidates=(
     "${VISUAL_CKPT}"
-    "outputs/controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_v33/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_continuous_waypoint_rnn_polynomial_kalman_v32/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_causal_heading_rnn_polynomial_kalman_v31/checkpoints/visual_retrieval_A_only.pt"
     "outputs/controlled_gtprior_heading_rnn_polynomial_kalman_v30/checkpoints/visual_retrieval_A_only.pt"
@@ -112,7 +111,7 @@ verify_python() {
 import config
 import robust_tracker
 import visual_model
-expected = "ControlledGTPriorThreeFrameForward3x6SoftMSCausalHeadingContinuousWaypointGRUPolynomialKalman_v34"
+expected = "ControlledGTPriorThreeFrameForward3x6CausalHeadingContinuousWaypointGRUPolynomialKalman_v33"
 checks = [
     (config.ARCHITECTURE_NAME == expected, "config architecture"),
     (robust_tracker.ARCHITECTURE_NAME == expected, "tracker architecture"),
@@ -126,12 +125,12 @@ checks = [
 ]
 failed = [name for ok, name in checks if not ok]
 if failed:
-    raise RuntimeError("v34 SoftMS preflight failed: " + ", ".join(failed))
+    raise RuntimeError("v33 preflight failed: " + ", ".join(failed))
 print("architecture :", expected)
 print("protocol     : controlled GT+smooth-jitter local prior on every frame")
 print("temporal     : 3 UAV frames + recurrent GRU state")
 print("motion       : v/a + causal heading -> second-order inertial polynomial; turn-rate is recurrent state only")
-print("visual       : causal-heading forward 3x6 + all-mode density-weighted SoftMS anchor")
+print("visual       : causal-heading forward 3x6 (18 of 36 geometry) UAV-SAT measurement")
 print("final filter : constrained route-coordinate Kalman (final output)")
 print("direction    : causal RNN heading; route frame rotates only AFTER waypoint crossing")
 print("pace         : controlled causal GT-speed envelope + <=0.75m/frame smooth catch-up")
@@ -176,7 +175,7 @@ verify_eval_outputs() {
 }
 
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "Controlled GT-Prior Forward-3x6 SoftMS Continuous-Waypoint Three-Frame GRU + Polynomial + Kalman v34"
+echo "Controlled GT-Prior Forward-3x6 Continuous-Waypoint Three-Frame GRU + Polynomial + Kalman v33"
 printf '%*s\n' 108 '' | tr ' ' '='
 echo "MODE              : ${MODE}"
 echo "GPU               : ${GPU}"

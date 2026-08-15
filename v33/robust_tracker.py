@@ -16,14 +16,14 @@ from data import RouteDataset, meters_from_latlon
 from visual_localizer import (
     CandidateBatch,
     FrozenVisualLocalizer,
-    soft_mean_shift,
+    hard_mean_shift,
     regular_grid_indices,
     train_visual_retrieval_a_only,
 )
 from visual_model import ThreeFrameRouteStateGRU
 
 
-ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameForward3x6SoftMSCausalHeadingContinuousWaypointGRUPolynomialKalman_v34"
+ARCHITECTURE_NAME = "ControlledGTPriorThreeFrameForward3x6CausalHeadingContinuousWaypointGRUPolynomialKalman_v33"
 
 
 @dataclass
@@ -1048,7 +1048,7 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_s
 
     The full 6x6 geometry is used only to decide which 18 centers are forward.
     Satellite embeddings, cosine logits, posterior probabilities, Top-1, and
-    SoftMS is computed only for the selected 18 candidates.  When heading is
+    HardMS are computed only for the selected 18 candidates.  When heading is
     aligned with a gallery axis this is exactly the front 3 rows x 6 columns.
     """
     grid_size = int(grid_size)
@@ -1113,13 +1113,12 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_s
     raw_top1_xy = centers[
         torch.arange(centers.shape[0], device=visual.device), raw_index
     ]
-    softms_xy, softms_support, _, _, _, _ = soft_mean_shift(
+    hardms_xy, hardms_support = hard_mean_shift(
         raw_logits,
         centers,
         config.MEANSHIFT_SCORE_TAU,
         config.MEANSHIFT_BANDWIDTH_M,
         config.MEANSHIFT_ITERATIONS,
-        config.MEANSHIFT_MODE_BETA,
     )
     return CandidateBatch(
         indices=selected_indices,
@@ -1129,8 +1128,8 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_s
         raw_logits=raw_logits,
         raw_prob=raw_prob,
         raw_top1_xy=raw_top1_xy,
-        softms_xy=softms_xy,
-        softms_support=softms_support,
+        hardms_xy=hardms_xy,
+        hardms_support=hardms_support,
     )
 
 
@@ -1144,8 +1143,8 @@ def _slice_candidate(candidate, index):
         raw_logits=candidate.raw_logits[i : i + 1],
         raw_prob=candidate.raw_prob[i : i + 1],
         raw_top1_xy=candidate.raw_top1_xy[i : i + 1],
-        softms_xy=candidate.softms_xy[i : i + 1],
-        softms_support=candidate.softms_support[i : i + 1],
+        hardms_xy=candidate.hardms_xy[i : i + 1],
+        hardms_support=candidate.hardms_support[i : i + 1],
     )
 
 
@@ -1217,9 +1216,7 @@ def visual_observation(
         + float(config.ACQ_LOCAL_PRIOR_WEIGHT) * local_prior,
         dim=1,
     )
-    # SoftMS visual anchor: all shifted modes are density-weighted. There is no
-    # fixed Top-K and no snapped HardMS/Top-1 coordinate.
-    anchor_xy_all = candidate.softms_xy
+    anchor_xy_all = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)
     sat_context_all = (posterior.unsqueeze(-1) * candidate.z_sat).sum(dim=1)
 
     p = posterior.clamp_min(float(config.ACQ_POSTERIOR_EPS))
@@ -1278,7 +1275,7 @@ def visual_observation(
         hypothesis_anchor_se=anchor_se_all,
         predicted_se=tensor2(predicted_se, device),
         top1_distance_m=top1_distance_all,
-        softms_support=candidate.softms_support,
+        hardms_support=candidate.hardms_support,
         hidden=hidden,
     )
 
@@ -1442,7 +1439,7 @@ def model_forward(
         total_progress_fraction=total_fraction,
         leg_progress_fraction=leg_fraction,
         top1_distance_m=observation.top1_distance_m.reshape(-1, 1),
-        softms_support=observation.candidate.softms_support,
+        hardms_support=observation.candidate.hardms_support,
         hidden=hidden,
     )
 
@@ -2379,8 +2376,8 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "search_heading_deg": float(math.degrees(search_heading_rad)),
                 "raw_top1_x": float(obs.candidate.raw_top1_xy[0, 0].item()),
                 "raw_top1_y": float(obs.candidate.raw_top1_xy[0, 1].item()),
-                "softms_x": float(obs.candidate.softms_xy[0, 0].item()),
-                "softms_y": float(obs.candidate.softms_xy[0, 1].item()),
+                "hardms_x": float(obs.candidate.hardms_xy[0, 0].item()),
+                "hardms_y": float(obs.candidate.hardms_xy[0, 1].item()),
                 "visual_anchor_x": float(obs.anchor_xy[0, 0].item()),
                 "visual_anchor_y": float(obs.anchor_xy[0, 1].item()),
                 "visual_anchor_s": float(obs.anchor_se[0, 0].item()),

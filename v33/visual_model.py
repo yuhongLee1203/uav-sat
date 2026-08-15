@@ -273,7 +273,7 @@ class ThreeFrameRouteStateGRU(nn.Module):
         hypothesis_anchor_se,
         predicted_se,
         top1_distance_m,
-        softms_support,
+        hardms_support,
         hidden: Optional[torch.Tensor] = None,
     ):
         """Return one learned score per local acquisition hypothesis."""
@@ -301,7 +301,7 @@ class ThreeFrameRouteStateGRU(nn.Module):
                 offset[:, 0:1] / float(config.ROUTE_PROGRESS_SCALE_M),
                 offset[:, 1:2] / float(config.ROUTE_CROSS_TRACK_SCALE_M),
                 top1_distance_m.reshape(-1, 1) / 30.0,
-                softms_support.reshape(-1, 1),
+                hardms_support.reshape(-1, 1),
             ],
             dim=1,
         )
@@ -336,7 +336,7 @@ class ThreeFrameRouteStateGRU(nn.Module):
         total_progress_fraction,
         leg_progress_fraction,
         top1_distance_m,
-        softms_support,
+        hardms_support,
         hidden: Optional[torch.Tensor] = None,
     ):
         if hidden is None:
@@ -384,7 +384,7 @@ class ThreeFrameRouteStateGRU(nn.Module):
                 leg_progress_fraction,
                 polynomial_step_se / float(config.ROUTE_STEP_SCALE_M),
                 top1_distance_m / 30.0,
-                softms_support.reshape(-1, 1),
+                hardms_support.reshape(-1, 1),
             ],
             dim=1,
         )

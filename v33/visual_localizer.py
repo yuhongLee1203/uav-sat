@@ -24,8 +24,8 @@ class CandidateBatch:
     raw_logits: torch.Tensor
     raw_prob: torch.Tensor
     raw_top1_xy: torch.Tensor
-    softms_xy: torch.Tensor
-    softms_support: torch.Tensor
+    hardms_xy: torch.Tensor
+    hardms_support: torch.Tensor
 
 
 def build_pixel_index(pixels: torch.Tensor):
@@ -90,36 +90,37 @@ def regular_grid_indices(
     return torch.tensor(rows, dtype=torch.long, device=device)
 
 
-def soft_mean_shift(logits, centers, tau, bandwidth_m, iterations, beta):
-    """Density-weight all shifted modes; no Top-K and no candidate snapping."""
+def hard_mean_shift(logits, centers, tau, bandwidth_m, iterations):
     epsilon = 1e-8
-    probability = torch.softmax(logits / max(float(tau), 1e-6), dim=1)
-    centers = centers.float()
+    probability = torch.softmax(logits / float(tau), dim=1)
     modes = centers.clone()
-    bandwidth = max(float(bandwidth_m), 1e-6)
 
     for _ in range(int(iterations)):
         distance_squared = torch.cdist(modes, centers).square()
         kernel = torch.exp(
-            -distance_squared / (2.0 * bandwidth ** 2)
+            -distance_squared / (2.0 * float(bandwidth_m) ** 2)
         )
         weights = kernel * probability[:, None, :]
         modes = weights @ centers / weights.sum(
             dim=2, keepdim=True
         ).clamp_min(epsilon)
 
-    final_distance_squared = torch.cdist(modes, centers).square()
-    density = (
-        torch.exp(-final_distance_squared / (2.0 * bandwidth ** 2))
+    distance_squared = torch.cdist(modes, centers).square()
+    support = (
+        torch.exp(-distance_squared / (2.0 * float(bandwidth_m) ** 2))
         * probability[:, None, :]
     ).sum(dim=2)
-    mode_weights = torch.softmax(float(beta) * density, dim=1)
-    soft_xy = (mode_weights.unsqueeze(-1) * modes).sum(dim=1)
-    soft_support = (mode_weights * density).sum(dim=1)
-    compact = (
-        mode_weights * (modes - soft_xy.unsqueeze(1)).square().sum(dim=2)
-    ).sum(dim=1).mean()
-    return soft_xy, soft_support, modes, density, mode_weights, compact
+    mode_index = support.argmax(dim=1)
+    chosen_mode = modes[
+        torch.arange(modes.shape[0], device=modes.device), mode_index
+    ]
+    anchor_index = torch.cdist(
+        chosen_mode[:, None], centers
+    ).squeeze(1).argmin(dim=1)
+    hard_xy = centers[
+        torch.arange(centers.shape[0], device=centers.device), anchor_index
+    ]
+    return hard_xy, support.max(dim=1).values
 
 
 def _validate_visual_provenance(checkpoint):
@@ -223,13 +224,12 @@ class FrozenVisualLocalizer:
         raw_top1_xy = centers[
             torch.arange(centers.shape[0], device=self.device), raw_index
         ]
-        softms_xy, softms_support, _, _, _, _ = soft_mean_shift(
+        hardms_xy, hardms_support = hard_mean_shift(
             raw_logits,
             centers,
             config.MEANSHIFT_SCORE_TAU,
             config.MEANSHIFT_BANDWIDTH_M,
             config.MEANSHIFT_ITERATIONS,
-            config.MEANSHIFT_MODE_BETA,
         )
 
         return CandidateBatch(
@@ -240,8 +240,8 @@ class FrozenVisualLocalizer:
             raw_logits=raw_logits,
             raw_prob=raw_prob,
             raw_top1_xy=raw_top1_xy,
-            softms_xy=softms_xy,
-            softms_support=softms_support,
+            hardms_xy=hardms_xy,
+            hardms_support=hardms_support,
         )
 
     @torch.no_grad()
@@ -466,21 +466,18 @@ def _visual_forward_batch(model, cache, gallery, batch_indices, device):
     logits = model.logit_scale.exp().clamp(max=100.0) * (
         z_uav[:, None] * z_sat
     ).sum(dim=2)
-    softms_xy, _, _, _, _, _ = soft_mean_shift(
-        logits,
-        centers,
-        config.MEANSHIFT_SCORE_TAU,
-        config.MEANSHIFT_BANDWIDTH_M,
-        config.MEANSHIFT_ITERATIONS,
-        config.MEANSHIFT_MODE_BETA,
+    probability = torch.softmax(
+        logits / float(config.MEANSHIFT_SCORE_TAU),
+        dim=1,
     )
+    expectation = (probability.unsqueeze(-1) * centers).sum(dim=1)
 
     ce = F.cross_entropy(
         logits,
         target,
         label_smoothing=float(config.VISUAL_LABEL_SMOOTHING),
     )
-    coordinate = F.smooth_l1_loss(softms_xy, gt_xy)
+    coordinate = F.smooth_l1_loss(expectation, gt_xy)
     loss = ce + float(config.VISUAL_COORD_LOSS_WEIGHT) * coordinate
     return loss, logits, centers, gt_xy
 
@@ -489,7 +486,7 @@ def _visual_forward_batch(model, cache, gallery, batch_indices, device):
 def _evaluate_visual_model(model, cache, gallery, indices, device):
     model.eval()
     top1_rows = []
-    softms_rows = []
+    hardms_rows = []
     gt_rows = []
     batch_size = int(config.VISUAL_BATCH_SIZE)
 
@@ -503,28 +500,27 @@ def _evaluate_visual_model(model, cache, gallery, indices, device):
             torch.arange(centers.shape[0], device=device),
             top1_index,
         ]
-        softms, _, _, _, _, _ = soft_mean_shift(
+        hardms, _ = hard_mean_shift(
             logits,
             centers,
             config.MEANSHIFT_SCORE_TAU,
             config.MEANSHIFT_BANDWIDTH_M,
             config.MEANSHIFT_ITERATIONS,
-            config.MEANSHIFT_MODE_BETA,
         )
         top1_rows.append(top1.cpu())
-        softms_rows.append(softms.cpu())
+        hardms_rows.append(hardms.cpu())
         gt_rows.append(gt_xy.cpu())
 
     top1 = torch.cat(top1_rows)
-    softms = torch.cat(softms_rows)
+    hardms = torch.cat(hardms_rows)
     gt = torch.cat(gt_rows)
     top1_error = torch.linalg.norm(top1 - gt, dim=1)
-    softms_error = torch.linalg.norm(softms - gt, dim=1)
+    hardms_error = torch.linalg.norm(hardms - gt, dim=1)
     return {
         "Top1_MLE_m": float(top1_error.mean().item()),
-        "SoftMS_MLE_m": float(softms_error.mean().item()),
-        "SoftMS_P90_m": float(torch.quantile(softms_error, 0.90).item()),
-        "LSR@10_pct": float((softms_error <= 10.0).float().mean().item() * 100),
+        "HardMS_MLE_m": float(hardms_error.mean().item()),
+        "HardMS_P90_m": float(torch.quantile(hardms_error, 0.90).item()),
+        "LSR@10_pct": float((hardms_error <= 10.0).float().mean().item() * 100),
     }
 
 
@@ -620,7 +616,7 @@ def train_visual_retrieval_a_only(device, epochs, jitter_m, resume=False):
         validation = _evaluate_visual_model(
             model, cache, gallery, val_indices, device
         )
-        score = float(validation["SoftMS_MLE_m"])
+        score = float(validation["HardMS_MLE_m"])
         if score < best_score:
             best_score = score
             best_state = _task_specific_state_dict(model)
@@ -651,8 +647,8 @@ def train_visual_retrieval_a_only(device, epochs, jitter_m, resume=False):
         print(
             f"visual epoch={epoch + 1:03d}/{epochs} "
             f"loss={np.mean(losses):.5f} "
-            f"val_softms_mle={validation['SoftMS_MLE_m']:.3f}m "
-            f"val_p90={validation['SoftMS_P90_m']:.3f}m "
+            f"val_hardms_mle={validation['HardMS_MLE_m']:.3f}m "
+            f"val_p90={validation['HardMS_P90_m']:.3f}m "
             f"val_lsr10={validation['LSR@10_pct']:.2f}%",
             flush=True,
         )
@@ -672,6 +668,6 @@ def train_visual_retrieval_a_only(device, epochs, jitter_m, resume=False):
     checkpoint["best_model"] = best_state
     torch.save(checkpoint, config.VISUAL_CHECKPOINT)
     print(
-        f"best Route A visual validation SoftMS MLE={best_score:.3f}m",
+        f"best Route A visual validation HardMS MLE={best_score:.3f}m",
         flush=True,
     )
