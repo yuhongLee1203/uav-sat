@@ -6,8 +6,8 @@
 
 | 定位方式 | 聚合座標數 | MLE (m) | P90 (m) | LSR@3 | LSR@5 | LSR@10 | LSR@15 | 純座標聚合時間 (ms) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Weighted Centroid | 18 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | 0.023903707 |
-| SoftMS 收斂 modes 加權 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| Weighted Centroid | 18 | 3.546 | 6.953 | 47.963 | **77.646** | 98.189 | **99.377** | 0.027549148 |
+| SoftMS 收斂 modes 加權 | 1.04 | **3.482** | **6.620** | **49.208** | 76.995 | **98.359** | 99.293 | **0.021410676** |
 
 聚合座標數是逐幀平均。時間只計算候選座標加權求和，不含圖片、backbone、matching、MeanShift、GRU 或 Kalman；不計 FPS。
 
@@ -15,17 +15,17 @@
 
 | 方法 | MLE | P90 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | Progress MAE |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| SoftMS only | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| SoftMS + 3-frame GRU | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| SoftMS + GRU + 慣性多項式 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| 完整 V36（含 learned-variance Kalman） | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| SoftMS only | 4.705 | 9.072 | 35.739 | 57.357 | 94.992 | **99.321** | 10.889 |
+| SoftMS + 3-frame GRU | 4.795 | 9.362 | 33.588 | 57.838 | 94.482 | 99.236 | 10.914 |
+| SoftMS + GRU + 慣性多項式 | 4.818 | 9.502 | 34.946 | 57.810 | 94.284 | 99.293 | 10.782 |
+| 完整 V36（含 learned-variance Kalman） | **3.482** | **6.620** | **49.208** | **76.995** | **98.359** | 99.293 | **0.195** |
 
 ## 表 3：Forward 3×6 vs 6×6
 
 | 搜尋方式 | 候選數 | MLE | P90 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | 端到端時間 (ms) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 完整 6×6 | 36 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| Forward 3×6（causal-origin 修正版） | 18 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| 完整 6×6 | 36 | 3.766 | 7.225 | 42.898 | 69.836 | **98.727** | 99.887 | 69.993 |
+| Forward 3×6（causal-origin 修正版） | 18 | **3.501** | **6.948** | **49.689** | **72.864** | 98.642 | **100.000** | **69.490** |
 
 3×6 的 origin backshift 固定為一個 gallery cell（4.75 m）；它由 Route-A/grid geometry 決定，沒有用 Route B/C 挑參數。
 
@@ -33,17 +33,17 @@
 
 | 輸入影像數量 | MLE | P90 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | Progress MAE |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 1 幀 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| 2 幀 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| 3 幀（V36） | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| 1 幀 | 3.919 | 7.666 | 44.171 | 69.128 | **98.359** | **99.434** | 0.201 |
+| 2 幀 | 3.936 | 7.428 | 44.001 | 67.968 | 98.132 | 99.179 | 0.306 |
+| 3 幀（V36） | **3.482** | **6.620** | **49.208** | **76.995** | **98.359** | 99.293 | **0.195** |
 
 ## 表 5：慣性多項式實驗
 
 | 運動預測方式 | MLE | P90 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | Progress MAE | Speed MAE |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Kalman CV（不使用 learned polynomial） | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| 只使用 GRU 速度 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| GRU 速度 + 加速度二階多項式（V36） | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| 只使用 GRU 速度 | 3.690 | 7.567 | 46.972 | 73.543 | **98.529** | **99.547** | 0.229 | 0.794 |
+| GRU 速度 + 加速度二階多項式（V36） | **3.482** | **6.620** | **49.208** | **76.995** | 98.359 | 99.293 | **0.195** | **0.746** |
 
 MAE = Mean Absolute Error（平均絕對誤差）；Progress MAE 是沿路徑進度誤差，Speed MAE 是每幀速度誤差。
 
@@ -53,26 +53,26 @@ MAE = Mean Absolute Error（平均絕對誤差）；Progress MAE 是沿路徑進
 
 | 最後輸出方式 | MLE | P90 | LSR@3 | LSR@5 | LSR@10 | LSR@15 |
 |---|---:|---:|---:|---:|---:|---:|
-| 不使用 Kalman | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| 完整 V36 learned-variance Kalman | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| 不使用 Kalman | 4.818 | 9.502 | 34.946 | 57.810 | 94.284 | **99.293** |
+| 完整 V36 learned-variance Kalman | **3.482** | **6.620** | **49.208** | **76.995** | **98.359** | **99.293** |
 
 ## 表 7：最終 Route B / Route C
 
 | 路徑 | MLE | Median | P90 | P95 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | LSR@20 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Route B | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| Route C | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| 平均（逐幀合併） | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| Route B | 3.437 | 3.272 | 6.512 | 7.633 | 45.387 | 76.582 | 99.605 | 100.000 | 100.000 |
+| Route C | 3.565 | 2.624 | 6.909 | 8.374 | 56.121 | 77.742 | 96.105 | 98.013 | 99.205 |
+| 平均（逐幀合併） | 3.482 | 3.070 | 6.620 | 7.847 | 49.208 | 76.995 | 98.359 | 99.293 | 99.717 |
 
 ## 表 8：其他論文原生協定比較
 
 | 方法 | 原生定位協定 | MLE | Median | P90 | P95 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | FPS |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| DenseUAV | Global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| Sample4Geo | Global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| Game4Loc | Global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| InfoGeo | Global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| DenseUAV | Fixed-gallery global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| Sample4Geo | Fixed-gallery global retrieval | 284.905 | 241.941 | 588.841 | 709.878 | 0.340 | 1.330 | 2.320 | 3.537 | 226.264 |
+| Game4Loc | Fixed-gallery global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| InfoGeo | Fixed-gallery global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 | Bearing-UAV | Neighbor-map position/heading regression | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| V36（Ours） | GT+jitter Forward-3×6 local tracking | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| V36（Ours） | GT+jitter Forward-3×6 local tracking | 3.482 | 3.070 | 6.620 | 7.847 | 49.208 | 76.995 | 98.359 | 99.293 | 15.137 |
 
-舊版約 12 m 的 local-18 adapter 結果已判定無效，不再列入正式比較；表 8 必須由各官方模型的原生 retrieval/regression 流程重新產生。
+舊版約 12 m 的 local-18 adapter 結果已判定無效；表 8 只讀取 outputs/native-papers 下由官方模型與固定 global gallery 產生的結果。

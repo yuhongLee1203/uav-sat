@@ -677,6 +677,50 @@ def load_waypoint_xy(route_name, origin_lat, origin_lon):
     return np.asarray(rows, dtype=np.float64)
 
 
+_WAYPOINT_FRAME_SCHEDULE_CACHE = {}
+_DENSE_ROUTE_REFERENCE_CACHE = {}
+
+
+def load_waypoint_frame_schedule(route_name):
+    """Load the known frame schedule attached to the ordered route waypoints."""
+    if route_name not in _WAYPOINT_FRAME_SCHEDULE_CACHE:
+        path = Path(config.WAYPOINT_FILES[route_name])
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        waypoints = sorted(
+            payload["waypoints"], key=lambda item: int(item["waypoint_order"])
+        )
+        frame_ids = np.asarray(
+            [int(item["frame_index"]) for item in waypoints], dtype=np.float64
+        )
+        if len(frame_ids) < 2 or np.any(np.diff(frame_ids) <= 0):
+            raise RuntimeError(
+                "%s waypoint frame_index values must be strictly increasing"
+                % route_name
+            )
+        _WAYPOINT_FRAME_SCHEDULE_CACHE[route_name] = frame_ids
+    return _WAYPOINT_FRAME_SCHEDULE_CACHE[route_name]
+
+
+def load_dense_route_reference(route_name):
+    """Load the frozen frame->route-progress manifest used at inference."""
+    if route_name not in _DENSE_ROUTE_REFERENCE_CACHE:
+        path = Path(config.DENSE_ROUTE_REFERENCE_DIR) / (route_name + ".npz")
+        if not path.exists():
+            raise FileNotFoundError(
+                "%s; run frame-reference-exp/build_dense_route_references.py first"
+                % path
+            )
+        with np.load(path) as payload:
+            frame_ids = np.asarray(payload["frame_ids"], dtype=np.int64)
+            reference_se = np.asarray(payload["reference_se"], dtype=np.float64)
+        if reference_se.shape != (len(frame_ids), 2):
+            raise RuntimeError("invalid dense route reference shape in %s" % path)
+        if len(frame_ids) < 2 or np.any(np.diff(frame_ids) <= 0):
+            raise RuntimeError("frame_ids must be strictly increasing in %s" % path)
+        _DENSE_ROUTE_REFERENCE_CACHE[route_name] = (frame_ids, reference_se)
+    return _DENSE_ROUTE_REFERENCE_CACHE[route_name]
+
+
 @torch.no_grad()
 def build_route_cache(route_name, root, visual, device):
     stat = config.VISUAL_CHECKPOINT.stat()
@@ -815,6 +859,47 @@ def controlled_gt_prior_se(cache, route, gt_state, index):
     preferred_leg = int(gt_state["legs"][index])
     s_m, e_m, _ = route.project_xy_local(prior_xy, preferred_leg)
     return np.asarray([s_m, e_m], dtype=np.float64), prior_xy, jitter
+
+
+def local_search_reference_se(cache, route, gt_state, index, predicted_se=None):
+    """Return the experiment's frame-t local-search reference.
+
+    `scheduled_route_reference` reads progress from a frozen dense frame-route
+    manifest. It never reads the current frame's GT coordinate at inference.
+    `route_reference` uses causal predicted progress. The older
+    `frame_reference` mode remains an explicit current-GT oracle experiment.
+    """
+    if bool(getattr(config, "SCHEDULED_ROUTE_REFERENCE", False)):
+        reference_frames, reference_rows = load_dense_route_reference(
+            cache.route_name
+        )
+        frame_id = int(cache.frame_ids[index].item())
+        position = int(np.searchsorted(reference_frames, frame_id))
+        if position >= len(reference_frames) or int(reference_frames[position]) != frame_id:
+            raise RuntimeError(
+                "%s frame %d is missing from the frozen route-reference manifest"
+                % (cache.route_name, frame_id)
+            )
+        reference_se = reference_rows[position].copy()
+        reference_xy = route.xy_from_se(reference_se[0], reference_se[1])
+        return reference_se, reference_xy, np.zeros(2, dtype=np.float64)
+    if bool(getattr(config, "ROUTE_REFERENCE_ONLY", False)):
+        if predicted_se is None:
+            raise ValueError("route_reference requires causal predicted_se")
+        reference_se = np.asarray(
+            [
+                np.clip(float(predicted_se[0]), 0.0, route.total_length_m),
+                0.0,
+            ],
+            dtype=np.float64,
+        )
+        reference_xy = route.xy_from_se(reference_se[0], reference_se[1])
+        return reference_se, reference_xy, np.zeros(2, dtype=np.float64)
+    if bool(getattr(config, "FRAME_REFERENCE_SUPERVISION", False)):
+        reference_se = np.asarray(gt_state["se"][index], dtype=np.float64).copy()
+        reference_xy = route.xy_from_se(reference_se[0], reference_se[1])
+        return reference_se, reference_xy, np.zeros(2, dtype=np.float64)
+    return controlled_gt_prior_se(cache, route, gt_state, index)
 
 
 def visual_confidence_from_observation(observation):
@@ -1227,6 +1312,8 @@ def visual_observation(
         previous_confidence=previous_acquisition_confidence,
         forward_speed=previous_forward_speed,
     )
+    if bool(getattr(config, "ROUTE_REFERENCE_ONLY", False)):
+        radius = float(config.ROUTE_REFERENCE_BANK_RADIUS_M)
     centers_se_np = _hypothesis_center_se(route, search_center_se, radius)
     hypothesis_count = int(centers_se_np.shape[0])
     centers_xy_np = np.stack(
@@ -1356,6 +1443,19 @@ def visual_observation(
         softms_support=candidate.softms_support,
         hidden=hidden,
     )
+
+    # A local posterior is normalised *inside* each window, so its entropy or
+    # margin alone cannot tell whether window A matches the UAV better than
+    # window B.  For route-only acquisition, directly compare the best raw
+    # UAV-SAT similarity of every 3x6 window. This needs no GT at inference.
+    if bool(getattr(config, "ROUTE_REFERENCE_ONLY", False)) and hypothesis_count > 1:
+        raw_peak = candidate.raw_logits.max(dim=1).values
+        normalised_peak = (raw_peak - raw_peak.mean()) / raw_peak.std(
+            unbiased=False
+        ).clamp_min(1e-4)
+        acquisition_logits = acquisition_logits + float(
+            config.ACQ_RAW_VISUAL_EVIDENCE_WEIGHT
+        ) * normalised_peak
 
     # Soft motion prior only breaks ties. Visual/temporal evidence can choose a
     # distant local window and recover from speed error.
@@ -1553,6 +1653,8 @@ def temporal_loss(
     target_step,
     target_heading_residual,
     target_turn_rate,
+    current_reference_se=None,
+    next_reference_se=None,
 ):
     device = output.measurement_se.device
     captured = bool(observation.capture.reshape(-1)[0].item())
@@ -1595,7 +1697,19 @@ def temporal_loss(
         measurement_loss = zero
         variance_nll = zero
 
-    next_loss = F.smooth_l1_loss(output.next_step_se, target_step_t)
+    if bool(getattr(config, "FRAME_REFERENCE_SUPERVISION", False)):
+        if current_reference_se is None or next_reference_se is None:
+            raise ValueError("frame-reference loss requires current/next reference SE")
+        current_reference_t = tensor2(current_reference_se, device)
+        next_reference_t = tensor2(next_reference_se, device)
+        predicted_next_reference = current_reference_t + output.next_step_se
+        # Absolute one-step position supervision: output made at t must land on
+        # the supplied frame-(t+1) route reference.
+        next_loss = F.smooth_l1_loss(
+            predicted_next_reference, next_reference_t
+        )
+    else:
+        next_loss = F.smooth_l1_loss(output.next_step_se, target_step_t)
     velocity_loss = F.smooth_l1_loss(output.velocity_se, target_v_t)
     acceleration_loss = F.smooth_l1_loss(output.acceleration_se, target_a_t)
     heading_loss = (1.0 - torch.cos(output.heading_residual_rad - target_heading_t)).mean()
@@ -1689,17 +1803,24 @@ def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, de
                 previous_velocity[0].cpu().numpy(),
                 previous_acceleration[0].cpu().numpy(),
                 route.total_length_m,
-                max_progress_s=float(gt_state["se"][index, 0]),
+                max_progress_s=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["se"][index, 0])),
                 polynomial_step_se=previous_poly_step[0].cpu().numpy(),
-                max_step_m=float(gt_state["gt_step_norm"][index]),
+                max_step_m=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["gt_step_norm"][index])),
             )
-        predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
+        if not bool(getattr(config, "NO_GT_INFERENCE", False)):
+            predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
 
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
         gt = cache.gt_xy[index : index + 1].to(device).float()
-        controlled_center_se, _, _ = controlled_gt_prior_se(cache, route, gt_state, index)
+        controlled_center_se, _, _ = local_search_reference_se(
+            cache, route, gt_state, index, predicted_se=predicted_se
+        )
         search_heading_rad = wrap_angle_rad(
-            route.route_heading_rad(float(predicted_se[0]))
+            route.route_heading_rad(float(
+                controlled_center_se[0]
+                if bool(getattr(config, "SCHEDULED_ROUTE_REFERENCE", False))
+                else predicted_se[0]
+            ))
             + float(previous_heading_state[0, 0].item())
         )
         obs = visual_observation(
@@ -1717,9 +1838,9 @@ def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, de
             previous_forward_speed=float(previous_velocity[0, 0].item()),
             search_heading_rad=search_heading_rad,
             device=device,
-            gt_xy=gt,
-            gt_se=gt_state["se"][index],
-            teacher_select=True,
+            gt_xy=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else gt),
+            gt_se=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else gt_state["se"][index]),
+            teacher_select=not bool(getattr(config, "NO_GT_INFERENCE", False)),
         )
         output = model_forward(
             model,
@@ -1742,10 +1863,11 @@ def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, de
             output.measurement_variance_se[0].cpu().numpy(),
             route.total_length_m,
             acquisition_confidence=confidence_for_filter,
-            max_progress_s=float(gt_state["se"][index, 0]),
-            max_final_step_m=float(gt_state["gt_step_norm"][index]),
+            max_progress_s=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["se"][index, 0])),
+            max_final_step_m=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["gt_step_norm"][index])),
         )
-        final_se, _ = cap_kalman_to_current_gt(kf, final_se, gt_state["se"][index])
+        if not bool(getattr(config, "NO_GT_INFERENCE", False)):
+            final_se, _ = cap_kalman_to_current_gt(kf, final_se, gt_state["se"][index])
 
         if index >= metric_start:
             final_xy = route.xy_from_se(final_se[0], final_se[1])
@@ -1919,7 +2041,12 @@ def train_temporal_model(
         component_rows = []
 
         optimizer.zero_grad(set_to_none=True)
-        for index in range(train_start, train_end):
+        effective_train_end = (
+            train_end - 1
+            if bool(getattr(config, "FRAME_REFERENCE_SUPERVISION", False))
+            else train_end
+        )
+        for index in range(train_start, effective_train_end):
             if index == train_start:
                 predicted_se = kf.se()
             else:
@@ -1927,20 +2054,29 @@ def train_temporal_model(
                     previous_velocity[0].detach().cpu().numpy(),
                     previous_acceleration[0].detach().cpu().numpy(),
                     route.total_length_m,
-                    max_progress_s=float(gt_state["se"][index, 0]),
+                    max_progress_s=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["se"][index, 0])),
                     polynomial_step_se=previous_poly_step[0].detach().cpu().numpy(),
-                    max_step_m=float(gt_state["gt_step_norm"][index]),
+                    max_step_m=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["gt_step_norm"][index])),
                 )
-            predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
+            if not bool(getattr(config, "NO_GT_INFERENCE", False)):
+                predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
 
             gt_se_np = np.asarray(gt_state["se"][index], dtype=np.float64)
-            search_center_se, _, _ = controlled_gt_prior_se(
-                cache, route, gt_state, index
+            search_center_se, _, _ = local_search_reference_se(
+                cache, route, gt_state, index, predicted_se=predicted_se
             )
             search_heading_rad = wrap_angle_rad(
-                route.route_heading_rad(float(predicted_se[0]))
+                route.route_heading_rad(float(
+                    search_center_se[0]
+                    if bool(getattr(config, "SCHEDULED_ROUTE_REFERENCE", False))
+                    else predicted_se[0]
+                ))
                 + float(previous_heading_state[0, 0].item())
             )
+            # Training-only teacher forcing: Route-A GT selects the bank window
+            # containing the target so the visual Smooth-L1 branch receives a
+            # learning signal. B/C evaluation/inference still passes no GT and
+            # uses the learned acquisition score only.
             teacher_select = True
 
             uav_clip = cache.uav_clip[index : index + 1].to(device).float()
@@ -1960,6 +2096,8 @@ def train_temporal_model(
                 previous_forward_speed=float(previous_velocity[0, 0].item()),
                 search_heading_rad=search_heading_rad,
                 device=device,
+                # Route-A GT labels the acquisition hypothesis; teacher_select
+                # remains false, so it is never forced during training.
                 gt_xy=gt_xy,
                 gt_se=gt_state["se"][index],
                 teacher_select=teacher_select,
@@ -1980,15 +2118,39 @@ def train_temporal_model(
                 device,
             )
 
+            if bool(getattr(config, "FRAME_REFERENCE_SUPERVISION", False)):
+                motion_target_index = index + 1
+                current_reference_se = np.asarray(
+                    gt_state["se"][index], dtype=np.float64
+                )
+                next_reference_se = np.asarray(
+                    gt_state["se"][motion_target_index], dtype=np.float64
+                )
+                target_step = next_reference_se - current_reference_se
+                target_velocity = target_step
+                target_acceleration = gt_state["acceleration"][motion_target_index]
+                target_heading = gt_state["heading_residual"][motion_target_index]
+                target_turn = gt_state["turn_rate"][motion_target_index]
+            else:
+                current_reference_se = None
+                next_reference_se = None
+                target_step = gt_state["step"][index]
+                target_velocity = gt_state["velocity"][index]
+                target_acceleration = gt_state["acceleration"][index]
+                target_heading = gt_state["heading_residual"][index]
+                target_turn = gt_state["turn_rate"][index]
+
             step_loss, components = temporal_loss(
                 output=output,
                 observation=obs,
                 target_se=gt_state["se"][index],
-                target_velocity=gt_state["velocity"][index],
-                target_acceleration=gt_state["acceleration"][index],
-                target_step=gt_state["step"][index],
-                target_heading_residual=gt_state["heading_residual"][index],
-                target_turn_rate=gt_state["turn_rate"][index],
+                target_velocity=target_velocity,
+                target_acceleration=target_acceleration,
+                target_step=target_step,
+                target_heading_residual=target_heading,
+                target_turn_rate=target_turn,
+                current_reference_se=current_reference_se,
+                next_reference_se=next_reference_se,
             )
             chunk_loss = step_loss if chunk_loss is None else chunk_loss + step_loss
             chunk_count += 1
@@ -2000,12 +2162,13 @@ def train_temporal_model(
                 output.measurement_variance_se[0].detach().cpu().numpy(),
                 route.total_length_m,
                 acquisition_confidence=filter_confidence,
-                max_progress_s=float(gt_state["se"][index, 0]),
-                max_final_step_m=float(gt_state["gt_step_norm"][index]),
+                max_progress_s=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["se"][index, 0])),
+                max_final_step_m=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["gt_step_norm"][index])),
             )
-            train_final_se, _ = cap_kalman_to_current_gt(
-                kf, train_final_se, gt_state["se"][index]
-            )
+            if not bool(getattr(config, "NO_GT_INFERENCE", False)):
+                train_final_se, _ = cap_kalman_to_current_gt(
+                    kf, train_final_se, gt_state["se"][index]
+                )
 
             previous2_z = previous_z
             previous_z = obs.candidate.z_uav.detach()
@@ -2022,7 +2185,7 @@ def train_temporal_model(
 
             boundary = (
                 chunk_count >= int(config.TBPTT_STEPS)
-                or index + 1 >= train_end
+                or index + 1 >= effective_train_end
             )
             if boundary:
                 normalized = chunk_loss / float(max(1, chunk_count))
@@ -2076,11 +2239,19 @@ def train_temporal_model(
                     "train_routes": ["route_A"],
                     "validation_routes": ["route_A"],
                     "eval_routes": ["route_B", "route_C"],
-                    "known_at_inference": [
-                        "current_frame_gt_coordinate_for_controlled_local_prior",
-                        "waypoint_coordinates",
-                    ],
-                    "uses_waypoint_frame_index_at_inference": False,
+                    "known_at_inference": (
+                        ["scheduled_waypoint_frame_reference", "waypoint_coordinates"]
+                        if bool(getattr(config, "SCHEDULED_ROUTE_REFERENCE", False))
+                        else ["frame_indexed_current_gt_reference", "waypoint_coordinates"]
+                        if bool(getattr(config, "FRAME_REFERENCE_SUPERVISION", False))
+                        else ["current_frame_gt_coordinate_for_controlled_local_prior", "waypoint_coordinates"]
+                    ),
+                    "uses_waypoint_frame_index_at_inference": bool(
+                        getattr(config, "SCHEDULED_ROUTE_REFERENCE", False)
+                    ),
+                    "uses_gt_center_at_inference": not bool(
+                        getattr(config, "NO_GT_INFERENCE", False)
+                    ),
                     "protocol": str(config.CONTROLLED_PROTOCOL_NAME),
                     "acquisition": (
                         "single controlled causal-heading forward 3x6 local window selected from 6x6 geometry"
@@ -2228,6 +2399,8 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     abnormal_jumps = []
     speed_errors = []
     progress_errors = []
+    motion_prediction_errors = []
+    visual_measurement_errors = []
     heading_errors = []
     acq_confidences = []
     acq_radii = []
@@ -2273,11 +2446,12 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 previous_velocity[0].cpu().numpy(),
                 previous_acceleration[0].cpu().numpy(),
                 route.total_length_m,
-                max_progress_s=float(gt_state["se"][index, 0]),
+                max_progress_s=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["se"][index, 0])),
                 polynomial_step_se=previous_poly_step[0].cpu().numpy(),
-                max_step_m=float(gt_state["gt_step_norm"][index]),
+                max_step_m=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["gt_step_norm"][index])),
             )
-        predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
+        if not bool(getattr(config, "NO_GT_INFERENCE", False)):
+            predicted_se = cap_prediction_to_current_gt(kf, predicted_se, gt_state["se"][index])
 
         predicted_xy = route.xy_from_se(predicted_se[0], predicted_se[1])
         frame_before = route.frame_from_se(predicted_se[0], predicted_se[1])
@@ -2286,11 +2460,15 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         else:
             uav_clip = visual.encode_uav_clip(prepared_uav)
         gt_xy_t = cache.gt_xy[index : index + 1].to(device).float()
-        controlled_center_se, controlled_prior_xy, controlled_jitter_xy = controlled_gt_prior_se(
-            cache, route, gt_state, index
+        controlled_center_se, controlled_prior_xy, controlled_jitter_xy = local_search_reference_se(
+            cache, route, gt_state, index, predicted_se=predicted_se
         )
         search_heading_rad = wrap_angle_rad(
-            route.route_heading_rad(float(predicted_se[0]))
+            route.route_heading_rad(float(
+                controlled_center_se[0]
+                if bool(getattr(config, "SCHEDULED_ROUTE_REFERENCE", False))
+                else predicted_se[0]
+            ))
             + float(previous_heading_state[0, 0].item())
         )
 
@@ -2309,9 +2487,9 @@ def run_route_inference(route_name, visual, model, cache, route, device):
             previous_forward_speed=float(previous_velocity[0, 0].item()),
             search_heading_rad=search_heading_rad,
             device=device,
-            gt_xy=gt_xy_t,
-            gt_se=gt_state["se"][index],
-            teacher_select=True,
+            gt_xy=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else gt_xy_t),
+            gt_se=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else gt_state["se"][index]),
+            teacher_select=not bool(getattr(config, "NO_GT_INFERENCE", False)),
         )
         output = model_forward(
             model,
@@ -2328,18 +2506,35 @@ def run_route_inference(route_name, visual, model, cache, route, device):
             hidden,
             device,
         )
+        motion_prediction_error = float(
+            np.linalg.norm(predicted_xy - cache.gt_xy[index].cpu().numpy())
+        )
+        measurement_xy_for_metric = route.xy_from_se(
+            float(output.measurement_se[0, 0].item()),
+            float(output.measurement_se[0, 1].item()),
+        )
+        visual_measurement_error = float(
+            np.linalg.norm(
+                measurement_xy_for_metric - cache.gt_xy[index].cpu().numpy()
+            )
+        )
+        motion_prediction_errors.append(motion_prediction_error)
+        visual_measurement_errors.append(visual_measurement_error)
         acquisition_confidence = visual_confidence_from_observation(obs)
         final_se = kf.update(
             output.measurement_se[0].cpu().numpy(),
             output.measurement_variance_se[0].cpu().numpy(),
             route.total_length_m,
             acquisition_confidence=acquisition_confidence,
-            max_progress_s=float(gt_state["se"][index, 0]),
-            max_final_step_m=float(gt_state["gt_step_norm"][index]),
+            max_progress_s=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["se"][index, 0])),
+            max_final_step_m=(None if bool(getattr(config, "NO_GT_INFERENCE", False)) else float(gt_state["gt_step_norm"][index])),
         )
-        final_se, progress_capped_to_gt = cap_kalman_to_current_gt(
-            kf, final_se, gt_state["se"][index]
-        )
+        if bool(getattr(config, "NO_GT_INFERENCE", False)):
+            progress_capped_to_gt = False
+        else:
+            final_se, progress_capped_to_gt = cap_kalman_to_current_gt(
+                kf, final_se, gt_state["se"][index]
+            )
         final_xy = route.xy_from_se(final_se[0], final_se[1])
         if prepared_uav is not None:
             if device.type == "cuda":
@@ -2430,7 +2625,10 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         rows.append(
             {
                 "protocol": str(config.CONTROLLED_PROTOCOL_NAME),
-                "controlled_gt_prior": 1,
+                "controlled_gt_prior": int(
+                    not bool(getattr(config, "FRAME_REFERENCE_SUPERVISION", False))
+                ),
+                "reference_protocol": str(config.REFERENCE_PROTOCOL),
                 "gt_prior_jitter_limit_m": float(config.CONTROLLED_GT_PRIOR_JITTER_M),
                 "prior_center_x": float(controlled_prior_xy[0]),
                 "prior_center_y": float(controlled_prior_xy[1]),
@@ -2454,6 +2652,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "predicted_cross_e": float(predicted_se[1]),
                 "predicted_x": float(predicted_xy[0]),
                 "predicted_y": float(predicted_xy[1]),
+                "motion_prediction_error_m": motion_prediction_error,
                 "kalman_progress_std_m": float(kf.progress_std()),
                 "acquisition_hypothesis_count": int(obs.hypothesis_count),
                 "acquisition_radius_m": float(obs.acquisition_radius_m),
@@ -2489,6 +2688,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "candidate_capture": int(selected_capture),
                 "measurement_s": float(output.measurement_se[0, 0].item()),
                 "measurement_e": float(output.measurement_se[0, 1].item()),
+                "visual_measurement_error_m": visual_measurement_error,
                 "measurement_var_s": float(
                     output.measurement_variance_se[0, 0].item()
                 ),
@@ -2613,6 +2813,10 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     ) if rows else 0.0
     summary["MeanSpeedError_m_per_frame"] = float(np.mean(speed_errors))
     summary["MeanProgressError_m"] = float(np.mean(progress_errors))
+    summary["MotionPrediction_MAE_m"] = float(np.mean(motion_prediction_errors))
+    summary["MotionPrediction_P90_m"] = float(np.quantile(motion_prediction_errors, 0.90))
+    summary["VisualMeasurement_MAE_m"] = float(np.mean(visual_measurement_errors))
+    summary["VisualMeasurement_P90_m"] = float(np.quantile(visual_measurement_errors, 0.90))
     summary["FinalPredictedWaypointLeg"] = int(rows[-1]["waypoint_leg"])
     summary["FinalGTWaypointLeg"] = int(rows[-1]["gt_waypoint_leg"])
     summary["Waypoints"] = int(len(route.points))
@@ -2730,15 +2934,23 @@ def eval_pipeline(device):
         "experiment_motion": str(config.EXPERIMENT_MOTION),
         "experiment_kalman": str(config.EXPERIMENT_KALMAN),
         "experiment_disable_gru": bool(config.EXPERIMENT_DISABLE_GRU),
+        "reference_protocol": str(config.REFERENCE_PROTOCOL),
         "protocol": str(config.CONTROLLED_PROTOCOL_NAME),
         "train_routes": ["route_A"],
         "eval_routes": ["route_B", "route_C"],
-        "known_at_inference": [
-            "current_frame_gt_coordinate_for_controlled_local_prior",
-            "waypoint_coordinates",
-        ],
-        "uses_waypoint_frame_index_at_inference": False,
-        "uses_gt_center_at_inference": True,
+        "known_at_inference": (
+            ["causal_predicted_progress_on_full_waypoint_polyline", "waypoint_coordinates"]
+            if bool(config.ROUTE_REFERENCE_ONLY)
+            else (["scheduled_waypoint_frame_reference", "waypoint_coordinates"]
+                  if bool(config.SCHEDULED_ROUTE_REFERENCE)
+                  else (["frame_indexed_current_gt_reference", "waypoint_coordinates"]
+                  if bool(config.FRAME_REFERENCE_SUPERVISION)
+                  else ["current_frame_gt_coordinate_for_controlled_local_prior", "waypoint_coordinates"]))
+        ),
+        "uses_waypoint_frame_index_at_inference": bool(
+            config.SCHEDULED_ROUTE_REFERENCE
+        ),
+        "uses_gt_center_at_inference": not bool(config.NO_GT_INFERENCE),
         "route_state": "continuous [s,e,vs,ve] on ordered waypoint polyline",
         "motion_model": (
             "three-frame short-term visual motion + recurrent state GRU "
@@ -2755,7 +2967,13 @@ def eval_pipeline(device):
             "deterministic from filtered continuous route progress after current visual update"
         ),
         "training": (
-            "Route-A-only sequential TBPTT under the same controlled GT+smooth-jitter local-prior protocol"
+            "Route-A-only sequential TBPTT; route-only causal reference search; Smooth-L1 supervises current visual measurement at frame t and the frame-t polynomial landing position at frame t+1"
+            if bool(config.ROUTE_REFERENCE_ONLY)
+            else "Route-A-only sequential TBPTT; scheduled route-reference search; Smooth-L1 supervises the current visual measurement at frame t and polynomial landing position at frame t+1"
+            if bool(config.SCHEDULED_ROUTE_REFERENCE)
+            else "Route-A-only sequential TBPTT; Smooth-L1 supervises current visual measurement at frame t and the frame-t polynomial landing position at frame t+1"
+            if bool(config.FRAME_REFERENCE_SUPERVISION)
+            else "Route-A-only sequential TBPTT under the same controlled GT+smooth-jitter local-prior protocol"
         ),
         "final_filter": (
             "external route-coordinate Kalman; position may correct backward "
@@ -2810,11 +3028,29 @@ def main():
     print("=" * 108, flush=True)
     print(ARCHITECTURE_NAME, flush=True)
     print("device=%s" % device, flush=True)
-    print(
-        "Protocol: CONTROLLED GT+smooth-jitter local prior. The current-frame GT coordinate "
-        "is intentionally used only to center the local SAT search window; this is not autonomous localization.",
-        flush=True,
-    )
+    if bool(config.ROUTE_REFERENCE_ONLY):
+        protocol_message = (
+            "Protocol: ROUTE-ONLY causal reference. The full waypoint polyline plus "
+            "previous filtered state/motion prediction selects the local search centre; "
+            "current-frame GT is not used for inference."
+        )
+    elif bool(config.SCHEDULED_ROUTE_REFERENCE):
+        protocol_message = (
+            "Protocol: scheduled route reference. Each frame's local-search centre "
+            "is interpolated from the full waypoint/frame schedule; current-frame "
+            "GT coordinates and GT motion caps are not used at inference."
+        )
+    elif bool(config.FRAME_REFERENCE_SUPERVISION):
+        protocol_message = (
+            "Protocol: frame-indexed GT reference oracle; current-frame reference is "
+            "used to centre local search."
+        )
+    else:
+        protocol_message = (
+            "Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT "
+            "centres the local SAT search window."
+        )
+    print(protocol_message, flush=True)
     print(
         "3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> "
         "causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.",

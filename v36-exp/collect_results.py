@@ -8,8 +8,14 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 EXP = ROOT / "v36-exp"
+# Corrected runs are preferred when they exist. Several completed variants were
+# written directly under outputs/internal before corrected_v2 was introduced;
+# they remain valid completed runs and must be used as a fallback rather than
+# being incorrectly shown as PENDING.
 INTERNAL = EXP / "outputs/internal/corrected_v2"
+INTERNAL_LEGACY = EXP / "outputs/internal"
 PAPERS = EXP / "outputs/papers"
+NATIVE_PAPERS = EXP / "outputs/native-papers"
 NEED = EXP / "need.md"
 RESULTS = EXP / "results.md"
 BEGIN = "<!-- V36_EXP_RESULTS_BEGIN -->"
@@ -21,10 +27,14 @@ def f(value, digits=3):
 
 
 def internal(name):
-    root = INTERNAL / name
-    summary_path = root / "robust_tracker_summary.json"
-    if not summary_path.exists():
+    root = None
+    for candidate in (INTERNAL / name, INTERNAL_LEGACY / name):
+        if (candidate / "robust_tracker_summary.json").exists():
+            root = candidate
+            break
+    if root is None:
         return None
+    summary_path = root / "robust_tracker_summary.json"
     summary = json.loads(summary_path.read_text())
     rows = []
     for route in ("route_B", "route_C"):
@@ -59,7 +69,10 @@ def internal(name):
 
 
 def paper(name):
-    path = PAPERS / name / "summary.json"
+    # Only summaries produced by each repository's native fixed-gallery run are
+    # eligible. The obsolete local-18 adapter outputs under outputs/papers are
+    # intentionally ignored.
+    path = NATIVE_PAPERS / name / "summary.json"
     if not path.exists(): return None
     return json.loads(path.read_text())["combined"]
 
@@ -184,17 +197,24 @@ def build():
         vals = ["MLE_m","MedLE_m","P90_m","P95_m","LSR@3_pct","LSR@5_pct","LSR@10_pct","LSR@15_pct","LSR@20_pct"]
         if s and "LSR@3_pct" not in s:
             route_rows = []
-            for path in (INTERNAL / "full_v36").glob(f"{route}_*_frames.csv"):
+            full_root = (
+                INTERNAL / "full_v36"
+                if (INTERNAL / "full_v36" / "robust_tracker_summary.json").exists()
+                else INTERNAL_LEGACY / "full_v36"
+            )
+            for path in full_root.glob(f"{route}_*_frames.csv"):
                 with path.open(newline="") as handle: route_rows.extend(csv.DictReader(handle))
             s["LSR@3_pct"] = np.mean([float(row["error_final_m"]) <= 3 for row in route_rows]) * 100
         lines.append("| " + route.replace("route_", "Route ") + " | " + " | ".join(f(s.get(k) if s else None) for k in vals) + " |")
     lines.append(cols("平均（逐幀合併）", full, ["mle","median","p90","p95","lsr3","lsr5","lsr10","lsr15","lsr20"])); lines.append("")
     lines += ["## 表 8：其他論文原生協定比較", "", "| 方法 | 原生定位協定 | MLE | Median | P90 | P95 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | FPS |", "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for name in ("DenseUAV","Sample4Geo","Game4Loc","InfoGeo","Bearing-UAV"):
-        protocol = "Global retrieval" if name != "Bearing-UAV" else "Neighbor-map position/heading regression"
-        lines.append("| " + name + " | " + protocol + " | " + " | ".join(["PENDING"] * 9) + " |")
+        protocol = "Fixed-gallery global retrieval" if name != "Bearing-UAV" else "Neighbor-map position/heading regression"
+        value = paper(name)
+        keys = ["MLE_m", "Median_m", "P90_m", "P95_m", "LSR@3_pct", "LSR@5_pct", "LSR@10_pct", "LSR@15_pct", "FPS"]
+        lines.append("| " + name + " | " + protocol + " | " + " | ".join(f(value.get(key) if value else None) for key in keys) + " |")
     lines.append("| V36（Ours） | GT+jitter Forward-3×6 local tracking | " + " | ".join(f(full.get(k) if full else None) for k in ["mle","median","p90","p95","lsr3","lsr5","lsr10","lsr15","fps"]) + " |")
-    lines += ["", "舊版約 12 m 的 local-18 adapter 結果已判定無效，不再列入正式比較；表 8 必須由各官方模型的原生 retrieval/regression 流程重新產生。", ""]
+    lines += ["", "舊版約 12 m 的 local-18 adapter 結果已判定無效；表 8 只讀取 outputs/native-papers 下由官方模型與固定 global gallery 產生的結果。", ""]
     return bold_column_winners("\n".join(lines))
 
 

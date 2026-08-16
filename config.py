@@ -55,7 +55,41 @@ CONTROLLED_GT_PRIOR_JITTER_RADIUS_RATE = 0.017
 CONTROLLED_GT_PRIOR_JITTER_MIN_FRACTION = 0.40
 CONTROLLED_GT_PRIOR_JITTER_MAX_FRACTION = 0.75
 CONTROLLED_FINAL_PROGRESS_CAP_TO_GT = True
-CONTROLLED_PROTOCOL_NAME = "GT+smooth-jitter_controlled_forward3x6_SoftMS_local_prior_3frame_causal_heading_continuous_waypoint_RNN_polynomial_Kalman"
+REFERENCE_PROTOCOL = os.environ.get(
+    "UAVSAT_REFERENCE_PROTOCOL", "controlled_gt_jitter"
+).strip().lower()
+if REFERENCE_PROTOCOL not in {
+    "controlled_gt_jitter", "frame_reference", "route_reference",
+    "scheduled_route_reference",
+}:
+    raise ValueError(
+        "UAVSAT_REFERENCE_PROTOCOL must be controlled_gt_jitter, frame_reference, "
+        "route_reference, or scheduled_route_reference"
+    )
+FRAME_REFERENCE_SUPERVISION = REFERENCE_PROTOCOL in {
+    "frame_reference", "route_reference", "scheduled_route_reference"
+}
+ROUTE_REFERENCE_ONLY = REFERENCE_PROTOCOL == "route_reference"
+SCHEDULED_ROUTE_REFERENCE = REFERENCE_PROTOCOL == "scheduled_route_reference"
+# Evaluation/inference must not read the current frame's GT coordinate or use a
+# GT-derived motion/progress cap in either route-only protocol.
+NO_GT_INFERENCE = ROUTE_REFERENCE_ONLY or SCHEDULED_ROUTE_REFERENCE
+CONTROLLED_PROTOCOL_NAME = (
+    "route_reference_motion_prior_forward3x6_SoftMS_3frame_GRU_"
+    "next_position_polynomial_Kalman"
+    if ROUTE_REFERENCE_ONLY
+    else (
+        "scheduled_route_reference_forward3x6_SoftMS_3frame_GRU_"
+        "next_position_polynomial_Kalman"
+        if SCHEDULED_ROUTE_REFERENCE
+        else
+        "frame_indexed_reference_forward3x6_SoftMS_3frame_GRU_"
+        "next_position_polynomial_Kalman"
+        if FRAME_REFERENCE_SUPERVISION
+        else "GT+smooth-jitter_controlled_forward3x6_SoftMS_local_prior_3frame_"
+             "causal_heading_continuous_waypoint_RNN_polynomial_Kalman"
+    )
+)
 
 WAYPOINT_DIR = PROJECT_ROOT / "route_waypoints"
 WAYPOINT_FILES = {
@@ -63,6 +97,12 @@ WAYPOINT_FILES = {
     "route_B": WAYPOINT_DIR / "route_B_waypoints.json",
     "route_C": WAYPOINT_DIR / "route_C_waypoints.json",
 }
+DENSE_ROUTE_REFERENCE_DIR = Path(
+    os.environ.get(
+        "UAVSAT_DENSE_ROUTE_REFERENCE_DIR",
+        str(PROJECT_ROOT / "frame-reference-exp" / "references"),
+    )
+).resolve()
 
 SAT_IMAGE = Path(
     "/yh/study/sim_data/sim_competition_crop_check/"
@@ -121,8 +161,14 @@ MIN_TRAIN_CAPTURE_RATE = 0.95
 # and its center is current-frame GT + bounded deterministic jitter. The legacy
 # acquisition fields stay for checkpoint/code compatibility but the bank size is 1.
 # -----------------------------------------------------------------------------
-ACQ_HYPOTHESIS_COUNT = 1
+ACQ_HYPOTHESIS_COUNT = (
+    int(os.environ.get("UAVSAT_ROUTE_REFERENCE_HYPOTHESES", "13"))
+    if ROUTE_REFERENCE_ONLY else 1
+)
 ACQ_LOCAL_GRID_SIZE = 6
+ROUTE_REFERENCE_BANK_RADIUS_M = float(
+    os.environ.get("UAVSAT_ROUTE_REFERENCE_BANK_RADIUS_M", "60.0")
+)
 
 # v33 forward-only local visual search. The original 6x6 geometry is built only
 # to determine which half lies ahead of the causal estimated heading. Only the
@@ -145,6 +191,10 @@ ACQ_VISUAL_TEMPERATURE = 0.42
 ACQ_LOCAL_PRIOR_SIGMA_M = 18.0
 ACQ_LOCAL_PRIOR_WEIGHT = 0.55
 ACQ_HYPOTHESIS_MOTION_PRIOR_WEIGHT = 0.20
+ACQ_RAW_VISUAL_EVIDENCE_WEIGHT = (
+    float(os.environ.get("UAVSAT_ACQ_RAW_VISUAL_EVIDENCE_WEIGHT", "2.0"))
+    if ROUTE_REFERENCE_ONLY else 0.0
+)
 ACQ_SCORER_TEMPERATURE = 0.75
 ACQ_POSTERIOR_EPS = 1e-8
 ACQ_MAX_RESPONSE_VARIANCE_M2 = 900.0
@@ -277,6 +327,18 @@ LOSS_VARIANCE_NLL = 0.05
 
 # Redundant with the longitudinal component of LOSS_MEASUREMENT.
 LOSS_PROGRESS = 0.0
+
+# Frame-reference experiment: the two primary Smooth-L1 objectives are
+# (1) current visual measurement -> current frame reference position, and
+# (2) frame-t polynomial prediction -> frame-(t+1) reference position.
+if FRAME_REFERENCE_SUPERVISION:
+    LOSS_MEASUREMENT = 3.0
+    LOSS_NEXT_STEP = 3.0
+    LOSS_VELOCITY = 0.10
+if ROUTE_REFERENCE_ONLY:
+    # Route-A GT labels the correct route-bank hypothesis during training;
+    # inference receives no GT and uses the learned acquisition scorer.
+    LOSS_ACQUISITION = 1.0
 
 # -----------------------------------------------------------------------------
 # External Kalman [s,e,vs,ve]. Position estimate is allowed to move backwards
