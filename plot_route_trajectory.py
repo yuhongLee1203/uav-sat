@@ -18,7 +18,6 @@ from render_results_video import load_waypoint_pixels, xy_to_source_pixels
 GT_COLOR = (50, 220, 50)       # BGR
 PRED_COLOR = (255, 60, 255)
 WAYPOINT_COLOR = (0, 215, 255)
-JUMP_COLOR = (0, 60, 255)
 
 
 def draw_polyline(image, points, color, thickness=3):
@@ -72,24 +71,18 @@ def main():
     draw_polyline(overview, pred_px * scale, PRED_COLOR, 3)
     for point in waypoint_px * scale:
         cv2.circle(overview, tuple(np.rint(point).astype(int)), 5, WAYPOINT_COLOR, -1, cv2.LINE_AA)
-    jump_rows = rows[rows["abnormal_jump"].astype(int) == 1]
-    if not jump_rows.empty:
-        jump_px = xy_to_source_pixels(jump_rows[["final_x", "final_y"]].to_numpy(float), dataset, origin_lat, origin_lon)
-        for point in jump_px * scale:
-            cv2.circle(overview, tuple(np.rint(point).astype(int)), 9, JUMP_COLOR, 2, cv2.LINE_AA)
     annotate(overview, [
         f"{args.route}: complete trajectory ({len(rows)} frames)",
         "Green = GT trajectory   Magenta = final Kalman trajectory",
-        "Yellow = waypoint   Red circle = abnormal jump (> GT step + 5m)",
+        "Yellow = waypoint",
     ])
     full_path = output_dir / (args.route + "_full_trajectory.png")
     cv2.imwrite(str(full_path), overview)
 
-    # Default zoom is centred on the largest excess-step event, i.e. the most
-    # useful local segment for checking a visible jump.
+    # Default to an ordinary initial route segment.  A caller can explicitly
+    # choose any other segment with --start-frame.
     if args.start_frame is None:
-        center_frame = int(rows.loc[rows["excess_step_over_gt_m"].idxmax(), "frame_id"])
-        start_frame = max(int(rows["frame_id"].min()), center_frame - args.frames // 2)
+        start_frame = int(rows["frame_id"].min())
     else:
         start_frame = int(args.start_frame)
     segment = rows[rows["frame_id"] >= start_frame].iloc[: args.frames].copy()
@@ -114,16 +107,12 @@ def main():
     draw_polyline(crop, local_pred, PRED_COLOR, 5)
     cv2.circle(crop, tuple(np.rint(local_gt[0]).astype(int)), 9, GT_COLOR, -1, cv2.LINE_AA)
     cv2.circle(crop, tuple(np.rint(local_gt[-1]).astype(int)), 10, GT_COLOR, 2, cv2.LINE_AA)
-    for (_, row), point in zip(segment.iterrows(), local_pred):
-        if int(row.abnormal_jump):
-            cv2.circle(crop, tuple(np.rint(point).astype(int)), 15, JUMP_COLOR, 3, cv2.LINE_AA)
     zoom_scale = min(2.0, 1800.0 / max(crop.shape[:2]))
     if zoom_scale > 1.0:
         crop = cv2.resize(crop, None, fx=zoom_scale, fy=zoom_scale, interpolation=cv2.INTER_CUBIC)
     annotate(crop, [
         f"{args.route}: zoomed trajectory, frames {first_frame}-{last_frame}",
         "Green = GT   Magenta = final Kalman position",
-        "Red circle = abnormal jump (> GT step + 5m)",
     ])
     zoom_path = output_dir / (args.route + f"_zoom_frames_{first_frame:04d}_{last_frame:04d}.png")
     cv2.imwrite(str(zoom_path), crop)

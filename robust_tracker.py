@@ -20,10 +20,10 @@ from visual_localizer import (
     regular_grid_indices,
     train_visual_retrieval_a_only,
 )
-from visual_model import ThreeFrameRouteStateGRU
+from visual_model import RouteProgressGRUOutput, ThreeFrameRouteStateGRU
 
 
-ARCHITECTURE_NAME = "V34ProtocolCompactGRUSoftMSModeVarianceForward3x6PolynomialKalman_v36"
+ARCHITECTURE_NAME = str(config.ARCHITECTURE_NAME)
 
 
 @dataclass
@@ -346,6 +346,7 @@ class RouteKalman:
     def predict(self, velocity_se, acceleration_se, total_length_m, max_progress_s=None, polynomial_step_se=None, max_step_m=None):
         velocity = np.asarray(velocity_se, dtype=np.float64).reshape(2).copy()
         acceleration = np.asarray(acceleration_se, dtype=np.float64).reshape(2).copy()
+        motion_mode = str(getattr(config, "EXPERIMENT_MOTION", "quadratic"))
         velocity[0] = float(np.clip(
             velocity[0], 0.0, float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
         ))
@@ -365,7 +366,19 @@ class RouteKalman:
             float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
         ))
 
-        if polynomial_step_se is None:
+        if motion_mode == "none":
+            # Fair "no learned inertial polynomial" baseline: fall back to
+            # the external Kalman's own constant-velocity state.  The previous
+            # ablation forced step=0 while retaining a 3 m posterior correction
+            # cap, so a route moving faster than that accumulated hundreds of
+            # metres of artificial lag.
+            velocity = self.x[2:4].copy()
+            acceleration[:] = 0.0
+            step = velocity.copy()
+        elif motion_mode == "velocity":
+            acceleration[:] = 0.0
+            step = velocity.copy()
+        elif polynomial_step_se is None:
             step = velocity + 0.5 * acceleration
         else:
             step = np.asarray(polynomial_step_se, dtype=np.float64).reshape(2).copy()
@@ -450,6 +463,27 @@ class RouteKalman:
     ):
         raw_z = np.asarray(measurement_se, dtype=np.float64).reshape(2)
         variance = np.asarray(variance_se, dtype=np.float64).reshape(2)
+        kalman_mode = str(getattr(config, "EXPERIMENT_KALMAN", "learned"))
+        if kalman_mode == "none":
+            self.last_previous_position = self.x[:2].copy()
+            self.last_prior_position = self.x[:2].copy()
+            self.last_raw_measurement = raw_z.copy()
+            self.last_used_measurement = raw_z.copy()
+            self.last_measurement_clip = np.zeros(2, dtype=np.float64)
+            self.x[0] = float(np.clip(raw_z[0], 0.0, float(total_length_m)))
+            self.x[1] = float(np.clip(raw_z[1], -float(config.MAX_FINAL_CROSS_TRACK_M), float(config.MAX_FINAL_CROSS_TRACK_M)))
+            if max_progress_s is not None:
+                self.x[0] = min(self.x[0], float(max_progress_s))
+            self.x[2:4] = self.x[:2] - self.last_previous_position
+            self.last_motion_step = self.x[:2] - self.last_previous_position
+            self.last_step_limited = False
+            self.last_step_limit_m = 0.0
+            self.last_posterior_projection_m = 0.0
+            self.last_nis = 0.0
+            self.last_r_scale = 1.0
+            return self.se()
+        if kalman_mode == "fixed":
+            variance[:] = float(config.EXPERIMENT_FIXED_VARIANCE_M2)
         confidence = float(np.clip(
             acquisition_confidence,
             float(config.VISUAL_CONFIDENCE_FLOOR),
@@ -649,12 +683,19 @@ def build_route_cache(route_name, root, visual, device):
     signature = {
         "size": int(stat.st_size),
         "mtime_ns": int(stat.st_mtime_ns),
-        "architecture": ARCHITECTURE_NAME,
+        "backbone": str(config.BACKBONE_KEY),
     }
-    cache_path = config.OUTPUT_DIR / "feature_cache" / (route_name + "_uav_clip.pt")
+    cache_path = config.FEATURE_CACHE_DIR / (route_name + "_uav_clip.pt")
     if cache_path.exists():
         payload = torch.load(cache_path, map_location="cpu")
-        if payload.get("signature") == signature:
+        cached_signature = payload.get("signature", {})
+        # v34-v36 caches predate the shared-cache backbone key. Checkpoint
+        # size+mtime are the actual frozen-encoder identity used by those files.
+        if (
+            cached_signature.get("size") == signature["size"]
+            and cached_signature.get("mtime_ns") == signature["mtime_ns"]
+            and cached_signature.get("backbone", str(config.BACKBONE_KEY)) == signature["backbone"]
+        ):
             print("%s: reuse UAV backbone cache" % route_name, flush=True)
             return RouteCache(
                 route_name=route_name,
@@ -1058,21 +1099,10 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_s
     if keep_count != 18:
         raise ValueError("forward search must keep exactly 3x6=18 candidates")
 
-    full_indices = regular_grid_indices(
-        visual.gallery["xy"],
-        visual.gallery["pixel"],
-        visual.pixel_index,
-        center_xy,
-        grid_size,
-        config.SAT_STRIDE,
-        visual.device,
-    )
-    full_centers = visual.gallery["xy"][full_indices]
-
     headings = torch.as_tensor(
-        heading_rad, dtype=full_centers.dtype, device=full_centers.device
+        heading_rad, dtype=center_xy.dtype, device=center_xy.device
     ).reshape(-1)
-    batch = int(full_centers.shape[0])
+    batch = int(center_xy.shape[0])
     if headings.numel() == 1 and batch > 1:
         headings = headings.expand(batch)
     if headings.numel() != batch:
@@ -1080,7 +1110,22 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_s
 
     forward_unit = torch.stack([torch.cos(headings), torch.sin(headings)], dim=1)
     cross_unit = torch.stack([-torch.sin(headings), torch.cos(headings)], dim=1)
-    relative = full_centers - center_xy[:, None, :]
+    # Correct the old geometry where positive jitter could put the current
+    # centre ahead of truth before its rear half was discarded.  We shift the
+    # lattice origin back, but still score only the 18 heading-forward cells.
+    backshift_m = float(getattr(config, "FORWARD_SEARCH_ORIGIN_BACKSHIFT_M", 0.0))
+    grid_center_xy = center_xy - backshift_m * forward_unit
+    full_indices = regular_grid_indices(
+        visual.gallery["xy"],
+        visual.gallery["pixel"],
+        visual.pixel_index,
+        grid_center_xy,
+        grid_size,
+        config.SAT_STRIDE,
+        visual.device,
+    )
+    full_centers = visual.gallery["xy"][full_indices]
+    relative = full_centers - grid_center_xy[:, None, :]
     forward_projection = (relative * forward_unit[:, None, :]).sum(dim=2)
     cross_projection = (relative * cross_unit[:, None, :]).sum(dim=2)
 
@@ -1113,7 +1158,7 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_s
     raw_top1_xy = centers[
         torch.arange(centers.shape[0], device=visual.device), raw_index
     ]
-    softms_xy, softms_support, _, _, _, _ = soft_mean_shift(
+    softms_xy, softms_support, _, _, mode_weights, _ = soft_mean_shift(
         raw_logits,
         centers,
         config.MEANSHIFT_SCORE_TAU,
@@ -1131,6 +1176,7 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_s
         raw_top1_xy=raw_top1_xy,
         softms_xy=softms_xy,
         softms_support=softms_support,
+        softms_mode_count=(mode_weights > 0).sum(dim=1),
     )
 
 
@@ -1146,6 +1192,7 @@ def _slice_candidate(candidate, index):
         raw_top1_xy=candidate.raw_top1_xy[i : i + 1],
         softms_xy=candidate.softms_xy[i : i + 1],
         softms_support=candidate.softms_support[i : i + 1],
+        softms_mode_count=candidate.softms_mode_count[i : i + 1],
     )
 
 
@@ -1217,9 +1264,12 @@ def visual_observation(
         + float(config.ACQ_LOCAL_PRIOR_WEIGHT) * local_prior,
         dim=1,
     )
-    # SoftMS visual anchor: all shifted modes are density-weighted. There is no
-    # fixed Top-K and no snapped HardMS/Top-1 coordinate.
-    anchor_xy_all = candidate.softms_xy
+    # Anchor ablation: the default is V36 SoftMS; weighted centroid uses the
+    # exact same local posterior and candidates without mean-shift iterations.
+    if str(getattr(config, "EXPERIMENT_ANCHOR", "softms")) == "weighted_centroid":
+        anchor_xy_all = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)
+    else:
+        anchor_xy_all = candidate.softms_xy
     sat_context_all = (posterior.unsqueeze(-1) * candidate.z_sat).sum(dim=1)
 
     p = posterior.clamp_min(float(config.ACQ_POSTERIOR_EPS))
@@ -1238,14 +1288,15 @@ def visual_observation(
     # spread between converged modes, not spread between the original patch
     # centres.  Thus adjacent patches that converge to one visual mode do not
     # falsely inflate measurement uncertainty.
-    _, _, softms_modes_all, _, softms_mode_weights_all, _ = soft_mean_shift(
-        candidate.raw_logits,
-        candidate.centers,
-        config.MEANSHIFT_SCORE_TAU,
-        config.MEANSHIFT_BANDWIDTH_M,
-        config.MEANSHIFT_ITERATIONS,
-        config.MEANSHIFT_MODE_BETA,
-    )
+    if str(getattr(config, "EXPERIMENT_ANCHOR", "softms")) == "softms":
+        _, _, softms_modes_all, _, softms_mode_weights_all, _ = soft_mean_shift(
+            candidate.raw_logits,
+            candidate.centers,
+            config.MEANSHIFT_SCORE_TAU,
+            config.MEANSHIFT_BANDWIDTH_M,
+            config.MEANSHIFT_ITERATIONS,
+            config.MEANSHIFT_MODE_BETA,
+        )
 
     anchor_se_rows = []
     variance_rows = []
@@ -1266,12 +1317,17 @@ def visual_observation(
         # patch seed.  Seeds converging to the same mode have negligible
         # relative displacement, while separated modes retain their weighted
         # between-mode uncertainty.
-        delta = softms_modes_all[h] - anchor_xy_all[h : h + 1]
+        if str(getattr(config, "EXPERIMENT_ANCHOR", "softms")) == "softms":
+            variance_points = softms_modes_all[h]
+            variance_weights = softms_mode_weights_all[h]
+        else:
+            variance_points = candidate.centers[h]
+            variance_weights = posterior[h]
+        delta = variance_points - anchor_xy_all[h : h + 1]
         along_delta = (delta * unit).sum(dim=1)
         cross_delta = (delta * cross).sum(dim=1)
-        mode_weights = softms_mode_weights_all[h]
-        var_parallel = (mode_weights * along_delta.square()).sum()
-        var_cross = (mode_weights * cross_delta.square()).sum()
+        var_parallel = (variance_weights * along_delta.square()).sum()
+        var_cross = (variance_weights * cross_delta.square()).sum()
         variance_rows.append(torch.stack([var_parallel, var_cross]))
 
     anchor_se_all = torch.tensor(
@@ -1431,6 +1487,27 @@ def model_forward(
     hidden,
     device,
 ):
+    if bool(getattr(config, "EXPERIMENT_DISABLE_GRU", False)):
+        anchor = observation.anchor_se
+        zeros2 = torch.zeros_like(anchor)
+        zeros1 = torch.zeros_like(anchor[:, :1])
+        variance = observation.response_variance_se.clamp(
+            min=float(config.KALMAN_R_MIN_VAR), max=float(config.KALMAN_R_MAX_VAR)
+        )
+        if hidden is None:
+            hidden = model.initial_hidden(anchor.shape[0], anchor.device, anchor.dtype)
+        return RouteProgressGRUOutput(
+            measurement_se=anchor,
+            correction_se=zeros2,
+            measurement_variance_se=variance,
+            velocity_se=zeros2,
+            acceleration_se=zeros2,
+            next_step_se=zeros2,
+            heading_residual_rad=zeros1,
+            turn_rate_rad=zeros1,
+            hidden=hidden,
+            state=torch.cat([zeros2, zeros2, zeros1, zeros1, zeros2, variance], dim=1),
+        )
     frame = route.frame_from_se(float(predicted_se[0]), float(predicted_se[1]))
     remaining = torch.tensor([[frame.remaining_m]], dtype=torch.float32, device=device)
     predicted_cross = torch.tensor([[float(predicted_se[1])]], dtype=torch.float32, device=device)
@@ -2400,6 +2477,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "raw_top1_y": float(obs.candidate.raw_top1_xy[0, 1].item()),
                 "softms_x": float(obs.candidate.softms_xy[0, 0].item()),
                 "softms_y": float(obs.candidate.softms_xy[0, 1].item()),
+                "softms_mode_count": int(obs.candidate.softms_mode_count[0].item()),
                 "visual_anchor_x": float(obs.anchor_xy[0, 0].item()),
                 "visual_anchor_y": float(obs.anchor_xy[0, 1].item()),
                 "visual_anchor_s": float(obs.anchor_se[0, 0].item()),
@@ -2582,6 +2660,10 @@ def run_route_inference(route_name, visual, model, cache, route, device):
 
 
 def load_temporal_model(device):
+    if bool(getattr(config, "EXPERIMENT_DISABLE_GRU", False)):
+        model = ThreeFrameRouteStateGRU().to(device)
+        model.eval()
+        return model
     if not config.TEMPORAL_CHECKPOINT.exists():
         raise FileNotFoundError("Temporal checkpoint missing: %s" % config.TEMPORAL_CHECKPOINT)
     payload = torch.load(config.TEMPORAL_CHECKPOINT, map_location="cpu")
@@ -2619,16 +2701,19 @@ def train_pipeline(args, device):
     route_a = WaypointRoute(
         load_waypoint_xy("route_A", visual.origin_lat, visual.origin_lon)
     )
-    _, best_score = train_temporal_model(
-        visual=visual,
-        cache=cache_a,
-        route=route_a,
-        device=device,
-        epochs=int(args.temporal_epochs),
-        patience_limit=int(args.patience),
-        resume=bool(args.resume_temporal),
-    )
-    print("best controlled-validation score=%.3f" % best_score, flush=True)
+    if bool(getattr(config, "EXPERIMENT_DISABLE_GRU", False)):
+        print("skip temporal training: SoftMS-only ablation has no GRU", flush=True)
+    else:
+        _, best_score = train_temporal_model(
+            visual=visual,
+            cache=cache_a,
+            route=route_a,
+            device=device,
+            epochs=int(args.temporal_epochs),
+            patience_limit=int(args.patience),
+            resume=bool(args.resume_temporal),
+        )
+        print("best controlled-validation score=%.3f" % best_score, flush=True)
 
 
 
@@ -2639,6 +2724,12 @@ def eval_pipeline(device):
         "architecture": ARCHITECTURE_NAME,
         "backbone_key": str(config.BACKBONE_KEY),
         "backbone_name": str(config.BACKBONE_NAME),
+        "experiment_variant": str(config.EXPERIMENT_VARIANT),
+        "experiment_anchor": str(config.EXPERIMENT_ANCHOR),
+        "experiment_frame_count": int(config.EXPERIMENT_FRAME_COUNT),
+        "experiment_motion": str(config.EXPERIMENT_MOTION),
+        "experiment_kalman": str(config.EXPERIMENT_KALMAN),
+        "experiment_disable_gru": bool(config.EXPERIMENT_DISABLE_GRU),
         "protocol": str(config.CONTROLLED_PROTOCOL_NAME),
         "train_routes": ["route_A"],
         "eval_routes": ["route_B", "route_C"],

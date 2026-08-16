@@ -26,6 +26,7 @@ class CandidateBatch:
     raw_top1_xy: torch.Tensor
     softms_xy: torch.Tensor
     softms_support: torch.Tensor
+    softms_mode_count: torch.Tensor
 
 
 def build_pixel_index(pixels: torch.Tensor):
@@ -91,7 +92,14 @@ def regular_grid_indices(
 
 
 def soft_mean_shift(logits, centers, tau, bandwidth_m, iterations, beta):
-    """Density-weight all shifted modes; no Top-K and no candidate snapping."""
+    """Soft Mean-Shift followed by data-dependent basin consolidation.
+
+    Every patch is a Mean-Shift seed, but seeds that converge to the same
+    location are one mode, not several independent observations.  Consolidating
+    them preserves the weighted coordinate exactly (up to floating-point
+    rounding) while the final coordinate reduction operates on the remaining
+    modes.  No fixed Top-K or hard candidate snapping is used.
+    """
     epsilon = 1e-8
     probability = torch.softmax(logits / max(float(tau), 1e-6), dim=1)
     centers = centers.float()
@@ -113,9 +121,78 @@ def soft_mean_shift(logits, centers, tau, bandwidth_m, iterations, beta):
         torch.exp(-final_distance_squared / (2.0 * bandwidth ** 2))
         * probability[:, None, :]
     ).sum(dim=2)
-    mode_weights = torch.softmax(float(beta) * density, dim=1)
-    soft_xy = (mode_weights.unsqueeze(-1) * modes).sum(dim=1)
-    soft_support = (mode_weights * density).sum(dim=1)
+    seed_weights = torch.softmax(float(beta) * density, dim=1)
+
+    # Greedy connected basins are selected from detached coordinates; all
+    # coordinate/weight reductions remain differentiable.  Return padded
+    # tensors so existing batched callers keep a fixed [B, N, ...] shape.
+    merge_radius = float(getattr(config, "MEANSHIFT_MODE_MERGE_RADIUS_M", 2.0))
+    merged_modes = []
+    merged_density = []
+    merged_weights = []
+    merged_soft_xy = []
+    merged_soft_support = []
+    seed_count = int(modes.shape[1])
+    for batch_index in range(int(modes.shape[0])):
+        distance = torch.cdist(
+            modes[batch_index].detach(), modes[batch_index].detach()
+        )
+        remaining = set(range(seed_count))
+        groups = []
+        while remaining:
+            seed = min(remaining)
+            frontier = [seed]
+            group = set()
+            while frontier:
+                current = frontier.pop()
+                if current in group:
+                    continue
+                group.add(current)
+                neighbours = torch.nonzero(
+                    distance[current] <= merge_radius, as_tuple=False
+                ).flatten().tolist()
+                frontier.extend(n for n in neighbours if n in remaining and n not in group)
+            remaining.difference_update(group)
+            groups.append(sorted(group))
+
+        row_modes = []
+        row_density = []
+        row_weights = []
+        for group in groups:
+            indices = torch.as_tensor(group, device=modes.device, dtype=torch.long)
+            group_weights = seed_weights[batch_index, indices]
+            total_weight = group_weights.sum().clamp_min(epsilon)
+            row_weights.append(total_weight)
+            row_modes.append(
+                (group_weights[:, None] * modes[batch_index, indices]).sum(dim=0)
+                / total_weight
+            )
+            row_density.append(
+                (group_weights * density[batch_index, indices]).sum() / total_weight
+            )
+
+        # This is the timed final aggregation: it really reduces only K active
+        # basins, before padding is added for downstream batched metadata.
+        active_modes = torch.stack(row_modes)
+        active_density = torch.stack(row_density)
+        active_weights = torch.stack(row_weights)
+        merged_soft_xy.append((active_weights[:, None] * active_modes).sum(dim=0))
+        merged_soft_support.append((active_weights * active_density).sum())
+
+        padding = seed_count - len(groups)
+        if padding:
+            row_modes.extend([row_modes[0].new_zeros(2) for _ in range(padding)])
+            row_density.extend([row_density[0].new_zeros(()) for _ in range(padding)])
+            row_weights.extend([row_weights[0].new_zeros(()) for _ in range(padding)])
+        merged_modes.append(torch.stack(row_modes))
+        merged_density.append(torch.stack(row_density))
+        merged_weights.append(torch.stack(row_weights))
+
+    modes = torch.stack(merged_modes)
+    density = torch.stack(merged_density)
+    mode_weights = torch.stack(merged_weights)
+    soft_xy = torch.stack(merged_soft_xy)
+    soft_support = torch.stack(merged_soft_support)
     compact = (
         mode_weights * (modes - soft_xy.unsqueeze(1)).square().sum(dim=2)
     ).sum(dim=1).mean()
@@ -223,7 +300,7 @@ class FrozenVisualLocalizer:
         raw_top1_xy = centers[
             torch.arange(centers.shape[0], device=self.device), raw_index
         ]
-        softms_xy, softms_support, _, _, _, _ = soft_mean_shift(
+        softms_xy, softms_support, _, _, mode_weights, _ = soft_mean_shift(
             raw_logits,
             centers,
             config.MEANSHIFT_SCORE_TAU,
@@ -242,6 +319,7 @@ class FrozenVisualLocalizer:
             raw_top1_xy=raw_top1_xy,
             softms_xy=softms_xy,
             softms_support=softms_support,
+            softms_mode_count=(mode_weights > 0).sum(dim=1),
         )
 
     @torch.no_grad()

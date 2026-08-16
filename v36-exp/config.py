@@ -103,13 +103,9 @@ VISUAL_COORD_LOSS_WEIGHT = 0.25
 MEANSHIFT_SCORE_TAU = 0.30
 MEANSHIFT_BANDWIDTH_M = 8.0
 MEANSHIFT_ITERATIONS = 3
-# All patches seed SoftMS and no fixed Top-K is used. Seeds converging to the
-# same basin are consolidated before the final coordinate aggregation.
+# Same SoftMS mode weighting used by UAV_GPS_allmap_imgonly3_meanshift and
+# UAV_GPS_allmap_imgonly4: all shifted modes participate; there is no Top-K.
 MEANSHIFT_MODE_BETA = 12.0
-# Shifted seeds whose converged coordinates are within this radius represent
-# one Mean-Shift basin.  They are consolidated before the final coordinate
-# aggregation; this is not a fixed Top-K.
-MEANSHIFT_MODE_MERGE_RADIUS_M = 2.0
 GRID_SIZE = 6
 CANDIDATE_COUNT = 36
 LOCAL_PRIOR_JITTER_M = 12.0
@@ -131,9 +127,6 @@ FORWARD_ONLY_LOCAL_SEARCH = os.environ.get("UAVSAT_EXPERIMENT_FORWARD_ONLY", "1"
 FORWARD_SEARCH_ROWS = 3
 FORWARD_SEARCH_COLS = 6
 FORWARD_SEARCH_CANDIDATE_COUNT = FORWARD_SEARCH_ROWS * FORWARD_SEARCH_COLS
-FORWARD_SEARCH_ORIGIN_BACKSHIFT_M = float(
-    os.environ.get("UAVSAT_FORWARD_ORIGIN_BACKSHIFT_M", "0.0")
-)
 ACQ_MIN_RADIUS_M = 0.0
 ACQ_BASE_RADIUS_M = 0.0
 ACQ_MAX_RADIUS_M = 0.0

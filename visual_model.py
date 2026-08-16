@@ -255,10 +255,20 @@ class ThreeFrameRouteStateGRU(nn.Module):
             previous_z_uav = z_uav
         if previous2_z_uav is None:
             previous2_z_uav = previous_z_uav
-        delta_old = previous_z_uav - previous2_z_uav
-        delta_recent = z_uav - previous_z_uav
-        delta_accel = delta_recent - delta_old
-        clip_mean = (previous2_z_uav + previous_z_uav + z_uav) / 3.0
+        frame_count = int(getattr(config, "EXPERIMENT_FRAME_COUNT", 3))
+        if frame_count == 1:
+            delta_recent = torch.zeros_like(z_uav)
+            delta_accel = torch.zeros_like(z_uav)
+            clip_mean = z_uav
+        elif frame_count == 2:
+            delta_recent = z_uav - previous_z_uav
+            delta_accel = torch.zeros_like(z_uav)
+            clip_mean = (previous_z_uav + z_uav) / 2.0
+        else:
+            delta_old = previous_z_uav - previous2_z_uav
+            delta_recent = z_uav - previous_z_uav
+            delta_accel = delta_recent - delta_old
+            clip_mean = (previous2_z_uav + previous_z_uav + z_uav) / 3.0
         return previous_z_uav, previous2_z_uav, delta_recent, delta_accel, clip_mean
 
     def score_hypotheses(
