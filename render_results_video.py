@@ -69,7 +69,7 @@ def load_waypoint_pixels(route_name, dataset, origin_lat, origin_lon):
     return np.asarray(xy, dtype=np.float64)
 
 
-def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
+def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir, clip_label=""):
     with Image.open(config.SAT_IMAGE) as image:
         source_width, source_height = image.size
         map_height = int(config.VIDEO_HEIGHT)
@@ -104,7 +104,8 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
     pred_canvas = xy_to_canvas(pred_xy)
     waypoint_canvas = xy_to_canvas(waypoint_xy)
 
-    output_path = output_dir / (route_name + "_synchronized_inference.mp4")
+    suffix = ("_" + clip_label) if clip_label else ""
+    output_path = output_dir / (route_name + suffix + "_synchronized_inference.mp4")
     writer = cv2.VideoWriter(
         str(output_path),
         cv2.VideoWriter_fourcc(*"mp4v"),
@@ -279,7 +280,7 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir):
     return output_path
 
 
-def render_route(route_name):
+def render_route(route_name, start_frame=None, frame_count=None):
     csv_path = config.OUTPUT_DIR / (
         route_name + "_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
     )
@@ -291,6 +292,21 @@ def render_route(route_name):
     rows = pd.read_csv(csv_path)
     if rows.empty:
         raise RuntimeError("CSV is empty: %s" % csv_path)
+
+    # Select by the recorded source-frame id rather than CSV row number, so
+    # the generated short clip is explicit and remains valid if rows are ever
+    # filtered before rendering.
+    clip_label = ""
+    if start_frame is not None:
+        rows = rows[rows["frame_id"] >= int(start_frame)]
+    if frame_count is not None:
+        rows = rows.iloc[: int(frame_count)]
+    if rows.empty:
+        raise RuntimeError("No rows remain after the requested frame selection")
+    if start_frame is not None or frame_count is not None:
+        first_id = int(rows.iloc[0]["frame_id"])
+        last_id = int(rows.iloc[-1]["frame_id"])
+        clip_label = "frames_%04d_%04d" % (first_id, last_id)
 
     route_index = config.ROUTE_NAMES.index(route_name)
     checkpoint = torch.load(config.VISUAL_CHECKPOINT, map_location="cpu")
@@ -310,6 +326,7 @@ def render_route(route_name):
         origin_lat=origin_lat,
         origin_lon=origin_lon,
         output_dir=config.OUTPUT_DIR,
+        clip_label=clip_label,
     )
     print("rendered:", video, flush=True)
 
@@ -319,12 +336,28 @@ def main():
     parser.add_argument(
         "--route", choices=["route_B", "route_C", "all"], default="all"
     )
+    parser.add_argument(
+        "--start-frame",
+        type=int,
+        default=None,
+        help="First recorded frame_id to include (default: start of route).",
+    )
+    parser.add_argument(
+        "--frames",
+        type=int,
+        default=None,
+        help="Number of consecutive CSV frames to render (for example 15 or 25).",
+    )
     args = parser.parse_args()
+    if args.start_frame is not None and args.start_frame < 0:
+        parser.error("--start-frame must be non-negative")
+    if args.frames is not None and args.frames <= 0:
+        parser.error("--frames must be positive")
     if args.route == "all":
         for route_name in ["route_B", "route_C"]:
-            render_route(route_name)
+            render_route(route_name, args.start_frame, args.frames)
     else:
-        render_route(args.route)
+        render_route(args.route, args.start_frame, args.frames)
 
 
 if __name__ == "__main__":
