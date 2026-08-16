@@ -23,7 +23,7 @@ from visual_localizer import (
 from visual_model import ThreeFrameRouteStateGRU
 
 
-ARCHITECTURE_NAME = "V34ProtocolCompactGRUInputForward3x6SoftMSPolynomialKalman_v35"
+ARCHITECTURE_NAME = "V34ProtocolCompactGRUSoftMSModeVarianceForward3x6PolynomialKalman_v36"
 
 
 @dataclass
@@ -1233,6 +1233,20 @@ def visual_observation(
     else:
         margin_all = torch.ones_like(entropy_all)
 
+    # The visual anchor is the density-weighted average of the locations after
+    # Soft Mean Shift converges.  Measure uncertainty in that same mode space:
+    # spread between converged modes, not spread between the original patch
+    # centres.  Thus adjacent patches that converge to one visual mode do not
+    # falsely inflate measurement uncertainty.
+    _, _, softms_modes_all, _, softms_mode_weights_all, _ = soft_mean_shift(
+        candidate.raw_logits,
+        candidate.centers,
+        config.MEANSHIFT_SCORE_TAU,
+        config.MEANSHIFT_BANDWIDTH_M,
+        config.MEANSHIFT_ITERATIONS,
+        config.MEANSHIFT_MODE_BETA,
+    )
+
     anchor_se_rows = []
     variance_rows = []
     for h in range(hypothesis_count):
@@ -1248,11 +1262,16 @@ def visual_observation(
         cross = torch.tensor(
             frame.cross, dtype=torch.float32, device=device
         ).reshape(1, 2)
-        delta = candidate.centers[h] - anchor_xy_all[h : h + 1]
+        # softms_modes_all[h] contains one converged mode for every initial
+        # patch seed.  Seeds converging to the same mode have negligible
+        # relative displacement, while separated modes retain their weighted
+        # between-mode uncertainty.
+        delta = softms_modes_all[h] - anchor_xy_all[h : h + 1]
         along_delta = (delta * unit).sum(dim=1)
         cross_delta = (delta * cross).sum(dim=1)
-        var_parallel = (posterior[h] * along_delta.square()).sum()
-        var_cross = (posterior[h] * cross_delta.square()).sum()
+        mode_weights = softms_mode_weights_all[h]
+        var_parallel = (mode_weights * along_delta.square()).sum()
+        var_cross = (mode_weights * cross_delta.square()).sum()
         variance_rows.append(torch.stack([var_parallel, var_cross]))
 
     anchor_se_all = torch.tensor(

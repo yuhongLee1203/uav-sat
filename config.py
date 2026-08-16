@@ -3,7 +3,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-ARCHITECTURE_NAME = "V34ProtocolCompactGRUInputForward3x6SoftMSPolynomialKalman_v35"
+ARCHITECTURE_NAME = "V34ProtocolCompactGRUSoftMSModeVarianceForward3x6PolynomialKalman_v36"
 BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobileclip2_s2").strip().lower()
 BACKBONE_SPECS = {
     "mobileclip2_s2": ("hf-hub:timm/MobileCLIP2-S2-OpenCLIP", 512),
@@ -19,9 +19,9 @@ if BACKBONE_KEY not in BACKBONE_SPECS:
     )
 
 if os.environ.get("UAVSAT_BACKBONE_BENCHMARK", "0") == "1":
-    OUTPUT_DIR = PROJECT_ROOT / "backbone-exp" / "outputs" / ("v35_v34protocol_compact_gru_" + BACKBONE_KEY)
+    OUTPUT_DIR = PROJECT_ROOT / "backbone-exp" / "outputs" / ("v36_softms_mode_variance_" + BACKBONE_KEY)
 else:
-    OUTPUT_DIR = PROJECT_ROOT / "outputs" / "v35_v34protocol_compact_gru_input_forward3x6_softms_polynomial_kalman"
+    OUTPUT_DIR = PROJECT_ROOT / "outputs" / "v36_v34protocol_compact_gru_softms_mode_variance_forward3x6_polynomial_kalman"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
 TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"

@@ -50,7 +50,7 @@ case "${MODE}" in
   *) echo "ERROR: --mode must be train, eval, or train_eval" >&2; exit 2 ;;
 esac
 
-OUTPUT_DIR="outputs/v35_v34protocol_compact_gru_input_forward3x6_softms_polynomial_kalman"
+OUTPUT_DIR="outputs/v36_v34protocol_compact_gru_softms_mode_variance_forward3x6_polynomial_kalman"
 CHECKPOINT_DIR="${OUTPUT_DIR}/checkpoints"
 VISUAL_CKPT="${CHECKPOINT_DIR}/visual_retrieval_A_only.pt"
 TEMPORAL_CKPT="${CHECKPOINT_DIR}/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
@@ -113,7 +113,7 @@ verify_python() {
 import config
 import robust_tracker
 import visual_model
-expected = "V34ProtocolCompactGRUInputForward3x6SoftMSPolynomialKalman_v35"
+expected = "V34ProtocolCompactGRUSoftMSModeVarianceForward3x6PolynomialKalman_v36"
 temporal = visual_model.ThreeFrameRouteStateGRU()
 checks = [
     (config.ARCHITECTURE_NAME == expected, "config architecture"),
@@ -133,12 +133,12 @@ checks = [
 ]
 failed = [name for ok, name in checks if not ok]
 if failed:
-    raise RuntimeError("v35 v34-protocol compact-GRU preflight failed: " + ", ".join(failed))
+    raise RuntimeError("v36 SoftMS-mode-variance preflight failed: " + ", ".join(failed))
 print("architecture :", expected)
 print("protocol     : controlled GT+smooth-jitter local prior on every frame")
 print("temporal     : v34 unchanged except main GRU input = mean/delta/delta2 + SAT context + compact 8-D state")
 print("motion       : v/a + causal heading -> second-order inertial polynomial; turn-rate is recurrent state only")
-print("visual       : causal-heading forward 3x6 + all-mode density-weighted SoftMS anchor")
+print("visual       : causal-heading forward 3x6 + SoftMS anchor + converged-mode variance")
 print("final filter : constrained route-coordinate Kalman (final output)")
 print("direction    : causal RNN heading; route frame rotates only AFTER waypoint crossing")
 print("pace         : controlled causal GT-speed envelope + <=0.75m/frame smooth catch-up")
@@ -183,7 +183,7 @@ verify_eval_outputs() {
 }
 
 printf '%*s\n' 108 '' | tr ' ' '='
-echo "v35: v34 Protocol + Compact Main-GRU Input Only"
+echo "v36: v35 Compact GRU + SoftMS Converged-Mode Measurement Variance"
 printf '%*s\n' 108 '' | tr ' ' '='
 echo "MODE              : ${MODE}"
 echo "GPU               : ${GPU}"
