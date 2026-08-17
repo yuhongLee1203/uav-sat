@@ -2826,7 +2826,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         if steady.size == 0:
             steady = np.asarray(latency_rows_ms, dtype=np.float64)
         summary["EndToEndTiming"] = {
-            "definition": "prepared UAV tensor -> backbone -> v33 retrieval/GRU -> external RouteKalman -> final XY",
+            "definition": "prepared UAV tensor -> backbone -> visual retrieval/GRU -> external RouteKalman -> final XY",
             "excluded": ["image disk I/O", "image preprocessing", "model/checkpoint loading", "satellite gallery construction"],
             "warmup_frames": int(min(latency_warmup, len(latency_rows_ms))),
             "samples": int(steady.size),

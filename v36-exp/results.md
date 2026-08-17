@@ -68,9 +68,9 @@ MAE = Mean Absolute Error（平均絕對誤差）；Progress MAE 是沿路徑進
 
 | 方法 | 原生定位協定 | MLE | Median | P90 | P95 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | FPS |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| DenseUAV | Fixed-gallery global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| DenseUAV | Fixed-gallery global retrieval | 417.282 | 347.952 | 872.145 | 1073.156 | 0.255 | 0.623 | 1.019 | 1.868 | 99.677 |
 | Sample4Geo | Fixed-gallery global retrieval | 284.905 | 241.941 | 588.841 | 709.878 | 0.340 | 1.330 | 2.320 | 3.537 | 226.264 |
-| Game4Loc | Fixed-gallery global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| Game4Loc | Fixed-gallery global retrieval | 184.182 | 124.480 | 434.277 | 559.439 | 2.235 | 5.065 | 7.838 | 12.054 | 229.348 |
 | InfoGeo | Fixed-gallery global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 | Bearing-UAV | Neighbor-map position/heading regression | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 | V36（Ours） | GT+jitter Forward-3×6 local tracking | 3.482 | 3.070 | 6.620 | 7.847 | 49.208 | 76.995 | 98.359 | 99.293 | 15.137 |

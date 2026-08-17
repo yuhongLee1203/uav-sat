@@ -1,0 +1,13 @@
+============================================================================================================
+V36Backbone_vgg16
+device=cuda
+Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+route_B: reuse UAV backbone cache
+route_B final MLE=4.520m P90=8.824m LSR@15=100.00% selected_capture=89.63% bank_capture=89.63% acq_acc=100.00% speed_mae=0.557m/frame progress_mae=0.244m heading_mae=9.4deg jump_rate=0.04% max_step=9.04m final_leg=14 gt_leg=14
+route_C: reuse UAV backbone cache
+route_C final MLE=3.835m P90=8.395m LSR@15=100.00% selected_capture=91.81% bank_capture=91.81% acq_acc=100.00% speed_mae=1.133m/frame progress_mae=0.197m heading_mae=27.4deg jump_rate=0.00% max_step=7.00m final_leg=10 gt_leg=10
+summary: /yh/study/uav-sat/backbone-exp/outputs/v36_vgg16/robust_tracker_summary.json
