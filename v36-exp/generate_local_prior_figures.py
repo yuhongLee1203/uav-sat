@@ -192,12 +192,93 @@ def make_sweep_figure(capture: dict) -> None:
     plt.close(fig)
 
 
+def four_by_six_evidence(route_index: int, route_name: str) -> pd.DataFrame:
+    """Return per-frame 4x6 coverage evidence under the original V36 geometry."""
+    csv = FULL / f"{route_name}_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    frame = pd.read_csv(csv)
+    dataset = RouteDataset(config.ROUTE_ROOTS[route_index], train=False)
+    gallery = SatPatchGallery(origin_lat=dataset.origin_lat, origin_lon=dataset.origin_lon)
+    xy = np.asarray([[s["x_meter"], s["y_meter"]] for s in gallery.samples])
+    pixels = np.asarray([[s["pixel_x"], s["pixel_y"]] for s in gallery.samples], dtype=int)
+    _, nearest = cKDTree(xy).query(frame[["prior_center_x", "prior_center_y"]].to_numpy())
+    pixel_to_idx = {tuple(pixel): idx for idx, pixel in enumerate(pixels)}
+    base = np.asarray([
+        [pixel_to_idx[(pixels[idx, 0] + dx * 32, pixels[idx, 1] + dy * 32)]
+         for dy in range(-3, 3) for dx in range(-3, 3)]
+        for idx in nearest
+    ])
+    centers = xy[base]
+    origin = frame[["prior_center_x", "prior_center_y"]].to_numpy()
+    heading = np.deg2rad(frame["search_heading_deg"].to_numpy())
+    forward = ((centers - origin[:, None, :]) * np.stack([np.cos(heading), np.sin(heading)], axis=1)[:, None, :]).sum(axis=2)
+    # 4 x 6 means retaining the 24 most-forward centers from V36's original 6x6 bank.
+    selected = np.argpartition(forward, -24, axis=1)[:, -24:]
+    selected_centers = np.take_along_axis(centers, selected[:, :, None], axis=1)
+    gt = frame[["gt_x", "gt_y"]].to_numpy()
+    distance = np.linalg.norm(selected_centers - gt[:, None, :], axis=2).min(axis=1)
+    return pd.DataFrame({
+        "route": route_name,
+        "frame_id": frame["frame_id"],
+        "min_4x6_candidate_center_distance_m": distance,
+        "capture_threshold_m": RADIUS_M,
+        "captured": distance <= RADIUS_M,
+    })
+
+
+def make_4x6_evidence_figure() -> None:
+    data = pd.concat([four_by_six_evidence(1, "route_B"), four_by_six_evidence(2, "route_C")], ignore_index=True)
+    data.to_csv(OUT / "v36_4x6_capture_per_frame.csv", index=False)
+    stats = data.groupby("route").agg(
+        total_frames=("captured", "size"), captured_frames=("captured", "sum"),
+        min_distance_m=("min_4x6_candidate_center_distance_m", "min"),
+        mean_distance_m=("min_4x6_candidate_center_distance_m", "mean"),
+        max_distance_m=("min_4x6_candidate_center_distance_m", "max"),
+    )
+    stats["missed_frames"] = stats["total_frames"] - stats["captured_frames"]
+    stats["capture_rate_pct"] = 100 * stats["captured_frames"] / stats["total_frames"]
+    stats.to_csv(OUT / "v36_4x6_capture_summary.csv")
+
+    fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(13, 6))
+    routes = list(stats.index)
+    captured = stats["captured_frames"].to_numpy()
+    missed = stats["missed_frames"].to_numpy()
+    total = stats["total_frames"].to_numpy()
+    ax0.bar(routes, captured, color="#14b8a6", label="Captured (≤ 7.5 m)")
+    ax0.bar(routes, missed, bottom=captured, color="#ef4444", label="Missed (> 7.5 m)")
+    ax0.set_ylabel("frame count")
+    ax0.set_title("V36 4×6：逐幀 coverage 統計")
+    for i, route in enumerate(routes):
+        ax0.text(i, total[i] * .50, f"{captured[i]} / {total[i]}\n{stats.iloc[i]['capture_rate_pct']:.2f}%", ha="center", va="center", color="white", fontsize=15, weight="bold")
+        if missed[i]:
+            ax0.text(i, total[i] - missed[i] / 2, f"miss {missed[i]}", ha="center", va="center", color="white", fontsize=10, weight="bold")
+    ax0.legend(loc="upper right")
+
+    colors = {"route_B": "#2563eb", "route_C": "#14b8a6"}
+    for route in routes:
+        vals = np.sort(data.loc[data.route == route, "min_4x6_candidate_center_distance_m"].to_numpy())
+        ax1.plot(vals, np.arange(1, len(vals) + 1) / len(vals) * 100, lw=2.5, color=colors[route], label=route)
+    ax1.axvline(RADIUS_M, color="#dc2626", ls="--", lw=2, label="capture threshold = 7.5 m")
+    ax1.set_xlabel("最近 4×6 候選中心至 GT 距離 (m)")
+    ax1.set_ylabel("累積 frame 比例 (%)")
+    ax1.set_xlim(left=0); ax1.set_ylim(0, 101)
+    ax1.set_title("coverage 的距離證據（ECDF）")
+    ax1.legend(loc="lower right", fontsize=10)
+    fig.text(0.5, -0.03,
+             "Coverage 定義：每一 frame 的 GT 與 24 個 4×6 候選中心中，最近距離 ≤ 7.5 m。\n"
+             "因此本圖直接回答「4×6 是否涵蓋 GT」；不代表定位 MLE，MLE 需用 4×6 重新訓練／推論後另行量測。",
+             ha="center", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(OUT / "04_v36_4x6_capture_evidence.png", dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     capture = original_capture()
     make_geometry_figure()
     make_capture_figure(capture)
     make_sweep_figure(capture)
+    make_4x6_evidence_figure()
     (OUT / "README.txt").write_text(
         "Figures are based on original controlled V36 outputs.\n"
         "V36 uses current-frame GT + deterministic smooth jitter as its local prior; it is not autonomous prior prediction.\n"
