@@ -5,7 +5,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 ARCHITECTURE_NAME = os.environ.get(
     "UAVSAT_ARCHITECTURE_NAME",
-    "V34ProtocolCompactGRUSoftMSModeVarianceForward3x6PolynomialKalman_v36",
+    "AeroRoute_Forward3x6_SoftMS_GRU_Polynomial_Kalman",
 )
 BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobileclip2_s2").strip().lower()
 BACKBONE_SPECS = {
@@ -26,7 +26,7 @@ if os.environ.get("UAVSAT_OUTPUT_DIR"):
 elif os.environ.get("UAVSAT_BACKBONE_BENCHMARK", "0") == "1":
     OUTPUT_DIR = PROJECT_ROOT / "backbone-exp" / "outputs" / ("v36_softms_mode_variance_" + BACKBONE_KEY)
 else:
-    OUTPUT_DIR = PROJECT_ROOT / "outputs" / "v36_v34protocol_compact_gru_softms_mode_variance_forward3x6_polynomial_kalman"
+    OUTPUT_DIR = PROJECT_ROOT / "outputs" / "aeroroute_forward3x6_softms_gru_polynomial_kalman"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
 TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
@@ -55,9 +55,12 @@ CONTROLLED_GT_PRIOR_JITTER_RADIUS_RATE = 0.017
 CONTROLLED_GT_PRIOR_JITTER_MIN_FRACTION = 0.40
 CONTROLLED_GT_PRIOR_JITTER_MAX_FRACTION = 0.75
 CONTROLLED_FINAL_PROGRESS_CAP_TO_GT = True
-CONTROLLED_PROTOCOL_NAME = "GT+smooth-jitter_controlled_forward3x6_SoftMS_local_prior_3frame_causal_heading_continuous_waypoint_RNN_polynomial_Kalman"
+CONTROLLED_PROTOCOL_NAME = (
+    "GT+smooth-jitter_controlled_forward3x6_SoftMS_local_prior_3frame_causal_heading_"
+    "continuous_waypoint_GRU_Polynomial_Kalman"
+)
 
-WAYPOINT_DIR = PROJECT_ROOT / "route_waypoints"
+WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
 WAYPOINT_FILES = {
     "route_A": WAYPOINT_DIR / "route_A_waypoints.json",
     "route_B": WAYPOINT_DIR / "route_B_waypoints.json",

@@ -1,6 +1,6 @@
 <!-- V36_EXP_RESULTS_BEGIN -->
 
-# V36 實驗自動彙整
+# AeroRoute 實驗自動彙整
 
 尚未完成的工作會顯示 `PENDING`。
 
@@ -13,14 +13,14 @@
 
 聚合座標數是逐幀平均。時間只計算候選座標加權求和，不含圖片、backbone、matching、MeanShift、GRU 或 Kalman；不計 FPS。
 
-## 表 2：V36 主要架構消融
+## 表 2：AeroRoute 主要架構消融
 
 | 方法 | MLE | P90 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | Progress MAE |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | SoftMS only | 4.705 | 9.072 | 35.739 | 57.357 | 94.992 | **99.321** | 10.889 |
 | SoftMS + 3-frame GRU | 4.795 | 9.362 | 33.588 | 57.838 | 94.482 | 99.236 | 10.914 |
 | SoftMS + GRU + 慣性多項式 | 4.818 | 9.502 | 34.946 | 57.810 | 94.284 | 99.293 | 10.782 |
-| 完整 V36（含 learned-variance Kalman） | **3.482** | **6.620** | **49.208** | **76.995** | **98.359** | 99.293 | **0.195** |
+| 完整 AeroRoute（含 learned-variance Kalman） | **3.482** | **6.620** | **49.208** | **76.995** | **98.359** | 99.293 | **0.195** |
 
 ## 表 3：Forward 3×6 vs 6×6
 
@@ -31,13 +31,22 @@
 
 3×6 的 origin backshift 固定為一個 gallery cell（4.75 m）；它由 Route-A/grid geometry 決定，沒有用 Route B/C 挑參數。
 
+### 補充表：AeroRoute 主架構 Forward 3×6 vs Forward 4×6
+
+| AeroRoute 主架構搜尋範圍 | 候選數 | MLE (m) | P90 (m) | LSR@3 | LSR@5 | LSR@10 | LSR@15 | FPS |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 原始 Forward 3×6 | 18 | 3.482 | 6.620 | **49.208** | 76.995 | 98.359 | 99.293 | **15.137** |
+| 已完成的 Forward 4×6 | 24 | 3.482 | **6.533** | 47.991 | **77.674** | **98.444** | **99.349** | 13.241 |
+
+4×6 比 3×6 多 6 個候選。MLE 相同；P90 降低 0.087 m、LSR@5 提升 0.679 個百分點，但 LSR@3 降低 1.217 個百分點，FPS 降低約 12.5%。
+
 ## 表 4：為什麼要三幀 GRU
 
 | 輸入影像數量 | MLE | P90 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | Progress MAE |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | 1 幀 | 3.919 | 7.666 | 44.171 | 69.128 | **98.359** | **99.434** | 0.201 |
 | 2 幀 | 3.936 | 7.428 | 44.001 | 67.968 | 98.132 | 99.179 | 0.306 |
-| 3 幀（V36） | **3.482** | **6.620** | **49.208** | **76.995** | **98.359** | 99.293 | **0.195** |
+| 3 幀（AeroRoute） | **3.482** | **6.620** | **49.208** | **76.995** | **98.359** | 99.293 | **0.195** |
 
 ## 表 5：慣性多項式實驗
 
@@ -45,7 +54,7 @@
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Kalman CV（不使用 learned polynomial） | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 | 只使用 GRU 速度 | 3.690 | 7.567 | 46.972 | 73.543 | **98.529** | **99.547** | 0.229 | 0.794 |
-| GRU 速度 + 加速度二階多項式（V36） | **3.482** | **6.620** | **49.208** | **76.995** | 98.359 | 99.293 | **0.195** | **0.746** |
+| GRU 速度 + 加速度二階多項式（AeroRoute） | **3.482** | **6.620** | **49.208** | **76.995** | 98.359 | 99.293 | **0.195** | **0.746** |
 
 MAE = Mean Absolute Error（平均絕對誤差）；Progress MAE 是沿路徑進度誤差，Speed MAE 是每幀速度誤差。
 
@@ -56,7 +65,7 @@ MAE = Mean Absolute Error（平均絕對誤差）；Progress MAE 是沿路徑進
 | 最後輸出方式 | MLE | P90 | LSR@3 | LSR@5 | LSR@10 | LSR@15 |
 |---|---:|---:|---:|---:|---:|---:|
 | 不使用 Kalman | 4.818 | 9.502 | 34.946 | 57.810 | 94.284 | **99.293** |
-| 完整 V36 learned-variance Kalman | **3.482** | **6.620** | **49.208** | **76.995** | **98.359** | **99.293** |
+| 完整 AeroRoute learned-variance Kalman | **3.482** | **6.620** | **49.208** | **76.995** | **98.359** | **99.293** |
 
 ## 表 7：最終 Route B / Route C
 
@@ -75,7 +84,7 @@ MAE = Mean Absolute Error（平均絕對誤差）；Progress MAE 是沿路徑進
 | Game4Loc | Fixed-gallery global retrieval | 184.182 | 124.480 | 434.277 | 559.439 | 2.235 | 5.065 | 7.838 | 12.054 | 229.348 |
 | InfoGeo | Fixed-gallery global retrieval | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 | Bearing-UAV | Neighbor-map position/heading regression | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| V36（Ours） | GT+jitter Forward-3×6 local tracking | 3.482 | 3.070 | 6.620 | 7.847 | 49.208 | 76.995 | 98.359 | 99.293 | 15.137 |
+| AeroRoute（Ours） | GT+jitter Forward-3×6 local tracking | 3.482 | 3.070 | 6.620 | 7.847 | 49.208 | 76.995 | 98.359 | 99.293 | 15.137 |
 
 舊版約 12 m 的 local-18 adapter 結果已判定無效；表 8 只讀取 outputs/native-papers 下由官方模型與固定 global gallery 產生的結果。
 <!-- V36_EXP_RESULTS_END -->
