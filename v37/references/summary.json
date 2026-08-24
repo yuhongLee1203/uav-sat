@@ -1,0 +1,26 @@
+{
+  "source": "offline_sparse_route_anchors",
+  "uses_current_frame_gt_at_inference": false,
+  "anchor_spacing_m": 4.5,
+  "route_A": {
+    "frames": 1732,
+    "anchors": 788,
+    "first_frame": 0,
+    "last_frame": 1731,
+    "route_length_m": 4938.283438447651
+  },
+  "route_B": {
+    "frames": 2276,
+    "anchors": 1114,
+    "first_frame": 0,
+    "last_frame": 2275,
+    "route_length_m": 7091.733910326268
+  },
+  "route_C": {
+    "frames": 1258,
+    "anchors": 439,
+    "first_frame": 0,
+    "last_frame": 1257,
+    "route_length_m": 2674.2407517751285
+  }
+}

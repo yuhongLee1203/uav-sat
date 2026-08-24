@@ -3,10 +3,12 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 EXP_DIR="${ROOT_DIR}/v36-exp"
+RUNNER_ROOT="${V36_EXP_RUNNER_ROOT:-${ROOT_DIR}}"
 VARIANT="${1:?usage: run_internal_variant.sh VARIANT GPU}"
 GPU_ID="${2:?usage: run_internal_variant.sh VARIANT GPU}"
 BASE_OUTPUT="${ROOT_DIR}/outputs/v36_v34protocol_compact_gru_softms_mode_variance_forward3x6_polynomial_kalman"
-OUTPUT_DIR="${EXP_DIR}/outputs/internal/corrected_v2/${VARIANT}"
+OUTPUT_ROOT="${V36_EXP_OUTPUT_ROOT:-${EXP_DIR}/outputs/internal/corrected_v2}"
+OUTPUT_DIR="${OUTPUT_ROOT}/${VARIANT}"
 SHARED_CACHE="${EXP_DIR}/cache/mobileclip2_s2"
 EPOCHS="${V36_EXP_EPOCHS:-60}"
 PATIENCE="${V36_EXP_PATIENCE:-10}"
@@ -65,8 +67,8 @@ export UAVSAT_FORWARD_ORIGIN_BACKSHIFT_M="${forward_backshift_m}"
 export UAVSAT_MEASURE_LATENCY=1
 export UAVSAT_LATENCY_WARMUP=30
 
-cd "${ROOT_DIR}"
-python3 -u robust_tracker.py \
+cd "${RUNNER_ROOT}"
+python3 -u "${RUNNER_ROOT}/robust_tracker.py" \
   --mode "${mode}" \
   --reuse-visual \
   --temporal-epochs "${EPOCHS}" \

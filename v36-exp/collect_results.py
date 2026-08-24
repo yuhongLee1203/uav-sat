@@ -16,6 +16,7 @@ INTERNAL = EXP / "outputs/internal/corrected_v2"
 INTERNAL_LEGACY = EXP / "outputs/internal"
 PAPERS = EXP / "outputs/papers"
 NATIVE_PAPERS = EXP / "outputs/native-papers"
+ADAPTED_PAPERS = EXP / "outputs/native-unreported"
 NEED = EXP / "need.md"
 RESULTS = EXP / "results.md"
 BEGIN = "<!-- V36_EXP_RESULTS_BEGIN -->"
@@ -75,6 +76,33 @@ def paper(name):
     path = NATIVE_PAPERS / name / "summary.json"
     if not path.exists(): return None
     return json.loads(path.read_text())["combined"]
+
+
+def adapted_paper(name):
+    path = ADAPTED_PAPERS / name / "summary.json"
+    if not path.exists():
+        return None
+    summary = json.loads(path.read_text())
+    root = ADAPTED_PAPERS / name
+    error_paths = [root / "route_B_errors_m.npy", root / "route_C_errors_m.npy"]
+    if not all(path.exists() for path in error_paths):
+        return None
+    errors = np.concatenate([np.load(path) for path in error_paths])
+    latency_key = "latency_ms_fixed_gallery_similarity_only" if name == "InfoGeo" else "latency_ms_end_to_end"
+    weighted_latency = sum(
+        summary["routes"][route][latency_key] * summary["routes"][route]["frames"]
+        for route in ("route_B", "route_C")
+    ) / len(errors)
+    return {
+        "MLE_m": float(errors.mean()), "Median_m": float(np.median(errors)),
+        "P90_m": float(np.quantile(errors, .90)), "P95_m": float(np.quantile(errors, .95)),
+        "LSR@3_pct": float((errors <= 3).mean() * 100),
+        "LSR@5_pct": float((errors <= 5).mean() * 100),
+        "LSR@10_pct": float((errors <= 10).mean() * 100),
+        "LSR@15_pct": float((errors <= 15).mean() * 100),
+        "latency_ms": float(weighted_latency),
+        "FPS": float(1000.0 / weighted_latency),
+    }
 
 
 def cols(method, value, keys):
@@ -208,13 +236,18 @@ def build():
         lines.append("| " + route.replace("route_", "Route ") + " | " + " | ".join(f(s.get(k) if s else None) for k in vals) + " |")
     lines.append(cols("平均（逐幀合併）", full, ["mle","median","p90","p95","lsr3","lsr5","lsr10","lsr15","lsr20"])); lines.append("")
     lines += ["## 表 8：其他論文原生協定比較", "", "| 方法 | 原生定位協定 | MLE | Median | P90 | P95 | LSR@3 | LSR@5 | LSR@10 | LSR@15 | FPS |", "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
-    for name in ("DenseUAV","Sample4Geo","Game4Loc","InfoGeo","Bearing-UAV"):
+    for name in ("DenseUAV","Sample4Geo","Game4Loc"):
         protocol = "Fixed-gallery global retrieval" if name != "Bearing-UAV" else "Neighbor-map position/heading regression"
         value = paper(name)
         keys = ["MLE_m", "Median_m", "P90_m", "P95_m", "LSR@3_pct", "LSR@5_pct", "LSR@10_pct", "LSR@15_pct", "FPS"]
         lines.append("| " + name + " | " + protocol + " | " + " | ".join(f(value.get(key) if value else None) for key in keys) + " |")
+    info = adapted_paper("InfoGeo")
+    bearing = adapted_paper("Bearing-UAV")
+    keys = ["MLE_m", "Median_m", "P90_m", "P95_m", "LSR@3_pct", "LSR@5_pct", "LSR@10_pct", "LSR@15_pct"]
+    lines.append("| InfoGeo（adapted reproduction） | Fixed-gallery global retrieval | " + " | ".join(f(info.get(key) if info else None) for key in keys) + " | —† |")
+    lines.append("| Bearing-UAV（adapted reproduction） | Four-patch full-map position/heading regression | " + " | ".join(f(bearing.get(key) if bearing else None) for key in keys) + " | " + f(bearing.get("FPS") if bearing else None) + " |")
     lines.append("| V36（Ours） | GT+jitter Forward-3×6 local tracking | " + " | ".join(f(full.get(k) if full else None) for k in ["mle","median","p90","p95","lsr3","lsr5","lsr10","lsr15","fps"]) + " |")
-    lines += ["", "舊版約 12 m 的 local-18 adapter 結果已判定無效；表 8 只讀取 outputs/native-papers 下由官方模型與固定 global gallery 產生的結果。", ""]
+    lines += ["", "舊版約 12 m 的 local-18 adapter 結果已判定無效。InfoGeo 與 Bearing-UAV 的公開 release 缺少可直接套用本資料集的完整資料／訓練元件，表中為以其公開模型元件重新訓練的 adapted reproduction，B/C 全部 3,534 個影格合併後計算；不得宣稱為作者原始 benchmark 的官方數字。† InfoGeo 未報告 FPS，因為其既有時間只量測已提取 descriptor 的 gallery 相似度，未包含 DINOv2/slot encoder。", ""]
     return bold_column_winners("\n".join(lines))
 
 
