@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Plot Route-B/C final localization trajectories on the georeferenced SAT map.
 
-This reproduces the purpose/style of the old v36-exp *_actual_trajectory.png
-figures for v36_byTeacher.  Only the reference trajectory and the FINAL
-GRU+Polynomial+Kalman output are drawn; MeanShift is intentionally omitted.
+This reproduces the old v36-exp actual-trajectory map presentation for
+v36_byTeacher.  Only two continuous lines are drawn on the real satellite map:
+reference/GT in white and the final GRU+Polynomial+Kalman prediction in red.
+There are intentionally no labels, legend, title, axes, start/end markers, or
+MeanShift visualization.
 
 Coordinates in the per-frame CSV are local metric XY, created by
 meters_from_latlon().  They are converted back to latitude/longitude with the
@@ -15,7 +17,6 @@ or visual rescaling of trajectory coordinates is used.
 import argparse
 import csv
 import math
-import os
 from pathlib import Path
 
 import matplotlib
@@ -102,7 +103,6 @@ def route_crop_bounds(reference_px, final_px, image_size, padding_px):
     y0 = max(0.0, float(points[:, 1].min()) - padding_px)
     y1 = min(float(height - 1), float(points[:, 1].max()) + padding_px)
 
-    # Keep a useful minimum field of view for near-straight route segments.
     min_span = 500.0
     if x1 - x0 < min_span:
         cx = 0.5 * (x0 + x1)
@@ -128,58 +128,38 @@ def plot_route(route_name, csv_path, output_path, mapper, origin_lat, origin_lon
         reference_px, final_px, image_size, float(padding_px)
     )
 
-    # Match the old v36-exp actual-trajectory presentation: satellite image as
-    # the real background, continuous reference/final trajectories, and clear
-    # start/end markers.  No MeanShift points/line are shown here.
     fig, ax = plt.subplots(figsize=(10.5, 8.5))
     ax.imshow(sat, origin="upper")
 
+    # Reference / GT trajectory: white.
     ax.plot(
         reference_px[:, 0],
         reference_px[:, 1],
-        color="red",
-        linewidth=2.4,
+        color="white",
+        linewidth=2.8,
         linestyle="-",
-        label="Reference trajectory",
         zorder=4,
     )
+
+    # Final GRU + Polynomial + Kalman prediction: red.
     ax.plot(
         final_px[:, 0],
         final_px[:, 1],
-        color="deepskyblue",
+        color="red",
         linewidth=2.2,
         linestyle="-",
-        label="Final localization",
         zorder=5,
-    )
-
-    ax.scatter(
-        reference_px[0, 0], reference_px[0, 1],
-        s=95, marker="o", color="lime", edgecolors="black", linewidths=0.8,
-        label="Start", zorder=7,
-    )
-    ax.scatter(
-        reference_px[-1, 0], reference_px[-1, 1],
-        s=115, marker="X", color="yellow", edgecolors="black", linewidths=0.8,
-        label="End", zorder=7,
     )
 
     ax.set_xlim(x0, x1)
     ax.set_ylim(y1, y0)
     ax.set_aspect("equal", adjustable="box")
-    ax.set_title(
-        f"{route_name.replace('_', ' ').title()} - Final Localization Trajectory",
-        fontsize=15,
-    )
-    ax.set_xlabel("Satellite-map pixel X")
-    ax.set_ylabel("Satellite-map pixel Y")
-    ax.legend(loc="best", framealpha=0.90)
-    ax.grid(False)
+    ax.axis("off")
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=220, bbox_inches="tight")
+    fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
+    fig.savefig(output_path, dpi=220, bbox_inches="tight", pad_inches=0)
     plt.close(fig)
     print(f"[OK] {route_name}: {output_path}", flush=True)
 
