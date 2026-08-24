@@ -10,4 +10,5 @@ python3 -u robust_tracker.py \
   --temporal-epochs 60 \
   --patience 10 \
   --jitter-m 8 \
+  --forward-rows 3 \
   "$@"
