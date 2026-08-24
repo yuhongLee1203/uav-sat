@@ -12,12 +12,13 @@ FEATURE_CACHE_DIR = OUTPUT_DIR / "feature_cache"
 
 # v36_byTeacher keeps the same route reference-point protocol, Forward-3x6,
 # Soft Mean-Shift, GRU polynomial and external Kalman settings as v36.
-# The only architectural change is the inter-frame state hand-off:
+# The only architectural change is the inter-frame GRU state hand-off:
 #   X_t(output) = Kalman(GRU(MeanShift(...)))
 #   X_t^MS      = MeanShift(current next-frame image around X_t(output))
-#   X_{t+1}     = Kalman(GRU(X_t^MS))
-# X_t(output) is still the reported/evaluated position, but X_t^MS replaces
-# the previous POSITION state before the next GRU/Kalman prediction.
+#   X_{t+1}     = Kalman(GRU(previous_position=X_t^MS))
+# X_t(output) remains both the reported position and the external Kalman's
+# posterior state. X_t^MS replaces only the GRU previous-position input; it
+# must not overwrite kf.x or kf.P before the next Kalman prediction.
 TEACHER_MEANSHIFT_FEEDBACK = True
 TEACHER_FEEDBACK_PRESERVE_KALMAN_VELOCITY = True
 TEACHER_FEEDBACK_USE_FORWARD_3X6 = True
