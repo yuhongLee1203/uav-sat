@@ -4,18 +4,18 @@ from config_base import *
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 ARCHITECTURE_NAME = (
-    "V36_byTeacher_MeanShiftEvidence_2Frame_GRUVisualMeasurementVariance_Polynomial_Kalman"
+    "V36_byTeacher_MeanShiftEvidence_2Frame_GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman"
 )
 OUTPUT_DIR = PROJECT_ROOT / "output"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / "controlled_referenceprior_forward3x6_ms_evidence_2frame_gru_visual_measurement_variance_A_only.pt"
+    / "controlled_referenceprior_forward3x6_ms_evidence_2frame_gru_visual_measurement_variance_nosat_A_only.pt"
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / "controlled_referenceprior_forward3x6_ms_evidence_2frame_gru_visual_measurement_variance_A_only_latest.pt"
+    / "controlled_referenceprior_forward3x6_ms_evidence_2frame_gru_visual_measurement_variance_nosat_A_only_latest.pt"
 )
 FEATURE_CACHE_DIR = OUTPUT_DIR / "feature_cache"
 
@@ -32,14 +32,12 @@ TEACHER_FEEDBACK_USE_FORWARD_3X6 = True
 # ---------------------------------------------------------------------------
 # Visual measurement responsibility
 # ---------------------------------------------------------------------------
-# Current SoftMS position MUST be sent into the GRU, but it is evidence only.
-# The old equation
+# Current SoftMS position is sent into the GRU as evidence only. The old
 #       visual_measurement = SoftMS + correction_head
-# is disabled.
-# The historical correction_head is now interpreted as a learned visual
+# path is removed. The historical correction_head now acts as a GRU visual
 # measurement-innovation head around the Kalman motion prior:
 #       visual_measurement = predicted_se + measurement_head(hidden)
-# Thus MeanShift is never algebraically added to the head output.
+# SoftMS is therefore never algebraically added to the head output.
 MEANSHIFT_POSITION_AS_GRU_INPUT = True
 DIRECT_SOFTMS_MEASUREMENT = False
 USE_GRU_VISUAL_MEASUREMENT_HEAD = True
@@ -49,16 +47,19 @@ GRU_VISUAL_MEASUREMENT_CROSS_RANGE_M = 8.0
 # ---------------------------------------------------------------------------
 # Visual uncertainty responsibility
 # ---------------------------------------------------------------------------
-# SoftMS mode-space spread remains a useful cue for ambiguity, so it is retained
-# as a GRU input feature. It is NOT added to the final variance.
-# variance_head alone predicts the Kalman measurement covariance R_t.
+# SoftMS mode-space spread is retained only as an ambiguity cue inside GRU.
+# It is NOT sent to Kalman and is NOT added to variance_head output.
+# variance_head alone predicts the final Kalman measurement covariance R_t.
 MEANSHIFT_VARIANCE_AS_GRU_INPUT = True
 DIRECT_SOFTMS_VARIANCE = False
 USE_LEARNED_VARIANCE_HEAD = True
 GRU_VISUAL_VARIANCE_INIT_M2 = 25.0
 
-# Since variance_head is the final visual uncertainty, do not let the old
-# SoftMS-derived visual-confidence path rescale R_t a second time inside Kalman.
+# Kalman must not consume MeanShift/local-posterior confidence. The legacy
+# update API still has an acquisition_confidence argument for compatibility,
+# but fixing both bounds to 1 makes its value constant and removes any dynamic
+# MeanShift-confidence influence on R, innovation gates, or posterior limits.
+KALMAN_USE_MS_CONFIDENCE = False
 VISUAL_CONFIDENCE_FLOOR = 1.0
 VISUAL_CONFIDENCE_CEIL = 1.0
 ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
@@ -72,6 +73,12 @@ ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
 # through the polynomial next-step objective.
 EXPERIMENT_FRAME_COUNT = 2
 
+# Satellite context is intentionally not part of the main GRU. In this
+# controlled single-window protocol, the posterior-weighted SAT embedding is
+# strongly scene/route specific and can encourage Route-A memorization. The
+# visual retrieval/MeanShift stage still uses SAT embeddings normally.
+USE_SATELLITE_CONTEXT_IN_GRU = False
+
 # Numeric GRU state:
 # SoftMS mode-space spread(2)
 # + current SoftMS - Kalman prior(2)
@@ -80,20 +87,19 @@ EXPERIMENT_FRAME_COUNT = 2
 # + previous heading residual(1) + turn rate(1) = 10.
 RNN_NUMERIC_DIM = 10
 
-# The GRU now owns visual measurement and uncertainty, therefore both must be
-# supervised. Measurement uses the reference position; variance uses Gaussian
-# NLL from the measurement residual.
+# GRU owns visual measurement and uncertainty, so both are supervised.
+# Measurement uses the reference position. Variance uses Gaussian NLL from the
+# learned measurement residual; SoftMS variance is not part of this output.
 LOSS_MEASUREMENT = 1.0
 LOSS_VARIANCE_NLL = 0.05
 
-# Keep the existing motion/heading supervision. The compact model converges
-# quickly, so use the more conservative temporal learning rate.
+# Compact recurrent model converges quickly; use a conservative learning rate.
 TEMPORAL_LR = 1e-4
 
 CONTROLLED_PROTOCOL_NAME = (
     "reference-point+smooth-jitter_forward3x6_SoftMS-as-GRU-evidence_"
-    "2frame_GRU-visual-measurement-and-variance_polynomial_Kalman_"
-    "with_next-frame_MeanShift_previous-position-feedback"
+    "2frame_GRU-visual-measurement-and-variance_no-sat-context_"
+    "polynomial_Kalman_no-MS-confidence_with-next-frame-MS-feedback"
 )
 
 # Waypoints stay in the repository-level route_waypoints folder.
