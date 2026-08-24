@@ -149,21 +149,25 @@ class RouteProgressGRUOutput:
 
 
 class TwoFrameRouteStateGRU(nn.Module):
-    """Teacher architecture: MS previous position -> GRU -> Kalman measurement.
+    """Teacher architecture with a causal MeanShift previous-position hand-off.
 
-    The newly arrived UAV frame is used to re-localize the previous Kalman
-    output by MeanShift.  That X_(t-1)^MS is the base position for the GRU
-    visual-measurement branch.  The measurement head predicts a displacement
-    from X_(t-1)^MS to the current measurement z_t.
+    The newly arrived UAV frame re-localizes the previous Kalman output by
+    MeanShift.  X_(t-1)^MS is supplied to the GRU as the previous-position cue,
+    exactly as requested by the teacher, but it is NOT used as the absolute base
+    of the current measurement.  Doing that made any accumulated Kalman error
+    impossible to recover because the bounded measurement head could move only a
+    few metres from an already-wrong X_(t-1)^MS.
 
-    This is intentionally different from both old alternatives:
-      - NOT current_SoftMS + correction_head;
-      - NOT Kalman_prior + correction_head.
+    The current controlled local MeanShift observation is the current visual
+    anchor.  The GRU uses X_(t-1)^MS, current visual innovation, two-frame UAV
+    features and recurrent state to learn a bounded residual correction around
+    that current visual anchor.  Thus:
+        previous-position input = X_(t-1)^MS
+        z_t = current_MS_t + learned_residual_t
 
     Motion/heading heads independently predict the inertial polynomial used by
-    the Kalman predict step.  variance_head alone predicts the Kalman visual
-    measurement variance.  SoftMS spread is only an internal ambiguity cue.
-    Satellite context is not part of the recurrent input.
+    the Kalman predict step. variance_head alone predicts the Kalman visual
+    measurement variance. Satellite context is not part of the recurrent input.
     """
 
     def __init__(self):
@@ -202,8 +206,8 @@ class TwoFrameRouteStateGRU(nn.Module):
 
         self.motion_head = head(4)
         self.heading_head = head(2)
-        # Historical field name retained for external compatibility.  Semantics:
-        # current visual displacement / measurement-step head.
+        # Historical field name retained for checkpoint/pipeline compatibility.
+        # Semantics in v4: residual correction around the current visual anchor.
         self.correction_head = head(2)
         self.variance_head = head(2)
 
@@ -290,14 +294,12 @@ class TwoFrameRouteStateGRU(nn.Module):
 
         delta_recent, clip_mean = self._two_frame_features(z_uav, previous_z_uav)
 
-        # On the first frame no previous MS hand-off exists; use the current
-        # Kalman prior only for initialization.  From frame 1 onward this is the
-        # teacher-requested X_(t-1)^MS produced with the newly arrived image.
+        # First frame has no inter-frame MS hand-off. Use the current prior only
+        # to construct the numeric previous-position cue. From frame 1 onward,
+        # previous_measurement_se is teacher-requested X_(t-1)^MS.
         if previous_measurement_se is None:
             previous_measurement_se = predicted_se.detach()
 
-        # Current SoftMS remains visual evidence INSIDE the GRU.  It is never
-        # algebraically added to the measurement-head output.
         innovation_se = visual_anchor_se - predicted_se
         visual_step_se = visual_anchor_se - previous_measurement_se
 
@@ -408,20 +410,21 @@ class TwoFrameRouteStateGRU(nn.Module):
         # ------------------------------------------------------------------
         # Visual measurement branch -> Kalman update
         # ------------------------------------------------------------------
-        raw_measurement_step = torch.tanh(self.correction_head(h))
-        measurement_step = torch.cat(
+        raw_residual = torch.tanh(self.correction_head(h))
+        measurement_residual = torch.cat(
             [
-                raw_measurement_step[:, 0:1]
+                raw_residual[:, 0:1]
                 * float(config.GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M),
-                raw_measurement_step[:, 1:2]
+                raw_residual[:, 1:2]
                 * float(config.GRU_VISUAL_MEASUREMENT_CROSS_RANGE_M),
             ],
             dim=1,
         )
 
-        # Critical fix: measurement is predicted from the re-localized previous
-        # position X_(t-1)^MS, NOT from the Kalman prior and NOT from current MS.
-        measurement = previous_measurement_se + measurement_step
+        # X_(t-1)^MS remains an INPUT to the GRU through visual_step_se above.
+        # The current absolute measurement must stay anchored to current visual
+        # evidence; otherwise an old Kalman error becomes unrecoverable.
+        measurement = visual_anchor_se + measurement_residual
 
         raw_log_variance = self.variance_head(h)
         min_log_var = math.log(float(config.KALMAN_R_MIN_VAR))
@@ -436,14 +439,14 @@ class TwoFrameRouteStateGRU(nn.Module):
                 acceleration,
                 heading_residual,
                 turn_rate,
-                measurement_step,
+                measurement_residual,
                 measurement_variance,
             ],
             dim=1,
         )
         return RouteProgressGRUOutput(
             measurement_se=measurement,
-            correction_se=measurement_step,
+            correction_se=measurement_residual,
             measurement_variance_se=measurement_variance,
             velocity_se=velocity,
             acceleration_se=acceleration,
