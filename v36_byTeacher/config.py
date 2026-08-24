@@ -5,18 +5,18 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 ARCHITECTURE_NAME = (
     "V36_byTeacher_MSPreviousPosition_2Frame_GRUVisualMeasurementVariance_"
-    "NoSatContext_Polynomial_Kalman_v3"
+    "NoSatContext_Polynomial_Kalman_v4"
 )
 OUTPUT_DIR = PROJECT_ROOT / "output"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / "controlled_referenceprior_forward3x6_ms_previous_position_2frame_gru_visual_measurement_variance_nosat_v3_A_only.pt"
+    / "controlled_referenceprior_forward3x6_ms_previous_position_2frame_gru_visual_measurement_variance_nosat_v4_A_only.pt"
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / "controlled_referenceprior_forward3x6_ms_previous_position_2frame_gru_visual_measurement_variance_nosat_v3_A_only_latest.pt"
+    / "controlled_referenceprior_forward3x6_ms_previous_position_2frame_gru_visual_measurement_variance_nosat_v4_A_only_latest.pt"
 )
 FEATURE_CACHE_DIR = OUTPUT_DIR / "feature_cache"
 
@@ -25,31 +25,29 @@ FEATURE_CACHE_DIR = OUTPUT_DIR / "feature_cache"
 # ---------------------------------------------------------------------------
 # For frame t, the newly arrived UAV image re-localizes the previous Kalman
 # output X_(t-1) by MeanShift. X_(t-1)^MS is only the GRU previous-position cue;
-# it never overwrites the external Kalman posterior/covariance.
+# it never overwrites kf.x/kf.P and is not used as the absolute base of z_t.
 TEACHER_MEANSHIFT_FEEDBACK = True
 TEACHER_FEEDBACK_PRESERVE_KALMAN_VELOCITY = True
 TEACHER_FEEDBACK_USE_FORWARD_3X6 = True
+MEANSHIFT_POSITION_AS_GRU_INPUT = True
 
 # ---------------------------------------------------------------------------
 # GRU visual measurement
 # ---------------------------------------------------------------------------
-# No current-SoftMS + correction path and no Kalman-prior + correction path.
-# The learned current measurement is predicted from the teacher-requested
-# re-localized previous position:
-#       z_t = X_(t-1)^MS + measurement_step_head(h_t)
-MEANSHIFT_POSITION_AS_GRU_INPUT = True
+# Current measurement is anchored to the current controlled local MeanShift:
+#       z_t = current_MS_t + residual_head(h_t)
+# The teacher-requested X_(t-1)^MS remains an input to the GRU and therefore
+# affects h_t, but an accumulated previous Kalman error can no longer shift the
+# absolute current measurement hundreds of metres away from the visual evidence.
 DIRECT_SOFTMS_MEASUREMENT = False
 USE_GRU_VISUAL_MEASUREMENT_HEAD = True
-GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M = 16.0
-GRU_VISUAL_MEASUREMENT_CROSS_RANGE_M = 10.0
-GRU_VISUAL_MEASUREMENT_INIT_PROGRESS_M = 3.0
+GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M = 6.0
+GRU_VISUAL_MEASUREMENT_CROSS_RANGE_M = 4.0
+GRU_VISUAL_MEASUREMENT_INIT_PROGRESS_M = 0.0
 
 # ---------------------------------------------------------------------------
 # Visual uncertainty
 # ---------------------------------------------------------------------------
-# SoftMS spread is only an internal ambiguity cue. variance_head alone outputs
-# the R_t used by Kalman. A lower initial/minimum variance lets a well-supervised
-# GRU measurement actually correct the motion prior instead of being ignored.
 MEANSHIFT_VARIANCE_AS_GRU_INPUT = True
 DIRECT_SOFTMS_VARIANCE = False
 USE_LEARNED_VARIANCE_HEAD = True
@@ -68,10 +66,9 @@ ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
 # ---------------------------------------------------------------------------
 # Kalman trust balance
 # ---------------------------------------------------------------------------
-# v2 was too conservative: the learned measurement was supervised toward the
-# reference position but the posterior was allowed to move only a few metres.
-# Increase process uncertainty and correction room while retaining bounded,
-# non-teleporting updates.
+# Keep enough process uncertainty/correction room for the current visual
+# measurement to pull the posterior back toward the reference-supported local
+# observation, while retaining bounded non-teleporting updates.
 KALMAN_Q_PROGRESS = 0.80
 KALMAN_Q_CROSS = 0.25
 KALMAN_Q_VELOCITY = 0.40
@@ -97,25 +94,23 @@ RNN_NUMERIC_DIM = 10
 # ---------------------------------------------------------------------------
 # Training balance
 # ---------------------------------------------------------------------------
-# Reference position is supervision, not the answer passed to the estimator.
-# Give the learned visual measurement the strongest direct objective; retain
-# motion/heading supervision but reduce competition from the polynomial loss.
-LOSS_MEASUREMENT = 4.0
+# The current visual anchor is already near the supervised reference under the
+# controlled local protocol, so the residual head should learn a small refinement
+# rather than a hundreds-of-metres absolute displacement.
+LOSS_MEASUREMENT = 2.0
 LOSS_NEXT_STEP = 2.0
 LOSS_VARIANCE_NLL = 0.02
-TEMPORAL_LR = 5e-5
+TEMPORAL_LR = 1e-4
 RNN_DROPOUT = 0.05
-TBPTT_STEPS = 64
+TBPTT_STEPS = 32
 GRAD_CLIP_NORM = 3.0
 EARLY_STOP_PATIENCE = 15
 EARLY_STOP_MIN_DELTA = 0.02
-EARLY_STOP_MIN_EPOCH = 25
+EARLY_STOP_MIN_EPOCH = 20
 
 # ---------------------------------------------------------------------------
 # Forward-search accuracy/speed ablation
 # ---------------------------------------------------------------------------
-# Thesis/default setting remains 3x6=18. The same trained checkpoint can be
-# evaluated with 4x6=24, 5x6=30 and 6x6=36.
 FORWARD_SEARCH_ROWS = 3
 FORWARD_SEARCH_COLS = 6
 FORWARD_SEARCH_CANDIDATE_COUNT = FORWARD_SEARCH_ROWS * FORWARD_SEARCH_COLS
@@ -124,8 +119,8 @@ LATENCY_WARMUP_FRAMES = 30
 
 CONTROLLED_PROTOCOL_NAME = (
     "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
-    "2frame_GRU-visual-measurement-and-variance_no-sat-context_"
-    "measurement-trusting-polynomial-Kalman_v3"
+    "2frame_current-MS-anchored-GRU-visual-measurement-and-variance_no-sat-context_"
+    "polynomial_Kalman_v4"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
