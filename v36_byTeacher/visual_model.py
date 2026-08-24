@@ -149,19 +149,21 @@ class RouteProgressGRUOutput:
 
 
 class TwoFrameRouteStateGRU(nn.Module):
-    """Teacher architecture with MeanShift evidence and learned Kalman measurement.
+    """Teacher architecture: MS previous position -> GRU -> Kalman measurement.
 
-    Soft Mean-Shift position is an input cue to the GRU, not the Kalman
-    measurement itself. The old ``SoftMS + correction_head`` equation is gone.
-    The historical correction_head now predicts a bounded visual measurement
-    innovation around the motion prior, while variance_head alone predicts the
-    final Kalman measurement variance.
+    The newly arrived UAV frame is used to re-localize the previous Kalman
+    output by MeanShift.  That X_(t-1)^MS is the base position for the GRU
+    visual-measurement branch.  The measurement head predicts a displacement
+    from X_(t-1)^MS to the current measurement z_t.
 
-    SoftMS mode-space spread is retained only as an ambiguity cue inside the
-    GRU. It is never added to variance_head output. Satellite context is removed
-    from the recurrent input: in the single controlled 3x6 window it is highly
-    route/scene specific and is unnecessary once the MeanShift position and its
-    ambiguity are already supplied.
+    This is intentionally different from both old alternatives:
+      - NOT current_SoftMS + correction_head;
+      - NOT Kalman_prior + correction_head.
+
+    Motion/heading heads independently predict the inertial polynomial used by
+    the Kalman predict step.  variance_head alone predicts the Kalman visual
+    measurement variance.  SoftMS spread is only an internal ambiguity cue.
+    Satellite context is not part of the recurrent input.
     """
 
     def __init__(self):
@@ -187,7 +189,6 @@ class TwoFrameRouteStateGRU(nn.Module):
             nn.LayerNorm(feature_dim),
         )
 
-        # Two-frame appearance mean + first difference + numeric state.
         self.gru = nn.GRUCell(feature_dim * 3, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
@@ -201,8 +202,8 @@ class TwoFrameRouteStateGRU(nn.Module):
 
         self.motion_head = head(4)
         self.heading_head = head(2)
-        # Historical name kept for external compatibility. Semantics are now
-        # "visual measurement innovation head", not SoftMS correction.
+        # Historical field name retained for external compatibility.  Semantics:
+        # current visual displacement / measurement-step head.
         self.correction_head = head(2)
         self.variance_head = head(2)
 
@@ -213,8 +214,14 @@ class TwoFrameRouteStateGRU(nn.Module):
 
         nn.init.zeros_(self.heading_head[-1].weight)
         nn.init.zeros_(self.heading_head[-1].bias)
+
         nn.init.zeros_(self.correction_head[-1].weight)
         nn.init.zeros_(self.correction_head[-1].bias)
+        progress_range = float(config.GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M)
+        init_progress = float(config.GRU_VISUAL_MEASUREMENT_INIT_PROGRESS_M)
+        init_ratio = max(min(init_progress / max(progress_range, 1e-6), 0.95), -0.95)
+        self.correction_head[-1].bias.data[0] = math.atanh(init_ratio)
+
         nn.init.zeros_(self.variance_head[-1].weight)
         nn.init.constant_(
             self.variance_head[-1].bias,
@@ -248,8 +255,6 @@ class TwoFrameRouteStateGRU(nn.Module):
         softms_support,
         hidden: Optional[torch.Tensor] = None,
     ):
-        # The controlled protocol has exactly one local search window, hence
-        # there is no meaningful hypothesis-selection classification.
         count = int(sat_context.shape[0])
         if count != 1:
             raise RuntimeError(
@@ -285,16 +290,17 @@ class TwoFrameRouteStateGRU(nn.Module):
 
         delta_recent, clip_mean = self._two_frame_features(z_uav, previous_z_uav)
 
+        # On the first frame no previous MS hand-off exists; use the current
+        # Kalman prior only for initialization.  From frame 1 onward this is the
+        # teacher-requested X_(t-1)^MS produced with the newly arrived image.
         if previous_measurement_se is None:
             previous_measurement_se = predicted_se.detach()
 
-        # MeanShift location is explicitly supplied to GRU, but only as evidence.
-        # It is never added to correction_head output.
+        # Current SoftMS remains visual evidence INSIDE the GRU.  It is never
+        # algebraically added to the measurement-head output.
         innovation_se = visual_anchor_se - predicted_se
         visual_step_se = visual_anchor_se - previous_measurement_se
 
-        # MeanShift mode-space spread is only an ambiguity cue. It never reaches
-        # Kalman directly and is not algebraically added to variance_head output.
         numeric = torch.cat(
             [
                 torch.log1p(response_variance_se.clamp_min(0.0)) / 7.0,
@@ -339,6 +345,9 @@ class TwoFrameRouteStateGRU(nn.Module):
         new_hidden = self.gru(recurrent_input, hidden)
         h = self.dropout(new_hidden)
 
+        # ------------------------------------------------------------------
+        # Motion branch -> heading-aware polynomial -> Kalman prior
+        # ------------------------------------------------------------------
         raw_motion = self.motion_head(h)
         v_parallel = F.softplus(raw_motion[:, 0:1]).clamp(
             max=float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
@@ -396,22 +405,24 @@ class TwoFrameRouteStateGRU(nn.Module):
         )
         next_step = next_step * scale
 
-        # correction_head now represents the learned visual measurement head.
-        # It predicts a bounded measurement innovation around the motion prior.
-        # MeanShift position is NOT added to this output.
-        raw_measurement_delta = torch.tanh(self.correction_head(h))
-        measurement_delta = torch.cat(
+        # ------------------------------------------------------------------
+        # Visual measurement branch -> Kalman update
+        # ------------------------------------------------------------------
+        raw_measurement_step = torch.tanh(self.correction_head(h))
+        measurement_step = torch.cat(
             [
-                raw_measurement_delta[:, 0:1]
+                raw_measurement_step[:, 0:1]
                 * float(config.GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M),
-                raw_measurement_delta[:, 1:2]
+                raw_measurement_step[:, 1:2]
                 * float(config.GRU_VISUAL_MEASUREMENT_CROSS_RANGE_M),
             ],
             dim=1,
         )
-        measurement = predicted_se + measurement_delta
 
-        # variance_head is the sole final visual uncertainty for Kalman.
+        # Critical fix: measurement is predicted from the re-localized previous
+        # position X_(t-1)^MS, NOT from the Kalman prior and NOT from current MS.
+        measurement = previous_measurement_se + measurement_step
+
         raw_log_variance = self.variance_head(h)
         min_log_var = math.log(float(config.KALMAN_R_MIN_VAR))
         max_log_var = math.log(float(config.KALMAN_R_MAX_VAR))
@@ -425,14 +436,14 @@ class TwoFrameRouteStateGRU(nn.Module):
                 acceleration,
                 heading_residual,
                 turn_rate,
-                measurement_delta,
+                measurement_step,
                 measurement_variance,
             ],
             dim=1,
         )
         return RouteProgressGRUOutput(
             measurement_se=measurement,
-            correction_se=measurement_delta,
+            correction_se=measurement_step,
             measurement_variance_se=measurement_variance,
             velocity_se=velocity,
             acceleration_se=acceleration,
