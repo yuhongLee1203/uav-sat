@@ -2,30 +2,75 @@ from pathlib import Path
 from config_base import *
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-ARCHITECTURE_NAME = "V36_byTeacher_MeanShiftFeedback_GRU_Polynomial_Kalman"
+
+ARCHITECTURE_NAME = (
+    "V36_byTeacher_DirectSoftMS_2Frame_GRU_Polynomial_Kalman"
+)
 OUTPUT_DIR = PROJECT_ROOT / "output"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
-TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_referenceprior_forward3x6_teacher_feedback_state_gru_A_only.pt"
-LATEST_TEMPORAL_CHECKPOINT = CHECKPOINT_DIR / "controlled_referenceprior_forward3x6_teacher_feedback_state_gru_A_only_latest.pt"
+TEMPORAL_CHECKPOINT = (
+    CHECKPOINT_DIR
+    / "controlled_referenceprior_forward3x6_direct_softms_2frame_teacher_feedback_gru_A_only.pt"
+)
+LATEST_TEMPORAL_CHECKPOINT = (
+    CHECKPOINT_DIR
+    / "controlled_referenceprior_forward3x6_direct_softms_2frame_teacher_feedback_gru_A_only_latest.pt"
+)
 FEATURE_CACHE_DIR = OUTPUT_DIR / "feature_cache"
 
-# v36_byTeacher keeps the same route reference-point protocol, Forward-3x6,
-# Soft Mean-Shift, GRU polynomial and external Kalman settings as v36.
-# The only architectural change is the inter-frame GRU state hand-off:
-#   X_t(output) = Kalman(GRU(MeanShift(...)))
-#   X_t^MS      = MeanShift(current next-frame image around X_t(output))
-#   X_{t+1}     = Kalman(GRU(previous_position=X_t^MS))
-# X_t(output) remains both the reported position and the external Kalman's
-# posterior state. X_t^MS replaces only the GRU previous-position input; it
-# must not overwrite kf.x or kf.P before the next Kalman prediction.
+# ---------------------------------------------------------------------------
+# Teacher-requested inter-frame hand-off
+# ---------------------------------------------------------------------------
+# X_t remains the external Kalman posterior. When the next UAV image arrives,
+# MeanShift around X_t is computed again and that result is supplied to the GRU
+# as the previous localization input. It never overwrites kf.x or kf.P.
 TEACHER_MEANSHIFT_FEEDBACK = True
 TEACHER_FEEDBACK_PRESERVE_KALMAN_VELOCITY = True
 TEACHER_FEEDBACK_USE_FORWARD_3X6 = True
 
+# ---------------------------------------------------------------------------
+# Clean visual-measurement responsibility
+# ---------------------------------------------------------------------------
+# SoftMS anchor is the visual measurement z_t directly.
+# No GRU correction head is applied to the MeanShift result.
+DIRECT_SOFTMS_MEASUREMENT = True
+USE_LEARNED_MEASUREMENT_CORRECTION = False
+
+# SoftMS mode-space response variance is the Kalman measurement covariance R_t
+# directly. The old variance head is intentionally removed so uncertainty is
+# not estimated twice from the same visual response.
+DIRECT_SOFTMS_VARIANCE = True
+USE_LEARNED_VARIANCE_HEAD = False
+
+# ---------------------------------------------------------------------------
+# Compact temporal state
+# ---------------------------------------------------------------------------
+# Two UAV embeddings are sufficient for the explicit current visual change:
+# mean(z_{t-1}, z_t) and z_t-z_{t-1}. The old second-order embedding difference
+# is removed; physical acceleration is still predicted by the motion head and
+# trained end-to-end through the polynomial next-step objective.
+EXPERIMENT_FRAME_COUNT = 2
+
+# Numeric GRU state:
+# response variance(2) + current visual innovation(2)
+# + current SoftMS - teacher-feedback previous localization(2)
+# + previous velocity(2) + heading residual(1) + turn rate(1) = 10.
+RNN_NUMERIC_DIM = 10
+
+# The temporal network no longer predicts visual position correction or visual
+# variance. Those objectives therefore must not contribute to temporal loss.
+LOSS_MEASUREMENT = 0.0
+LOSS_VARIANCE_NLL = 0.0
+
+# Keep the existing motion/heading supervision. A slightly smaller temporal LR
+# is used because this compact recurrent model converges quickly.
+TEMPORAL_LR = 1e-4
+
 CONTROLLED_PROTOCOL_NAME = (
-    "reference-point+smooth-jitter_forward3x6_SoftMS_3frame_causal_heading_"
-    "GRU_Polynomial_Kalman_with_next-frame_MeanShift_previous-position_feedback"
+    "reference-point+smooth-jitter_forward3x6_direct-SoftMS-measurement_"
+    "direct-SoftMS-variance_2frame_GRU_polynomial_Kalman_"
+    "with_next-frame_MeanShift_previous-position_feedback"
 )
 
 # Waypoints stay in the repository-level route_waypoints folder.
