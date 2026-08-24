@@ -1,24 +1,59 @@
+import os
 from pathlib import Path
 from config_base import *
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
+# ---------------------------------------------------------------------------
+# Backbone / experiment identity
+# ---------------------------------------------------------------------------
+# v36_byTeacher now defaults to MobileNetV3-Small.  The environment override is
+# kept so the previous MobileCLIP setup can still be reproduced explicitly.
+BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobilenet_v3_small").strip().lower()
+if BACKBONE_KEY not in BACKBONE_SPECS:
+    raise ValueError(
+        "UAVSAT_BACKBONE must be one of %s; got %r"
+        % (sorted(BACKBONE_SPECS), BACKBONE_KEY)
+    )
+BACKBONE_NAME, CLIP_DIM = BACKBONE_SPECS[BACKBONE_KEY]
+
+# Main thesis setting is 2-frame.  1-frame is an ablation that keeps the same
+# recurrent state but removes the previous-frame visual feature/difference cue.
+EXPERIMENT_FRAME_COUNT = int(os.environ.get("UAVSAT_EXPERIMENT_FRAME_COUNT", "2"))
+if EXPERIMENT_FRAME_COUNT not in (1, 2):
+    raise ValueError("UAVSAT_EXPERIMENT_FRAME_COUNT must be 1 or 2 for v36_byTeacher")
+TEMPORAL_WINDOW_FRAMES = EXPERIMENT_FRAME_COUNT
+
 ARCHITECTURE_NAME = (
-    "V36_byTeacher_MSPreviousPosition_2Frame_GRUVisualMeasurementVariance_"
-    "NoSatContext_Polynomial_Kalman_v4"
+    "V36_byTeacher_MSPreviousPosition_"
+    f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
+    "GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_v5"
 )
-OUTPUT_DIR = PROJECT_ROOT / "output"
-CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
-VISUAL_CHECKPOINT = CHECKPOINT_DIR / "visual_retrieval_A_only.pt"
+
+# Keep every backbone isolated so changing the backbone never overwrites the
+# currently-good MobileCLIP checkpoint.  The visual checkpoint/feature cache are
+# shared by the 1-frame and 2-frame temporal experiments of the same backbone.
+BACKBONE_OUTPUT_DIR = PROJECT_ROOT / "output" / BACKBONE_KEY
+OUTPUT_DIR = BACKBONE_OUTPUT_DIR / f"{EXPERIMENT_FRAME_COUNT}frame"
+CHECKPOINT_DIR = BACKBONE_OUTPUT_DIR / "checkpoints"
+VISUAL_CHECKPOINT = CHECKPOINT_DIR / f"visual_retrieval_A_only_{BACKBONE_KEY}.pt"
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / "controlled_referenceprior_forward3x6_ms_previous_position_2frame_gru_visual_measurement_variance_nosat_v4_A_only.pt"
+    / (
+        "controlled_referenceprior_forward3x6_ms_previous_position_"
+        f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
+        "gru_visual_measurement_variance_nosat_v5_A_only.pt"
+    )
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / "controlled_referenceprior_forward3x6_ms_previous_position_2frame_gru_visual_measurement_variance_nosat_v4_A_only_latest.pt"
+    / (
+        "controlled_referenceprior_forward3x6_ms_previous_position_"
+        f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
+        "gru_visual_measurement_variance_nosat_v5_A_only_latest.pt"
+    )
 )
-FEATURE_CACHE_DIR = OUTPUT_DIR / "feature_cache"
+FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
 
 # ---------------------------------------------------------------------------
 # Teacher-requested inter-frame hand-off
@@ -83,7 +118,6 @@ KALMAN_FINAL_STEP_MAX_M = 8.0
 # ---------------------------------------------------------------------------
 # Compact temporal state
 # ---------------------------------------------------------------------------
-EXPERIMENT_FRAME_COUNT = 2
 USE_SATELLITE_CONTEXT_IN_GRU = False
 
 # SoftMS spread(2) + current SoftMS-prior innovation(2)
@@ -119,8 +153,9 @@ LATENCY_WARMUP_FRAMES = 30
 
 CONTROLLED_PROTOCOL_NAME = (
     "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
-    "2frame_current-MS-anchored-GRU-visual-measurement-and-variance_no-sat-context_"
-    "polynomial_Kalman_v4"
+    f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
+    "current-MS-anchored-GRU-visual-measurement-and-variance_no-sat-context_"
+    "polynomial_Kalman_v5"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
