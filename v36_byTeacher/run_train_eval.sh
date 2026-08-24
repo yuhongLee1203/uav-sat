@@ -11,6 +11,7 @@ VISUAL_EPOCHS_RUN="${VISUAL_EPOCHS_RUN:-30}"
 TEMPORAL_EPOCHS_RUN="${TEMPORAL_EPOCHS_RUN:-60}"
 PATIENCE_RUN="${PATIENCE_RUN:-15}"
 FORCE_VISUAL="${FORCE_VISUAL:-0}"
+TIMING_GPU="${TIMING_GPU:-0}"
 
 BACKBONE_ROOT="$HERE/output/$BACKBONE"
 LOG_DIR="$BACKBONE_ROOT/logs"
@@ -47,9 +48,29 @@ print("visual checkpoint:", config.VISUAL_CHECKPOINT, flush=True)
 PY
 }
 
+prepare_feature_cache() {
+  echo "[cache] GPU0: prebuild A/B/C MobileNet backbone caches once before parallel jobs"
+  CUDA_VISIBLE_DEVICES=0 \
+  UAVSAT_BACKBONE="$BACKBONE" \
+  UAVSAT_EXPERIMENT_FRAME_COUNT=2 \
+  python3 -u - <<'PY' 2>&1 | tee "$LOG_DIR/01_prepare_feature_cache.log"
+import config
+import robust_tracker as rt
+from visual_localizer import FrozenVisualLocalizer
+
+rt.set_seed(config.SEED)
+device = rt.resolve_device()
+visual = FrozenVisualLocalizer(device)
+for route_name, root in zip(config.ROUTE_NAMES, config.ROUTE_ROOTS):
+    cache = rt.build_route_cache(route_name, root, visual, device)
+    print(f"cache ready: {route_name}, frames={len(cache)}", flush=True)
+print("feature cache root:", config.FEATURE_CACHE_DIR, flush=True)
+PY
+}
+
 train_temporal_parallel() {
   echo "[temporal] GPU0: 2-frame main method"
-  echo "[temporal] GPU1: 1-frame ablation"
+  echo "[temporal] GPU1: 1-frame visual-input ablation"
 
   CUDA_VISIBLE_DEVICES=0 \
   UAVSAT_BACKBONE="$BACKBONE" \
@@ -86,7 +107,8 @@ run_full_eval() {
   local gpu="$1"
   local frames="$2"
   local rows="$3"
-  local log="$LOG_DIR/full_${frames}frame_${rows}x6.log"
+  local suffix="${4:-parallel}"
+  local log="$LOG_DIR/full_${frames}frame_${rows}x6_${suffix}.log"
   echo "[eval] GPU${gpu}: full ${frames}-frame ${rows}x6"
   CUDA_VISIBLE_DEVICES="$gpu" \
   UAVSAT_BACKBONE="$BACKBONE" \
@@ -104,7 +126,8 @@ run_full_eval() {
 run_meanshift_eval() {
   local gpu="$1"
   local rows="$2"
-  local log="$LOG_DIR/meanshift_${rows}x6.log"
+  local suffix="${3:-parallel}"
+  local log="$LOG_DIR/meanshift_${rows}x6_${suffix}.log"
   echo "[eval] GPU${gpu}: MeanShift-only ${rows}x6"
   CUDA_VISIBLE_DEVICES="$gpu" \
   UAVSAT_BACKBONE="$BACKBONE" \
@@ -113,7 +136,6 @@ run_meanshift_eval() {
   python3 -u - <<'PY' > >(tee "$log") 2>&1 &
 import csv
 import json
-import math
 import os
 import time
 from pathlib import Path
@@ -146,7 +168,7 @@ summary = {
     "jitter_m": jitter,
     "timing_definition": (
         "cached UAV backbone feature -> UAV projector + selected SAT projector + "
-        "cosine similarity + Soft MeanShift; excludes disk I/O, preprocessing and UAV backbone"
+        "cosine similarity + Soft MeanShift; excludes image I/O/preprocessing/UAV backbone"
     ),
     "routes": {},
 }
@@ -215,6 +237,11 @@ for route_name in ["route_B", "route_C"]:
         writer.writerows(frame_rows)
 
     result = b.metric_summary(errors)
+    error_array = np.asarray(errors, dtype=np.float64)
+    q90 = float(np.quantile(error_array, 0.90))
+    tail = error_array[error_array >= q90]
+    result["CVaR90_m"] = float(np.mean(tail)) if tail.size else q90
+
     steady = np.asarray(timing_ms, dtype=np.float64)
     if steady.size == 0:
         steady = np.asarray([r["latency_ms"] for r in frame_rows], dtype=np.float64)
@@ -243,8 +270,9 @@ PY
 }
 
 benchmark_backbone() {
-  echo "[latency] GPU4: batch-1 UAV backbone latency for $BACKBONE"
-  CUDA_VISIBLE_DEVICES=4 \
+  local gpu="${1:-$TIMING_GPU}"
+  echo "[latency] GPU${gpu}: batch-1 UAV backbone latency for $BACKBONE"
+  CUDA_VISIBLE_DEVICES="$gpu" \
   UAVSAT_BACKBONE="$BACKBONE" \
   UAVSAT_EXPERIMENT_FRAME_COUNT=2 \
   python3 -u - <<'PY' 2>&1 | tee "$LOG_DIR/backbone_latency.log"
@@ -290,7 +318,7 @@ mean_ms = float(np.mean(values))
 result = {
     "backbone": str(config.BACKBONE_KEY),
     "batch_size": 1,
-    "definition": "UAV backbone only; image disk I/O and Python/PIL preprocessing excluded",
+    "definition": "UAV backbone only; disk I/O and Python/PIL preprocessing excluded",
     "samples": int(values.size),
     "mean_ms": mean_ms,
     "median_ms": float(np.median(values)),
@@ -327,7 +355,21 @@ metric_keys = [
     "LSR@5_pct", "LSR@10_pct", "LSR@15_pct", "LSR@20_pct",
 ]
 
-def add_row(method, frames, search_rows, route, result, core):
+def cvar90_from_csv(path, error_field):
+    if not path or not Path(path).exists():
+        return float("nan")
+    values = []
+    with Path(path).open("r", encoding="utf-8") as f:
+        for item in csv.DictReader(f):
+            values.append(float(item[error_field]))
+    if not values:
+        return float("nan")
+    arr = np.asarray(values, dtype=np.float64)
+    q90 = float(np.quantile(arr, 0.90))
+    tail = arr[arr >= q90]
+    return float(np.mean(tail)) if tail.size else q90
+
+def add_row(method, frames, search_rows, route, result, core, error_field):
     core_ms = float(core.get("mean_ms", float("nan")))
     full_ms = backbone_ms + core_ms if np.isfinite(backbone_ms) and np.isfinite(core_ms) else float("nan")
     row = {
@@ -345,9 +387,11 @@ def add_row(method, frames, search_rows, route, result, core):
     }
     for key in metric_keys:
         row[key] = float(result.get(key, float("nan")))
+    if not np.isfinite(row["CVaR90_m"]):
+        row["CVaR90_m"] = cvar90_from_csv(result.get("CSV"), error_field)
     rows.append(row)
 
-# Complete 2-frame method: candidate-count ablation.
+# Complete 2-frame method: candidate-count accuracy/speed ablation.
 for search_rows in (3, 4, 5, 6):
     path = root / "2frame" / f"robust_tracker_summary_forward{search_rows}x6.json"
     if not path.exists():
@@ -355,7 +399,10 @@ for search_rows in (3, 4, 5, 6):
     payload = json.loads(path.read_text(encoding="utf-8"))
     block = payload.get("results", {}).get(f"{search_rows}x6", {})
     for route, result in block.items():
-        add_row("Full-GRU-Polynomial-Kalman", 2, search_rows, route, result, result.get("TrackingCoreTiming", {}))
+        add_row(
+            "Full-GRU-Polynomial-Kalman", 2, search_rows, route, result,
+            result.get("TrackingCoreTiming", {}), "error_final_m"
+        )
 
 # 1-frame visual-input ablation at the thesis/default 3x6 search.
 path = root / "1frame" / "robust_tracker_summary_forward3x6.json"
@@ -363,7 +410,10 @@ if path.exists():
     payload = json.loads(path.read_text(encoding="utf-8"))
     block = payload.get("results", {}).get("3x6", {})
     for route, result in block.items():
-        add_row("Full-GRU-Polynomial-Kalman", 1, 3, route, result, result.get("TrackingCoreTiming", {}))
+        add_row(
+            "Full-GRU-Polynomial-Kalman", 1, 3, route, result,
+            result.get("TrackingCoreTiming", {}), "error_final_m"
+        )
 
 # Raw MeanShift baseline / ablation.
 for search_rows in (3, 4, 5, 6):
@@ -372,15 +422,21 @@ for search_rows in (3, 4, 5, 6):
         continue
     payload = json.loads(path.read_text(encoding="utf-8"))
     for route, result in payload.get("routes", {}).items():
-        add_row("MeanShift-only", 0, search_rows, route, result, result.get("CoreTiming", {}))
+        add_row(
+            "MeanShift-only", 0, search_rows, route, result,
+            result.get("CoreTiming", {}), "error_m"
+        )
 
-# Add B/C arithmetic mean rows for quick thesis-table preparation.
+# B/C arithmetic mean rows for quick thesis-table preparation.
 base_rows = list(rows)
-keys = {}
+groups = {}
 for row in base_rows:
-    key = (row["method"], row["frame_count"], row["search"], row["candidate_count"], row["backbone"])
-    keys.setdefault(key, []).append(row)
-for key, group in keys.items():
+    key = (
+        row["method"], row["frame_count"], row["search"],
+        row["candidate_count"], row["backbone"]
+    )
+    groups.setdefault(key, []).append(row)
+for key, group in groups.items():
     if len(group) < 2:
         continue
     method, frames, search, candidates, backbone_name = key
@@ -392,7 +448,10 @@ for key, group in keys.items():
         "route": "mean_BC",
         "backbone": backbone_name,
     }
-    numeric_fields = [k for k in group[0] if k not in {"method", "frame_count", "search", "candidate_count", "route", "backbone"}]
+    numeric_fields = [
+        key for key in group[0]
+        if key not in {"method", "frame_count", "search", "candidate_count", "route", "backbone"}
+    ]
     for field in numeric_fields:
         values = np.asarray([float(item[field]) for item in group], dtype=np.float64)
         mean_row[field] = float(np.nanmean(values))
@@ -417,22 +476,44 @@ PY
 }
 
 run_eval_parallel() {
-  # Wave 1: use every available GPU 0..6.
-  run_full_eval 0 2 3; p0=$LAST_PID
-  run_full_eval 1 2 4; p1=$LAST_PID
-  run_full_eval 2 2 5; p2=$LAST_PID
-  run_full_eval 3 2 6; p3=$LAST_PID
-  run_full_eval 4 1 3; p4=$LAST_PID
-  run_meanshift_eval 5 3; p5=$LAST_PID
-  run_meanshift_eval 6 4; p6=$LAST_PID
-
+  # Wave 1: use all seven available GPUs for the expensive accuracy runs.
+  run_full_eval 0 2 3 parallel; p0=$LAST_PID
+  run_full_eval 1 2 4 parallel; p1=$LAST_PID
+  run_full_eval 2 2 5 parallel; p2=$LAST_PID
+  run_full_eval 3 2 6 parallel; p3=$LAST_PID
+  run_full_eval 4 1 3 parallel; p4=$LAST_PID
+  run_meanshift_eval 5 3 parallel; p5=$LAST_PID
+  run_meanshift_eval 6 4 parallel; p6=$LAST_PID
   wait "$p0"; wait "$p1"; wait "$p2"; wait "$p3"; wait "$p4"; wait "$p5"; wait "$p6"
 
-  # Wave 2: remaining MeanShift candidate-count tests + backbone benchmark.
-  run_meanshift_eval 5 5; p5=$LAST_PID
-  run_meanshift_eval 6 6; p6=$LAST_PID
-  benchmark_backbone & p4=$!
+  # Wave 2: remaining MeanShift sizes + backbone benchmark.
+  run_meanshift_eval 5 5 parallel; p5=$LAST_PID
+  run_meanshift_eval 6 6 parallel; p6=$LAST_PID
+  benchmark_backbone 4 & p4=$!
   wait "$p4"; wait "$p5"; wait "$p6"
+
+  collect_results
+}
+
+run_timing_serial() {
+  echo "[timing] publication timing sweep: all methods on the same physical GPU${TIMING_GPU}"
+  benchmark_backbone "$TIMING_GPU"
+
+  for rows in 3 4 5 6; do
+    run_full_eval "$TIMING_GPU" 2 "$rows" timing
+    pid=$LAST_PID
+    wait "$pid"
+  done
+
+  run_full_eval "$TIMING_GPU" 1 3 timing
+  pid=$LAST_PID
+  wait "$pid"
+
+  for rows in 3 4 5 6; do
+    run_meanshift_eval "$TIMING_GPU" "$rows" timing
+    pid=$LAST_PID
+    wait "$pid"
+  done
 
   collect_results
 }
@@ -440,16 +521,24 @@ run_eval_parallel() {
 case "$MODE" in
   visual)
     train_visual
+    prepare_feature_cache
     ;;
   train)
     train_visual
+    prepare_feature_cache
     train_temporal_parallel
     ;;
   eval)
+    prepare_feature_cache
     run_eval_parallel
+    ;;
+  timing)
+    prepare_feature_cache
+    run_timing_serial
     ;;
   all)
     train_visual
+    prepare_feature_cache
     train_temporal_parallel
     run_eval_parallel
     ;;
@@ -457,7 +546,7 @@ case "$MODE" in
     collect_results
     ;;
   *)
-    echo "usage: $0 [all|visual|train|eval|collect]" >&2
+    echo "usage: $0 [all|visual|train|eval|timing|collect]" >&2
     exit 2
     ;;
 esac
