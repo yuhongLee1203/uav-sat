@@ -2,17 +2,18 @@
 
 Teacher feedback rule
 ---------------------
-The Kalman posterior of frame t is still the reported output X_t, but it is NOT
-used directly as the previous-position state of frame t+1.  When image I_{t+1}
-arrives, the previous output is localized again by Soft Mean-Shift around X_t:
+The Kalman posterior of frame t is still the reported output X_t. When image
+I_{t+1} arrives, the previous output is localized again by Soft Mean-Shift
+around X_t:
 
     X_t(output) = Kalman(GRU(MeanShift_t))
     X_t^MS      = MeanShift(I_{t+1}, center=X_t(output))
     X_{t+1}     = Kalman(GRU(previous_position=X_t^MS))
 
-Only the position part of the Kalman state is replaced by X_t^MS; velocity and
-covariance are preserved.  The normal current-frame visual measurement is then
-computed with the same controlled reference-point local prior as v36.
+X_t^MS replaces only the GRU previous-position / previous-measurement input.
+The external Kalman keeps its own posterior X_t and covariance for prediction.
+The normal current-frame visual measurement is computed with the same
+controlled reference-point local prior as v36.
 """
 
 import csv
@@ -45,7 +46,11 @@ metric_summary = b.metric_summary
 
 
 def teacher_meanshift_feedback(visual, uav_clip, route, kf, previous_heading_state, device):
-    """Re-localize the previous Kalman output with the newly arrived image."""
+    """Re-localize the previous Kalman output with the newly arrived image.
+
+    The returned SoftMS position is used as the GRU previous-position input only.
+    It must not overwrite the external Kalman's posterior state.
+    """
     previous_output_se = kf.se().copy()
     previous_output_xy = route.xy_from_se(previous_output_se[0], previous_output_se[1])
     center_xy = torch.tensor(previous_output_xy, dtype=torch.float32, device=device).reshape(1, 2)
@@ -69,11 +74,7 @@ def teacher_meanshift_feedback(visual, uav_clip, route, kf, previous_heading_sta
         feedback_se[1], -float(config.MAX_FINAL_CROSS_TRACK_M), float(config.MAX_FINAL_CROSS_TRACK_M)
     ))
 
-    # Critical teacher change: replace only previous POSITION state.  Keep
-    # velocity/covariance so the inertial GRU-polynomial/Kalman dynamics remain.
-    kf.x[0:2] = feedback_se
-    kf.last_previous_position = feedback_se.copy()
-    kf.last_prior_position = feedback_se.copy()
+    # IMPORTANT: preserve kf.x / kf.P. MeanShift feedback is a GRU input only.
     return previous_output_se, feedback_se, feedback_xy, float(candidate.softms_support[0].item())
 
 
@@ -274,7 +275,7 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
         if improved:
             best_score = score; best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}; patience = 0
             torch.save({"architecture": ARCHITECTURE_NAME, "model": best_state, "epoch": epoch,
-                        "validation": val, "teacher_feedback": "next-frame SoftMS replaces previous position state"},
+                        "validation": val, "teacher_feedback": "next-frame SoftMS replaces GRU previous-position input; Kalman posterior preserved"},
                        config.TEMPORAL_CHECKPOINT)
         else:
             patience += 1
@@ -354,7 +355,7 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     csv_path = config.OUTPUT_DIR / f"{route_name}_v36_byTeacher_frames.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys())); writer.writeheader(); writer.writerows(rows)
-    summary = metric_summary(errors); summary["CSV"] = str(csv_path); summary["TeacherFeedback"] = "next-frame SoftMS replaces previous Kalman position state"
+    summary = metric_summary(errors); summary["CSV"] = str(csv_path); summary["TeacherFeedback"] = "next-frame SoftMS replaces GRU previous-position input; Kalman posterior preserved"
     print(f"{route_name}: MLE={summary['MLE_m']:.3f}m P90={summary['P90_m']:.3f}m LSR@15={summary['LSR@15_pct']:.2f}%", flush=True)
     return summary
 
@@ -380,7 +381,7 @@ def train_pipeline(args, device):
 
 def eval_pipeline(device):
     visual = FrozenVisualLocalizer(device); model = load_temporal_model(device)
-    all_summary = {"architecture": ARCHITECTURE_NAME, "teacher_feedback": "MeanShift(X_t) becomes previous position for X_{t+1}", "route_B": None, "route_C": None}
+    all_summary = {"architecture": ARCHITECTURE_NAME, "teacher_feedback": "MeanShift(X_t) becomes GRU previous-position input for X_{t+1}; Kalman posterior X_t is preserved", "route_B": None, "route_C": None}
     for route_name in ["route_B", "route_C"]:
         i = config.ROUTE_NAMES.index(route_name); cache = build_route_cache(route_name, config.ROUTE_ROOTS[i], visual, device)
         route = WaypointRoute(load_waypoint_xy(route_name, visual.origin_lat, visual.origin_lon))
@@ -392,7 +393,7 @@ def eval_pipeline(device):
 def main():
     args = b.parse_args(); config.LOCAL_PRIOR_JITTER_M = float(args.jitter_m); config.CONTROLLED_GT_PRIOR_JITTER_M = float(args.jitter_m)
     set_seed(config.SEED); device = resolve_device()
-    print("="*100); print(ARCHITECTURE_NAME); print("Teacher flow: X_t(output)=Kalman(GRU(MS_t)); next image -> MS(X_t) replaces previous position -> GRU/Kalman -> X_t+1"); print(f"output={config.OUTPUT_DIR}"); print("="*100)
+    print("="*100); print(ARCHITECTURE_NAME); print("Teacher flow: X_t(output)=Kalman(...); next image -> MS(X_t) becomes GRU previous position; Kalman preserves X_t -> predict/update -> X_t+1"); print(f"output={config.OUTPUT_DIR}"); print("="*100)
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True); config.CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if args.mode in ("train", "train_eval"): train_pipeline(args, device)
     if args.mode in ("eval", "train_eval"): eval_pipeline(device)
