@@ -43,3 +43,8 @@ runs/
 tensorboard/
 *.tmp
 *.bak
+
+# Model checkpoints / pretrained weights
+v36-exp/outputs/**/checkpoints/*.pt
+v36-exp/outputs/**/*.pth
+v36-exp/outputs/**/*.pt
