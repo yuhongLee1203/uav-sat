@@ -152,18 +152,21 @@ class TwoFrameRouteStateGRU(nn.Module):
     """Teacher architecture with a causal MeanShift previous-position hand-off.
 
     The newly arrived UAV frame re-localizes the previous Kalman output by
-    MeanShift.  X_(t-1)^MS is supplied to the GRU as the previous-position cue,
-    exactly as requested by the teacher, but it is NOT used as the absolute base
-    of the current measurement.  Doing that made any accumulated Kalman error
-    impossible to recover because the bounded measurement head could move only a
-    few metres from an already-wrong X_(t-1)^MS.
+    MeanShift. X_(t-1)^MS is supplied to the GRU as the previous-position cue,
+    but it is not used as the absolute base of the current measurement.
 
     The current controlled local MeanShift observation is the current visual
-    anchor.  The GRU uses X_(t-1)^MS, current visual innovation, two-frame UAV
-    features and recurrent state to learn a bounded residual correction around
-    that current visual anchor.  Thus:
+    anchor. The GRU uses X_(t-1)^MS, current visual innovation, recurrent state,
+    and either one-frame or two-frame UAV visual features to learn a bounded
+    residual correction around that current visual anchor:
         previous-position input = X_(t-1)^MS
         z_t = current_MS_t + learned_residual_t
+
+    EXPERIMENT_FRAME_COUNT=2 uses current+previous UAV embeddings through their
+    temporal mean and first difference. EXPERIMENT_FRAME_COUNT=1 keeps exactly
+    the same GRU/heads/hidden-state capacity but removes the previous-frame visual
+    cue by using the current embedding alone and a zero first-difference vector.
+    This makes the 1-frame versus 2-frame comparison controlled and fair.
 
     Motion/heading heads independently predict the inertial polynomial used by
     the Kalman predict step. variance_head alone predicts the Kalman visual
@@ -207,7 +210,7 @@ class TwoFrameRouteStateGRU(nn.Module):
         self.motion_head = head(4)
         self.heading_head = head(2)
         # Historical field name retained for checkpoint/pipeline compatibility.
-        # Semantics in v4: residual correction around the current visual anchor.
+        # Semantics in v5: residual correction around the current visual anchor.
         self.correction_head = head(2)
         self.variance_head = head(2)
 
@@ -238,6 +241,13 @@ class TwoFrameRouteStateGRU(nn.Module):
         )
 
     def _two_frame_features(self, z_uav, previous_z_uav):
+        frame_count = int(getattr(config, "EXPERIMENT_FRAME_COUNT", 2))
+        if frame_count == 1:
+            # Controlled 1-frame ablation: same network capacity and hidden state,
+            # but no explicit previous-frame visual feature or visual difference.
+            return torch.zeros_like(z_uav), z_uav
+        if frame_count != 2:
+            raise RuntimeError("v36_byTeacher supports only 1-frame or 2-frame input")
         if previous_z_uav is None:
             previous_z_uav = z_uav
         clip_mean = (previous_z_uav + z_uav) / 2.0
@@ -422,7 +432,7 @@ class TwoFrameRouteStateGRU(nn.Module):
         )
 
         # X_(t-1)^MS remains an INPUT to the GRU through visual_step_se above.
-        # The current absolute measurement must stay anchored to current visual
+        # The current absolute measurement stays anchored to current visual
         # evidence; otherwise an old Kalman error becomes unrecoverable.
         measurement = visual_anchor_se + measurement_residual
 
