@@ -8,7 +8,7 @@ python3 -u robust_tracker.py \
   --reuse-visual \
   --visual-epochs 30 \
   --temporal-epochs 60 \
-  --patience 10 \
+  --patience 15 \
   --jitter-m 8 \
   --forward-rows 3 \
   "$@"
