@@ -221,7 +221,7 @@ EARLY_SCORE_HEADING_WEIGHT = 0.03
 # remains controlled by current-frame GT+jitter on every frame.
 # -----------------------------------------------------------------------------
 TEMPORAL_EPOCHS = 60
-TEMPORAL_LR = 2e-4
+TEMPORAL_LR = 1e-4
 TEMPORAL_WEIGHT_DECAY = 1e-3
 TBPTT_STEPS = 32
 GRAD_CLIP_NORM = 5.0

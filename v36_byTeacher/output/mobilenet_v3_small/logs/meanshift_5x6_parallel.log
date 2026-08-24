@@ -1,0 +1,5 @@
+route_B: reuse UAV backbone cache
+MeanShift-only route_B 5x6: MLE=7.454m P90=12.825m core=12.670ms FPS=78.93
+route_C: reuse UAV backbone cache
+MeanShift-only route_C 5x6: MLE=6.921m P90=11.156m core=8.910ms FPS=112.24
+summary: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/meanshift_only/meanshift_forward5x6_summary.json

@@ -1,0 +1,36 @@
+satellite backbone cache: 256/95480
+satellite backbone cache: 5376/95480
+satellite backbone cache: 10496/95480
+satellite backbone cache: 15616/95480
+satellite backbone cache: 20736/95480
+satellite backbone cache: 25856/95480
+satellite backbone cache: 30976/95480
+satellite backbone cache: 36096/95480
+satellite backbone cache: 41216/95480
+satellite backbone cache: 46336/95480
+satellite backbone cache: 51456/95480
+satellite backbone cache: 56576/95480
+satellite backbone cache: 61696/95480
+satellite backbone cache: 66816/95480
+satellite backbone cache: 71936/95480
+satellite backbone cache: 77056/95480
+satellite backbone cache: 82176/95480
+satellite backbone cache: 87296/95480
+satellite backbone cache: 92416/95480
+satellite backbone cache: 95480/95480
+satellite gallery size=95480
+Route A backbone cache: 256/1732
+Route A backbone cache: 1732/1732
+Route A visual candidate capture=100.00%
+visual epoch=001/30 loss=4.51820 val_softms_mle=9.198m val_p90=15.682m val_lsr10=59.65%
+visual epoch=002/30 loss=4.05192 val_softms_mle=9.366m val_p90=15.543m val_lsr10=59.21%
+visual epoch=003/30 loss=3.80379 val_softms_mle=9.431m val_p90=16.254m val_lsr10=57.89%
+visual epoch=004/30 loss=3.54349 val_softms_mle=10.400m val_p90=17.255m val_lsr10=49.56%
+visual epoch=005/30 loss=3.37813 val_softms_mle=10.363m val_p90=17.671m val_lsr10=52.63%
+visual epoch=006/30 loss=3.27662 val_softms_mle=11.015m val_p90=18.181m val_lsr10=46.49%
+visual epoch=007/30 loss=3.10803 val_softms_mle=10.818m val_p90=17.888m val_lsr10=47.81%
+visual epoch=008/30 loss=3.02400 val_softms_mle=11.169m val_p90=18.202m val_lsr10=43.86%
+visual epoch=009/30 loss=2.91419 val_softms_mle=10.387m val_p90=18.024m val_lsr10=51.75%
+visual early stopping: Route A validation stopped improving
+best Route A visual validation SoftMS MLE=9.198m
+visual checkpoint: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/visual_retrieval_A_only_mobilenet_v3_small.pt

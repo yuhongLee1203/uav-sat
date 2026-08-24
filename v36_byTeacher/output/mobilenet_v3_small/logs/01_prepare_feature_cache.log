@@ -1,0 +1,7 @@
+route_A: reuse UAV backbone cache
+cache ready: route_A, frames=1732
+route_B: reuse UAV backbone cache
+cache ready: route_B, frames=2276
+route_C: reuse UAV backbone cache
+cache ready: route_C, frames=1258
+feature cache root: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/feature_cache

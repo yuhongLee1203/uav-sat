@@ -1,0 +1,68 @@
+====================================================================================================
+V36_byTeacher_MSPreviousPosition_1Frame_mobilenet_v3_small_GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_v5
+Flow: new image -> MeanShift(previous Kalman output) -> GRU previous-position cue; GRU -> current measurement/variance + motion; Kalman prior + GRU measurement -> final state
+search=3x6 (18 candidates); Kalman MeanShift-confidence input=OFF
+output=/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/1frame
+====================================================================================================
+route_A: reuse UAV backbone cache
+teacher 3x6 epoch=001/60 loss=8.55193 val_mle=6.130m val_p90=10.511m score=12.853 best=12.853 patience=0/15
+teacher 3x6 epoch=002/60 loss=6.42170 val_mle=6.667m val_p90=11.924m score=12.836 best=12.853 patience=1/15
+teacher 3x6 epoch=003/60 loss=5.69090 val_mle=6.655m val_p90=11.894m score=12.599 best=12.599 patience=0/15
+teacher 3x6 epoch=004/60 loss=5.63865 val_mle=6.485m val_p90=11.214m score=12.324 best=12.324 patience=0/15
+teacher 3x6 epoch=005/60 loss=5.49587 val_mle=6.144m val_p90=10.374m score=11.899 best=11.899 patience=0/15
+teacher 3x6 epoch=006/60 loss=5.05110 val_mle=5.940m val_p90=10.290m score=11.207 best=11.207 patience=0/15
+teacher 3x6 epoch=007/60 loss=4.47375 val_mle=5.561m val_p90=9.879m score=10.799 best=10.799 patience=0/15
+teacher 3x6 epoch=008/60 loss=4.25489 val_mle=5.691m val_p90=10.134m score=10.813 best=10.799 patience=1/15
+teacher 3x6 epoch=009/60 loss=4.23178 val_mle=5.699m val_p90=10.199m score=10.739 best=10.739 patience=0/15
+teacher 3x6 epoch=010/60 loss=4.32798 val_mle=5.565m val_p90=10.102m score=10.462 best=10.462 patience=0/15
+teacher 3x6 epoch=011/60 loss=4.12760 val_mle=5.524m val_p90=10.068m score=10.277 best=10.277 patience=0/15
+teacher 3x6 epoch=012/60 loss=4.19878 val_mle=5.350m val_p90=9.855m score=9.937 best=9.937 patience=0/15
+teacher 3x6 epoch=013/60 loss=4.06953 val_mle=5.478m val_p90=10.043m score=9.943 best=9.937 patience=1/15
+teacher 3x6 epoch=014/60 loss=4.02000 val_mle=5.207m val_p90=9.806m score=9.505 best=9.505 patience=0/15
+teacher 3x6 epoch=015/60 loss=3.99227 val_mle=5.339m val_p90=9.940m score=9.484 best=9.484 patience=0/15
+teacher 3x6 epoch=016/60 loss=3.93620 val_mle=5.230m val_p90=9.810m score=9.214 best=9.214 patience=0/15
+teacher 3x6 epoch=017/60 loss=3.91027 val_mle=5.234m val_p90=9.816m score=9.057 best=9.057 patience=0/15
+teacher 3x6 epoch=018/60 loss=3.89412 val_mle=5.508m val_p90=10.125m score=9.193 best=9.057 patience=1/15
+teacher 3x6 epoch=019/60 loss=3.99240 val_mle=5.157m val_p90=9.806m score=8.747 best=8.747 patience=0/15
+teacher 3x6 epoch=020/60 loss=3.88414 val_mle=5.163m val_p90=9.806m score=8.615 best=8.615 patience=0/15
+teacher 3x6 epoch=021/60 loss=3.83507 val_mle=5.182m val_p90=9.814m score=8.510 best=8.510 patience=0/15
+teacher 3x6 epoch=022/60 loss=3.80555 val_mle=5.197m val_p90=9.816m score=8.441 best=8.441 patience=0/15
+teacher 3x6 epoch=023/60 loss=3.81878 val_mle=5.219m val_p90=9.825m score=8.333 best=8.333 patience=0/15
+teacher 3x6 epoch=024/60 loss=3.78786 val_mle=5.326m val_p90=9.889m score=8.322 best=8.333 patience=1/15
+teacher 3x6 epoch=025/60 loss=3.78914 val_mle=5.259m val_p90=9.832m score=8.172 best=8.172 patience=0/15
+teacher 3x6 epoch=026/60 loss=3.80095 val_mle=5.459m val_p90=10.007m score=8.353 best=8.172 patience=1/15
+teacher 3x6 epoch=027/60 loss=3.86226 val_mle=5.164m val_p90=9.806m score=8.044 best=8.044 patience=0/15
+teacher 3x6 epoch=028/60 loss=3.76934 val_mle=5.209m val_p90=9.812m score=8.032 best=8.044 patience=1/15
+teacher 3x6 epoch=029/60 loss=3.73875 val_mle=5.113m val_p90=9.772m score=7.943 best=7.943 patience=0/15
+teacher 3x6 epoch=030/60 loss=3.78856 val_mle=5.254m val_p90=9.824m score=8.110 best=7.943 patience=1/15
+teacher 3x6 epoch=031/60 loss=3.87791 val_mle=5.078m val_p90=9.517m score=8.150 best=7.943 patience=2/15
+teacher 3x6 epoch=032/60 loss=3.88259 val_mle=5.181m val_p90=9.745m score=8.037 best=7.943 patience=3/15
+teacher 3x6 epoch=033/60 loss=3.79539 val_mle=5.054m val_p90=9.661m score=8.107 best=7.943 patience=4/15
+teacher 3x6 epoch=034/60 loss=3.74601 val_mle=5.358m val_p90=10.027m score=8.261 best=7.943 patience=5/15
+teacher 3x6 epoch=035/60 loss=3.73343 val_mle=5.111m val_p90=9.538m score=8.209 best=7.943 patience=6/15
+teacher 3x6 epoch=036/60 loss=3.60872 val_mle=5.165m val_p90=9.591m score=8.091 best=7.943 patience=7/15
+teacher 3x6 epoch=037/60 loss=3.59862 val_mle=5.024m val_p90=9.309m score=8.403 best=7.943 patience=8/15
+teacher 3x6 epoch=038/60 loss=3.49724 val_mle=5.257m val_p90=9.589m score=8.083 best=7.943 patience=9/15
+teacher 3x6 epoch=039/60 loss=3.57339 val_mle=5.015m val_p90=9.223m score=8.075 best=7.943 patience=10/15
+teacher 3x6 epoch=040/60 loss=3.35381 val_mle=5.035m val_p90=9.240m score=7.950 best=7.943 patience=11/15
+teacher 3x6 epoch=041/60 loss=3.33681 val_mle=4.922m val_p90=9.184m score=7.879 best=7.879 patience=0/15
+teacher 3x6 epoch=042/60 loss=3.37808 val_mle=5.070m val_p90=9.318m score=7.923 best=7.879 patience=1/15
+teacher 3x6 epoch=043/60 loss=3.59223 val_mle=5.182m val_p90=9.544m score=7.952 best=7.879 patience=2/15
+teacher 3x6 epoch=044/60 loss=3.16893 val_mle=5.162m val_p90=9.767m score=8.022 best=7.879 patience=3/15
+teacher 3x6 epoch=045/60 loss=3.10835 val_mle=5.005m val_p90=9.303m score=7.796 best=7.796 patience=0/15
+teacher 3x6 epoch=046/60 loss=3.00534 val_mle=5.062m val_p90=9.492m score=7.959 best=7.796 patience=1/15
+teacher 3x6 epoch=047/60 loss=2.95399 val_mle=5.145m val_p90=9.500m score=7.938 best=7.796 patience=2/15
+teacher 3x6 epoch=048/60 loss=3.04152 val_mle=4.962m val_p90=9.512m score=7.822 best=7.796 patience=3/15
+teacher 3x6 epoch=049/60 loss=3.08850 val_mle=5.561m val_p90=9.786m score=8.385 best=7.796 patience=4/15
+teacher 3x6 epoch=050/60 loss=3.03192 val_mle=5.116m val_p90=9.773m score=7.992 best=7.796 patience=5/15
+teacher 3x6 epoch=051/60 loss=3.09175 val_mle=5.138m val_p90=9.741m score=8.116 best=7.796 patience=6/15
+teacher 3x6 epoch=052/60 loss=2.93981 val_mle=5.457m val_p90=9.792m score=8.267 best=7.796 patience=7/15
+teacher 3x6 epoch=053/60 loss=2.72961 val_mle=5.428m val_p90=9.786m score=8.281 best=7.796 patience=8/15
+teacher 3x6 epoch=054/60 loss=2.87023 val_mle=5.333m val_p90=9.794m score=8.387 best=7.796 patience=9/15
+teacher 3x6 epoch=055/60 loss=2.83410 val_mle=5.517m val_p90=9.805m score=8.481 best=7.796 patience=10/15
+teacher 3x6 epoch=056/60 loss=2.85779 val_mle=5.432m val_p90=9.828m score=8.600 best=7.796 patience=11/15
+teacher 3x6 epoch=057/60 loss=3.15011 val_mle=5.212m val_p90=9.826m score=8.068 best=7.796 patience=12/15
+teacher 3x6 epoch=058/60 loss=2.96338 val_mle=5.071m val_p90=9.792m score=7.882 best=7.796 patience=13/15
+teacher 3x6 epoch=059/60 loss=2.70052 val_mle=4.974m val_p90=9.786m score=7.802 best=7.796 patience=14/15
+teacher 3x6 epoch=060/60 loss=2.57639 val_mle=5.360m val_p90=9.819m score=8.128 best=7.796 patience=15/15
+best validation score=7.796

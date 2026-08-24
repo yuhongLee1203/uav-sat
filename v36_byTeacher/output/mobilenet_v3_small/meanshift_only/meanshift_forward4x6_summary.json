@@ -1,0 +1,50 @@
+{
+  "method": "MeanShift-only",
+  "backbone": "mobilenet_v3_small",
+  "forward_rows": 4,
+  "candidate_count": 24,
+  "jitter_m": 8.0,
+  "timing_definition": "cached UAV backbone feature -> UAV projector + selected SAT projector + cosine similarity + Soft MeanShift; excludes image I/O/preprocessing/UAV backbone",
+  "routes": {
+    "route_B": {
+      "MLE_m": 8.244603387330558,
+      "MedLE_m": 8.01269245147705,
+      "P90_m": 13.666632652282715,
+      "P95_m": 15.181340456008911,
+      "P99_m": 17.886486530303955,
+      "LSR@5_pct": 24.121265377855888,
+      "LSR@10_pct": 66.78383128295255,
+      "LSR@15_pct": 94.5518453427065,
+      "LSR@20_pct": 99.60456942003515,
+      "CVaR90_m": 15.730154229883562,
+      "CoreTiming": {
+        "mean_ms": 8.015600992494178,
+        "median_ms": 8.259313501184806,
+        "p90_ms": 8.449494009255432,
+        "fps": 124.75670894002853,
+        "samples": 2246
+      },
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/meanshift_only/route_B_meanshift_forward4x6_frames.csv"
+    },
+    "route_C": {
+      "MLE_m": 7.8729424778911,
+      "MedLE_m": 7.75239372253418,
+      "P90_m": 12.502791690826415,
+      "P95_m": 13.645728445053095,
+      "P99_m": 16.02514009475709,
+      "LSR@5_pct": 23.608903020667725,
+      "LSR@10_pct": 69.71383147853736,
+      "LSR@15_pct": 97.8537360890302,
+      "LSR@20_pct": 100.0,
+      "CVaR90_m": 14.089498868064275,
+      "CoreTiming": {
+        "mean_ms": 8.281377395261375,
+        "median_ms": 8.24926000495907,
+        "p90_ms": 8.37333760864567,
+        "fps": 120.75285937001284,
+        "samples": 1228
+      },
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/meanshift_only/route_C_meanshift_forward4x6_frames.csv"
+    }
+  }
+}

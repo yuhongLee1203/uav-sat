@@ -1,0 +1,86 @@
+{
+  "architecture": "V36_byTeacher_MSPreviousPosition_2Frame_mobilenet_v3_small_GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_v5",
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "trained_default_search": "3x6",
+  "ablation_note": "4x6/5x6/6x6 use the same trained temporal checkpoint so the comparison isolates inference candidate-count accuracy/time trade-off",
+  "kalman": "previous posterior/covariance -> recurrent motion prior; update with GRU measurement and GRU variance",
+  "meanshift": "new image re-localizes previous Kalman output for GRU previous-position cue; current SoftMS position is GRU evidence, not algebraically added to measurement head",
+  "results": {
+    "5x6": {
+      "route_B": {
+        "MLE_m": 21.67677824196642,
+        "MedLE_m": 6.782280668519157,
+        "P90_m": 101.20001527852806,
+        "P95_m": 122.40740914538596,
+        "P99_m": 150.25425240487186,
+        "LSR@5_pct": 38.796133567662565,
+        "LSR@10_pct": 73.06678383128296,
+        "LSR@15_pct": 81.9859402460457,
+        "LSR@20_pct": 82.99648506151142,
+        "ForwardRows": 5,
+        "CandidateCount": 30,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/2frame/route_B_forward5x6_v36_byTeacher_frames.csv",
+        "KalmanMeasurementSource": "GRU measurement head",
+        "KalmanVarianceSource": "GRU variance head",
+        "KalmanMSConfidence": false,
+        "MeanShiftRole": "re-localized previous-position cue + current GRU visual evidence",
+        "TrackingCoreTiming": {
+          "definition": "cached UAV backbone feature -> previous-position MeanShift + current local MeanShift -> GRU -> Kalman -> final XY",
+          "excluded": [
+            "image disk I/O",
+            "image preprocessing",
+            "UAV backbone encoding",
+            "model/checkpoint loading",
+            "satellite gallery construction"
+          ],
+          "warmup_frames": 30,
+          "samples": 2246,
+          "mean_ms": 26.859132049022968,
+          "median_ms": 26.74902901344467,
+          "p90_ms": 27.09797200805042,
+          "fps": 37.231284993677825
+        }
+      },
+      "route_C": {
+        "MLE_m": 9.325286986952436,
+        "MedLE_m": 5.351876647777803,
+        "P90_m": 26.073070202372836,
+        "P95_m": 29.370664219072722,
+        "P99_m": 47.944689382019504,
+        "LSR@5_pct": 46.74085850556439,
+        "LSR@10_pct": 76.94753577106518,
+        "LSR@15_pct": 81.87599364069952,
+        "LSR@20_pct": 83.30683624801271,
+        "ForwardRows": 5,
+        "CandidateCount": 30,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/2frame/route_C_forward5x6_v36_byTeacher_frames.csv",
+        "KalmanMeasurementSource": "GRU measurement head",
+        "KalmanVarianceSource": "GRU variance head",
+        "KalmanMSConfidence": false,
+        "MeanShiftRole": "re-localized previous-position cue + current GRU visual evidence",
+        "TrackingCoreTiming": {
+          "definition": "cached UAV backbone feature -> previous-position MeanShift + current local MeanShift -> GRU -> Kalman -> final XY",
+          "excluded": [
+            "image disk I/O",
+            "image preprocessing",
+            "UAV backbone encoding",
+            "model/checkpoint loading",
+            "satellite gallery construction"
+          ],
+          "warmup_frames": 30,
+          "samples": 1228,
+          "mean_ms": 26.89813642405392,
+          "median_ms": 26.738190499600023,
+          "p90_ms": 27.075948187848553,
+          "fps": 37.17729675524065
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "backbone": "mobilenet_v3_small",
+  "batch_size": 1,
+  "definition": "UAV backbone only; disk I/O and Python/PIL preprocessing excluded",
+  "samples": 270,
+  "mean_ms": 6.9811512305427135,
+  "median_ms": 6.870533499750309,
+  "p90_ms": 7.699734016205184,
+  "fps": 143.24285020856942
+}
