@@ -97,6 +97,18 @@ LOSS_VARIANCE_NLL = 0.05
 # Compact recurrent model converges quickly; use a conservative learning rate.
 TEMPORAL_LR = 1e-4
 
+# ---------------------------------------------------------------------------
+# Forward-search accuracy/speed ablation
+# ---------------------------------------------------------------------------
+# Thesis/default setting remains 3x6=18.  During evaluation the same trained
+# temporal checkpoint can be tested with 4x6=24, 5x6=30 and 6x6=36 so only the
+# inference candidate count changes.
+FORWARD_SEARCH_ROWS = 3
+FORWARD_SEARCH_COLS = 6
+FORWARD_SEARCH_CANDIDATE_COUNT = FORWARD_SEARCH_ROWS * FORWARD_SEARCH_COLS
+FORWARD_SEARCH_EXPERIMENT_ROWS = (3, 4, 5, 6)
+LATENCY_WARMUP_FRAMES = 30
+
 CONTROLLED_PROTOCOL_NAME = (
     "reference-point+smooth-jitter_forward3x6_SoftMS-as-GRU-evidence_"
     "2frame_GRU-visual-measurement-and-variance_no-sat-context_"
