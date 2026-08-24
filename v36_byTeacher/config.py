@@ -57,11 +57,12 @@ GRU_VISUAL_VARIANCE_INIT_M2 = 25.0
 
 # Kalman must not consume MeanShift/local-posterior confidence. The legacy
 # update API still has an acquisition_confidence argument for compatibility,
-# but fixing both bounds to 1 makes its value constant and removes any dynamic
-# MeanShift-confidence influence on R, innovation gates, or posterior limits.
+# but fixing both bounds to 1 removes any dynamic MeanShift-confidence effect.
+# The old confidence-dependent NIS threshold boost is also disabled.
 KALMAN_USE_MS_CONFIDENCE = False
 VISUAL_CONFIDENCE_FLOOR = 1.0
 VISUAL_CONFIDENCE_CEIL = 1.0
+KALMAN_NIS_CONFIDENCE_BOOST = 0.0
 ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
 
 # ---------------------------------------------------------------------------
