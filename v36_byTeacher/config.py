@@ -56,6 +56,33 @@ LATEST_TEMPORAL_CHECKPOINT = (
 FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
 
 # ---------------------------------------------------------------------------
+# No-training MeanShift ablation overrides
+# ---------------------------------------------------------------------------
+# These values default to config_base.py, so normal training/evaluation is
+# unchanged.  They can be overridden only at inference time to sweep decoder
+# hyperparameters using the already-trained visual checkpoint and UAV cache.
+MEANSHIFT_ITERATIONS = int(
+    os.environ.get("UAVSAT_MS_ITERATIONS", str(MEANSHIFT_ITERATIONS))
+)
+MEANSHIFT_BANDWIDTH_M = float(
+    os.environ.get("UAVSAT_MS_BANDWIDTH_M", str(MEANSHIFT_BANDWIDTH_M))
+)
+MEANSHIFT_SCORE_TAU = float(
+    os.environ.get("UAVSAT_MS_SCORE_TAU", str(MEANSHIFT_SCORE_TAU))
+)
+MEANSHIFT_MODE_BETA = float(
+    os.environ.get("UAVSAT_MS_MODE_BETA", str(MEANSHIFT_MODE_BETA))
+)
+if MEANSHIFT_ITERATIONS < 1:
+    raise ValueError("UAVSAT_MS_ITERATIONS must be >= 1")
+if MEANSHIFT_BANDWIDTH_M <= 0.0:
+    raise ValueError("UAVSAT_MS_BANDWIDTH_M must be > 0")
+if MEANSHIFT_SCORE_TAU <= 0.0:
+    raise ValueError("UAVSAT_MS_SCORE_TAU must be > 0")
+if MEANSHIFT_MODE_BETA <= 0.0:
+    raise ValueError("UAVSAT_MS_MODE_BETA must be > 0")
+
+# ---------------------------------------------------------------------------
 # Teacher-requested inter-frame hand-off
 # ---------------------------------------------------------------------------
 # For frame t, the newly arrived UAV image re-localizes the previous Kalman
