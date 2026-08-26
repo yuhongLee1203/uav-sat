@@ -24,11 +24,11 @@ if EXPERIMENT_FRAME_COUNT not in (1, 2):
     raise ValueError("UAVSAT_EXPERIMENT_FRAME_COUNT must be 1 or 2 for v36_byTeacher")
 TEMPORAL_WINDOW_FRAMES = EXPERIMENT_FRAME_COUNT
 
-# Multi-rate Route-A temporal training.  The original Route-A training sequence
-# is kept unchanged, and a second training sequence is made only from the same
-# Route-A TRAIN split by taking every Nth frame.  With the default stride=2, a
-# native ~2.3 m/frame trajectory becomes roughly ~4-5 m/frame.  B/C are never
-# used for training and remain evaluation routes.
+# Multi-rate Route-A temporal training metadata.  The intended protocol is
+# Route-A native plus a second Route-A sequence sampled every Nth frame.  B/C
+# remain evaluation-only routes.  NOTE: robust_tracker.py currently executes
+# one temporal pass over the Route-A training split; this field is retained so
+# the intended protocol is explicit and can be restored without deleting code.
 TEMPORAL_EXTRA_A_STRIDE = int(
     os.environ.get("UAVSAT_TEMPORAL_EXTRA_A_STRIDE", "2")
 )
@@ -36,11 +36,20 @@ if TEMPORAL_EXTRA_A_STRIDE < 2:
     raise ValueError("UAVSAT_TEMPORAL_EXTRA_A_STRIDE must be >= 2")
 TEMPORAL_TRAINING_PROTOCOL = f"routeA_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}"
 
+# Pure-model ablation is now the default.  Set UAVSAT_MANUAL_CONSTRAINTS=1 to
+# restore the legacy hand-tuned dynamic limits without deleting any old logic.
+MANUAL_DYNAMICS_CONSTRAINTS = (
+    os.environ.get("UAVSAT_MANUAL_CONSTRAINTS", "0").strip() == "1"
+)
+PURE_MODEL_DYNAMICS = not MANUAL_DYNAMICS_CONSTRAINTS
+ZERO_KINEMATIC_INITIALIZATION = True
+DYNAMICS_TAG = "manual" if MANUAL_DYNAMICS_CONSTRAINTS else "puremodel"
+
 ARCHITECTURE_NAME = (
     "V36_byTeacher_MSPreviousPosition_"
     f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
     "GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_"
-    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_v6"
+    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v7"
 )
 
 # Keep every backbone isolated so changing the backbone never overwrites the
@@ -56,7 +65,7 @@ TEMPORAL_CHECKPOINT = (
         "controlled_referenceprior_forward3x6_ms_previous_position_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
         "gru_visual_measurement_variance_nosat_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v6.pt"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v7.pt"
     )
 )
 LATEST_TEMPORAL_CHECKPOINT = (
@@ -65,7 +74,7 @@ LATEST_TEMPORAL_CHECKPOINT = (
         "controlled_referenceprior_forward3x6_ms_previous_position_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
         "gru_visual_measurement_variance_nosat_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v6_latest.pt"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v7_latest.pt"
     )
 )
 FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
@@ -143,9 +152,8 @@ ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
 # ---------------------------------------------------------------------------
 # Kalman trust balance
 # ---------------------------------------------------------------------------
-# Keep enough process uncertainty/correction room for the current visual
-# measurement to pull the posterior back toward the reference-supported local
-# observation, while retaining bounded non-teleporting updates.
+# Legacy constrained values are intentionally kept here.  The pure-model block
+# below overrides them at runtime instead of deleting them.
 KALMAN_Q_PROGRESS = 0.80
 KALMAN_Q_CROSS = 0.25
 KALMAN_Q_VELOCITY = 0.40
@@ -166,6 +174,11 @@ USE_SATELLITE_CONTEXT_IN_GRU = False
 # + current SoftMS-X_(t-1)^MS displacement(2) + previous velocity(2)
 # + heading residual/turn-rate(2).
 RNN_NUMERIC_DIM = 10
+
+# Keep input normalization separate from any output bound.  These are only
+# feature scales, not clipping/rate limits.
+RNN_HEADING_INPUT_SCALE_DEG = 70.0
+RNN_TURN_RATE_INPUT_SCALE_DEG_PER_FRAME = 12.0
 
 # ---------------------------------------------------------------------------
 # Training balance
@@ -193,11 +206,74 @@ FORWARD_SEARCH_CANDIDATE_COUNT = FORWARD_SEARCH_ROWS * FORWARD_SEARCH_COLS
 FORWARD_SEARCH_EXPERIMENT_ROWS = (3, 4, 5, 6)
 LATENCY_WARMUP_FRAMES = 30
 
+# ---------------------------------------------------------------------------
+# Pure-model dynamics ablation
+# ---------------------------------------------------------------------------
+# Leave route geometry, reference-point local search, forward 3x6 selection,
+# MeanShift, GRU, polynomial and Kalman enabled.  Only hand-tuned dynamic
+# clipping/smoothing/GT-progress caps are disabled.  A very large finite guard
+# is used inside legacy base functions so their code remains intact while being
+# inactive in the physical operating range.
+if PURE_MODEL_DYNAMICS:
+    _NO_LIMIT = 1.0e9
+
+    # No manually imposed speed / acceleration / polynomial-step ceiling.
+    MAX_FORWARD_SPEED_M_PER_FRAME = _NO_LIMIT
+    MAX_CROSS_SPEED_M_PER_FRAME = _NO_LIMIT
+    MAX_FORWARD_ACCEL_M_PER_FRAME2 = _NO_LIMIT
+    MAX_CROSS_ACCEL_M_PER_FRAME2 = _NO_LIMIT
+    MAX_POLYNOMIAL_STEP_M_PER_FRAME = _NO_LIMIT
+    MAX_FINAL_CROSS_TRACK_M = _NO_LIMIT
+
+    # Heading residual and frame-to-frame turn targets are angle wrapped by
+    # definition; 180 deg is therefore the natural non-restrictive range.
+    MAX_HEADING_RESIDUAL_DEG = 180.0
+    MAX_TURN_RATE_DEG_PER_FRAME = 180.0
+    MAX_HEADING_DELTA_DEG_PER_FRAME = 180.0
+    MAX_TURN_RATE_DELTA_DEG_PER_FRAME2 = 180.0
+    HEADING_STATE_EMA_ALPHA = 1.0
+    TURN_RATE_EMA_ALPHA = 1.0
+
+    # Disable state EMA/rate limit.  Runtime functions are also patched below to
+    # pass the raw learned states through directly.
+    MOTION_VELOCITY_EMA_ALPHA = 1.0
+    MOTION_ACCELERATION_EMA_ALPHA = 1.0
+    MOTION_POLYNOMIAL_STEP_EMA_ALPHA = 1.0
+    MAX_MOTION_VELOCITY_DELTA_M_PER_FRAME = _NO_LIMIT
+    MAX_MOTION_ACCEL_DELTA_M_PER_FRAME2 = _NO_LIMIT
+    MAX_POLYNOMIAL_STEP_DELTA_M_PER_FRAME = _NO_LIMIT
+
+    # Disable GT/reference-progress output caps and controlled motion envelope.
+    CONTROLLED_FINAL_PROGRESS_CAP_TO_GT = False
+    CONTROLLED_GT_MOTION_ENVELOPE = False
+    CONTROLLED_PACE_ASSIST = False
+
+    # Disable hand-tuned Kalman innovation/posterior/velocity/step corridors.
+    KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M = _NO_LIMIT
+    KALMAN_MAX_MEASUREMENT_INNOVATION_CROSS_M = _NO_LIMIT
+    KALMAN_MAX_POSTERIOR_CORRECTION_PROGRESS_M = _NO_LIMIT
+    KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M = _NO_LIMIT
+    KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME = _NO_LIMIT
+    KALMAN_FINAL_STEP_MIN_M = 0.0
+    KALMAN_FINAL_STEP_SLACK_M = _NO_LIMIT
+    KALMAN_FINAL_STEP_MAX_M = _NO_LIMIT
+
+    # Learned variance remains positive, but its old hand-set 1..400 m^2 range
+    # is removed.  These are numerical guards only.
+    KALMAN_R_MIN_VAR = 1.0e-6
+    KALMAN_R_MAX_VAR = 1.0e12
+    ACQ_MAX_RESPONSE_VARIANCE_M2 = 1.0e12
+    KALMAN_NIS_CONFIDENCE_BOOST = 0.0
+    KALMAN_NIS_MAX_R_SCALE = 1.0
+    ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
+    VISUAL_CONFIDENCE_FLOOR = 1.0
+    VISUAL_CONFIDENCE_CEIL = 1.0
+
 CONTROLLED_PROTOCOL_NAME = (
     "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
     f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
     "current-MS-anchored-GRU-visual-measurement-and-variance_no-sat-context_"
-    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v6"
+    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_{DYNAMICS_TAG}_v7"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
@@ -206,3 +282,96 @@ WAYPOINT_FILES = {
     "route_B": WAYPOINT_DIR / "route_B_waypoints.json",
     "route_C": WAYPOINT_DIR / "route_C_waypoints.json",
 }
+
+
+# ---------------------------------------------------------------------------
+# Runtime compatibility patch for the legacy constrained base implementation
+# ---------------------------------------------------------------------------
+# Do not delete the old constrained functions.  In pure-model mode only, wrap
+# them so max_progress/max_step reference caps are not passed into Kalman and
+# learned motion/heading states are not EMA/rate-limited after the network.
+def _install_pure_model_runtime_patches():
+    if not PURE_MODEL_DYNAMICS:
+        return
+
+    import robust_tracker_base as _b
+
+    if bool(getattr(_b, "_V36_PURE_MODEL_PATCHED", False)):
+        return
+
+    _original_predict = _b.RouteKalman.predict
+    _original_update = _b.RouteKalman.update
+
+    def _pure_predict(
+        self,
+        velocity_se,
+        acceleration_se,
+        total_length_m,
+        max_progress_s=None,
+        polynomial_step_se=None,
+        max_step_m=None,
+    ):
+        return _original_predict(
+            self,
+            velocity_se,
+            acceleration_se,
+            total_length_m,
+            max_progress_s=None,
+            polynomial_step_se=polynomial_step_se,
+            max_step_m=None,
+        )
+
+    def _pure_update(
+        self,
+        measurement_se,
+        variance_se,
+        total_length_m,
+        acquisition_confidence=1.0,
+        max_progress_s=None,
+        max_final_step_m=None,
+    ):
+        return _original_update(
+            self,
+            measurement_se,
+            variance_se,
+            total_length_m,
+            acquisition_confidence=1.0,
+            max_progress_s=None,
+            max_final_step_m=None,
+        )
+
+    def _raw_motion_state(
+        previous_velocity,
+        previous_acceleration,
+        previous_polynomial_step,
+        raw_velocity,
+        raw_acceleration,
+        raw_polynomial_step,
+    ):
+        return (
+            raw_velocity.detach(),
+            raw_acceleration.detach(),
+            raw_polynomial_step.detach(),
+        )
+
+    def _raw_heading_state(previous_state, raw_heading_residual, raw_turn_rate):
+        return _b.torch.cat(
+            [raw_heading_residual.detach(), raw_turn_rate.detach()], dim=1
+        )
+
+    def _no_prediction_reference_cap(kf, predicted_se, reference_se):
+        return _b.np.asarray(predicted_se, dtype=_b.np.float64).copy()
+
+    def _no_kalman_reference_cap(kf, final_se, reference_se):
+        return _b.np.asarray(final_se, dtype=_b.np.float64).copy(), False
+
+    _b.RouteKalman.predict = _pure_predict
+    _b.RouteKalman.update = _pure_update
+    _b.stabilize_motion_state = _raw_motion_state
+    _b.stabilize_heading_state = _raw_heading_state
+    _b.cap_prediction_to_current_gt = _no_prediction_reference_cap
+    _b.cap_kalman_to_current_gt = _no_kalman_reference_cap
+    _b._V36_PURE_MODEL_PATCHED = True
+
+
+_install_pure_model_runtime_patches()
