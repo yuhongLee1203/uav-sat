@@ -24,10 +24,23 @@ if EXPERIMENT_FRAME_COUNT not in (1, 2):
     raise ValueError("UAVSAT_EXPERIMENT_FRAME_COUNT must be 1 or 2 for v36_byTeacher")
 TEMPORAL_WINDOW_FRAMES = EXPERIMENT_FRAME_COUNT
 
+# Multi-rate Route-A temporal training.  The original Route-A training sequence
+# is kept unchanged, and a second training sequence is made only from the same
+# Route-A TRAIN split by taking every Nth frame.  With the default stride=2, a
+# native ~2.3 m/frame trajectory becomes roughly ~4-5 m/frame.  B/C are never
+# used for training and remain evaluation routes.
+TEMPORAL_EXTRA_A_STRIDE = int(
+    os.environ.get("UAVSAT_TEMPORAL_EXTRA_A_STRIDE", "2")
+)
+if TEMPORAL_EXTRA_A_STRIDE < 2:
+    raise ValueError("UAVSAT_TEMPORAL_EXTRA_A_STRIDE must be >= 2")
+TEMPORAL_TRAINING_PROTOCOL = f"routeA_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}"
+
 ARCHITECTURE_NAME = (
     "V36_byTeacher_MSPreviousPosition_"
     f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
-    "GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_v5"
+    "GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_"
+    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_v6"
 )
 
 # Keep every backbone isolated so changing the backbone never overwrites the
@@ -42,7 +55,8 @@ TEMPORAL_CHECKPOINT = (
     / (
         "controlled_referenceprior_forward3x6_ms_previous_position_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-        "gru_visual_measurement_variance_nosat_v5_A_only.pt"
+        "gru_visual_measurement_variance_nosat_"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v6.pt"
     )
 )
 LATEST_TEMPORAL_CHECKPOINT = (
@@ -50,7 +64,8 @@ LATEST_TEMPORAL_CHECKPOINT = (
     / (
         "controlled_referenceprior_forward3x6_ms_previous_position_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-        "gru_visual_measurement_variance_nosat_v5_A_only_latest.pt"
+        "gru_visual_measurement_variance_nosat_"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v6_latest.pt"
     )
 )
 FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
@@ -182,7 +197,7 @@ CONTROLLED_PROTOCOL_NAME = (
     "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
     f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
     "current-MS-anchored-GRU-visual-measurement-and-variance_no-sat-context_"
-    "polynomial_Kalman_v5"
+    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v6"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
