@@ -12,6 +12,8 @@ TEMPORAL_EPOCHS_RUN="${TEMPORAL_EPOCHS_RUN:-60}"
 PATIENCE_RUN="${PATIENCE_RUN:-15}"
 FORCE_VISUAL="${FORCE_VISUAL:-0}"
 TIMING_GPU="${TIMING_GPU:-0}"
+BC_TRAIN_GPU="${BC_TRAIN_GPU:-0}"
+REFERENCE_POINT_SPACING_M="${REFERENCE_POINT_SPACING_M:-4.48}"
 
 BACKBONE_ROOT="$HERE/output/$BACKBONE"
 LOG_DIR="$BACKBONE_ROOT/logs"
@@ -19,6 +21,7 @@ VISUAL_CKPT="$BACKBONE_ROOT/checkpoints/visual_retrieval_A_only_${BACKBONE}.pt"
 mkdir -p "$BACKBONE_ROOT/checkpoints" "$BACKBONE_ROOT/feature_cache" "$LOG_DIR"
 
 export BACKBONE JITTER_M VISUAL_EPOCHS_RUN TEMPORAL_EPOCHS_RUN PATIENCE_RUN
+export REFERENCE_POINT_SPACING_M
 
 train_visual() {
   if [[ "$FORCE_VISUAL" != "1" && -f "$VISUAL_CKPT" ]]; then
@@ -101,6 +104,201 @@ train_temporal_parallel() {
   wait "$pid_2frame"
   wait "$pid_1frame"
   echo "[temporal] both temporal trainings finished"
+}
+
+# v37-style DATA FEEDING ONLY for the v36_byTeacher architecture.
+# - temporal train routes: B + C
+# - validation route: A
+# - global epochs alternate complete Route B / complete Route C sequences
+# - each route starts from its own causal route start (Kalman/GRU state reset)
+# - TBPTT still detaches gradients internally; it does not reset navigation state
+# - current-frame GT remains supervision/metric only because config.py's
+#   causal-reference wrapper ignores the legacy GT search centre/teacher selection
+# - no v37 architecture, scheduled-reference, 4x6, or model code is imported
+train_temporal_bc_val_a() {
+  if [[ ! -f "$VISUAL_CKPT" ]]; then
+    echo "[bc->a] missing visual checkpoint: $VISUAL_CKPT" >&2
+    echo "[bc->a] run: bash run_train_eval.sh visual" >&2
+    exit 2
+  fi
+
+  echo "[bc->a] GPU${BC_TRAIN_GPU}: v36 architecture, temporal B+C training, full A validation"
+  echo "[bc->a] search=3x6, pure-model dynamics, causal reference-only search, jitter=0"
+
+  CUDA_VISIBLE_DEVICES="$BC_TRAIN_GPU" \
+  UAVSAT_BACKBONE="$BACKBONE" \
+  UAVSAT_EXPERIMENT_FRAME_COUNT=2 \
+  UAVSAT_MANUAL_CONSTRAINTS=0 \
+  UAVSAT_REFERENCE_POINT_SPACING_M="$REFERENCE_POINT_SPACING_M" \
+  python3 -u - <<'PY' 2>&1 | tee "$LOG_DIR/12_train_BC_val_A_2frame.log"
+import os
+from pathlib import Path
+
+import torch
+
+import config
+import robust_tracker as rt
+import robust_tracker_base as b
+from visual_localizer import FrozenVisualLocalizer
+
+# Keep the v36_byTeacher method exactly as configured. Only the route feeding
+# and validation source are changed here.
+rt._set_forward_rows(3)
+config.LOCAL_PRIOR_JITTER_M = 0.0
+config.CONTROLLED_GT_PRIOR_JITTER_M = 0.0
+rt.set_seed(config.SEED)
+device = rt.resolve_device()
+visual = FrozenVisualLocalizer(device)
+
+
+def load_pair(route_name):
+    route_index = config.ROUTE_NAMES.index(route_name)
+    cache = rt.build_route_cache(
+        route_name, config.ROUTE_ROOTS[route_index], visual, device
+    )
+    route = rt.WaypointRoute(
+        rt.load_waypoint_xy(route_name, visual.origin_lat, visual.origin_lon)
+    )
+    return cache, route
+
+
+train_pairs = {
+    "route_B": load_pair("route_B"),
+    "route_C": load_pair("route_C"),
+}
+validation_cache, validation_route = load_pair("route_A")
+validation_gt_state = rt.build_gt_route_state(validation_cache, validation_route)
+
+print(
+    "BC->A data protocol: train=[route_B, route_C], validation=route_A, "
+    "full-route causal sequences, alternating by global epoch",
+    flush=True,
+)
+for name, (cache, route) in train_pairs.items():
+    print(
+        f"train sequence {name}: frames={len(cache)} route_length={route.total_length_m:.1f}m",
+        flush=True,
+    )
+print(
+    f"validation route_A: frames={len(validation_cache)} "
+    f"route_length={validation_route.total_length_m:.1f}m",
+    flush=True,
+)
+
+# train_temporal_model in v36 originally uses an intra-A split and validates on
+# the same route. For this data-only experiment, use every frame of whichever
+# training route is active and redirect validation to the complete Route A.
+original_split_ranges = b.split_ranges
+original_evaluate_closed_loop = rt.evaluate_closed_loop
+
+
+def full_route_split(length):
+    return {"train": (0, int(length)), "val": (0, int(length))}
+
+
+def validate_on_route_a(
+    model,
+    visual_arg,
+    cache_arg,
+    route_arg,
+    gt_state_arg,
+    metric_range_arg,
+    device_arg,
+):
+    return original_evaluate_closed_loop(
+        model,
+        visual_arg,
+        validation_cache,
+        validation_route,
+        validation_gt_state,
+        (0, len(validation_cache)),
+        device_arg,
+    )
+
+
+b.split_ranges = full_route_split
+rt.evaluate_closed_loop = validate_on_route_a
+
+epochs = int(os.environ["TEMPORAL_EPOCHS_RUN"])
+patience_limit = int(os.environ["PATIENCE_RUN"])
+
+# Start this BC->A experiment from a clean temporal model. The visual retrieval
+# checkpoint is reused, but the temporal checkpoint/optimizer is not inherited
+# from the previous Route-A-only run.
+for checkpoint_path in (
+    Path(config.TEMPORAL_CHECKPOINT),
+    Path(config.LATEST_TEMPORAL_CHECKPOINT),
+):
+    if checkpoint_path.exists():
+        checkpoint_path.unlink()
+        print("removed old temporal checkpoint:", checkpoint_path, flush=True)
+
+model = None
+best_score = float("inf")
+try:
+    for global_epoch in range(1, epochs + 1):
+        route_name = "route_B" if global_epoch % 2 == 1 else "route_C"
+        train_cache, train_route = train_pairs[route_name]
+        print(
+            f"BC->A epoch={global_epoch:03d}/{epochs} "
+            f"train={route_name} validate=route_A",
+            flush=True,
+        )
+
+        model, best_score = rt.train_temporal_model(
+            visual=visual,
+            cache=train_cache,
+            route=train_route,
+            device=device,
+            epochs=global_epoch,
+            patience_limit=patience_limit,
+            resume=(global_epoch > 1),
+        )
+
+        payload = torch.load(
+            config.LATEST_TEMPORAL_CHECKPOINT, map_location="cpu"
+        )
+        patience = int(payload.get("patience", 0))
+        if (
+            global_epoch >= int(config.EARLY_STOP_MIN_EPOCH)
+            and patience >= patience_limit
+        ):
+            print(
+                f"BC->A early stop at epoch={global_epoch}: "
+                f"Route-A validation patience={patience}/{patience_limit}",
+                flush=True,
+            )
+            break
+finally:
+    b.split_ranges = original_split_ranges
+    rt.evaluate_closed_loop = original_evaluate_closed_loop
+
+if model is None:
+    raise RuntimeError("BC->A temporal training did not execute any epoch")
+
+# Report one final full Route-A run with the best Route-A-validation checkpoint.
+result_a = rt.run_route_inference(
+    "route_A",
+    visual,
+    model,
+    validation_cache,
+    validation_route,
+    device,
+    measure_latency=False,
+)
+print(
+    "BC->A finished: best_A_validation_score=%.3f "
+    "A_MLE=%.3fm A_P90=%.3fm A_LSR15=%.2f%%"
+    % (
+        best_score,
+        result_a["MLE_m"],
+        result_a["P90_m"],
+        result_a["LSR@15_pct"],
+    ),
+    flush=True,
+)
+print("best temporal checkpoint:", config.TEMPORAL_CHECKPOINT, flush=True)
+PY
 }
 
 run_full_eval() {
@@ -528,6 +726,10 @@ case "$MODE" in
     prepare_feature_cache
     train_temporal_parallel
     ;;
+  bc_to_a)
+    prepare_feature_cache
+    train_temporal_bc_val_a
+    ;;
   eval)
     prepare_feature_cache
     run_eval_parallel
@@ -546,7 +748,7 @@ case "$MODE" in
     collect_results
     ;;
   *)
-    echo "usage: $0 [all|visual|train|eval|timing|collect]" >&2
+    echo "usage: $0 [all|visual|train|bc_to_a|eval|timing|collect]" >&2
     exit 2
     ;;
 esac
