@@ -45,11 +45,29 @@ PURE_MODEL_DYNAMICS = not MANUAL_DYNAMICS_CONSTRAINTS
 ZERO_KINEMATIC_INITIALIZATION = True
 DYNAMICS_TAG = "manual" if MANUAL_DYNAMICS_CONSTRAINTS else "puremodel"
 
+# ---------------------------------------------------------------------------
+# Causal predefined-route reference points
+# ---------------------------------------------------------------------------
+# IMPORTANT: current-frame GT/reference position is NEVER used to choose the
+# local search centre.  The known planned route is sampled into fixed reference
+# points.  The causal model/Kalman prediction is used only to determine how far
+# along the planned route we have already reached; the selected reference point
+# is the nearest fixed point whose route progress does not exceed that prediction.
+# The default 4.48 m spacing corresponds to one 32-pixel satellite lattice stride
+# at 0.14 m/px.  It can be changed without touching the model code.
+REFERENCE_POINT_SPACING_M = float(
+    os.environ.get("UAVSAT_REFERENCE_POINT_SPACING_M", "4.48")
+)
+if REFERENCE_POINT_SPACING_M <= 0.0:
+    raise ValueError("UAVSAT_REFERENCE_POINT_SPACING_M must be > 0")
+REFERENCE_SEARCH_GT_FREE = True
+REFERENCE_SELECTION_POLICY = "nearest_already_passed_from_causal_prediction"
+
 ARCHITECTURE_NAME = (
     "V36_byTeacher_MSPreviousPosition_"
     f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
     "GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_"
-    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v7"
+    f"CausalReferenceOnly_MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v8"
 )
 
 # Keep every backbone isolated so changing the backbone never overwrites the
@@ -62,19 +80,19 @@ VISUAL_CHECKPOINT = CHECKPOINT_DIR / f"visual_retrieval_A_only_{BACKBONE_KEY}.pt
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
     / (
-        "controlled_referenceprior_forward3x6_ms_previous_position_"
+        "causal_reference_only_forward3x6_ms_previous_position_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
         "gru_visual_measurement_variance_nosat_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v7.pt"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v8.pt"
     )
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
     / (
-        "controlled_referenceprior_forward3x6_ms_previous_position_"
+        "causal_reference_only_forward3x6_ms_previous_position_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
         "gru_visual_measurement_variance_nosat_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v7_latest.pt"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v8_latest.pt"
     )
 )
 FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
@@ -120,11 +138,10 @@ MEANSHIFT_POSITION_AS_GRU_INPUT = True
 # ---------------------------------------------------------------------------
 # GRU visual measurement
 # ---------------------------------------------------------------------------
-# Current measurement is anchored to the current controlled local MeanShift:
-#       z_t = current_MS_t + residual_head(h_t)
-# The teacher-requested X_(t-1)^MS remains an input to the GRU and therefore
+# Current measurement is anchored to the current local MeanShift observation.
+# The previous-position MeanShift remains an input to the GRU and therefore
 # affects h_t, but an accumulated previous Kalman error can no longer shift the
-# absolute current measurement hundreds of metres away from the visual evidence.
+# absolute current measurement hundreds of metres away from visual evidence.
 DIRECT_SOFTMS_MEASUREMENT = False
 USE_GRU_VISUAL_MEASUREMENT_HEAD = True
 GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M = 6.0
@@ -183,9 +200,8 @@ RNN_TURN_RATE_INPUT_SCALE_DEG_PER_FRAME = 12.0
 # ---------------------------------------------------------------------------
 # Training balance
 # ---------------------------------------------------------------------------
-# The current visual anchor is already near the supervised reference under the
-# controlled local protocol, so the residual head should learn a small refinement
-# rather than a hundreds-of-metres absolute displacement.
+# GT/reference trajectory values are training targets only.  They are not used
+# to select the current reference point, search centre, hypothesis or candidate.
 LOSS_MEASUREMENT = 2.0
 LOSS_NEXT_STEP = 2.0
 LOSS_VARIANCE_NLL = 0.02
@@ -270,10 +286,11 @@ if PURE_MODEL_DYNAMICS:
     VISUAL_CONFIDENCE_CEIL = 1.0
 
 CONTROLLED_PROTOCOL_NAME = (
-    "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
+    "causal-prediction_to-nearest-already-passed-route-reference_"
+    "forward3x6_MS-previous-position-to-GRU_"
     f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
     "current-MS-anchored-GRU-visual-measurement-and-variance_no-sat-context_"
-    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_{DYNAMICS_TAG}_v7"
+    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_{DYNAMICS_TAG}_v8"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
@@ -290,47 +307,99 @@ WAYPOINT_FILES = {
 # Do not delete the old constrained functions.  In pure-model mode only, wrap
 # them so max_progress/max_step reference caps are not passed into Kalman and
 # learned motion/heading states are not EMA/rate-limited after the network.
-def _install_pure_model_runtime_patches():
-    if not PURE_MODEL_DYNAMICS:
-        return
-
+# Independently of manual/pure dynamics, visual_observation is wrapped so the
+# current-frame GT cannot choose a search centre or selected hypothesis.
+def _install_v36_runtime_patches():
     import robust_tracker_base as _b
 
-    if bool(getattr(_b, "_V36_PURE_MODEL_PATCHED", False)):
+    if bool(getattr(_b, "_V36_CAUSAL_REFERENCE_PATCHED", False)):
         return
 
-    _original_predict = _b.RouteKalman.predict
-    _original_update = _b.RouteKalman.update
+    # ------------------------------------------------------------------
+    # Search-centre policy: prediction -> nearest already-passed reference
+    # ------------------------------------------------------------------
+    _original_visual_observation = _b.visual_observation
 
-    def _pure_predict(
-        self,
-        velocity_se,
-        acceleration_se,
-        total_length_m,
-        max_progress_s=None,
-        polynomial_step_se=None,
-        max_step_m=None,
+    def _causal_reference_visual_observation(
+        model,
+        visual,
+        uav_clip,
+        search_center_se,
+        route,
+        predicted_se,
+        previous_z_uav,
+        previous2_z_uav,
+        hidden,
+        previous_acquisition_confidence,
+        kalman_progress_std,
+        previous_forward_speed,
+        search_heading_rad,
+        device,
+        gt_xy=None,
+        gt_se=None,
+        teacher_select=False,
     ):
-        return _original_predict(
+        # search_center_se from the legacy caller may contain current-frame GT.
+        # It is intentionally ignored here.
+        predicted = _b.np.asarray(predicted_se, dtype=_b.np.float64).reshape(2)
+        predicted_s = float(
+            _b.np.clip(predicted[0], 0.0, float(route.total_length_m))
+        )
+        spacing = max(float(REFERENCE_POINT_SPACING_M), 1.0e-6)
+        reference_index = int(_b.math.floor((predicted_s + 1.0e-9) / spacing))
+        reference_s = min(reference_index * spacing, float(route.total_length_m))
+        reference_center_se = _b.np.asarray(
+            [reference_s, 0.0], dtype=_b.np.float64
+        )
+
+        return _original_visual_observation(
+            model=model,
+            visual=visual,
+            uav_clip=uav_clip,
+            search_center_se=reference_center_se,
+            route=route,
+            predicted_se=predicted_se,
+            previous_z_uav=previous_z_uav,
+            previous2_z_uav=previous2_z_uav,
+            hidden=hidden,
+            previous_acquisition_confidence=previous_acquisition_confidence,
+            kalman_progress_std=kalman_progress_std,
+            previous_forward_speed=previous_forward_speed,
+            search_heading_rad=search_heading_rad,
+            device=device,
+            # GT is retained only for supervision/metrics such as capture and
+            # loss targets.  It is forbidden from selecting the hypothesis.
+            gt_xy=gt_xy,
+            gt_se=gt_se,
+            teacher_select=False,
+        )
+
+    _b.visual_observation = _causal_reference_visual_observation
+
+    if PURE_MODEL_DYNAMICS:
+        _original_predict = _b.RouteKalman.predict
+        _original_update = _b.RouteKalman.update
+
+        def _pure_predict(
             self,
             velocity_se,
             acceleration_se,
             total_length_m,
             max_progress_s=None,
-            polynomial_step_se=polynomial_step_se,
+            polynomial_step_se=None,
             max_step_m=None,
-        )
+        ):
+            return _original_predict(
+                self,
+                velocity_se,
+                acceleration_se,
+                total_length_m,
+                max_progress_s=None,
+                polynomial_step_se=polynomial_step_se,
+                max_step_m=None,
+            )
 
-    def _pure_update(
-        self,
-        measurement_se,
-        variance_se,
-        total_length_m,
-        acquisition_confidence=1.0,
-        max_progress_s=None,
-        max_final_step_m=None,
-    ):
-        return _original_update(
+        def _pure_update(
             self,
             measurement_se,
             variance_se,
@@ -338,40 +407,50 @@ def _install_pure_model_runtime_patches():
             acquisition_confidence=1.0,
             max_progress_s=None,
             max_final_step_m=None,
-        )
+        ):
+            return _original_update(
+                self,
+                measurement_se,
+                variance_se,
+                total_length_m,
+                acquisition_confidence=1.0,
+                max_progress_s=None,
+                max_final_step_m=None,
+            )
 
-    def _raw_motion_state(
-        previous_velocity,
-        previous_acceleration,
-        previous_polynomial_step,
-        raw_velocity,
-        raw_acceleration,
-        raw_polynomial_step,
-    ):
-        return (
-            raw_velocity.detach(),
-            raw_acceleration.detach(),
-            raw_polynomial_step.detach(),
-        )
+        def _raw_motion_state(
+            previous_velocity,
+            previous_acceleration,
+            previous_polynomial_step,
+            raw_velocity,
+            raw_acceleration,
+            raw_polynomial_step,
+        ):
+            return (
+                raw_velocity.detach(),
+                raw_acceleration.detach(),
+                raw_polynomial_step.detach(),
+            )
 
-    def _raw_heading_state(previous_state, raw_heading_residual, raw_turn_rate):
-        return _b.torch.cat(
-            [raw_heading_residual.detach(), raw_turn_rate.detach()], dim=1
-        )
+        def _raw_heading_state(previous_state, raw_heading_residual, raw_turn_rate):
+            return _b.torch.cat(
+                [raw_heading_residual.detach(), raw_turn_rate.detach()], dim=1
+            )
 
-    def _no_prediction_reference_cap(kf, predicted_se, reference_se):
-        return _b.np.asarray(predicted_se, dtype=_b.np.float64).copy()
+        def _no_prediction_reference_cap(kf, predicted_se, reference_se):
+            return _b.np.asarray(predicted_se, dtype=_b.np.float64).copy()
 
-    def _no_kalman_reference_cap(kf, final_se, reference_se):
-        return _b.np.asarray(final_se, dtype=_b.np.float64).copy(), False
+        def _no_kalman_reference_cap(kf, final_se, reference_se):
+            return _b.np.asarray(final_se, dtype=_b.np.float64).copy(), False
 
-    _b.RouteKalman.predict = _pure_predict
-    _b.RouteKalman.update = _pure_update
-    _b.stabilize_motion_state = _raw_motion_state
-    _b.stabilize_heading_state = _raw_heading_state
-    _b.cap_prediction_to_current_gt = _no_prediction_reference_cap
-    _b.cap_kalman_to_current_gt = _no_kalman_reference_cap
-    _b._V36_PURE_MODEL_PATCHED = True
+        _b.RouteKalman.predict = _pure_predict
+        _b.RouteKalman.update = _pure_update
+        _b.stabilize_motion_state = _raw_motion_state
+        _b.stabilize_heading_state = _raw_heading_state
+        _b.cap_prediction_to_current_gt = _no_prediction_reference_cap
+        _b.cap_kalman_to_current_gt = _no_kalman_reference_cap
+
+    _b._V36_CAUSAL_REFERENCE_PATCHED = True
 
 
-_install_pure_model_runtime_patches()
+_install_v36_runtime_patches()
