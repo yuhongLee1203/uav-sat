@@ -46,6 +46,33 @@ ZERO_KINEMATIC_INITIALIZATION = True
 DYNAMICS_TAG = "manual" if MANUAL_DYNAMICS_CONSTRAINTS else "puremodel"
 
 # ---------------------------------------------------------------------------
+# Optional B/C in-domain temporal diagnostic
+# ---------------------------------------------------------------------------
+# This is ONLY a learnability/sanity-check switch.  The normal thesis setting
+# remains Route A temporal training and Route B/C evaluation.  Setting B or C
+# remaps only the temporal trainer's legacy route_A entry to that route while
+# keeping the already-trained Route-A visual retrieval checkpoint unchanged.
+# Run with --reuse-visual.  B and C use isolated temporal checkpoints/caches so
+# this diagnostic can never overwrite the normal A-only temporal experiment.
+DIAGNOSTIC_TEMPORAL_ROUTE = os.environ.get(
+    "UAVSAT_DIAGNOSTIC_TEMPORAL_ROUTE", ""
+).strip().upper()
+if DIAGNOSTIC_TEMPORAL_ROUTE not in ("", "B", "C"):
+    raise ValueError("UAVSAT_DIAGNOSTIC_TEMPORAL_ROUTE must be empty, B, or C")
+
+if DIAGNOSTIC_TEMPORAL_ROUTE:
+    TEMPORAL_TRAIN_SOURCE_ROUTE = f"route_{DIAGNOSTIC_TEMPORAL_ROUTE}"
+    _diagnostic_route_index = ROUTE_NAMES.index(TEMPORAL_TRAIN_SOURCE_ROUTE)
+    _diagnostic_roots = list(ROUTE_ROOTS)
+    _diagnostic_roots[0] = _diagnostic_roots[_diagnostic_route_index]
+    ROUTE_ROOTS = tuple(_diagnostic_roots)
+    TEMPORAL_TRAINING_PROTOCOL = (
+        f"diagnostic_route{DIAGNOSTIC_TEMPORAL_ROUTE}_in_domain"
+    )
+else:
+    TEMPORAL_TRAIN_SOURCE_ROUTE = "route_A"
+
+# ---------------------------------------------------------------------------
 # Causal predefined-route reference points
 # ---------------------------------------------------------------------------
 # IMPORTANT: current-frame GT/reference position is NEVER used to choose the
@@ -63,39 +90,75 @@ if REFERENCE_POINT_SPACING_M <= 0.0:
 REFERENCE_SEARCH_GT_FREE = True
 REFERENCE_SELECTION_POLICY = "nearest_already_passed_from_causal_prediction"
 
-ARCHITECTURE_NAME = (
-    "V36_byTeacher_MSPreviousPosition_"
-    f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
-    "GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_"
-    f"CausalReferenceOnly_MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v8"
-)
+if DIAGNOSTIC_TEMPORAL_ROUTE:
+    ARCHITECTURE_NAME = (
+        "V36_byTeacher_MSPreviousPosition_"
+        f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
+        "GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_"
+        f"CausalReferenceOnly_DiagnosticTrainRoute{DIAGNOSTIC_TEMPORAL_ROUTE}_"
+        f"{DYNAMICS_TAG}_v8diag"
+    )
+else:
+    ARCHITECTURE_NAME = (
+        "V36_byTeacher_MSPreviousPosition_"
+        f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
+        "GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_"
+        f"CausalReferenceOnly_MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v8"
+    )
 
 # Keep every backbone isolated so changing the backbone never overwrites the
 # currently-good MobileCLIP checkpoint.  The visual checkpoint/feature cache are
 # shared by the 1-frame and 2-frame temporal experiments of the same backbone.
 BACKBONE_OUTPUT_DIR = PROJECT_ROOT / "output" / BACKBONE_KEY
-OUTPUT_DIR = BACKBONE_OUTPUT_DIR / f"{EXPERIMENT_FRAME_COUNT}frame"
 CHECKPOINT_DIR = BACKBONE_OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / f"visual_retrieval_A_only_{BACKBONE_KEY}.pt"
-TEMPORAL_CHECKPOINT = (
-    CHECKPOINT_DIR
-    / (
-        "causal_reference_only_forward3x6_ms_previous_position_"
-        f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-        "gru_visual_measurement_variance_nosat_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v8.pt"
+
+if DIAGNOSTIC_TEMPORAL_ROUTE:
+    _diag_lower = DIAGNOSTIC_TEMPORAL_ROUTE.lower()
+    OUTPUT_DIR = (
+        BACKBONE_OUTPUT_DIR
+        / f"{EXPERIMENT_FRAME_COUNT}frame_diag_route_{_diag_lower}"
     )
-)
-LATEST_TEMPORAL_CHECKPOINT = (
-    CHECKPOINT_DIR
-    / (
-        "causal_reference_only_forward3x6_ms_previous_position_"
-        f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-        "gru_visual_measurement_variance_nosat_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v8_latest.pt"
+    TEMPORAL_CHECKPOINT = (
+        CHECKPOINT_DIR
+        / (
+            "diagnostic_causal_reference_only_forward3x6_ms_previous_position_"
+            f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
+            f"train_route_{_diag_lower}_{DYNAMICS_TAG}_v8diag.pt"
+        )
     )
-)
-FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
+    LATEST_TEMPORAL_CHECKPOINT = (
+        CHECKPOINT_DIR
+        / (
+            "diagnostic_causal_reference_only_forward3x6_ms_previous_position_"
+            f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
+            f"train_route_{_diag_lower}_{DYNAMICS_TAG}_v8diag_latest.pt"
+        )
+    )
+    FEATURE_CACHE_DIR = (
+        BACKBONE_OUTPUT_DIR / f"feature_cache_diag_route_{_diag_lower}"
+    )
+else:
+    OUTPUT_DIR = BACKBONE_OUTPUT_DIR / f"{EXPERIMENT_FRAME_COUNT}frame"
+    TEMPORAL_CHECKPOINT = (
+        CHECKPOINT_DIR
+        / (
+            "causal_reference_only_forward3x6_ms_previous_position_"
+            f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
+            "gru_visual_measurement_variance_nosat_"
+            f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v8.pt"
+        )
+    )
+    LATEST_TEMPORAL_CHECKPOINT = (
+        CHECKPOINT_DIR
+        / (
+            "causal_reference_only_forward3x6_ms_previous_position_"
+            f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
+            "gru_visual_measurement_variance_nosat_"
+            f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_{DYNAMICS_TAG}_v8_latest.pt"
+        )
+    )
+    FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
 
 # ---------------------------------------------------------------------------
 # No-training MeanShift ablation overrides
@@ -299,6 +362,8 @@ WAYPOINT_FILES = {
     "route_B": WAYPOINT_DIR / "route_B_waypoints.json",
     "route_C": WAYPOINT_DIR / "route_C_waypoints.json",
 }
+if DIAGNOSTIC_TEMPORAL_ROUTE:
+    WAYPOINT_FILES["route_A"] = WAYPOINT_FILES[TEMPORAL_TRAIN_SOURCE_ROUTE]
 
 
 # ---------------------------------------------------------------------------
