@@ -18,8 +18,8 @@ if [[ ! -d "$V37_DIR" ]]; then
 fi
 
 # A fair control must not inherit any visual or temporal task checkpoint from a
-# previous v36 experiment. v37 itself trains the visual task heads from the
-# pretrained backbone and then trains temporal B+C -> A.
+# previous experiment. v37 trains visual task heads from the pretrained backbone
+# and then trains temporal B+C -> A from scratch.
 if [[ "$RESET_RUN" == "1" ]]; then
   rm -rf "$OUT"
 fi
@@ -33,7 +33,7 @@ echo "[1/2] build the exact v37 scheduled references"
   python3 scripts/build_scheduled_references.py
 )
 
-echo "[2/2] exact v37 data/search/training/filter pipeline + v36 learned architecture only"
+echo "[2/2] exact v37 data/search/training/filter pipeline + v36 recurrent architecture only"
 CUDA_VISIBLE_DEVICES="$GPU" \
 V36_DIR="$HERE" \
 V37_DIR="$V37_DIR" \
@@ -47,28 +47,33 @@ VISUAL_EPOCHS="$VISUAL_EPOCHS" \
 TEMPORAL_EPOCHS="$TEMPORAL_EPOCHS" \
 python3 -u - <<'PY' 2>&1 | tee "$LOG"
 import importlib.util
+import math
 import os
 import sys
 from pathlib import Path
+
+import torch.nn.functional as F
 
 v36_dir = Path(os.environ["V36_DIR"]).resolve()
 v37_dir = Path(os.environ["V37_DIR"]).resolve()
 
 # -------------------------------------------------------------------------
-# IMPORTANT CONTROL RULE
+# FAIR CONTROL RULE
 # -------------------------------------------------------------------------
-# Import v37 config first and keep ALL non-model protocol values from v37:
-#   data roots/split, B+C -> A route assignment,
-#   scheduled-reference manifests,
-#   forward 4x6 candidate construction,
-#   visual training and validation,
-#   visual/temporal losses,
-#   optimizer, LR, weight decay, TBPTT and gradient clipping,
-#   temporal chunk schedule / resume behavior,
-#   motion-state stabilization,
-#   external Kalman predict/update constraints,
-#   validation/evaluation code.
-# Only values that are required by the v36 learned module itself may differ.
+# v37 owns every non-model choice:
+#   data roots/split, B+C -> A assignment, scheduled references,
+#   forward 4x6 candidate construction, visual training/validation,
+#   losses, optimizer/LR/WD, TBPTT/chunk schedule, gradient clipping,
+#   motion-state stabilization, constrained external Kalman, validation/eval.
+#
+# The only intended learned-architecture difference is the v36 recurrent core:
+#   two UAV frames, mean+first-difference visual stream, no SAT-context branch,
+#   and its 10-D numeric input including previous MeanShift visual displacement.
+#
+# IMPORTANT: output PARAMETERIZATION is intentionally matched back to v37 here
+# (0.75 m/frame initialization, bounded v/a/heading/correction, v37 variance
+# semantics). Otherwise the experiment would compare both architecture AND a
+# different output/training interface, which caused the previous slow run.
 sys.path.insert(0, str(v37_dir))
 import config
 
@@ -108,23 +113,34 @@ protocol_keys = [
 ]
 protocol_before = {key: getattr(config, key) for key in protocol_keys}
 
-# These are the ONLY intentional differences. They describe the v36 learned
-# architecture and are needed for its input/head dimensions and pure learned
-# output semantics. They do not change v37 data construction or trainer code.
+# Learned recurrent architecture identity.
 config.ARCHITECTURE_NAME = (
-    "V36_byTeacher_2FramePureModel_on_EXACT_v37_"
-    "ScheduledReference_BCtoA_Forward4x6"
+    "V36_byTeacher_2FrameCore_on_EXACT_v37_"
+    "ScheduledReference_BCtoA_Forward4x6_v2"
 )
 config.EXPERIMENT_FRAME_COUNT = 2
 config.RNN_NUMERIC_DIM = 10
-config.MANUAL_DYNAMICS_CONSTRAINTS = False
-config.GRU_VISUAL_VARIANCE_INIT_M2 = 4.0
+
+# Match v37 output parameterization exactly enough that the remaining comparison
+# is the recurrent architecture rather than zero-speed/raw-output behavior.
+config.MANUAL_DYNAMICS_CONSTRAINTS = True
+config.GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M = float(
+    config.MAX_MEASUREMENT_CORRECTION_PARALLEL_M
+)
+config.GRU_VISUAL_MEASUREMENT_CROSS_RANGE_M = float(
+    config.MAX_MEASUREMENT_CORRECTION_CROSS_M
+)
+config.GRU_VISUAL_MEASUREMENT_INIT_PROGRESS_M = 0.0
+# v37 initializes variance_head bias to inverse-softplus(1). v36 normally stores
+# log(initial variance), so choose exp(inverse-softplus(1)) = e - 1. A wrapper
+# below then applies the exact v37 softplus + response-variance formula.
+config.GRU_VISUAL_VARIANCE_INIT_M2 = math.e - 1.0
 config.RNN_HEADING_INPUT_SCALE_DEG = float(config.MAX_HEADING_RESIDUAL_DEG)
 config.RNN_TURN_RATE_INPUT_SCALE_DEG_PER_FRAME = float(
     config.MAX_TURN_RATE_DEG_PER_FRAME
 )
 
-# Fail immediately if anything outside the learned architecture was changed.
+# Fail immediately if a non-model protocol value was changed.
 protocol_after = {key: getattr(config, key) for key in protocol_keys}
 for key in protocol_keys:
     before = protocol_before[key]
@@ -148,10 +164,7 @@ if int(config.FORWARD_SEARCH_ROWS) != 4 or int(config.FORWARD_SEARCH_COLS) != 6:
         f"{config.FORWARD_SEARCH_ROWS}x{config.FORWARD_SEARCH_COLS}"
     )
 
-# Inject only v36_byTeacher's learned model module under the module name that
-# v37 visual_localizer/robust_tracker import. The v36 AllMapGeoCLIP retrieval
-# class is checkpoint-compatible with v37; the material architecture difference
-# is the v36 two-frame recurrent model and its heads.
+# Inject v36's learned module first.
 spec = importlib.util.spec_from_file_location(
     "visual_model", v36_dir / "visual_model.py"
 )
@@ -159,10 +172,58 @@ visual_model = importlib.util.module_from_spec(spec)
 sys.modules["visual_model"] = visual_model
 spec.loader.exec_module(visual_model)
 
-# From this point onward ALL pipeline code is v37 code.
+# Capture the raw variance-head logits and expose the same variance interface as
+# v37: response_variance + softplus(extra_variance_logit), then Kalman clamp.
+# This changes only the output interface, not the v36 recurrent feature graph.
+BaseV36GRU = visual_model.TwoFrameRouteStateGRU
+
+
+class V36CoreWithV37OutputInterface(BaseV36GRU):
+    def __init__(self):
+        super().__init__()
+        self._v37_raw_variance = None
+
+        def _capture_raw_variance(module, inputs, output):
+            self._v37_raw_variance = output
+
+        self.variance_head.register_forward_hook(_capture_raw_variance)
+
+    def forward_step(self, *args, **kwargs):
+        output = super().forward_step(*args, **kwargs)
+        response_variance = kwargs.get("response_variance_se")
+        if response_variance is None:
+            if len(args) <= 6:
+                raise RuntimeError("cannot recover response_variance_se")
+            response_variance = args[6]
+        if self._v37_raw_variance is None:
+            raise RuntimeError("variance-head hook did not capture raw logits")
+        measurement_variance = (
+            response_variance.clamp_min(float(config.KALMAN_R_MIN_VAR))
+            + F.softplus(self._v37_raw_variance)
+        ).clamp(
+            min=float(config.KALMAN_R_MIN_VAR),
+            max=float(config.KALMAN_R_MAX_VAR),
+        )
+        output.measurement_variance_se = measurement_variance
+        # Keep the exported state internally consistent with the replaced field.
+        output.state = output.state.clone()
+        output.state[:, -2:] = measurement_variance
+        return output
+
+
+# v37 robust_tracker imports ThreeFrameRouteStateGRU by name. Point that alias to
+# the v36 two-frame recurrent core with the v37-compatible output interface.
+visual_model.ThreeFrameRouteStateGRU = V36CoreWithV37OutputInterface
+visual_model.RouteProgressGRU = V36CoreWithV37OutputInterface
+visual_model.WaypointLocalPrimaryRecoveryGRU = V36CoreWithV37OutputInterface
+visual_model.WaypointRouteGlobalRecoveryGRU = V36CoreWithV37OutputInterface
+visual_model.WaypointTemporalMotionGRU = V36CoreWithV37OutputInterface
+visual_model.WaypointConditionedGRU = V36CoreWithV37OutputInterface
+
+# From this point onward ALL pipeline/training/filter code is v37 code.
 import robust_tracker
 
-print("=== FAIR CONTROL: exact v37 protocol / v36 architecture only ===", flush=True)
+print("=== FAIR CONTROL: exact v37 protocol / v36 recurrent architecture only ===", flush=True)
 print("pipeline module:", Path(robust_tracker.__file__).resolve(), flush=True)
 print("model module:", v36_dir / "visual_model.py", flush=True)
 print("train routes:", config.TRAIN_ROUTES, flush=True)
@@ -190,7 +251,7 @@ print(
     flush=True,
 )
 print(
-    "temporal trainer: target_epochs=%s lr=%g wd=%g tbptt=%d grad_clip=%g"
+    "temporal trainer: chunk_updates=%s lr=%g wd=%g tbptt=%d grad_clip=%g"
     % (
         os.environ["TEMPORAL_EPOCHS"],
         float(config.TEMPORAL_LR),
@@ -215,13 +276,18 @@ print(
     flush=True,
 )
 print(
-    "architecture-only differences: frame_count=2 rnn_numeric_dim=10 "
-    "v36 pure learned heads",
+    "matched v37 output interface: init_v=0.75, bounded motion/heading/correction, "
+    "response_variance+softplus(extra)",
+    flush=True,
+)
+print(
+    "ONLY learned-core differences: v36 2-frame mean+delta, no SAT-context branch, "
+    "10-D numeric state with previous MeanShift visual displacement",
     flush=True,
 )
 
-# Match v37/run_gpu0.sh: train visual heads from scratch, train temporal model,
-# then evaluate. Do NOT pass --reuse-visual or --resume-temporal.
+# Match v37/run_gpu0.sh: fresh visual heads, temporal chunk schedule, then eval.
+# Do NOT pass --reuse-visual or --resume-temporal.
 sys.argv = [
     "robust_tracker.py",
     "--mode", "train_eval",
