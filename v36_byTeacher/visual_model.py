@@ -157,8 +157,10 @@ class TwoFrameRouteStateGRU(nn.Module):
 
     The current controlled local MeanShift observation is the current visual
     anchor. The GRU uses X_(t-1)^MS, current visual innovation, recurrent state,
-    and either one-frame or two-frame UAV visual features to predict the current
-    visual measurement, uncertainty and motion state.
+    and either one-frame or two-frame UAV visual features to learn a bounded
+    residual correction around that current visual anchor:
+        previous-position input = X_(t-1)^MS
+        z_t = current_MS_t + learned_residual_t
 
     EXPERIMENT_FRAME_COUNT=2 uses current+previous UAV embeddings through their
     temporal mean and first difference. EXPERIMENT_FRAME_COUNT=1 keeps exactly
@@ -166,9 +168,9 @@ class TwoFrameRouteStateGRU(nn.Module):
     cue by using the current embedding alone and a zero first-difference vector.
     This makes the 1-frame versus 2-frame comparison controlled and fair.
 
-    In the default pure-model mode, motion, acceleration, heading, turn-rate and
-    visual residual heads are used directly without hand-set tanh/clamp/rate
-    limits.  Set UAVSAT_MANUAL_CONSTRAINTS=1 to restore the legacy bounded path.
+    Motion/heading heads independently predict the inertial polynomial used by
+    the Kalman predict step. variance_head alone predicts the Kalman visual
+    measurement variance. Satellite context is not part of the recurrent input.
     """
 
     def __init__(self):
@@ -212,30 +214,21 @@ class TwoFrameRouteStateGRU(nn.Module):
         self.correction_head = head(2)
         self.variance_head = head(2)
 
-        # Pure-model initialization: all kinematic outputs start exactly at 0.
-        # The legacy +0.75 m/frame forward-speed initialization is preserved only
-        # when manual constraints are explicitly re-enabled.
         nn.init.zeros_(self.motion_head[-1].weight)
         nn.init.zeros_(self.motion_head[-1].bias)
-        if bool(getattr(config, "MANUAL_DYNAMICS_CONSTRAINTS", False)):
-            init_speed = 0.75
-            self.motion_head[-1].bias.data[0] = math.log(math.exp(init_speed) - 1.0)
+        init_speed = 0.75
+        self.motion_head[-1].bias.data[0] = math.log(math.exp(init_speed) - 1.0)
 
         nn.init.zeros_(self.heading_head[-1].weight)
         nn.init.zeros_(self.heading_head[-1].bias)
 
         nn.init.zeros_(self.correction_head[-1].weight)
         nn.init.zeros_(self.correction_head[-1].bias)
-        if bool(getattr(config, "MANUAL_DYNAMICS_CONSTRAINTS", False)):
-            progress_range = float(config.GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M)
-            init_progress = float(config.GRU_VISUAL_MEASUREMENT_INIT_PROGRESS_M)
-            init_ratio = max(
-                min(init_progress / max(progress_range, 1e-6), 0.95), -0.95
-            )
-            self.correction_head[-1].bias.data[0] = math.atanh(init_ratio)
+        progress_range = float(config.GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M)
+        init_progress = float(config.GRU_VISUAL_MEASUREMENT_INIT_PROGRESS_M)
+        init_ratio = max(min(init_progress / max(progress_range, 1e-6), 0.95), -0.95)
+        self.correction_head[-1].bias.data[0] = math.atanh(init_ratio)
 
-        # Variance is uncertainty rather than a kinematic state, so it must stay
-        # positive.  Keep the existing 4 m^2 initial uncertainty.
         nn.init.zeros_(self.variance_head[-1].weight)
         nn.init.constant_(
             self.variance_head[-1].bias,
@@ -320,12 +313,6 @@ class TwoFrameRouteStateGRU(nn.Module):
         innovation_se = visual_anchor_se - predicted_se
         visual_step_se = visual_anchor_se - previous_measurement_se
 
-        heading_input_scale = math.radians(
-            float(getattr(config, "RNN_HEADING_INPUT_SCALE_DEG", 70.0))
-        )
-        turn_input_scale = math.radians(
-            float(getattr(config, "RNN_TURN_RATE_INPUT_SCALE_DEG_PER_FRAME", 12.0))
-        )
         numeric = torch.cat(
             [
                 torch.log1p(response_variance_se.clamp_min(0.0)) / 7.0,
@@ -346,8 +333,10 @@ class TwoFrameRouteStateGRU(nn.Module):
                     dim=1,
                 ),
                 previous_velocity_se / float(config.ROUTE_STEP_SCALE_M),
-                previous_heading_state[:, 0:1] / max(heading_input_scale, 1e-6),
-                previous_heading_state[:, 1:2] / max(turn_input_scale, 1e-6),
+                previous_heading_state[:, 0:1]
+                / math.radians(float(config.MAX_HEADING_RESIDUAL_DEG)),
+                previous_heading_state[:, 1:2]
+                / math.radians(float(config.MAX_TURN_RATE_DEG_PER_FRAME)),
             ],
             dim=1,
         )
@@ -372,100 +361,75 @@ class TwoFrameRouteStateGRU(nn.Module):
         # Motion branch -> heading-aware polynomial -> Kalman prior
         # ------------------------------------------------------------------
         raw_motion = self.motion_head(h)
-        raw_heading = self.heading_head(h)
-
-        if bool(getattr(config, "MANUAL_DYNAMICS_CONSTRAINTS", False)):
-            # Legacy bounded path retained for reproducibility.
-            v_parallel = F.softplus(raw_motion[:, 0:1]).clamp(
-                max=float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
-            )
-            v_cross = torch.tanh(raw_motion[:, 1:2]) * float(
-                config.MAX_CROSS_SPEED_M_PER_FRAME
-            )
-            a_parallel = torch.tanh(raw_motion[:, 2:3]) * float(
-                config.MAX_FORWARD_ACCEL_M_PER_FRAME2
-            )
-            a_cross = torch.tanh(raw_motion[:, 3:4]) * float(
-                config.MAX_CROSS_ACCEL_M_PER_FRAME2
-            )
-
-            raw_heading_residual = torch.tanh(raw_heading[:, 0:1]) * math.radians(
-                float(config.MAX_HEADING_RESIDUAL_DEG)
-            )
-            raw_turn_rate = torch.tanh(raw_heading[:, 1:2]) * math.radians(
-                float(config.MAX_TURN_RATE_DEG_PER_FRAME)
-            )
-            prev_heading = previous_heading_state[:, 0:1]
-            prev_turn = previous_heading_state[:, 1:2]
-            heading_delta = torch.atan2(
-                torch.sin(raw_heading_residual - prev_heading),
-                torch.cos(raw_heading_residual - prev_heading),
-            ).clamp(
-                min=-math.radians(float(config.MAX_HEADING_DELTA_DEG_PER_FRAME)),
-                max=math.radians(float(config.MAX_HEADING_DELTA_DEG_PER_FRAME)),
-            )
-            turn_delta = (raw_turn_rate - prev_turn).clamp(
-                min=-math.radians(float(config.MAX_TURN_RATE_DELTA_DEG_PER_FRAME2)),
-                max=math.radians(float(config.MAX_TURN_RATE_DELTA_DEG_PER_FRAME2)),
-            )
-            heading_residual = (
-                prev_heading + float(config.HEADING_STATE_EMA_ALPHA) * heading_delta
-            )
-            turn_rate = prev_turn + float(config.TURN_RATE_EMA_ALPHA) * turn_delta
-
-            base_forward = (v_parallel + 0.5 * a_parallel).clamp(
-                min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
-            )
-            base_cross = v_cross + 0.5 * a_cross
-            cos_h = torch.cos(heading_residual)
-            sin_h = torch.sin(heading_residual)
-            next_parallel = base_forward * cos_h - base_cross * sin_h
-            next_cross = base_forward * sin_h + base_cross * cos_h
-            next_parallel = next_parallel.clamp(min=0.0)
-            next_step = torch.cat([next_parallel, next_cross], dim=1)
-            norm = torch.linalg.norm(next_step, dim=1, keepdim=True).clamp_min(1e-6)
-            scale = torch.clamp(
-                float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / norm, max=1.0
-            )
-            next_step = next_step * scale
-        else:
-            # Pure-model path: direct learned physical states, no hand-set upper
-            # bound, tanh range, delta clamp, EMA, or polynomial-step clipping.
-            v_parallel = raw_motion[:, 0:1]
-            v_cross = raw_motion[:, 1:2]
-            a_parallel = raw_motion[:, 2:3]
-            a_cross = raw_motion[:, 3:4]
-            heading_residual = raw_heading[:, 0:1]
-            turn_rate = raw_heading[:, 1:2]
-
-            base_forward = v_parallel + 0.5 * a_parallel
-            base_cross = v_cross + 0.5 * a_cross
-            cos_h = torch.cos(heading_residual)
-            sin_h = torch.sin(heading_residual)
-            next_parallel = base_forward * cos_h - base_cross * sin_h
-            next_cross = base_forward * sin_h + base_cross * cos_h
-            next_step = torch.cat([next_parallel, next_cross], dim=1)
-
+        v_parallel = F.softplus(raw_motion[:, 0:1]).clamp(
+            max=float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
+        )
+        v_cross = torch.tanh(raw_motion[:, 1:2]) * float(
+            config.MAX_CROSS_SPEED_M_PER_FRAME
+        )
+        a_parallel = torch.tanh(raw_motion[:, 2:3]) * float(
+            config.MAX_FORWARD_ACCEL_M_PER_FRAME2
+        )
+        a_cross = torch.tanh(raw_motion[:, 3:4]) * float(
+            config.MAX_CROSS_ACCEL_M_PER_FRAME2
+        )
         velocity = torch.cat([v_parallel, v_cross], dim=1)
         acceleration = torch.cat([a_parallel, a_cross], dim=1)
+
+        raw_heading = self.heading_head(h)
+        raw_heading_residual = torch.tanh(raw_heading[:, 0:1]) * math.radians(
+            float(config.MAX_HEADING_RESIDUAL_DEG)
+        )
+        raw_turn_rate = torch.tanh(raw_heading[:, 1:2]) * math.radians(
+            float(config.MAX_TURN_RATE_DEG_PER_FRAME)
+        )
+        prev_heading = previous_heading_state[:, 0:1]
+        prev_turn = previous_heading_state[:, 1:2]
+        heading_delta = torch.atan2(
+            torch.sin(raw_heading_residual - prev_heading),
+            torch.cos(raw_heading_residual - prev_heading),
+        ).clamp(
+            min=-math.radians(float(config.MAX_HEADING_DELTA_DEG_PER_FRAME)),
+            max=math.radians(float(config.MAX_HEADING_DELTA_DEG_PER_FRAME)),
+        )
+        turn_delta = (raw_turn_rate - prev_turn).clamp(
+            min=-math.radians(float(config.MAX_TURN_RATE_DELTA_DEG_PER_FRAME2)),
+            max=math.radians(float(config.MAX_TURN_RATE_DELTA_DEG_PER_FRAME2)),
+        )
+        heading_residual = (
+            prev_heading + float(config.HEADING_STATE_EMA_ALPHA) * heading_delta
+        )
+        turn_rate = prev_turn + float(config.TURN_RATE_EMA_ALPHA) * turn_delta
+
+        base_forward = (v_parallel + 0.5 * a_parallel).clamp(
+            min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
+        )
+        base_cross = v_cross + 0.5 * a_cross
+        cos_h = torch.cos(heading_residual)
+        sin_h = torch.sin(heading_residual)
+        next_parallel = base_forward * cos_h - base_cross * sin_h
+        next_cross = base_forward * sin_h + base_cross * cos_h
+        next_parallel = next_parallel.clamp(min=0.0)
+        next_step = torch.cat([next_parallel, next_cross], dim=1)
+        norm = torch.linalg.norm(next_step, dim=1, keepdim=True).clamp_min(1e-6)
+        scale = torch.clamp(
+            float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / norm, max=1.0
+        )
+        next_step = next_step * scale
 
         # ------------------------------------------------------------------
         # Visual measurement branch -> Kalman update
         # ------------------------------------------------------------------
-        if bool(getattr(config, "MANUAL_DYNAMICS_CONSTRAINTS", False)):
-            raw_residual = torch.tanh(self.correction_head(h))
-            measurement_residual = torch.cat(
-                [
-                    raw_residual[:, 0:1]
-                    * float(config.GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M),
-                    raw_residual[:, 1:2]
-                    * float(config.GRU_VISUAL_MEASUREMENT_CROSS_RANGE_M),
-                ],
-                dim=1,
-            )
-        else:
-            # Direct residual in route metres; no +/-6 m or +/-4 m manual range.
-            measurement_residual = self.correction_head(h)
+        raw_residual = torch.tanh(self.correction_head(h))
+        measurement_residual = torch.cat(
+            [
+                raw_residual[:, 0:1]
+                * float(config.GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M),
+                raw_residual[:, 1:2]
+                * float(config.GRU_VISUAL_MEASUREMENT_CROSS_RANGE_M),
+            ],
+            dim=1,
+        )
 
         # X_(t-1)^MS remains an INPUT to the GRU through visual_step_se above.
         # The current absolute measurement stays anchored to current visual
@@ -473,15 +437,11 @@ class TwoFrameRouteStateGRU(nn.Module):
         measurement = visual_anchor_se + measurement_residual
 
         raw_log_variance = self.variance_head(h)
-        if bool(getattr(config, "MANUAL_DYNAMICS_CONSTRAINTS", False)):
-            min_log_var = math.log(float(config.KALMAN_R_MIN_VAR))
-            max_log_var = math.log(float(config.KALMAN_R_MAX_VAR))
-            measurement_variance = torch.exp(
-                raw_log_variance.clamp(min=min_log_var, max=max_log_var)
-            )
-        else:
-            # Positive by construction, with no hand-set variance range.
-            measurement_variance = torch.exp(raw_log_variance)
+        min_log_var = math.log(float(config.KALMAN_R_MIN_VAR))
+        max_log_var = math.log(float(config.KALMAN_R_MAX_VAR))
+        measurement_variance = torch.exp(
+            raw_log_variance.clamp(min=min_log_var, max=max_log_var)
+        )
 
         state = torch.cat(
             [
