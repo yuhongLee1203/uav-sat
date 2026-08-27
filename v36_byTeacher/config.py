@@ -29,20 +29,20 @@ if TEMPORAL_EXTRA_A_STRIDE < 2:
     raise ValueError("UAVSAT_TEMPORAL_EXTRA_A_STRIDE must be >= 2")
 TEMPORAL_TRAINING_PROTOCOL = f"routeA_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}"
 
-# v7 is the architecture drawn in the supplied diagram:
-# previous KF posterior -> one forward local MS re-localization -> GRU;
-# GRU measurement/variance -> KF update; GRU motion/heading -> next-frame
-# heading-aware second-order polynomial -> KF predict.
+# v8 keeps the exact image architecture but fixes temporal training. During
+# inference the search center is always the previous final KF state. During
+# training, scheduled search-center teacher forcing prevents an untrained KF
+# from immediately moving the 3x6 window away from the correct local region.
 IMAGE_ALIGNED_SINGLE_MS = True
 ARCHITECTURE_NAME = (
     "V36_byTeacher_ImageAlignedSingleMS_"
     f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
     "GRUMeasurementVariance_MotionHeading_Polynomial_Kalman_"
-    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_v7"
+    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_v8"
 )
 
 # Keep every backbone isolated. Visual checkpoint and UAV backbone caches remain
-# shared because this change only affects the temporal architecture.
+# shared because this change only affects the temporal architecture/training.
 BACKBONE_OUTPUT_DIR = PROJECT_ROOT / "output" / BACKBONE_KEY
 OUTPUT_DIR = BACKBONE_OUTPUT_DIR / f"{EXPERIMENT_FRAME_COUNT}frame"
 CHECKPOINT_DIR = BACKBONE_OUTPUT_DIR / "checkpoints"
@@ -53,7 +53,7 @@ TEMPORAL_CHECKPOINT = (
         "image_aligned_single_ms_previous_state_forward3x6_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
         "gru_measurement_variance_motion_heading_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v7.pt"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v8.pt"
     )
 )
 LATEST_TEMPORAL_CHECKPOINT = (
@@ -62,7 +62,7 @@ LATEST_TEMPORAL_CHECKPOINT = (
         "image_aligned_single_ms_previous_state_forward3x6_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
         "gru_measurement_variance_motion_heading_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v7_latest.pt"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v8_latest.pt"
     )
 )
 FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
@@ -96,21 +96,42 @@ if MEANSHIFT_MODE_BETA <= 0.0:
 # ---------------------------------------------------------------------------
 # At frame t, X_(t-1) from the final KF posterior is the center of the single
 # heading-forward local search. The newly arrived UAV frame is matched against
-# that local satellite set and MeanShift returns X_(t-1)^MS. There is no second
-# hidden/current-frame MeanShift branch after this point.
+# that local satellite set and MeanShift returns the single re-localization cue.
+# There is no second hidden/current-frame MeanShift branch.
 TEACHER_MEANSHIFT_FEEDBACK = True
 TEACHER_FEEDBACK_PRESERVE_KALMAN_VELOCITY = True
 TEACHER_FEEDBACK_USE_FORWARD_3X6 = True
 MEANSHIFT_POSITION_AS_GRU_INPUT = True
 
 # ---------------------------------------------------------------------------
+# Search-center training curriculum (training only; inference stays closed-loop)
+# ---------------------------------------------------------------------------
+# Early epochs use the previous route reference position as the local search
+# center, guaranteeing that the 3x6 visual window is trainable before the motion
+# and KF states are reliable. The ratio then decays and the model is exposed to
+# its own previous KF output. This is scheduled sampling, not an inference input.
+IMAGE_FLOW_TEACHER_WARMUP_EPOCHS = int(
+    os.environ.get("UAVSAT_IMAGE_FLOW_TEACHER_WARMUP_EPOCHS", "8")
+)
+IMAGE_FLOW_TEACHER_DECAY_EPOCHS = int(
+    os.environ.get("UAVSAT_IMAGE_FLOW_TEACHER_DECAY_EPOCHS", "20")
+)
+IMAGE_FLOW_TEACHER_FINAL_RATIO = float(
+    os.environ.get("UAVSAT_IMAGE_FLOW_TEACHER_FINAL_RATIO", "0.20")
+)
+if IMAGE_FLOW_TEACHER_WARMUP_EPOCHS < 0:
+    raise ValueError("IMAGE_FLOW_TEACHER_WARMUP_EPOCHS must be >= 0")
+if IMAGE_FLOW_TEACHER_DECAY_EPOCHS < 1:
+    raise ValueError("IMAGE_FLOW_TEACHER_DECAY_EPOCHS must be >= 1")
+if not 0.0 <= IMAGE_FLOW_TEACHER_FINAL_RATIO <= 1.0:
+    raise ValueError("IMAGE_FLOW_TEACHER_FINAL_RATIO must be in [0,1]")
+
+# ---------------------------------------------------------------------------
 # GRU measurement head
 # ---------------------------------------------------------------------------
 # The one MeanShift result in the diagram is the visual base. The Measurement
-# Head predicts only a bounded residual around that visual base:
-#       z_t = X_(t-1)^MS + residual_head(h_t)
-# The KF prior itself is NOT an input to the measurement head. This keeps the
-# learned visual measurement distinct from the external KF fusion step.
+# Head predicts only a bounded residual around that visual base. The KF prior
+# itself is not part of the GRU measurement numeric input.
 DIRECT_SOFTMS_MEASUREMENT = False
 USE_GRU_VISUAL_MEASUREMENT_HEAD = True
 GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M = 6.0
@@ -155,13 +176,10 @@ KALMAN_FINAL_STEP_MAX_M = 8.0
 # ---------------------------------------------------------------------------
 USE_SATELLITE_CONTEXT_IN_GRU = False
 
-# Exactly the numeric information represented by the diagram/causal state:
-#   SoftMS mode-space variance (2)
-# + re-localized-position displacement from previous KF state (2)
+# SoftMS mode-space variance (2)
+# + re-localized-position displacement from the actual local-search center (2)
 # + previous recurrent velocity (2)
-# + previous heading residual / turn-rate (2)
-# The current Kalman prior is deliberately excluded from the GRU measurement
-# input so the KF does not fuse its own prior twice.
+# + previous heading residual / turn-rate (2).
 RNN_NUMERIC_DIM = 8
 
 # ---------------------------------------------------------------------------
@@ -191,7 +209,7 @@ CONTROLLED_PROTOCOL_NAME = (
     "reference-route_single-MS-from-previous-KF_forward3x6_"
     f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
     "GRU-measurement-variance-motion-heading_polynomial-Kalman_"
-    f"multirate-{TEMPORAL_TRAINING_PROTOCOL}_v7"
+    f"multirate-{TEMPORAL_TRAINING_PROTOCOL}_v8"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
