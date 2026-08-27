@@ -4,10 +4,15 @@ Training data:
   1) the original Route-A TRAIN split at native frame spacing;
   2) an in-memory stride-N sequence made only from the same Route-A TRAIN split.
 
-The temporal architecture is the same in both sequences:
+Inference architecture is unchanged:
   previous final KF state -> ONE local MeanShift -> GRU measurement/variance;
   previous GRU motion/heading -> polynomial -> KF predict;
   KF update is the only motion-prior / visual-measurement fusion.
+
+Training uses scheduled search-center teacher forcing only to avoid the failure
+mode where an untrained KF immediately moves the 3x6 local window away from the
+correct region. Early epochs use the previous route reference position as the
+search center; the ratio then decays toward the model's own previous KF output.
 """
 
 import argparse
@@ -51,6 +56,44 @@ def _step_stats(cache):
     }
 
 
+def _teacher_ratio(epoch):
+    epoch = int(epoch)
+    warmup = int(config.IMAGE_FLOW_TEACHER_WARMUP_EPOCHS)
+    decay = max(1, int(config.IMAGE_FLOW_TEACHER_DECAY_EPOCHS))
+    final_ratio = float(config.IMAGE_FLOW_TEACHER_FINAL_RATIO)
+    if epoch <= warmup:
+        return 1.0
+    progress = min(1.0, float(epoch - warmup) / float(decay))
+    return float(1.0 + progress * (final_ratio - 1.0))
+
+
+def _training_search_center(
+    gt_state,
+    current_index,
+    previous_index,
+    model_previous_se,
+    teacher_ratio,
+):
+    """Blend previous reference position with previous model KF state.
+
+    This affects only the TRAINING local-search center. Validation/evaluation
+    always use the previous final KF state exactly as shown in the architecture.
+    """
+    if previous_index is None:
+        reference_previous = np.asarray(
+            gt_state["se"][int(current_index)], dtype=np.float64
+        ).reshape(2)
+    else:
+        reference_previous = np.asarray(
+            gt_state["se"][int(previous_index)], dtype=np.float64
+        ).reshape(2)
+    model_previous = np.asarray(model_previous_se, dtype=np.float64).reshape(2)
+    ratio = float(np.clip(teacher_ratio, 0.0, 1.0))
+    center = ratio * reference_previous + (1.0 - ratio) * model_previous
+    center[0] = max(0.0, float(center[0]))
+    return center
+
+
 def _detach_temporal_state(
     hidden,
     previous_z,
@@ -81,11 +124,13 @@ def _train_one_sequence(
     gt_state,
     indices,
     device,
+    epoch,
 ):
     indices = list(indices)
     if not indices:
-        return []
+        return [], 0.0
 
+    teacher_ratio = _teacher_ratio(epoch)
     kf = rt.RouteKalman(0.0, 0.0)
     hidden = previous_z = previous2_z = None
     previous_velocity = torch.zeros(1, 2, device=device)
@@ -97,12 +142,14 @@ def _train_one_sequence(
     chunk_loss = None
     chunk_count = 0
     losses = []
+    captures = []
+    previous_index = None
 
     first_index = int(indices[0])
     for sequence_pos, index in enumerate(indices):
         index = int(index)
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
-        previous_output_se = kf.se().copy()
+        model_previous_se = kf.se().copy()
 
         if index != first_index:
             predicted_se = kf.predict(
@@ -114,10 +161,21 @@ def _train_one_sequence(
                 max_step_m=float(gt_state["gt_step_norm"][index]),
             )
         else:
-            predicted_se = previous_output_se.copy()
+            predicted_se = model_previous_se.copy()
 
         predicted_se = b.cap_prediction_to_current_gt(
             kf, predicted_se, gt_state["se"][index]
+        )
+
+        # Critical training curriculum: keep the single 3x6 window near the
+        # previous reference position until the motion/KF state becomes usable,
+        # then smoothly expose the model to its own closed-loop previous state.
+        search_center_se = _training_search_center(
+            gt_state=gt_state,
+            current_index=index,
+            previous_index=previous_index,
+            model_previous_se=model_previous_se,
+            teacher_ratio=teacher_ratio,
         )
 
         obs, _, _ = rt._frame_visual(
@@ -127,7 +185,7 @@ def _train_one_sequence(
             route,
             gt_state,
             index,
-            previous_output_se,
+            search_center_se,
             predicted_se,
             previous_z,
             previous2_z,
@@ -138,12 +196,14 @@ def _train_one_sequence(
             uav_clip,
         )
 
+        # The GRU re-localization displacement must be measured from the same
+        # center that was actually used for the single MeanShift search.
         output = rt._model_step(
             model,
             obs,
             previous_z,
             previous2_z,
-            previous_output_se,
+            search_center_se,
             predicted_se,
             previous_velocity,
             previous_acceleration,
@@ -166,6 +226,7 @@ def _train_one_sequence(
         )
         chunk_loss = loss if chunk_loss is None else chunk_loss + loss
         chunk_count += 1
+        captures.append(float(obs.capture.float().item()))
 
         final_se = rt._kalman_update(kf, output, route, gt_state, index)
         b.cap_kalman_to_current_gt(kf, final_se, gt_state["se"][index])
@@ -187,6 +248,7 @@ def _train_one_sequence(
             output.turn_rate_rad,
         )
         hidden = output.hidden
+        previous_index = index
 
         is_last = sequence_pos + 1 >= len(indices)
         if chunk_count >= int(config.TBPTT_STEPS) or is_last:
@@ -217,7 +279,8 @@ def _train_one_sequence(
             chunk_loss = None
             chunk_count = 0
 
-    return losses
+    capture_pct = float(np.mean(captures) * 100.0) if captures else 0.0
+    return losses, capture_pct
 
 
 def train_multirate(
@@ -248,7 +311,7 @@ def train_multirate(
     stride_stats = _step_stats(stride_cache)
 
     print("=" * 100, flush=True)
-    print("Route-A multi-rate temporal training: image-aligned single-MS flow", flush=True)
+    print("Route-A multi-rate temporal training: image-aligned single-MS flow v8", flush=True)
     print(
         f"native A train: frames={train_end-train_start} "
         f"mean_step={native_stats['mean']:.3f}m/frame "
@@ -262,8 +325,15 @@ def train_multirate(
         flush=True,
     )
     print(
-        f"validation=original Route-A native-rate split {val_range}; "
+        f"validation=closed-loop original Route-A native-rate split {val_range}; "
         "Route-B/C remain evaluation only",
+        flush=True,
+    )
+    print(
+        "training-only search-center curriculum: "
+        f"warmup={config.IMAGE_FLOW_TEACHER_WARMUP_EPOCHS} epochs, "
+        f"decay={config.IMAGE_FLOW_TEACHER_DECAY_EPOCHS} epochs, "
+        f"final_reference_ratio={config.IMAGE_FLOW_TEACHER_FINAL_RATIO:.2f}",
         flush=True,
     )
     print("=" * 100, flush=True)
@@ -298,8 +368,9 @@ def train_multirate(
 
     for epoch in range(start_epoch, int(epochs) + 1):
         model.train()
+        teacher_ratio = _teacher_ratio(epoch)
 
-        native_losses = _train_one_sequence(
+        native_losses, native_capture = _train_one_sequence(
             model=model,
             optimizer=optimizer,
             params=params,
@@ -309,9 +380,10 @@ def train_multirate(
             gt_state=full_gt_state,
             indices=range(train_start, train_end),
             device=device,
+            epoch=epoch,
         )
 
-        stride_losses = _train_one_sequence(
+        stride_losses, stride_capture = _train_one_sequence(
             model=model,
             optimizer=optimizer,
             params=params,
@@ -321,8 +393,10 @@ def train_multirate(
             gt_state=stride_gt_state,
             indices=range(len(stride_cache)),
             device=device,
+            epoch=epoch,
         )
 
+        # Validation is intentionally fully closed-loop: no teacher search center.
         val = rt.evaluate_closed_loop(
             model,
             visual,
@@ -338,16 +412,23 @@ def train_multirate(
         training_metadata = {
             "protocol": str(config.TEMPORAL_TRAINING_PROTOCOL),
             "architecture_flow": (
-                "previous final KF state -> one local MS -> GRU measurement/R; "
+                "inference: previous final KF state -> one local MS -> GRU measurement/R; "
                 "previous recurrent motion/heading -> polynomial -> KF predict; "
                 "KF update is the only prior/measurement fusion"
             ),
+            "training_search_center": (
+                "scheduled previous-reference -> previous-KF search-center curriculum; "
+                "validation/evaluation are fully previous-KF closed-loop"
+            ),
+            "teacher_ratio": float(teacher_ratio),
+            "native_train_capture_pct": float(native_capture),
+            "stride_train_capture_pct": float(stride_capture),
             "native_train_frames": int(train_end - train_start),
             "stride": stride,
             "stride_train_frames": int(len(stride_cache)),
             "native_mean_step_m": float(native_stats["mean"]),
             "stride_mean_step_m": float(stride_stats["mean"]),
-            "validation": "Route-A native-rate validation split",
+            "validation": "Route-A native-rate closed-loop validation split",
             "evaluation_routes": ["route_B", "route_C"],
         }
 
@@ -390,9 +471,12 @@ def train_multirate(
         native_loss = float(np.mean(native_losses)) if native_losses else float("nan")
         stride_loss = float(np.mean(stride_losses)) if stride_losses else float("nan")
         print(
-            f"multirate epoch={epoch:03d}/{epochs} "
-            f"native_loss={native_loss:.5f} stride{stride}_loss={stride_loss:.5f} "
+            f"multirate-v8 epoch={epoch:03d}/{epochs} "
+            f"teacher={teacher_ratio:.3f} "
+            f"native_loss={native_loss:.5f} native_capture={native_capture:.2f}% "
+            f"stride{stride}_loss={stride_loss:.5f} stride_capture={stride_capture:.2f}% "
             f"val_mle={val['mle']:.3f}m val_p90={val['p90']:.3f}m "
+            f"val_capture={val['capture_pct']:.2f}% "
             f"score={score:.3f} best={best_score:.3f} "
             f"patience={patience}/{patience_limit}",
             flush=True,
