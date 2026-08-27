@@ -7,8 +7,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 # Backbone / experiment identity
 # ---------------------------------------------------------------------------
-# v36_byTeacher now defaults to MobileNetV3-Small.  The environment override is
-# kept so the previous MobileCLIP setup can still be reproduced explicitly.
 BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobilenet_v3_small").strip().lower()
 if BACKBONE_KEY not in BACKBONE_SPECS:
     raise ValueError(
@@ -17,18 +15,13 @@ if BACKBONE_KEY not in BACKBONE_SPECS:
     )
 BACKBONE_NAME, CLIP_DIM = BACKBONE_SPECS[BACKBONE_KEY]
 
-# Main thesis setting is 2-frame.  1-frame is an ablation that keeps the same
-# recurrent state but removes the previous-frame visual feature/difference cue.
+# Main thesis setting is 2-frame. 1-frame is the controlled ablation.
 EXPERIMENT_FRAME_COUNT = int(os.environ.get("UAVSAT_EXPERIMENT_FRAME_COUNT", "2"))
 if EXPERIMENT_FRAME_COUNT not in (1, 2):
     raise ValueError("UAVSAT_EXPERIMENT_FRAME_COUNT must be 1 or 2 for v36_byTeacher")
 TEMPORAL_WINDOW_FRAMES = EXPERIMENT_FRAME_COUNT
 
-# Multi-rate Route-A temporal training.  The original Route-A training sequence
-# is kept unchanged, and a second training sequence is made only from the same
-# Route-A TRAIN split by taking every Nth frame.  With the default stride=2, a
-# native ~2.3 m/frame trajectory becomes roughly ~4-5 m/frame.  B/C are never
-# used for training and remain evaluation routes.
+# Route-A native + stride-N multi-rate temporal training.
 TEMPORAL_EXTRA_A_STRIDE = int(
     os.environ.get("UAVSAT_TEMPORAL_EXTRA_A_STRIDE", "2")
 )
@@ -36,16 +29,20 @@ if TEMPORAL_EXTRA_A_STRIDE < 2:
     raise ValueError("UAVSAT_TEMPORAL_EXTRA_A_STRIDE must be >= 2")
 TEMPORAL_TRAINING_PROTOCOL = f"routeA_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}"
 
+# v7 is the architecture drawn in the supplied diagram:
+# previous KF posterior -> one forward local MS re-localization -> GRU;
+# GRU measurement/variance -> KF update; GRU motion/heading -> next-frame
+# heading-aware second-order polynomial -> KF predict.
+IMAGE_ALIGNED_SINGLE_MS = True
 ARCHITECTURE_NAME = (
-    "V36_byTeacher_MSPreviousPosition_"
+    "V36_byTeacher_ImageAlignedSingleMS_"
     f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
-    "GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_"
-    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_v6"
+    "GRUMeasurementVariance_MotionHeading_Polynomial_Kalman_"
+    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_v7"
 )
 
-# Keep every backbone isolated so changing the backbone never overwrites the
-# currently-good MobileCLIP checkpoint.  The visual checkpoint/feature cache are
-# shared by the 1-frame and 2-frame temporal experiments of the same backbone.
+# Keep every backbone isolated. Visual checkpoint and UAV backbone caches remain
+# shared because this change only affects the temporal architecture.
 BACKBONE_OUTPUT_DIR = PROJECT_ROOT / "output" / BACKBONE_KEY
 DEFAULT_OUTPUT_DIR = BACKBONE_OUTPUT_DIR / f"{EXPERIMENT_FRAME_COUNT}frame"
 RUN_TAG = os.environ.get("UAVSAT_RUN_TAG", "").strip()
@@ -58,19 +55,19 @@ VISUAL_CHECKPOINT = CHECKPOINT_DIR / f"visual_retrieval_A_only_{BACKBONE_KEY}.pt
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
     / (
-        "controlled_referenceprior_forward3x6_ms_previous_position_"
+        "image_aligned_single_ms_previous_state_forward3x6_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-        "gru_visual_measurement_variance_nosat_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v6.pt"
+        "gru_measurement_variance_motion_heading_"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v7.pt"
     )
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
     / (
-        "controlled_referenceprior_forward3x6_ms_previous_position_"
+        "image_aligned_single_ms_previous_state_forward3x6_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-        "gru_visual_measurement_variance_nosat_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v6_latest.pt"
+        "gru_measurement_variance_motion_heading_"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v7_latest.pt"
     )
 )
 FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
@@ -78,9 +75,6 @@ FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
 # ---------------------------------------------------------------------------
 # No-training MeanShift ablation overrides
 # ---------------------------------------------------------------------------
-# These values default to config_base.py, so normal training/evaluation is
-# unchanged.  They can be overridden only at inference time to sweep decoder
-# hyperparameters using the already-trained visual checkpoint and UAV cache.
 MEANSHIFT_ITERATIONS = int(
     os.environ.get("UAVSAT_MS_ITERATIONS", str(MEANSHIFT_ITERATIONS))
 )
@@ -103,24 +97,25 @@ if MEANSHIFT_MODE_BETA <= 0.0:
     raise ValueError("UAVSAT_MS_MODE_BETA must be > 0")
 
 # ---------------------------------------------------------------------------
-# Teacher-requested inter-frame hand-off
+# Image-aligned inter-frame hand-off
 # ---------------------------------------------------------------------------
-# For frame t, the newly arrived UAV image re-localizes the previous Kalman
-# output X_(t-1) by MeanShift. X_(t-1)^MS is only the GRU previous-position cue;
-# it never overwrites kf.x/kf.P and is not used as the absolute base of z_t.
+# At frame t, X_(t-1) from the final KF posterior is the center of the single
+# heading-forward local search. The newly arrived UAV frame is matched against
+# that local satellite set and MeanShift returns X_(t-1)^MS. There is no second
+# hidden/current-frame MeanShift branch after this point.
 TEACHER_MEANSHIFT_FEEDBACK = True
 TEACHER_FEEDBACK_PRESERVE_KALMAN_VELOCITY = True
 TEACHER_FEEDBACK_USE_FORWARD_3X6 = True
 MEANSHIFT_POSITION_AS_GRU_INPUT = True
 
 # ---------------------------------------------------------------------------
-# GRU visual measurement
+# GRU measurement head
 # ---------------------------------------------------------------------------
-# Current measurement is anchored to the current controlled local MeanShift:
-#       z_t = current_MS_t + residual_head(h_t)
-# The teacher-requested X_(t-1)^MS remains an input to the GRU and therefore
-# affects h_t, but an accumulated previous Kalman error can no longer shift the
-# absolute current measurement hundreds of metres away from the visual evidence.
+# The one MeanShift result in the diagram is the visual base. The Measurement
+# Head predicts only a bounded residual around that visual base:
+#       z_t = X_(t-1)^MS + residual_head(h_t)
+# The KF prior itself is NOT an input to the measurement head. This keeps the
+# learned visual measurement distinct from the external KF fusion step.
 DIRECT_SOFTMS_MEASUREMENT = False
 USE_GRU_VISUAL_MEASUREMENT_HEAD = True
 GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M = 6.0
@@ -137,7 +132,8 @@ GRU_VISUAL_VARIANCE_INIT_M2 = 4.0
 KALMAN_R_MIN_VAR = 1.0
 KALMAN_R_MAX_VAR = 400.0
 
-# MeanShift/local-posterior confidence must not independently alter Kalman R.
+# MeanShift confidence does not separately scale R; the GRU variance head is the
+# single learned measurement-uncertainty source entering the KF.
 KALMAN_USE_MS_CONFIDENCE = False
 VISUAL_CONFIDENCE_FLOOR = 1.0
 VISUAL_CONFIDENCE_CEIL = 1.0
@@ -148,9 +144,6 @@ ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
 # ---------------------------------------------------------------------------
 # Kalman trust balance
 # ---------------------------------------------------------------------------
-# Keep enough process uncertainty/correction room for the current visual
-# measurement to pull the posterior back toward the reference-supported local
-# observation, while retaining bounded non-teleporting updates.
 KALMAN_Q_PROGRESS = 0.80
 KALMAN_Q_CROSS = 0.25
 KALMAN_Q_VELOCITY = 0.40
@@ -163,21 +156,22 @@ KALMAN_FINAL_STEP_SLACK_M = 1.0
 KALMAN_FINAL_STEP_MAX_M = 8.0
 
 # ---------------------------------------------------------------------------
-# Compact temporal state
+# Compact GRU state
 # ---------------------------------------------------------------------------
 USE_SATELLITE_CONTEXT_IN_GRU = False
 
-# SoftMS spread(2) + current SoftMS-prior innovation(2)
-# + current SoftMS-X_(t-1)^MS displacement(2) + previous velocity(2)
-# + heading residual/turn-rate(2).
-RNN_NUMERIC_DIM = 10
+# Exactly the numeric information represented by the diagram/causal state:
+#   SoftMS mode-space variance (2)
+# + re-localized-position displacement from previous KF state (2)
+# + previous recurrent velocity (2)
+# + previous heading residual / turn-rate (2)
+# The current Kalman prior is deliberately excluded from the GRU measurement
+# input so the KF does not fuse its own prior twice.
+RNN_NUMERIC_DIM = 8
 
 # ---------------------------------------------------------------------------
 # Training balance
 # ---------------------------------------------------------------------------
-# The current visual anchor is already near the supervised reference under the
-# controlled local protocol, so the residual head should learn a small refinement
-# rather than a hundreds-of-metres absolute displacement.
 LOSS_MEASUREMENT = 2.0
 LOSS_NEXT_STEP = 2.0
 LOSS_VARIANCE_NLL = 0.02
@@ -199,10 +193,10 @@ FORWARD_SEARCH_EXPERIMENT_ROWS = (3, 4, 5, 6)
 LATENCY_WARMUP_FRAMES = 30
 
 CONTROLLED_PROTOCOL_NAME = (
-    "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
+    "reference-route_single-MS-from-previous-KF_forward3x6_"
     f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-    "current-MS-anchored-GRU-visual-measurement-and-variance_no-sat-context_"
-    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v6"
+    "GRU-measurement-variance-motion-heading_polynomial-Kalman_"
+    f"multirate-{TEMPORAL_TRAINING_PROTOCOL}_v7"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
