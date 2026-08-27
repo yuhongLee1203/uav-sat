@@ -1,0 +1,11 @@
+====================================================================================================
+V36_byTeacher_MSPreviousPosition_2Frame_mobilenet_v3_small_GRUVisualMeasurementVariance_NoSatContext_Polynomial_Kalman_MultiRateAstride2_v6
+Flow: new image -> MeanShift(previous Kalman output) -> GRU previous-position cue; GRU -> current measurement/variance + motion; Kalman prior + GRU measurement -> final state
+search=4x6 (24 candidates); Kalman MeanShift-confidence input=OFF
+output=/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/search_4x6
+====================================================================================================
+route_B: reuse UAV backbone cache
+route_B 4x6: MLE=21.148m P90=98.469m LSR@15=82.16%
+route_C: reuse UAV backbone cache
+route_C 4x6: MLE=10.006m P90=21.094m LSR@15=82.99%
+summary: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/search_4x6/robust_tracker_summary_forward4x6.json

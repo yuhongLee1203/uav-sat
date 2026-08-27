@@ -1,0 +1,111 @@
+{
+  "backbone": "mobilenet_v3_small",
+  "search": "3x6",
+  "candidate_count": 18,
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "methods": {
+    "top1": {
+      "route_B": {
+        "MLE_m": 12.52635361611686,
+        "MedLE_m": 12.609991073608398,
+        "P90_m": 19.28597640991211,
+        "P95_m": 20.682479858398438,
+        "P99_m": 22.566885471343994,
+        "LSR@5_pct": 6.41476274165202,
+        "LSR@10_pct": 31.810193321616868,
+        "LSR@15_pct": 67.75043936731107,
+        "LSR@20_pct": 92.48681898066783,
+        "CVaR90_m": 20.962357019123278,
+        "shared_candidate_ms": 58.13957202046233,
+        "shared_candidate_fps": 17.19998901347344,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/decoder_baselines_3x6_accuracy/route_B_decoder_baselines_3x6.csv"
+      },
+      "route_C": {
+        "MLE_m": 11.205669241698255,
+        "MedLE_m": 10.648946285247803,
+        "P90_m": 18.561251640319824,
+        "P95_m": 20.09983787536621,
+        "P99_m": 22.577376708984374,
+        "LSR@5_pct": 12.241653418124006,
+        "LSR@10_pct": 45.8664546899841,
+        "LSR@15_pct": 74.0858505564388,
+        "LSR@20_pct": 94.5945945945946,
+        "CVaR90_m": 20.453675845312695,
+        "shared_candidate_ms": 58.998162175717546,
+        "shared_candidate_fps": 16.949680517532794,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/decoder_baselines_3x6_accuracy/route_C_decoder_baselines_3x6.csv"
+      }
+    },
+    "weighted_centroid": {
+      "route_B": {
+        "MLE_m": 9.178443371391936,
+        "MedLE_m": 9.17514705657959,
+        "P90_m": 14.420028686523438,
+        "P95_m": 15.802953481674194,
+        "P99_m": 17.575375080108643,
+        "LSR@5_pct": 16.87170474516696,
+        "LSR@10_pct": 57.73286467486819,
+        "LSR@15_pct": 92.70650263620387,
+        "LSR@20_pct": 99.86818980667839,
+        "CVaR90_m": 16.01711068237037,
+        "shared_candidate_ms": 58.13957202046233,
+        "shared_candidate_fps": 17.19998901347344,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/decoder_baselines_3x6_accuracy/route_B_decoder_baselines_3x6.csv"
+      },
+      "route_C": {
+        "MLE_m": 8.781812204797241,
+        "MedLE_m": 8.74759292602539,
+        "P90_m": 13.38954496383667,
+        "P95_m": 14.506323957443232,
+        "P99_m": 16.010019207000738,
+        "LSR@5_pct": 13.593004769475359,
+        "LSR@10_pct": 61.446740858505564,
+        "LSR@15_pct": 96.50238473767885,
+        "LSR@20_pct": 100.0,
+        "CVaR90_m": 14.741395556737507,
+        "shared_candidate_ms": 58.998162175717546,
+        "shared_candidate_fps": 16.949680517532794,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/decoder_baselines_3x6_accuracy/route_C_decoder_baselines_3x6.csv"
+      }
+    },
+    "softms": {
+      "route_B": {
+        "MLE_m": 9.525577936275667,
+        "MedLE_m": 9.574748992919922,
+        "P90_m": 14.84414291381836,
+        "P95_m": 16.386884212493896,
+        "P99_m": 18.33470106124878,
+        "LSR@5_pct": 14.806678383128293,
+        "LSR@10_pct": 54.43760984182777,
+        "LSR@15_pct": 90.6414762741652,
+        "LSR@20_pct": 99.69244288224957,
+        "CVaR90_m": 16.605562281190302,
+        "shared_candidate_ms": 58.13957202046233,
+        "shared_candidate_fps": 17.19998901347344,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/decoder_baselines_3x6_accuracy/route_B_decoder_baselines_3x6.csv"
+      },
+      "route_C": {
+        "MLE_m": 9.029666405698263,
+        "MedLE_m": 8.929380416870117,
+        "P90_m": 13.945961189270019,
+        "P95_m": 15.05322842597961,
+        "P99_m": 16.619861831665045,
+        "LSR@5_pct": 12.639109697933225,
+        "LSR@10_pct": 59.5389507154213,
+        "LSR@15_pct": 94.67408585055644,
+        "LSR@20_pct": 100.0,
+        "CVaR90_m": 15.336374184441945,
+        "shared_candidate_ms": 58.998162175717546,
+        "shared_candidate_fps": 16.949680517532794,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/decoder_baselines_3x6_accuracy/route_C_decoder_baselines_3x6.csv"
+      }
+    }
+  },
+  "timing_definition": "cached UAV backbone feature -> selected SAT projection + cosine scoring + Top1/weighted/SoftMS decoder; image I/O and UAV backbone excluded"
+}

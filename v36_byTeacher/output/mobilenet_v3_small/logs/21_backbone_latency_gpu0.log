@@ -1,0 +1,12 @@
+route_B: reuse UAV backbone cache
+{
+  "backbone": "mobilenet_v3_small",
+  "batch_size": 1,
+  "definition": "UAV backbone only; disk I/O and PIL preprocessing excluded",
+  "samples": 270,
+  "mean_ms": 8.701242250605935,
+  "median_ms": 8.67531800759025,
+  "p90_ms": 8.942992863012478,
+  "fps": 114.92611873096192
+}
+summary: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/backbone_latency/backbone_latency.json

@@ -1,0 +1,62 @@
+route_B: reuse UAV backbone cache
+route_C: reuse UAV backbone cache
+route_A: reuse UAV backbone cache
+BC->A data protocol: train=[route_B, route_C], validation=route_A, full-route causal sequences, alternating by global epoch
+train sequence route_B: frames=2276 route_length=7091.7m
+train sequence route_C: frames=1258 route_length=2674.2m
+validation route_A: frames=1732 route_length=4938.3m
+removed old temporal checkpoint: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/causal_reference_only_forward3x6_ms_previous_position_2frame_mobilenet_v3_small_train-B+C_validate-A_puremodel_v9.pt
+removed old temporal checkpoint: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/causal_reference_only_forward3x6_ms_previous_position_2frame_mobilenet_v3_small_train-B+C_validate-A_puremodel_v9_latest.pt
+BC->A epoch=001/60 train=route_B validate=route_A
+teacher 3x6 epoch=001/1 loss=7.56682 val_mle=436.365m val_p90=728.096m score=700.126 best=700.126 patience=0/15
+BC->A epoch=002/60 train=route_C validate=route_A
+teacher 3x6 epoch=002/2 loss=1.39244 val_mle=439.129m val_p90=728.001m score=703.144 best=700.126 patience=1/15
+BC->A epoch=003/60 train=route_B validate=route_A
+teacher 3x6 epoch=003/3 loss=5.69040 val_mle=558.873m val_p90=1073.413m score=736.433 best=700.126 patience=2/15
+BC->A epoch=004/60 train=route_C validate=route_A
+teacher 3x6 epoch=004/4 loss=1.39314 val_mle=439.209m val_p90=728.006m score=702.791 best=700.126 patience=3/15
+BC->A epoch=005/60 train=route_B validate=route_A
+teacher 3x6 epoch=005/5 loss=5.60481 val_mle=558.858m val_p90=1073.393m score=736.123 best=700.126 patience=4/15
+BC->A epoch=006/60 train=route_C validate=route_A
+teacher 3x6 epoch=006/6 loss=1.38201 val_mle=439.180m val_p90=728.090m score=702.508 best=700.126 patience=5/15
+BC->A epoch=007/60 train=route_B validate=route_A
+teacher 3x6 epoch=007/7 loss=5.53120 val_mle=557.585m val_p90=1073.431m score=734.366 best=700.126 patience=6/15
+BC->A epoch=008/60 train=route_C validate=route_A
+teacher 3x6 epoch=008/8 loss=1.39521 val_mle=438.160m val_p90=728.269m score=701.192 best=700.126 patience=7/15
+BC->A epoch=009/60 train=route_B validate=route_A
+teacher 3x6 epoch=009/9 loss=5.46231 val_mle=555.801m val_p90=1073.504m score=732.100 best=700.126 patience=8/15
+BC->A epoch=010/60 train=route_C validate=route_A
+teacher 3x6 epoch=010/10 loss=1.37135 val_mle=435.048m val_p90=728.683m score=697.926 best=697.926 patience=0/15
+BC->A epoch=011/60 train=route_B validate=route_A
+teacher 3x6 epoch=011/11 loss=5.44088 val_mle=555.853m val_p90=1073.573m score=732.138 best=697.926 patience=1/15
+BC->A epoch=012/60 train=route_C validate=route_A
+teacher 3x6 epoch=012/12 loss=1.31638 val_mle=434.168m val_p90=728.965m score=696.978 best=696.978 patience=0/15
+BC->A epoch=013/60 train=route_B validate=route_A
+teacher 3x6 epoch=013/13 loss=5.34739 val_mle=557.643m val_p90=1073.584m score=734.378 best=696.978 patience=1/15
+BC->A epoch=014/60 train=route_C validate=route_A
+teacher 3x6 epoch=014/14 loss=1.28025 val_mle=435.021m val_p90=729.174m score=697.676 best=696.978 patience=2/15
+BC->A epoch=015/60 train=route_B validate=route_A
+teacher 3x6 epoch=015/15 loss=5.19662 val_mle=554.604m val_p90=1073.716m score=730.550 best=696.978 patience=3/15
+BC->A epoch=016/60 train=route_C validate=route_A
+teacher 3x6 epoch=016/16 loss=1.15596 val_mle=430.338m val_p90=728.271m score=692.877 best=692.877 patience=0/15
+BC->A epoch=017/60 train=route_B validate=route_A
+teacher 3x6 epoch=017/17 loss=5.00279 val_mle=542.463m val_p90=1073.768m score=712.953 best=692.877 patience=1/15
+BC->A epoch=018/60 train=route_C validate=route_A
+teacher 3x6 epoch=018/18 loss=1.03026 val_mle=433.376m val_p90=728.107m score=695.383 best=692.877 patience=2/15
+BC->A epoch=019/60 train=route_B validate=route_A
+teacher 3x6 epoch=019/19 loss=4.74019 val_mle=542.609m val_p90=1073.737m score=713.305 best=692.877 patience=3/15
+BC->A epoch=020/60 train=route_C validate=route_A
+teacher 3x6 epoch=020/20 loss=1.02213 val_mle=429.287m val_p90=731.250m score=691.192 best=691.192 patience=0/15
+BC->A epoch=021/60 train=route_B validate=route_A
+teacher 3x6 epoch=021/21 loss=4.58569 val_mle=540.972m val_p90=1073.814m score=711.352 best=691.192 patience=1/15
+BC->A epoch=022/60 train=route_C validate=route_A
+teacher 3x6 epoch=022/22 loss=0.93662 val_mle=490.539m val_p90=1034.340m score=726.060 best=691.192 patience=2/15
+BC->A epoch=023/60 train=route_B validate=route_A
+teacher 3x6 epoch=023/23 loss=3.89920 val_mle=540.565m val_p90=1073.713m score=710.868 best=691.192 patience=3/15
+BC->A epoch=024/60 train=route_C validate=route_A
+teacher 3x6 epoch=024/24 loss=0.91216 val_mle=421.762m val_p90=725.158m score=675.290 best=675.290 patience=0/15
+BC->A epoch=025/60 train=route_B validate=route_A
+teacher 3x6 epoch=025/25 loss=3.79033 val_mle=537.710m val_p90=1073.754m score=707.417 best=675.290 patience=1/15
+BC->A epoch=026/60 train=route_C validate=route_A
+teacher 3x6 epoch=026/26 loss=0.88944 val_mle=471.865m val_p90=1034.127m score=704.937 best=675.290 patience=2/15
+BC->A epoch=027/60 train=route_B validate=route_A
