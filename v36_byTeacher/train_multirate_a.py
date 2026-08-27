@@ -13,6 +13,11 @@ Training uses scheduled search-center teacher forcing only to avoid the failure
 mode where an untrained KF immediately moves the 3x6 local window away from the
 correct region. Early epochs use the previous route reference position as the
 search center; the ratio then decays toward the model's own previous KF output.
+
+The planned-route start is known by the method, so every sequence initializes the
+external KF at its first predefined route-reference state instead of an arbitrary
+[s=0,e=0]. This keeps training, validation, and inference initialization causal
+and consistent with the stated problem setup.
 """
 
 import argparse
@@ -130,8 +135,10 @@ def _train_one_sequence(
     if not indices:
         return [], 0.0
 
+    first_index = int(indices[0])
+    initial_se = np.asarray(gt_state["se"][first_index], dtype=np.float64).reshape(2)
     teacher_ratio = _teacher_ratio(epoch)
-    kf = rt.RouteKalman(0.0, 0.0)
+    kf = rt.RouteKalman(float(initial_se[0]), float(initial_se[1]))
     hidden = previous_z = previous2_z = None
     previous_velocity = torch.zeros(1, 2, device=device)
     previous_acceleration = torch.zeros(1, 2, device=device)
@@ -145,7 +152,6 @@ def _train_one_sequence(
     captures = []
     previous_index = None
 
-    first_index = int(indices[0])
     for sequence_pos, index in enumerate(indices):
         index = int(index)
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
@@ -167,9 +173,6 @@ def _train_one_sequence(
             kf, predicted_se, gt_state["se"][index]
         )
 
-        # Critical training curriculum: keep the single 3x6 window near the
-        # previous reference position until the motion/KF state becomes usable,
-        # then smoothly expose the model to its own closed-loop previous state.
         search_center_se = _training_search_center(
             gt_state=gt_state,
             current_index=index,
@@ -196,8 +199,6 @@ def _train_one_sequence(
             uav_clip,
         )
 
-        # The GRU re-localization displacement must be measured from the same
-        # center that was actually used for the single MeanShift search.
         output = rt._model_step(
             model,
             obs,
@@ -311,7 +312,7 @@ def train_multirate(
     stride_stats = _step_stats(stride_cache)
 
     print("=" * 100, flush=True)
-    print("Route-A multi-rate temporal training: image-aligned single-MS flow v8", flush=True)
+    print("Route-A multi-rate temporal training: image-aligned single-MS flow v9", flush=True)
     print(
         f"native A train: frames={train_end-train_start} "
         f"mean_step={native_stats['mean']:.3f}m/frame "
@@ -322,6 +323,11 @@ def train_multirate(
         f"stride-{stride} A train: frames={len(stride_cache)} "
         f"mean_step={stride_stats['mean']:.3f}m/frame "
         f"median={stride_stats['median']:.3f}m/frame",
+        flush=True,
+    )
+    start_state = np.asarray(full_gt_state["se"][0], dtype=np.float64)
+    print(
+        f"known route-start KF initialization: s={start_state[0]:.3f}m e={start_state[1]:.3f}m",
         flush=True,
     )
     print(
@@ -396,7 +402,6 @@ def train_multirate(
             epoch=epoch,
         )
 
-        # Validation is intentionally fully closed-loop: no teacher search center.
         val = rt.evaluate_closed_loop(
             model,
             visual,
@@ -416,6 +421,7 @@ def train_multirate(
                 "previous recurrent motion/heading -> polynomial -> KF predict; "
                 "KF update is the only prior/measurement fusion"
             ),
+            "known_start_initialization": True,
             "training_search_center": (
                 "scheduled previous-reference -> previous-KF search-center curriculum; "
                 "validation/evaluation are fully previous-KF closed-loop"
@@ -471,7 +477,7 @@ def train_multirate(
         native_loss = float(np.mean(native_losses)) if native_losses else float("nan")
         stride_loss = float(np.mean(stride_losses)) if stride_losses else float("nan")
         print(
-            f"multirate-v8 epoch={epoch:03d}/{epochs} "
+            f"multirate-v9 epoch={epoch:03d}/{epochs} "
             f"teacher={teacher_ratio:.3f} "
             f"native_loss={native_loss:.5f} native_capture={native_capture:.2f}% "
             f"stride{stride}_loss={stride_loss:.5f} stride_capture={stride_capture:.2f}% "
