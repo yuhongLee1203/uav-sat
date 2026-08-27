@@ -47,7 +47,12 @@ ARCHITECTURE_NAME = (
 # currently-good MobileCLIP checkpoint.  The visual checkpoint/feature cache are
 # shared by the 1-frame and 2-frame temporal experiments of the same backbone.
 BACKBONE_OUTPUT_DIR = PROJECT_ROOT / "output" / BACKBONE_KEY
-OUTPUT_DIR = BACKBONE_OUTPUT_DIR / f"{EXPERIMENT_FRAME_COUNT}frame"
+DEFAULT_OUTPUT_DIR = BACKBONE_OUTPUT_DIR / f"{EXPERIMENT_FRAME_COUNT}frame"
+RUN_TAG = os.environ.get("UAVSAT_RUN_TAG", "").strip()
+if RUN_TAG:
+    OUTPUT_DIR = BACKBONE_OUTPUT_DIR / "experiments" / RUN_TAG
+else:
+    OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 CHECKPOINT_DIR = BACKBONE_OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = CHECKPOINT_DIR / f"visual_retrieval_A_only_{BACKBONE_KEY}.pt"
 TEMPORAL_CHECKPOINT = (
