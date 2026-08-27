@@ -29,16 +29,18 @@ if TEMPORAL_EXTRA_A_STRIDE < 2:
     raise ValueError("UAVSAT_TEMPORAL_EXTRA_A_STRIDE must be >= 2")
 TEMPORAL_TRAINING_PROTOCOL = f"routeA_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}"
 
-# v8 keeps the exact image architecture but fixes temporal training. During
-# inference the search center is always the previous final KF state. During
-# training, scheduled search-center teacher forcing prevents an untrained KF
-# from immediately moving the 3x6 window away from the correct local region.
+# v9 keeps the exact image architecture and the v8 scheduled training, while
+# making the closed-loop state initialization match the method assumption that
+# the planned-route start is known. Every training/validation/evaluation sequence
+# starts the external KF from its first predefined route-reference state instead
+# of an arbitrary mathematical [s=0,e=0] state.
 IMAGE_ALIGNED_SINGLE_MS = True
+KNOWN_ROUTE_START_INITIALIZATION = True
 ARCHITECTURE_NAME = (
     "V36_byTeacher_ImageAlignedSingleMS_"
     f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
     "GRUMeasurementVariance_MotionHeading_Polynomial_Kalman_"
-    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_v8"
+    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_v9"
 )
 
 # Keep every backbone isolated. Visual checkpoint and UAV backbone caches remain
@@ -53,7 +55,7 @@ TEMPORAL_CHECKPOINT = (
         "image_aligned_single_ms_previous_state_forward3x6_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
         "gru_measurement_variance_motion_heading_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v8.pt"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v9.pt"
     )
 )
 LATEST_TEMPORAL_CHECKPOINT = (
@@ -62,7 +64,7 @@ LATEST_TEMPORAL_CHECKPOINT = (
         "image_aligned_single_ms_previous_state_forward3x6_"
         f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
         "gru_measurement_variance_motion_heading_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v8_latest.pt"
+        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v9_latest.pt"
     )
 )
 FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
@@ -206,10 +208,10 @@ FORWARD_SEARCH_EXPERIMENT_ROWS = (3, 4, 5, 6)
 LATENCY_WARMUP_FRAMES = 30
 
 CONTROLLED_PROTOCOL_NAME = (
-    "reference-route_single-MS-from-previous-KF_forward3x6_"
+    "known-start_reference-route_single-MS-from-previous-KF_forward3x6_"
     f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
     "GRU-measurement-variance-motion-heading_polynomial-Kalman_"
-    f"multirate-{TEMPORAL_TRAINING_PROTOCOL}_v8"
+    f"multirate-{TEMPORAL_TRAINING_PROTOCOL}_v9"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
