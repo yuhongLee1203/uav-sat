@@ -1,20 +1,16 @@
-"""Multi-rate Route-A temporal training for v36_byTeacher.
+"""Multi-rate Route-A temporal training for the image-aligned v36_byTeacher.
 
 Training data:
-  1) the original Route-A TRAIN split at its native frame spacing;
-  2) a second Route-A TRAIN sequence created in memory by taking every
-     TEMPORAL_EXTRA_A_STRIDE-th frame (default: every other frame, stride=2).
+  1) the original Route-A TRAIN split at native frame spacing;
+  2) an in-memory stride-N sequence made only from the same Route-A TRAIN split.
 
-The stride sequence keeps image/coordinate correspondence and recomputes route
-position, velocity, acceleration, heading, and turn-rate targets from the
-subsampled coordinates.  Route-A validation remains the original native-rate
-validation split.  Route-B and Route-C are never used here and remain evaluation
-routes through robust_tracker.py --mode eval.
+The temporal architecture is the same in both sequences:
+  previous final KF state -> ONE local MeanShift -> GRU measurement/variance;
+  previous GRU motion/heading -> polynomial -> KF predict;
+  KF update is the only motion-prior / visual-measurement fusion.
 """
 
 import argparse
-import math
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -63,7 +59,6 @@ def _detach_temporal_state(
     previous_acceleration,
     previous_heading_state,
     previous_poly_step,
-    previous_ms_se,
 ):
     return (
         hidden.detach() if hidden is not None else None,
@@ -73,7 +68,6 @@ def _detach_temporal_state(
         previous_acceleration.detach(),
         previous_heading_state.detach(),
         previous_poly_step.detach(),
-        previous_ms_se.detach() if previous_ms_se is not None else None,
     )
 
 
@@ -93,7 +87,7 @@ def _train_one_sequence(
         return []
 
     kf = rt.RouteKalman(0.0, 0.0)
-    hidden = previous_z = previous2_z = previous_ms_se = None
+    hidden = previous_z = previous2_z = None
     previous_velocity = torch.zeros(1, 2, device=device)
     previous_acceleration = torch.zeros(1, 2, device=device)
     previous_heading_state = torch.zeros(1, 2, device=device)
@@ -108,12 +102,9 @@ def _train_one_sequence(
     for sequence_pos, index in enumerate(indices):
         index = int(index)
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
+        previous_output_se = kf.se().copy()
 
         if index != first_index:
-            _, feedback_se, _, _ = rt.teacher_meanshift_feedback(
-                visual, uav_clip, route, kf, previous_heading_state, device
-            )
-            previous_ms_se = b.tensor2(feedback_se, device).detach()
             predicted_se = kf.predict(
                 previous_velocity[0].detach().cpu().numpy(),
                 previous_acceleration[0].detach().cpu().numpy(),
@@ -123,19 +114,20 @@ def _train_one_sequence(
                 max_step_m=float(gt_state["gt_step_norm"][index]),
             )
         else:
-            predicted_se = kf.se()
+            predicted_se = previous_output_se.copy()
 
         predicted_se = b.cap_prediction_to_current_gt(
             kf, predicted_se, gt_state["se"][index]
         )
 
-        obs, _, _, _ = rt._frame_visual(
+        obs, _, _ = rt._frame_visual(
             model,
             visual,
             cache,
             route,
             gt_state,
             index,
+            previous_output_se,
             predicted_se,
             previous_z,
             previous2_z,
@@ -146,13 +138,13 @@ def _train_one_sequence(
             uav_clip,
         )
 
-        output = b.model_forward(
+        output = rt._model_step(
             model,
             obs,
             previous_z,
             previous2_z,
+            previous_output_se,
             predicted_se,
-            previous_ms_se,
             previous_velocity,
             previous_acceleration,
             previous_heading_state,
@@ -213,7 +205,6 @@ def _train_one_sequence(
                 previous_acceleration,
                 previous_heading_state,
                 previous_poly_step,
-                previous_ms_se,
             ) = _detach_temporal_state(
                 hidden,
                 previous_z,
@@ -222,7 +213,6 @@ def _train_one_sequence(
                 previous_acceleration,
                 previous_heading_state,
                 previous_poly_step,
-                previous_ms_se,
             )
             chunk_loss = None
             chunk_count = 0
@@ -258,7 +248,7 @@ def train_multirate(
     stride_stats = _step_stats(stride_cache)
 
     print("=" * 100, flush=True)
-    print("Route-A multi-rate temporal training", flush=True)
+    print("Route-A multi-rate temporal training: image-aligned single-MS flow", flush=True)
     print(
         f"native A train: frames={train_end-train_start} "
         f"mean_step={native_stats['mean']:.3f}m/frame "
@@ -347,6 +337,11 @@ def train_multirate(
 
         training_metadata = {
             "protocol": str(config.TEMPORAL_TRAINING_PROTOCOL),
+            "architecture_flow": (
+                "previous final KF state -> one local MS -> GRU measurement/R; "
+                "previous recurrent motion/heading -> polynomial -> KF predict; "
+                "KF update is the only prior/measurement fusion"
+            ),
             "native_train_frames": int(train_end - train_start),
             "stride": stride,
             "stride_train_frames": int(len(stride_cache)),
@@ -371,11 +366,6 @@ def train_multirate(
                     "validation": val,
                     "train_forward_rows": int(config.FORWARD_SEARCH_ROWS),
                     "training_protocol": training_metadata,
-                    "teacher_feedback": (
-                        "new image MeanShift re-localizes previous Kalman output; "
-                        "GRU predicts current measurement/variance and motion; "
-                        "Kalman fuses recurrent motion prior with GRU measurement"
-                    ),
                 },
                 config.TEMPORAL_CHECKPOINT,
             )
