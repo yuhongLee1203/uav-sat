@@ -1,26 +1,20 @@
-"""Multi-rate Route-A temporal training for the image-aligned v36_byTeacher.
+"""Multi-rate Route-A temporal training for v36_byTeacher.
 
 Training data:
-  1) the original Route-A TRAIN split at native frame spacing;
-  2) an in-memory stride-N sequence made only from the same Route-A TRAIN split.
+  1) the original Route-A TRAIN split at its native frame spacing;
+  2) a second Route-A TRAIN sequence created in memory by taking every
+     TEMPORAL_EXTRA_A_STRIDE-th frame (default: every other frame, stride=2).
 
-Inference architecture is unchanged:
-  previous final KF state -> ONE local MeanShift -> GRU measurement/variance;
-  previous GRU motion/heading -> polynomial -> KF predict;
-  KF update is the only motion-prior / visual-measurement fusion.
-
-Training uses scheduled search-center teacher forcing only to avoid the failure
-mode where an untrained KF immediately moves the 3x6 local window away from the
-correct region. Early epochs use the previous route reference position as the
-search center; the ratio then decays toward the model's own previous KF output.
-
-The planned-route start is known by the method, so every sequence initializes the
-external KF at its first predefined route-reference state instead of an arbitrary
-[s=0,e=0]. This keeps training, validation, and inference initialization causal
-and consistent with the stated problem setup.
+The stride sequence keeps image/coordinate correspondence and recomputes route
+position, velocity, acceleration, heading, and turn-rate targets from the
+subsampled coordinates.  Route-A validation remains the original native-rate
+validation split.  Route-B and Route-C are never used here and remain evaluation
+routes through robust_tracker.py --mode eval.
 """
 
 import argparse
+import math
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -61,44 +55,6 @@ def _step_stats(cache):
     }
 
 
-def _teacher_ratio(epoch):
-    epoch = int(epoch)
-    warmup = int(config.IMAGE_FLOW_TEACHER_WARMUP_EPOCHS)
-    decay = max(1, int(config.IMAGE_FLOW_TEACHER_DECAY_EPOCHS))
-    final_ratio = float(config.IMAGE_FLOW_TEACHER_FINAL_RATIO)
-    if epoch <= warmup:
-        return 1.0
-    progress = min(1.0, float(epoch - warmup) / float(decay))
-    return float(1.0 + progress * (final_ratio - 1.0))
-
-
-def _training_search_center(
-    gt_state,
-    current_index,
-    previous_index,
-    model_previous_se,
-    teacher_ratio,
-):
-    """Blend previous reference position with previous model KF state.
-
-    This affects only the TRAINING local-search center. Validation/evaluation
-    always use the previous final KF state exactly as shown in the architecture.
-    """
-    if previous_index is None:
-        reference_previous = np.asarray(
-            gt_state["se"][int(current_index)], dtype=np.float64
-        ).reshape(2)
-    else:
-        reference_previous = np.asarray(
-            gt_state["se"][int(previous_index)], dtype=np.float64
-        ).reshape(2)
-    model_previous = np.asarray(model_previous_se, dtype=np.float64).reshape(2)
-    ratio = float(np.clip(teacher_ratio, 0.0, 1.0))
-    center = ratio * reference_previous + (1.0 - ratio) * model_previous
-    center[0] = max(0.0, float(center[0]))
-    return center
-
-
 def _detach_temporal_state(
     hidden,
     previous_z,
@@ -107,6 +63,7 @@ def _detach_temporal_state(
     previous_acceleration,
     previous_heading_state,
     previous_poly_step,
+    previous_ms_se,
 ):
     return (
         hidden.detach() if hidden is not None else None,
@@ -116,6 +73,7 @@ def _detach_temporal_state(
         previous_acceleration.detach(),
         previous_heading_state.detach(),
         previous_poly_step.detach(),
+        previous_ms_se.detach() if previous_ms_se is not None else None,
     )
 
 
@@ -129,17 +87,13 @@ def _train_one_sequence(
     gt_state,
     indices,
     device,
-    epoch,
 ):
     indices = list(indices)
     if not indices:
-        return [], 0.0
+        return []
 
-    first_index = int(indices[0])
-    initial_se = np.asarray(gt_state["se"][first_index], dtype=np.float64).reshape(2)
-    teacher_ratio = _teacher_ratio(epoch)
-    kf = rt.RouteKalman(float(initial_se[0]), float(initial_se[1]))
-    hidden = previous_z = previous2_z = None
+    kf = rt.RouteKalman(0.0, 0.0)
+    hidden = previous_z = previous2_z = previous_ms_se = None
     previous_velocity = torch.zeros(1, 2, device=device)
     previous_acceleration = torch.zeros(1, 2, device=device)
     previous_heading_state = torch.zeros(1, 2, device=device)
@@ -149,15 +103,17 @@ def _train_one_sequence(
     chunk_loss = None
     chunk_count = 0
     losses = []
-    captures = []
-    previous_index = None
 
+    first_index = int(indices[0])
     for sequence_pos, index in enumerate(indices):
         index = int(index)
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
-        model_previous_se = kf.se().copy()
 
         if index != first_index:
+            _, feedback_se, _, _ = rt.teacher_meanshift_feedback(
+                visual, uav_clip, route, kf, previous_heading_state, device
+            )
+            previous_ms_se = b.tensor2(feedback_se, device).detach()
             predicted_se = kf.predict(
                 previous_velocity[0].detach().cpu().numpy(),
                 previous_acceleration[0].detach().cpu().numpy(),
@@ -167,28 +123,19 @@ def _train_one_sequence(
                 max_step_m=float(gt_state["gt_step_norm"][index]),
             )
         else:
-            predicted_se = model_previous_se.copy()
+            predicted_se = kf.se()
 
         predicted_se = b.cap_prediction_to_current_gt(
             kf, predicted_se, gt_state["se"][index]
         )
 
-        search_center_se = _training_search_center(
-            gt_state=gt_state,
-            current_index=index,
-            previous_index=previous_index,
-            model_previous_se=model_previous_se,
-            teacher_ratio=teacher_ratio,
-        )
-
-        obs, _, _ = rt._frame_visual(
+        obs, _, _, _ = rt._frame_visual(
             model,
             visual,
             cache,
             route,
             gt_state,
             index,
-            search_center_se,
             predicted_se,
             previous_z,
             previous2_z,
@@ -199,13 +146,13 @@ def _train_one_sequence(
             uav_clip,
         )
 
-        output = rt._model_step(
+        output = b.model_forward(
             model,
             obs,
             previous_z,
             previous2_z,
-            search_center_se,
             predicted_se,
+            previous_ms_se,
             previous_velocity,
             previous_acceleration,
             previous_heading_state,
@@ -227,7 +174,6 @@ def _train_one_sequence(
         )
         chunk_loss = loss if chunk_loss is None else chunk_loss + loss
         chunk_count += 1
-        captures.append(float(obs.capture.float().item()))
 
         final_se = rt._kalman_update(kf, output, route, gt_state, index)
         b.cap_kalman_to_current_gt(kf, final_se, gt_state["se"][index])
@@ -249,7 +195,6 @@ def _train_one_sequence(
             output.turn_rate_rad,
         )
         hidden = output.hidden
-        previous_index = index
 
         is_last = sequence_pos + 1 >= len(indices)
         if chunk_count >= int(config.TBPTT_STEPS) or is_last:
@@ -268,6 +213,7 @@ def _train_one_sequence(
                 previous_acceleration,
                 previous_heading_state,
                 previous_poly_step,
+                previous_ms_se,
             ) = _detach_temporal_state(
                 hidden,
                 previous_z,
@@ -276,12 +222,12 @@ def _train_one_sequence(
                 previous_acceleration,
                 previous_heading_state,
                 previous_poly_step,
+                previous_ms_se,
             )
             chunk_loss = None
             chunk_count = 0
 
-    capture_pct = float(np.mean(captures) * 100.0) if captures else 0.0
-    return losses, capture_pct
+    return losses
 
 
 def train_multirate(
@@ -312,7 +258,7 @@ def train_multirate(
     stride_stats = _step_stats(stride_cache)
 
     print("=" * 100, flush=True)
-    print("Route-A multi-rate temporal training: image-aligned single-MS flow v9", flush=True)
+    print("Route-A multi-rate temporal training", flush=True)
     print(
         f"native A train: frames={train_end-train_start} "
         f"mean_step={native_stats['mean']:.3f}m/frame "
@@ -325,21 +271,9 @@ def train_multirate(
         f"median={stride_stats['median']:.3f}m/frame",
         flush=True,
     )
-    start_state = np.asarray(full_gt_state["se"][0], dtype=np.float64)
     print(
-        f"known route-start KF initialization: s={start_state[0]:.3f}m e={start_state[1]:.3f}m",
-        flush=True,
-    )
-    print(
-        f"validation=closed-loop original Route-A native-rate split {val_range}; "
+        f"validation=original Route-A native-rate split {val_range}; "
         "Route-B/C remain evaluation only",
-        flush=True,
-    )
-    print(
-        "training-only search-center curriculum: "
-        f"warmup={config.IMAGE_FLOW_TEACHER_WARMUP_EPOCHS} epochs, "
-        f"decay={config.IMAGE_FLOW_TEACHER_DECAY_EPOCHS} epochs, "
-        f"final_reference_ratio={config.IMAGE_FLOW_TEACHER_FINAL_RATIO:.2f}",
         flush=True,
     )
     print("=" * 100, flush=True)
@@ -374,9 +308,8 @@ def train_multirate(
 
     for epoch in range(start_epoch, int(epochs) + 1):
         model.train()
-        teacher_ratio = _teacher_ratio(epoch)
 
-        native_losses, native_capture = _train_one_sequence(
+        native_losses = _train_one_sequence(
             model=model,
             optimizer=optimizer,
             params=params,
@@ -386,10 +319,9 @@ def train_multirate(
             gt_state=full_gt_state,
             indices=range(train_start, train_end),
             device=device,
-            epoch=epoch,
         )
 
-        stride_losses, stride_capture = _train_one_sequence(
+        stride_losses = _train_one_sequence(
             model=model,
             optimizer=optimizer,
             params=params,
@@ -399,7 +331,6 @@ def train_multirate(
             gt_state=stride_gt_state,
             indices=range(len(stride_cache)),
             device=device,
-            epoch=epoch,
         )
 
         val = rt.evaluate_closed_loop(
@@ -416,25 +347,12 @@ def train_multirate(
 
         training_metadata = {
             "protocol": str(config.TEMPORAL_TRAINING_PROTOCOL),
-            "architecture_flow": (
-                "inference: previous final KF state -> one local MS -> GRU measurement/R; "
-                "previous recurrent motion/heading -> polynomial -> KF predict; "
-                "KF update is the only prior/measurement fusion"
-            ),
-            "known_start_initialization": True,
-            "training_search_center": (
-                "scheduled previous-reference -> previous-KF search-center curriculum; "
-                "validation/evaluation are fully previous-KF closed-loop"
-            ),
-            "teacher_ratio": float(teacher_ratio),
-            "native_train_capture_pct": float(native_capture),
-            "stride_train_capture_pct": float(stride_capture),
             "native_train_frames": int(train_end - train_start),
             "stride": stride,
             "stride_train_frames": int(len(stride_cache)),
             "native_mean_step_m": float(native_stats["mean"]),
             "stride_mean_step_m": float(stride_stats["mean"]),
-            "validation": "Route-A native-rate closed-loop validation split",
+            "validation": "Route-A native-rate validation split",
             "evaluation_routes": ["route_B", "route_C"],
         }
 
@@ -453,6 +371,11 @@ def train_multirate(
                     "validation": val,
                     "train_forward_rows": int(config.FORWARD_SEARCH_ROWS),
                     "training_protocol": training_metadata,
+                    "teacher_feedback": (
+                        "new image MeanShift re-localizes previous Kalman output; "
+                        "GRU predicts current measurement/variance and motion; "
+                        "Kalman fuses recurrent motion prior with GRU measurement"
+                    ),
                 },
                 config.TEMPORAL_CHECKPOINT,
             )
@@ -477,12 +400,9 @@ def train_multirate(
         native_loss = float(np.mean(native_losses)) if native_losses else float("nan")
         stride_loss = float(np.mean(stride_losses)) if stride_losses else float("nan")
         print(
-            f"multirate-v9 epoch={epoch:03d}/{epochs} "
-            f"teacher={teacher_ratio:.3f} "
-            f"native_loss={native_loss:.5f} native_capture={native_capture:.2f}% "
-            f"stride{stride}_loss={stride_loss:.5f} stride_capture={stride_capture:.2f}% "
+            f"multirate epoch={epoch:03d}/{epochs} "
+            f"native_loss={native_loss:.5f} stride{stride}_loss={stride_loss:.5f} "
             f"val_mle={val['mle']:.3f}m val_p90={val['p90']:.3f}m "
-            f"val_capture={val['capture_pct']:.2f}% "
             f"score={score:.3f} best={best_score:.3f} "
             f"patience={patience}/{patience_limit}",
             flush=True,

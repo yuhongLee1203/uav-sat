@@ -12,7 +12,7 @@ import config
 
 
 class TorchvisionImageEncoder(nn.Module):
-    """Frozen ImageNet backbone exposing the encode_image API used by v36."""
+    """Frozen ImageNet backbone exposing the encode_image API used by v33."""
 
     def __init__(self, key):
         super().__init__()
@@ -71,7 +71,7 @@ class FourierCoordEncoder(nn.Module):
 
 
 class AllMapGeoCLIP(nn.Module):
-    """Checkpoint-compatible UAV/satellite retrieval model."""
+    """Checkpoint-compatible visual retrieval model."""
 
     def __init__(self):
         super().__init__()
@@ -149,40 +149,28 @@ class RouteProgressGRUOutput:
 
 
 class TwoFrameRouteStateGRU(nn.Module):
-    """Image-aligned causal GRU used by v36_byTeacher v7.
+    """Teacher architecture with a causal MeanShift previous-position hand-off.
 
-    There is exactly one visual localization branch per frame:
+    The newly arrived UAV frame re-localizes the previous Kalman output by
+    MeanShift. X_(t-1)^MS is supplied to the GRU as the previous-position cue,
+    but it is not used as the absolute base of the current measurement.
 
-        previous final KF state X_(t-1)
-            -> heading-forward local UAV/SAT matching
-            -> MeanShift
-            -> re-localized position X_(t-1)^MS
-            -> GRU
+    The current controlled local MeanShift observation is the current visual
+    anchor. The GRU uses X_(t-1)^MS, current visual innovation, recurrent state,
+    and either one-frame or two-frame UAV visual features to learn a bounded
+    residual correction around that current visual anchor:
+        previous-position input = X_(t-1)^MS
+        z_t = current_MS_t + learned_residual_t
 
-    The GRU does NOT receive the current Kalman prior as a measurement input.
-    This prevents the measurement head from reusing the same motion prior that
-    the external Kalman will fuse later.
+    EXPERIMENT_FRAME_COUNT=2 uses current+previous UAV embeddings through their
+    temporal mean and first difference. EXPERIMENT_FRAME_COUNT=1 keeps exactly
+    the same GRU/heads/hidden-state capacity but removes the previous-frame visual
+    cue by using the current embedding alone and a zero first-difference vector.
+    This makes the 1-frame versus 2-frame comparison controlled and fair.
 
-    Recurrent input:
-      * current/previous UAV embedding temporal mean,
-      * first embedding difference,
-      * MeanShift mode-space variance,
-      * X_(t-1)^MS - X_(t-1) visual re-localization displacement,
-      * previous recurrent velocity,
-      * previous heading residual and turn-rate,
-      * previous GRU hidden state.
-
-    Heads:
-      * Measurement Head: bounded visual-temporal refinement of the single MS
-        result, producing z_t for the KF update.
-      * Variance Head: R_t for the KF update.
-      * Motion Head: v_t and a_t used by the heading-aware polynomial on the
-        NEXT frame.
-      * Heading Head: heading residual and turn-rate used by the NEXT frame's
-        search orientation/polynomial.
-
-    Therefore the KF is the only block that fuses the current motion prior with
-    the current visual measurement.
+    Motion/heading heads independently predict the inertial polynomial used by
+    the Kalman predict step. variance_head alone predicts the Kalman visual
+    measurement variance. Satellite context is not part of the recurrent input.
     """
 
     def __init__(self):
@@ -221,6 +209,8 @@ class TwoFrameRouteStateGRU(nn.Module):
 
         self.motion_head = head(4)
         self.heading_head = head(2)
+        # Historical field name retained for checkpoint/pipeline compatibility.
+        # Semantics in v5: residual correction around the current visual anchor.
         self.correction_head = head(2)
         self.variance_head = head(2)
 
@@ -236,9 +226,7 @@ class TwoFrameRouteStateGRU(nn.Module):
         nn.init.zeros_(self.correction_head[-1].bias)
         progress_range = float(config.GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M)
         init_progress = float(config.GRU_VISUAL_MEASUREMENT_INIT_PROGRESS_M)
-        init_ratio = max(
-            min(init_progress / max(progress_range, 1e-6), 0.95), -0.95
-        )
+        init_ratio = max(min(init_progress / max(progress_range, 1e-6), 0.95), -0.95)
         self.correction_head[-1].bias.data[0] = math.atanh(init_ratio)
 
         nn.init.zeros_(self.variance_head[-1].weight)
@@ -255,6 +243,8 @@ class TwoFrameRouteStateGRU(nn.Module):
     def _two_frame_features(self, z_uav, previous_z_uav):
         frame_count = int(getattr(config, "EXPERIMENT_FRAME_COUNT", 2))
         if frame_count == 1:
+            # Controlled 1-frame ablation: same network capacity and hidden state,
+            # but no explicit previous-frame visual feature or visual difference.
             return torch.zeros_like(z_uav), z_uav
         if frame_count != 2:
             raise RuntimeError("v36_byTeacher supports only 1-frame or 2-frame input")
@@ -279,11 +269,10 @@ class TwoFrameRouteStateGRU(nn.Module):
         softms_support,
         hidden: Optional[torch.Tensor] = None,
     ):
-        # v36 diagram has one local window, so there is no learned window chooser.
         count = int(sat_context.shape[0])
         if count != 1:
             raise RuntimeError(
-                "v36_byTeacher image-aligned flow expects exactly one local hypothesis"
+                "v36_byTeacher expects exactly one controlled local hypothesis"
             )
         return torch.zeros(count, dtype=z_uav.dtype, device=z_uav.device)
 
@@ -315,21 +304,30 @@ class TwoFrameRouteStateGRU(nn.Module):
 
         delta_recent, clip_mean = self._two_frame_features(z_uav, previous_z_uav)
 
-        # Compatibility name: previous_measurement_se now means the previous
-        # final localization state X_(t-1), i.e. the center that was re-localized
-        # by the single MeanShift branch. It is NOT a previous GRU measurement.
+        # First frame has no inter-frame MS hand-off. Use the current prior only
+        # to construct the numeric previous-position cue. From frame 1 onward,
+        # previous_measurement_se is teacher-requested X_(t-1)^MS.
         if previous_measurement_se is None:
-            previous_measurement_se = visual_anchor_se.detach()
+            previous_measurement_se = predicted_se.detach()
 
-        relocalization_step_se = visual_anchor_se - previous_measurement_se
+        innovation_se = visual_anchor_se - predicted_se
+        visual_step_se = visual_anchor_se - previous_measurement_se
+
         numeric = torch.cat(
             [
                 torch.log1p(response_variance_se.clamp_min(0.0)) / 7.0,
                 torch.cat(
                     [
-                        relocalization_step_se[:, 0:1]
-                        / float(config.ROUTE_STEP_SCALE_M),
-                        relocalization_step_se[:, 1:2]
+                        innovation_se[:, 0:1] / float(config.ROUTE_STEP_SCALE_M),
+                        innovation_se[:, 1:2]
+                        / float(config.ROUTE_CROSS_TRACK_SCALE_M),
+                    ],
+                    dim=1,
+                ),
+                torch.cat(
+                    [
+                        visual_step_se[:, 0:1] / float(config.ROUTE_STEP_SCALE_M),
+                        visual_step_se[:, 1:2]
                         / float(config.ROUTE_CROSS_TRACK_SCALE_M),
                     ],
                     dim=1,
@@ -360,7 +358,7 @@ class TwoFrameRouteStateGRU(nn.Module):
         h = self.dropout(new_hidden)
 
         # ------------------------------------------------------------------
-        # Motion / heading heads. These outputs drive NEXT-frame prediction.
+        # Motion branch -> heading-aware polynomial -> Kalman prior
         # ------------------------------------------------------------------
         raw_motion = self.motion_head(h)
         v_parallel = F.softplus(raw_motion[:, 0:1]).clamp(
@@ -403,9 +401,6 @@ class TwoFrameRouteStateGRU(nn.Module):
         )
         turn_rate = prev_turn + float(config.TURN_RATE_EMA_ALPHA) * turn_delta
 
-        # Heading-aware second-order polynomial step. This is retained in the
-        # output structure for the next recurrent KF predict; it is not another
-        # independent position head.
         base_forward = (v_parallel + 0.5 * a_parallel).clamp(
             min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
         )
@@ -423,7 +418,7 @@ class TwoFrameRouteStateGRU(nn.Module):
         next_step = next_step * scale
 
         # ------------------------------------------------------------------
-        # Measurement / variance heads for CURRENT-frame KF update.
+        # Visual measurement branch -> Kalman update
         # ------------------------------------------------------------------
         raw_residual = torch.tanh(self.correction_head(h))
         measurement_residual = torch.cat(
@@ -435,6 +430,10 @@ class TwoFrameRouteStateGRU(nn.Module):
             ],
             dim=1,
         )
+
+        # X_(t-1)^MS remains an INPUT to the GRU through visual_step_se above.
+        # The current absolute measurement stays anchored to current visual
+        # evidence; otherwise an old Kalman error becomes unrecoverable.
         measurement = visual_anchor_se + measurement_residual
 
         raw_log_variance = self.variance_head(h)
