@@ -2,18 +2,19 @@
 
 Per-frame causal flow
 ---------------------
-1. Keep the previous final Kalman posterior X_(t-1), P_(t-1).
-2. Use the newly arrived UAV frame to search one heading-forward local satellite
+1. Initialize each route from its known planned-route start state.
+2. Keep the previous final Kalman posterior X_(t-1), P_(t-1).
+3. Use the newly arrived UAV frame to search one heading-forward local satellite
    window centered on X_(t-1), then apply MeanShift once. The result is the
    diagram's Re-localized Previous Position X_(t-1)^MS.
-3. Independently predict the current Kalman prior X_t^-, P_t^- from the PREVIOUS
+4. Independently predict the current Kalman prior X_t^-, P_t^- from the PREVIOUS
    recurrent motion/heading state through the heading-aware second-order
    polynomial.
-4. Feed temporal UAV features + the single MS re-localization cue + previous
+5. Feed temporal UAV features + the single MS re-localization cue + previous
    recurrent state into the GRU.
-5. The GRU outputs the CURRENT visual measurement z_t and R_t for the Kalman
+6. The GRU outputs the CURRENT visual measurement z_t and R_t for the Kalman
    update, plus motion/heading state used by the NEXT frame's polynomial.
-6. Kalman is the only block that fuses the current motion prior with z_t.
+7. Kalman is the only block that fuses the current motion prior with z_t.
 
 There is intentionally no second hidden/current-frame MeanShift branch.
 """
@@ -57,6 +58,16 @@ def _set_forward_rows(rows):
     config.FORWARD_SEARCH_COLS = 6
     config.FORWARD_SEARCH_CANDIDATE_COUNT = rows * 6
     return rows
+
+
+def _known_start_kalman(gt_state, index=0):
+    """Create the external KF at the known route-reference start state.
+
+    The method assumes a known planned-route start. Using the first predefined
+    route-reference state is therefore initialization, not future look-ahead.
+    """
+    start_se = np.asarray(gt_state["se"][int(index)], dtype=np.float64).reshape(2)
+    return RouteKalman(float(start_se[0]), float(start_se[1]))
 
 
 def forward_rows_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_size=6):
@@ -305,7 +316,7 @@ def _model_step(
 def evaluate_closed_loop(model, visual, cache, route, gt_state, metric_range, device):
     model.eval()
     start, end = map(int, metric_range)
-    kf = RouteKalman(0.0, 0.0)
+    kf = _known_start_kalman(gt_state, 0)
     hidden = previous_z = previous2_z = None
     previous_velocity = torch.zeros(1, 2, device=device)
     previous_acceleration = torch.zeros(1, 2, device=device)
@@ -477,7 +488,7 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
     for epoch in range(start_epoch, int(epochs) + 1):
         model.train()
         optimizer.zero_grad(set_to_none=True)
-        kf = RouteKalman(0.0, 0.0)
+        kf = _known_start_kalman(gt_state, train_start)
         hidden = previous_z = previous2_z = None
         previous_velocity = torch.zeros(1, 2, device=device)
         previous_acceleration = torch.zeros(1, 2, device=device)
@@ -607,6 +618,7 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
                     "epoch": epoch,
                     "validation": val,
                     "train_forward_rows": int(config.FORWARD_SEARCH_ROWS),
+                    "known_start_initialization": True,
                     "flow": "single MS(previous final KF state) -> GRU measurement/R; previous GRU motion -> polynomial -> KF predict; KF update is the only motion/vision fusion",
                 },
                 config.TEMPORAL_CHECKPOINT,
@@ -624,6 +636,7 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
                 "best_score": best_score,
                 "patience": patience,
                 "train_forward_rows": int(config.FORWARD_SEARCH_ROWS),
+                "known_start_initialization": True,
             },
             config.LATEST_TEMPORAL_CHECKPOINT,
         )
@@ -651,7 +664,7 @@ def train_temporal_model(visual, cache, route, device, epochs, patience_limit, r
 def run_route_inference(route_name, visual, model, cache, route, device, measure_latency=False):
     model.eval()
     gt_state = build_gt_route_state(cache, route)
-    kf = RouteKalman(0.0, 0.0)
+    kf = _known_start_kalman(gt_state, 0)
     hidden = previous_z = previous2_z = None
     previous_velocity = torch.zeros(1, 2, device=device)
     previous_acceleration = torch.zeros(1, 2, device=device)
@@ -807,6 +820,7 @@ def run_route_inference(route_name, visual, model, cache, route, device, measure
     summary["ForwardRows"] = int(config.FORWARD_SEARCH_ROWS)
     summary["CandidateCount"] = int(config.FORWARD_SEARCH_CANDIDATE_COUNT)
     summary["CSV"] = str(csv_path)
+    summary["KnownRouteStartInitialization"] = True
     summary["KalmanMeasurementSource"] = "GRU Measurement Head from the single MS visual cue"
     summary["KalmanVarianceSource"] = "GRU Variance Head"
     summary["KalmanMSConfidence"] = False
@@ -903,6 +917,7 @@ def eval_pipeline(args, device):
         "architecture": ARCHITECTURE_NAME,
         "train_routes": ["route_A"],
         "eval_routes": ["route_B", "route_C"],
+        "known_route_start_initialization": True,
         "trained_default_search": "3x6",
         "ablation_note": (
             "4x6/5x6/6x6 use the same trained temporal checkpoint so the comparison isolates "
@@ -1022,7 +1037,7 @@ def main():
     print("=" * 100, flush=True)
     print(ARCHITECTURE_NAME, flush=True)
     print(
-        "Flow: previous final KF state -> ONE forward local MeanShift -> GRU; "
+        "Flow: known route start -> previous final KF state -> ONE forward local MeanShift -> GRU; "
         "previous GRU motion/heading -> polynomial -> KF predict; "
         "GRU measurement/R -> KF update -> final state",
         flush=True,
