@@ -136,21 +136,25 @@ USE_LEARNED_VARIANCE_HEAD = True
 GRU_VISUAL_VARIANCE_INIT_M2 = 4.0
 
 # ---------------------------------------------------------------------------
-# Learned-KF recovery regime
+# Learned-KF visual-first recovery regime
 # ---------------------------------------------------------------------------
 # The uploaded B/C results show that the old constrained-KF tail is produced when
 # the motion prior is already wrong: the old update clips the visual innovation,
 # enlarges R for that same large innovation, caps the posterior correction, then
 # applies another final-step corridor. That combination prevents an accurate
 # SoftMS observation from pulling the state back and turns a local error into a
-# multi-frame drift. The defaults below deliberately make visual recovery easy
-# while preserving the GRU/polynomial prior and learned-R Kalman structure.
+# multi-frame drift.
 #
-# No Route-B/C reference error is used to select the posterior at inference.
-# These are estimator-side trust parameters only and can be overridden from the
-# environment for an inference-only sweep without retraining the checkpoint.
-KALMAN_R_MIN_VAR = float(os.environ.get("UAVSAT_KF_R_MIN", "0.35"))
-KALMAN_R_MAX_VAR = float(os.environ.get("UAVSAT_KF_R_MAX", "16.0"))
+# The new default is deliberately visual-first: learned R is still used, but its
+# range is bounded; position process noise is large enough that an inaccurate
+# polynomial prior cannot become sticky; and the visual update is not allowed to
+# rewrite the motion velocity. On normal frames this keeps a small temporal
+# smoothing contribution; on disagreement frames it makes the full estimator
+# collapse back toward the strong SoftMS measurement instead of diverging.
+#
+# No Route-B/C reference error is used to select a posterior at inference.
+KALMAN_R_MIN_VAR = float(os.environ.get("UAVSAT_KF_R_MIN", "0.25"))
+KALMAN_R_MAX_VAR = float(os.environ.get("UAVSAT_KF_R_MAX", "9.0"))
 
 # MeanShift/local-posterior confidence does not separately rescale R_t.
 KALMAN_USE_MS_CONFIDENCE = False
@@ -161,18 +165,16 @@ KALMAN_NIS_MAX_R_SCALE = 1.0
 ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
 
 # ---------------------------------------------------------------------------
-# Kalman trust balance -- visual recovery + motion-state preservation
+# Kalman trust balance -- fast visual recovery + motion-state preservation
 # ---------------------------------------------------------------------------
-# Larger position Q prevents a bad polynomial prior from becoming sticky.  The
-# innovation/posterior limits are intentionally much wider than the 3x6 local
-# observation spread, which effectively disables the old "large disagreement ->
-# trust visual less" failure mode.  Velocity correction is kept very small so a
-# single visual residual cannot poison the recurrent motion state for subsequent
-# frames.  The final-step corridor is also opened; the current-progress cap still
-# enforces the controlled no-ahead protocol.
-KALMAN_Q_PROGRESS = float(os.environ.get("UAVSAT_KF_Q_PROGRESS", "24.0"))
-KALMAN_Q_CROSS = float(os.environ.get("UAVSAT_KF_Q_CROSS", "8.0"))
-KALMAN_Q_VELOCITY = float(os.environ.get("UAVSAT_KF_Q_VELOCITY", "1.50"))
+# Q_position >> R keeps the posterior close to the current visual measurement
+# while retaining a small contribution from the recurrent polynomial prior.
+# The old innovation, posterior-correction and final-step constraints are opened
+# so they cannot create multi-frame lag. The current-progress cap remains active
+# and therefore the controlled no-ahead requirement is unchanged.
+KALMAN_Q_PROGRESS = float(os.environ.get("UAVSAT_KF_Q_PROGRESS", "144.0"))
+KALMAN_Q_CROSS = float(os.environ.get("UAVSAT_KF_Q_CROSS", "81.0"))
+KALMAN_Q_VELOCITY = float(os.environ.get("UAVSAT_KF_Q_VELOCITY", "9.0"))
 KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M = float(
     os.environ.get("UAVSAT_KF_INNOVATION_S", "1000.0")
 )
@@ -186,16 +188,14 @@ KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M = float(
     os.environ.get("UAVSAT_KF_POSTERIOR_E", "1000.0")
 )
 KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME = float(
-    os.environ.get("UAVSAT_KF_VELOCITY_CORRECTION", "0.25")
+    os.environ.get("UAVSAT_KF_VELOCITY_CORRECTION", "0.0")
 )
 KALMAN_FINAL_STEP_SLACK_M = float(os.environ.get("UAVSAT_KF_STEP_SLACK", "1000.0"))
 KALMAN_FINAL_STEP_MAX_M = float(os.environ.get("UAVSAT_KF_STEP_MAX", "1000.0"))
 
-# The no-ahead max_progress_s clamp remains active.  Disable the extra reference-
-# speed envelope here because it exists only for display pacing and was adding a
-# second restriction after the Kalman update that the no-KF ablation does not
-# need.  This makes the Kalman/no-Kalman comparison about fusion, not about an
-# asymmetric step limiter.
+# The no-ahead max_progress_s clamp remains active. Disable the extra reference-
+# speed envelope because it applies an additional post-KF restriction that the
+# no-KF ablation does not need, making the fusion comparison asymmetric.
 CONTROLLED_GT_MOTION_ENVELOPE = os.environ.get(
     "UAVSAT_CONTROLLED_GT_MOTION_ENVELOPE", "0"
 ) == "1"
@@ -248,7 +248,7 @@ CONTROLLED_PROTOCOL_NAME = (
     "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
     f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
     "direct-SoftMS-z_GRU-motion-heading-learned-R_"
-    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v7_visual-recovery"
+    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v7_visual-first"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
