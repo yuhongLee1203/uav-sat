@@ -182,6 +182,14 @@ KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME = float(
 KALMAN_FINAL_STEP_SLACK_M = float(os.environ.get("UAVSAT_KF_STEP_SLACK", "2.5"))
 KALMAN_FINAL_STEP_MAX_M = float(os.environ.get("UAVSAT_KF_STEP_MAX", "14.0"))
 
+# The controlled protocol still prevents the estimate from running ahead through
+# max_progress_s. These recovery parameters only let a lagging full Kalman catch
+# up faster after a bad motion prior; they do not remove the no-ahead constraint.
+CONTROLLED_MAX_STEP_RATIO = float(os.environ.get("UAVSAT_CONTROLLED_MAX_STEP_RATIO", "2.0"))
+CONTROLLED_PACE_MIN_RATIO = float(os.environ.get("UAVSAT_CONTROLLED_PACE_MIN_RATIO", "0.95"))
+CONTROLLED_PACE_CATCHUP_GAIN = float(os.environ.get("UAVSAT_CONTROLLED_PACE_CATCHUP_GAIN", "0.25"))
+CONTROLLED_PACE_MAX_EXTRA_M = float(os.environ.get("UAVSAT_CONTROLLED_PACE_MAX_EXTRA_M", "3.0"))
+
 # ---------------------------------------------------------------------------
 # Compact temporal state
 # ---------------------------------------------------------------------------
