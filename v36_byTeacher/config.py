@@ -116,23 +116,20 @@ USE_LEARNED_VARIANCE_HEAD = True
 GRU_VISUAL_VARIANCE_INIT_M2 = 4.0
 
 # ---------------------------------------------------------------------------
-# Learned-R Kalman: visual recovery + small useful temporal smoothing
+# Learned-R Kalman: visual-first progress + cross-track-only smoothing
 # ---------------------------------------------------------------------------
-# The previous visual-first run reduced the old Route-B long tail and reached
-# almost the same error as no-KF.  That showed the catastrophic failure was the
-# old sticky prior/correction limits, but Q was then so large that the Kalman
-# contributed almost no useful smoothing.
+# The q18/q36/q72 sweep showed a monotonic result: increasing Q_progress
+# (therefore reducing Kalman smoothing along the route) consistently improved
+# both B and C.  The previous visual-first setting was also better than all
+# three anisotropic progress-smoothing runs.  Therefore the motion prior must
+# not pull the current along-route measurement away from SoftMS.
 #
-# The new default is intentionally anisotropic:
-#   - along-route progress s: moderate process variance, so the GRU/polynomial
-#     prior can remove a small amount of frame-to-frame SoftMS noise;
-#   - cross-track e: very large process variance, because the visual measurement
-#     is more reliable than the motion prior laterally;
-#   - visual updates cannot modify velocity, so one visual residual cannot poison
-#     later motion predictions.
-# Innovation/posterior/final-step clipping remains effectively disabled so a bad
-# prior can always recover immediately to the current visual measurement.
-# No Route-B/C reference error is used inside the estimator.
+# This default makes progress s essentially visual-first (very large Q_s), and
+# keeps only a small amount of Kalman smoothing in cross-track e where temporal
+# consistency can remove lateral SoftMS jitter.  Visual updates still cannot
+# rewrite velocity, and innovation/posterior/final-step clipping stays open so
+# the estimator can immediately recover to the current visual observation.
+# No B/C reference localization error is used by this parameterization.
 KALMAN_R_MIN_VAR = float(os.environ.get("UAVSAT_KF_R_MIN", "0.25"))
 KALMAN_R_MAX_VAR = float(os.environ.get("UAVSAT_KF_R_MAX", "9.0"))
 
@@ -143,9 +140,10 @@ KALMAN_NIS_CONFIDENCE_BOOST = 0.0
 KALMAN_NIS_MAX_R_SCALE = 1.0
 ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
 
-# A little more prior weight only on route progress; cross-track stays visual-first.
-KALMAN_Q_PROGRESS = float(os.environ.get("UAVSAT_KF_Q_PROGRESS", "36.0"))
-KALMAN_Q_CROSS = float(os.environ.get("UAVSAT_KF_Q_CROSS", "144.0"))
+# Q_s is intentionally huge: do not smooth route progress with a weaker motion
+# prior.  Q_e is the only useful fusion knob in this round.
+KALMAN_Q_PROGRESS = float(os.environ.get("UAVSAT_KF_Q_PROGRESS", "1000.0"))
+KALMAN_Q_CROSS = float(os.environ.get("UAVSAT_KF_Q_CROSS", "36.0"))
 KALMAN_Q_VELOCITY = float(os.environ.get("UAVSAT_KF_Q_VELOCITY", "1.0"))
 
 KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M = float(
@@ -224,7 +222,7 @@ CONTROLLED_PROTOCOL_NAME = (
     "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
     f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
     "direct-SoftMS-z_GRU-motion-heading-learned-R_"
-    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v7_anisotropic"
+    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v7_cross-smoothing"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
