@@ -134,8 +134,16 @@ MEANSHIFT_VARIANCE_AS_GRU_INPUT = True
 DIRECT_SOFTMS_VARIANCE = False
 USE_LEARNED_VARIANCE_HEAD = True
 GRU_VISUAL_VARIANCE_INIT_M2 = 4.0
-KALMAN_R_MIN_VAR = 1.0
-KALMAN_R_MAX_VAR = 400.0
+
+# The complete tracker previously underperformed no-KF mainly on Route B because
+# the constrained Kalman was too reluctant to follow an already-accurate SoftMS
+# measurement after a motion-prior error. v7 keeps the same architecture but
+# moves the estimator to a visual-dominant Kalman regime: larger process noise,
+# smaller admissible R, and wider innovation/posterior corridors. Every value is
+# environment-overridable so the trained temporal checkpoint can be reused for a
+# fast inference-only tuning sweep.
+KALMAN_R_MIN_VAR = float(os.environ.get("UAVSAT_KF_R_MIN", "0.50"))
+KALMAN_R_MAX_VAR = float(os.environ.get("UAVSAT_KF_R_MAX", "100.0"))
 
 # MeanShift/local-posterior confidence does not separately rescale R_t.
 KALMAN_USE_MS_CONFIDENCE = False
@@ -146,18 +154,33 @@ KALMAN_NIS_MAX_R_SCALE = 1.0
 ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
 
 # ---------------------------------------------------------------------------
-# Kalman trust balance
+# Kalman trust balance -- visual-dominant defaults
 # ---------------------------------------------------------------------------
-KALMAN_Q_PROGRESS = 0.80
-KALMAN_Q_CROSS = 0.25
-KALMAN_Q_VELOCITY = 0.40
-KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M = 16.0
-KALMAN_MAX_MEASUREMENT_INNOVATION_CROSS_M = 10.0
-KALMAN_MAX_POSTERIOR_CORRECTION_PROGRESS_M = 7.0
-KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M = 4.0
-KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME = 2.0
-KALMAN_FINAL_STEP_SLACK_M = 1.0
-KALMAN_FINAL_STEP_MAX_M = 8.0
+# Larger Q prevents the recurrent polynomial prior from becoming over-confident;
+# the larger correction corridors let a reliable SoftMS observation recover the
+# state instead of accumulating lag. The 14 m final ceiling matches the GRU/
+# polynomial motion ceiling and is still further constrained by the controlled
+# route protocol when that protocol is enabled.
+KALMAN_Q_PROGRESS = float(os.environ.get("UAVSAT_KF_Q_PROGRESS", "2.50"))
+KALMAN_Q_CROSS = float(os.environ.get("UAVSAT_KF_Q_CROSS", "0.80"))
+KALMAN_Q_VELOCITY = float(os.environ.get("UAVSAT_KF_Q_VELOCITY", "0.80"))
+KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M = float(
+    os.environ.get("UAVSAT_KF_INNOVATION_S", "24.0")
+)
+KALMAN_MAX_MEASUREMENT_INNOVATION_CROSS_M = float(
+    os.environ.get("UAVSAT_KF_INNOVATION_E", "12.0")
+)
+KALMAN_MAX_POSTERIOR_CORRECTION_PROGRESS_M = float(
+    os.environ.get("UAVSAT_KF_POSTERIOR_S", "12.0")
+)
+KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M = float(
+    os.environ.get("UAVSAT_KF_POSTERIOR_E", "6.0")
+)
+KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME = float(
+    os.environ.get("UAVSAT_KF_VELOCITY_CORRECTION", "3.0")
+)
+KALMAN_FINAL_STEP_SLACK_M = float(os.environ.get("UAVSAT_KF_STEP_SLACK", "2.5"))
+KALMAN_FINAL_STEP_MAX_M = float(os.environ.get("UAVSAT_KF_STEP_MAX", "14.0"))
 
 # ---------------------------------------------------------------------------
 # Compact temporal state
