@@ -1,0 +1,74 @@
+{
+  "split": {
+    "train": [
+      "train_1",
+      "train_2",
+      "train_3"
+    ],
+    "validation": [
+      "val_1"
+    ],
+    "test": [
+      "test_1"
+    ]
+  },
+  "satellite_mosaic": "/yh/study/uav-sat/v36_byTeacher/exp_bearinguav_data/generated_routes_3train_1val_1test/bearing_cities_abc.jpg",
+  "satellite_georef": "/yh/study/uav-sat/v36_byTeacher/exp_bearinguav_data/generated_routes_3train_1val_1test/bearing_cities_abc_geo.json",
+  "routes": [
+    {
+      "route": "train_1",
+      "split": "train",
+      "city": "citya",
+      "frames": 2047,
+      "waypoints": 12,
+      "step_mean_m": 4.491211893550803,
+      "step_p90_m": 4.49121189355083,
+      "source_match_mean_m": 4.3703428401907845,
+      "source_match_p90_m": 7.347794998001633
+    },
+    {
+      "route": "train_2",
+      "split": "train",
+      "city": "citya",
+      "frames": 2047,
+      "waypoints": 12,
+      "step_mean_m": 4.491211893550802,
+      "step_p90_m": 4.49121189355083,
+      "source_match_mean_m": 4.105874648678886,
+      "source_match_p90_m": 7.014550579374536
+    },
+    {
+      "route": "train_3",
+      "split": "train",
+      "city": "citya",
+      "frames": 2250,
+      "waypoints": 14,
+      "step_mean_m": 4.488965422818236,
+      "step_p90_m": 4.488965422818245,
+      "source_match_mean_m": 4.114444377819582,
+      "source_match_p90_m": 6.99871241895365
+    },
+    {
+      "route": "val_1",
+      "split": "val",
+      "city": "cityb",
+      "frames": 2047,
+      "waypoints": 12,
+      "step_mean_m": 4.491211893550803,
+      "step_p90_m": 4.49121189355083,
+      "source_match_mean_m": 4.25238168603692,
+      "source_match_p90_m": 7.136922467277834
+    },
+    {
+      "route": "test_1",
+      "split": "test",
+      "city": "cityc",
+      "frames": 2047,
+      "waypoints": 12,
+      "step_mean_m": 4.491211893550802,
+      "step_p90_m": 4.49121189355083,
+      "source_match_mean_m": 4.389255067461734,
+      "source_match_p90_m": 7.332226092900413
+    }
+  ]
+}

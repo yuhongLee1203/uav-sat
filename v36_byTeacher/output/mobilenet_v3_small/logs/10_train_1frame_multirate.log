@@ -1,0 +1,40 @@
+route_A: reuse UAV backbone cache
+====================================================================================================
+Route-A multi-rate temporal training
+native A train: frames=1196 mean_step=2.939m/frame median=3.239m/frame
+stride-2 A train: frames=598 mean_step=5.873m/frame median=6.577m/frame
+validation=original Route-A native-rate split (1228, 1456); Route-B/C remain evaluation only
+====================================================================================================
+multirate epoch=001/60 native_loss=1.98858 stride2_loss=4.32109 val_mle=5.558m val_p90=9.879m score=11.502 best=11.502 patience=0/15
+multirate epoch=002/60 native_loss=0.80586 stride2_loss=3.22652 val_mle=5.311m val_p90=9.837m score=10.090 best=10.090 patience=0/15
+multirate epoch=003/60 native_loss=0.81333 stride2_loss=3.28031 val_mle=5.214m val_p90=9.806m score=9.926 best=9.926 patience=0/15
+multirate epoch=004/60 native_loss=0.76372 stride2_loss=3.23435 val_mle=5.164m val_p90=9.806m score=9.638 best=9.638 patience=0/15
+multirate epoch=005/60 native_loss=0.76273 stride2_loss=3.21129 val_mle=5.070m val_p90=9.800m score=9.337 best=9.337 patience=0/15
+multirate epoch=006/60 native_loss=0.75220 stride2_loss=3.13089 val_mle=5.064m val_p90=9.806m score=9.092 best=9.092 patience=0/15
+multirate epoch=007/60 native_loss=0.75547 stride2_loss=2.98820 val_mle=5.063m val_p90=9.806m score=8.779 best=8.779 patience=0/15
+multirate epoch=008/60 native_loss=0.76455 stride2_loss=2.73605 val_mle=5.080m val_p90=9.806m score=8.437 best=8.437 patience=0/15
+multirate epoch=009/60 native_loss=0.74456 stride2_loss=2.61307 val_mle=5.078m val_p90=9.806m score=8.089 best=8.089 patience=0/15
+multirate epoch=010/60 native_loss=0.90216 stride2_loss=2.61574 val_mle=5.071m val_p90=9.806m score=8.102 best=8.089 patience=1/15
+multirate epoch=011/60 native_loss=0.89168 stride2_loss=2.82011 val_mle=5.076m val_p90=9.806m score=8.353 best=8.089 patience=2/15
+multirate epoch=012/60 native_loss=0.78104 stride2_loss=2.69152 val_mle=5.080m val_p90=9.806m score=8.238 best=8.089 patience=3/15
+multirate epoch=013/60 native_loss=0.72419 stride2_loss=2.64015 val_mle=5.081m val_p90=9.806m score=8.084 best=8.089 patience=4/15
+multirate epoch=014/60 native_loss=0.79343 stride2_loss=2.67714 val_mle=5.075m val_p90=9.806m score=8.169 best=8.089 patience=5/15
+multirate epoch=015/60 native_loss=0.70368 stride2_loss=2.56637 val_mle=5.077m val_p90=9.806m score=8.052 best=8.052 patience=0/15
+multirate epoch=016/60 native_loss=0.69852 stride2_loss=2.47935 val_mle=5.071m val_p90=9.806m score=8.065 best=8.052 patience=1/15
+multirate epoch=017/60 native_loss=0.69245 stride2_loss=2.49023 val_mle=5.066m val_p90=9.806m score=8.065 best=8.052 patience=2/15
+multirate epoch=018/60 native_loss=0.71528 stride2_loss=2.38715 val_mle=5.055m val_p90=9.800m score=8.102 best=8.052 patience=3/15
+multirate epoch=019/60 native_loss=0.71324 stride2_loss=2.47901 val_mle=5.052m val_p90=9.800m score=8.079 best=8.052 patience=4/15
+multirate epoch=020/60 native_loss=0.75358 stride2_loss=2.45427 val_mle=5.055m val_p90=9.800m score=8.099 best=8.052 patience=5/15
+multirate epoch=021/60 native_loss=0.68478 stride2_loss=2.40999 val_mle=5.058m val_p90=9.800m score=8.120 best=8.052 patience=6/15
+multirate epoch=022/60 native_loss=0.65431 stride2_loss=2.42103 val_mle=5.091m val_p90=9.800m score=8.254 best=8.052 patience=7/15
+multirate epoch=023/60 native_loss=0.76958 stride2_loss=2.41409 val_mle=5.100m val_p90=9.813m score=8.241 best=8.052 patience=8/15
+multirate epoch=024/60 native_loss=0.64845 stride2_loss=2.40852 val_mle=5.108m val_p90=9.813m score=8.266 best=8.052 patience=9/15
+multirate epoch=025/60 native_loss=0.61780 stride2_loss=2.43848 val_mle=5.118m val_p90=9.826m score=8.312 best=8.052 patience=10/15
+multirate epoch=026/60 native_loss=0.63376 stride2_loss=2.34806 val_mle=5.113m val_p90=9.813m score=8.342 best=8.052 patience=11/15
+multirate epoch=027/60 native_loss=0.61279 stride2_loss=2.45541 val_mle=5.125m val_p90=9.813m score=8.348 best=8.052 patience=12/15
+multirate epoch=028/60 native_loss=0.63970 stride2_loss=2.36713 val_mle=5.127m val_p90=9.813m score=8.385 best=8.052 patience=13/15
+multirate epoch=029/60 native_loss=0.59946 stride2_loss=2.37947 val_mle=5.122m val_p90=9.813m score=8.402 best=8.052 patience=14/15
+multirate epoch=030/60 native_loss=0.58897 stride2_loss=2.34714 val_mle=5.096m val_p90=9.806m score=8.408 best=8.052 patience=15/15
+best validation score=8.052
+best checkpoint=/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/controlled_referenceprior_forward3x6_ms_previous_position_1frame_mobilenet_v3_small_direct_softms_gru_motion_heading_learned_variance_multirate_A_native_plus_stride2_v7.pt
+evaluation routes remain Route-B and Route-C

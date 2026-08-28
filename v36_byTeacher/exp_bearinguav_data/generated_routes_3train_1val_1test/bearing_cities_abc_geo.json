@@ -1,0 +1,13 @@
+{
+  "geo_bounds": {
+    "top_left": {
+      "latitude": 23.6,
+      "longitude": 120.0
+    },
+    "bottom_right": {
+      "latitude": 23.590801293568095,
+      "longitude": 120.0301148425241
+    }
+  },
+  "meters_per_pixel": 0.25
+}

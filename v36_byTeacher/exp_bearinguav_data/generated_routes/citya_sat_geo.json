@@ -1,0 +1,14 @@
+{
+  "geo_bounds": {
+    "top_left": {
+      "latitude": 35.675526,
+      "longitude": 139.68722121038073
+    },
+    "bottom_right": {
+      "latitude": 35.666300774774776,
+      "longitude": 139.6985770156364
+    }
+  },
+  "source_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
+  "meters_per_pixel": 0.25
+}

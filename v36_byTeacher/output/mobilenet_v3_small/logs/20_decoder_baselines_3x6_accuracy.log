@@ -1,0 +1,9 @@
+route_B: reuse UAV backbone cache
+top1 route_B 3x6: MLE=12.526m P90=19.286m LSR@15=67.75%
+weighted_centroid route_B 3x6: MLE=9.178m P90=14.420m LSR@15=92.71%
+softms route_B 3x6: MLE=9.526m P90=14.844m LSR@15=90.64%
+route_C: reuse UAV backbone cache
+top1 route_C 3x6: MLE=11.206m P90=18.561m LSR@15=74.09%
+weighted_centroid route_C 3x6: MLE=8.782m P90=13.390m LSR@15=96.50%
+softms route_C 3x6: MLE=9.030m P90=13.946m LSR@15=94.67%
+summary: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/decoder_baselines_3x6_accuracy/decoder_baselines_summary.json

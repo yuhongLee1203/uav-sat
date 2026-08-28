@@ -1,0 +1,11 @@
+{
+  "route": "train_3",
+  "split": "train",
+  "city": "citya",
+  "frames": 2250,
+  "waypoints": 14,
+  "step_mean_m": 4.488965422818236,
+  "step_p90_m": 4.488965422818245,
+  "source_match_mean_m": 4.114444377819582,
+  "source_match_p90_m": 6.99871241895365
+}

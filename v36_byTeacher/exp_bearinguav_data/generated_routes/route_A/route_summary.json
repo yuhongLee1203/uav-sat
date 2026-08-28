@@ -1,0 +1,11 @@
+{
+  "route": "route_A",
+  "frames": 1366,
+  "waypoints": 14,
+  "requested_reference_spacing_m": 4.5,
+  "actual_step_mean_m": 4.501098901098901,
+  "actual_step_median_m": 4.491228070175453,
+  "actual_step_p90_m": 4.571428571428555,
+  "source_match_mean_m": 4.141436295791887,
+  "source_match_p90_m": 6.930326633204421
+}

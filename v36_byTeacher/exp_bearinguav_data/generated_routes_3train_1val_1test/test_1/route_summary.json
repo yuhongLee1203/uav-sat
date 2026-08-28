@@ -1,0 +1,11 @@
+{
+  "route": "test_1",
+  "split": "test",
+  "city": "cityc",
+  "frames": 2047,
+  "waypoints": 12,
+  "step_mean_m": 4.491211893550802,
+  "step_p90_m": 4.49121189355083,
+  "source_match_mean_m": 4.389255067461734,
+  "source_match_p90_m": 7.332226092900413
+}
