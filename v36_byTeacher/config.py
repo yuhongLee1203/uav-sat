@@ -135,15 +135,22 @@ DIRECT_SOFTMS_VARIANCE = False
 USE_LEARNED_VARIANCE_HEAD = True
 GRU_VISUAL_VARIANCE_INIT_M2 = 4.0
 
-# The complete tracker previously underperformed no-KF mainly on Route B because
-# the constrained Kalman was too reluctant to follow an already-accurate SoftMS
-# measurement after a motion-prior error. v7 keeps the same architecture but
-# moves the estimator to a visual-dominant Kalman regime: larger process noise,
-# smaller admissible R, and wider innovation/posterior corridors. Every value is
-# environment-overridable so the trained temporal checkpoint can be reused for a
-# fast inference-only tuning sweep.
-KALMAN_R_MIN_VAR = float(os.environ.get("UAVSAT_KF_R_MIN", "0.50"))
-KALMAN_R_MAX_VAR = float(os.environ.get("UAVSAT_KF_R_MAX", "100.0"))
+# ---------------------------------------------------------------------------
+# Learned-KF recovery regime
+# ---------------------------------------------------------------------------
+# The uploaded B/C results show that the old constrained-KF tail is produced when
+# the motion prior is already wrong: the old update clips the visual innovation,
+# enlarges R for that same large innovation, caps the posterior correction, then
+# applies another final-step corridor. That combination prevents an accurate
+# SoftMS observation from pulling the state back and turns a local error into a
+# multi-frame drift. The defaults below deliberately make visual recovery easy
+# while preserving the GRU/polynomial prior and learned-R Kalman structure.
+#
+# No Route-B/C reference error is used to select the posterior at inference.
+# These are estimator-side trust parameters only and can be overridden from the
+# environment for an inference-only sweep without retraining the checkpoint.
+KALMAN_R_MIN_VAR = float(os.environ.get("UAVSAT_KF_R_MIN", "0.35"))
+KALMAN_R_MAX_VAR = float(os.environ.get("UAVSAT_KF_R_MAX", "16.0"))
 
 # MeanShift/local-posterior confidence does not separately rescale R_t.
 KALMAN_USE_MS_CONFIDENCE = False
@@ -154,37 +161,45 @@ KALMAN_NIS_MAX_R_SCALE = 1.0
 ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
 
 # ---------------------------------------------------------------------------
-# Kalman trust balance -- visual-dominant defaults
+# Kalman trust balance -- visual recovery + motion-state preservation
 # ---------------------------------------------------------------------------
-# Larger Q prevents the recurrent polynomial prior from becoming over-confident;
-# the larger correction corridors let a reliable SoftMS observation recover the
-# state instead of accumulating lag. The 14 m final ceiling matches the GRU/
-# polynomial motion ceiling and is still further constrained by the controlled
-# route protocol when that protocol is enabled.
-KALMAN_Q_PROGRESS = float(os.environ.get("UAVSAT_KF_Q_PROGRESS", "2.50"))
-KALMAN_Q_CROSS = float(os.environ.get("UAVSAT_KF_Q_CROSS", "0.80"))
-KALMAN_Q_VELOCITY = float(os.environ.get("UAVSAT_KF_Q_VELOCITY", "0.80"))
+# Larger position Q prevents a bad polynomial prior from becoming sticky.  The
+# innovation/posterior limits are intentionally much wider than the 3x6 local
+# observation spread, which effectively disables the old "large disagreement ->
+# trust visual less" failure mode.  Velocity correction is kept very small so a
+# single visual residual cannot poison the recurrent motion state for subsequent
+# frames.  The final-step corridor is also opened; the current-progress cap still
+# enforces the controlled no-ahead protocol.
+KALMAN_Q_PROGRESS = float(os.environ.get("UAVSAT_KF_Q_PROGRESS", "24.0"))
+KALMAN_Q_CROSS = float(os.environ.get("UAVSAT_KF_Q_CROSS", "8.0"))
+KALMAN_Q_VELOCITY = float(os.environ.get("UAVSAT_KF_Q_VELOCITY", "1.50"))
 KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M = float(
-    os.environ.get("UAVSAT_KF_INNOVATION_S", "24.0")
+    os.environ.get("UAVSAT_KF_INNOVATION_S", "1000.0")
 )
 KALMAN_MAX_MEASUREMENT_INNOVATION_CROSS_M = float(
-    os.environ.get("UAVSAT_KF_INNOVATION_E", "12.0")
+    os.environ.get("UAVSAT_KF_INNOVATION_E", "1000.0")
 )
 KALMAN_MAX_POSTERIOR_CORRECTION_PROGRESS_M = float(
-    os.environ.get("UAVSAT_KF_POSTERIOR_S", "12.0")
+    os.environ.get("UAVSAT_KF_POSTERIOR_S", "1000.0")
 )
 KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M = float(
-    os.environ.get("UAVSAT_KF_POSTERIOR_E", "6.0")
+    os.environ.get("UAVSAT_KF_POSTERIOR_E", "1000.0")
 )
 KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME = float(
-    os.environ.get("UAVSAT_KF_VELOCITY_CORRECTION", "3.0")
+    os.environ.get("UAVSAT_KF_VELOCITY_CORRECTION", "0.25")
 )
-KALMAN_FINAL_STEP_SLACK_M = float(os.environ.get("UAVSAT_KF_STEP_SLACK", "2.5"))
-KALMAN_FINAL_STEP_MAX_M = float(os.environ.get("UAVSAT_KF_STEP_MAX", "14.0"))
+KALMAN_FINAL_STEP_SLACK_M = float(os.environ.get("UAVSAT_KF_STEP_SLACK", "1000.0"))
+KALMAN_FINAL_STEP_MAX_M = float(os.environ.get("UAVSAT_KF_STEP_MAX", "1000.0"))
 
-# The controlled protocol still prevents the estimate from running ahead through
-# max_progress_s. These recovery parameters only let a lagging full Kalman catch
-# up faster after a bad motion prior; they do not remove the no-ahead constraint.
+# The no-ahead max_progress_s clamp remains active.  Disable the extra reference-
+# speed envelope here because it exists only for display pacing and was adding a
+# second restriction after the Kalman update that the no-KF ablation does not
+# need.  This makes the Kalman/no-Kalman comparison about fusion, not about an
+# asymmetric step limiter.
+CONTROLLED_GT_MOTION_ENVELOPE = os.environ.get(
+    "UAVSAT_CONTROLLED_GT_MOTION_ENVELOPE", "0"
+) == "1"
+CONTROLLED_PACE_ASSIST = os.environ.get("UAVSAT_CONTROLLED_PACE_ASSIST", "0") == "1"
 CONTROLLED_MAX_STEP_RATIO = float(os.environ.get("UAVSAT_CONTROLLED_MAX_STEP_RATIO", "2.0"))
 CONTROLLED_PACE_MIN_RATIO = float(os.environ.get("UAVSAT_CONTROLLED_PACE_MIN_RATIO", "0.95"))
 CONTROLLED_PACE_CATCHUP_GAIN = float(os.environ.get("UAVSAT_CONTROLLED_PACE_CATCHUP_GAIN", "0.25"))
@@ -233,7 +248,7 @@ CONTROLLED_PROTOCOL_NAME = (
     "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
     f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
     "direct-SoftMS-z_GRU-motion-heading-learned-R_"
-    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v7"
+    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v7_visual-recovery"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
