@@ -144,16 +144,33 @@ class MotionGRUOutput:
     hidden: torch.Tensor
 
 
-class AutonomousMotionGRU(nn.Module):
-    """Predict v, a and heading from visual/MS temporal evidence.
+def _wrap_angle_tensor(angle):
+    return torch.atan2(torch.sin(angle), torch.cos(angle))
 
-    Inputs contain the current MS#1 position and temporal state, but no MS
-    uncertainty and no per-frame reference/GT coordinate.  The predicted motion
-    polynomial is:
-        d_t = v_t + 0.5 * a_t
-        Delta_t = d_t [cos(theta_t), sin(theta_t)]
-    There is no hand-coded maximum speed, acceleration, turn-rate, EMA, or
-    heading-rate clamp.
+
+def _inverse_softplus(value):
+    value = value.clamp_min(1e-4)
+    return value + torch.log(-torch.expm1(-value))
+
+
+class AutonomousMotionGRU(nn.Module):
+    """Predict v, a and heading from MS#1 temporal evidence.
+
+    The important v3 change is that the recurrent heads no longer have to
+    invent absolute motion from zero on an unseen route.  The measured motion
+    between consecutive MS#1 positions is used as a data-derived baseline:
+
+      observed_step = X_ms(t) - X_ms(t-1)
+      observed_speed = ||observed_step||
+      observed_heading = atan2(observed_step_y, observed_step_x)
+
+    The GRU learns residual speed/acceleration/heading corrections around this
+    baseline.  This is not a hand-coded speed or turn limit: there is no upper
+    bound on speed, acceleration, heading residual, or polynomial displacement.
+    It simply removes the unstable cumulative-heading parameterization that
+    caused Route-C rollout errors to compound frame after frame.
+
+    No MS uncertainty and no per-frame reference coordinate enters this model.
     """
 
     def __init__(self):
@@ -182,12 +199,14 @@ class AutonomousMotionGRU(nn.Module):
         self.gru = nn.GRUCell(feature_dim * 3, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
+        # Two learned residuals: speed and acceleration.
         self.motion_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim // 2, 2),
         )
+        # Learned residual around the heading observed from consecutive MS1 XY.
         self.heading_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
@@ -195,11 +214,9 @@ class AutonomousMotionGRU(nn.Module):
             nn.Linear(hidden_dim // 2, 1),
         )
 
-        # Neutral initialization: near-zero speed/acceleration and heading
-        # increment. No dataset speed is hard-coded here.
+        # Residual heads start from exactly the MS1-derived baseline.
         nn.init.zeros_(self.motion_head[-1].weight)
-        nn.init.constant_(self.motion_head[-1].bias, -2.0)
-        self.motion_head[-1].bias.data[1] = 0.0
+        nn.init.zeros_(self.motion_head[-1].bias)
         nn.init.zeros_(self.heading_head[-1].weight)
         nn.init.zeros_(self.heading_head[-1].bias)
 
@@ -225,16 +242,30 @@ class AutonomousMotionGRU(nn.Module):
             hidden = self.initial_hidden(z_uav.shape[0], z_uav.device, z_uav.dtype)
         if previous_z_uav is None:
             previous_z_uav = z_uav
+
+        has_previous_ms1 = previous_ms1_xy is not None
         if previous_ms1_xy is None:
             previous_ms1_xy = ms1_xy.detach()
 
         visual_mean = 0.5 * (z_uav + previous_z_uav)
         visual_delta = z_uav - previous_z_uav
+        observed_step = ms1_xy - previous_ms1_xy
+        observed_speed = torch.linalg.vector_norm(observed_step, dim=1, keepdim=True)
+
+        observed_heading = torch.atan2(
+            observed_step[:, 1:2], observed_step[:, 0:1]
+        )
+        motion_is_visible = observed_speed > 1e-4
+        base_heading = torch.where(
+            motion_is_visible,
+            observed_heading,
+            previous_heading_rad,
+        )
 
         numeric = torch.cat(
             [
                 (ms1_xy - prior_xy) / float(config.POSITION_INPUT_SCALE_M),
-                (ms1_xy - previous_ms1_xy) / float(config.STEP_INPUT_SCALE_M),
+                observed_step / float(config.STEP_INPUT_SCALE_M),
                 previous_delta_xy / float(config.STEP_INPUT_SCALE_M),
                 previous_speed,
                 previous_acceleration,
@@ -261,12 +292,17 @@ class AutonomousMotionGRU(nn.Module):
         h = self.dropout(new_hidden)
 
         raw_motion = self.motion_head(h)
-        speed = F.softplus(raw_motion[:, 0:1])
+        speed_residual = raw_motion[:, 0:1]
         acceleration = raw_motion[:, 1:2]
 
-        heading_delta = self.heading_head(h)
-        heading = previous_heading_rad + heading_delta
-        heading = torch.atan2(torch.sin(heading), torch.cos(heading))
+        # Positive speed with no maximum.  At zero residual this equals the
+        # observed MS1 speed (apart from a negligible 1e-4 floor).
+        base_speed = observed_speed if has_previous_ms1 else previous_speed.abs()
+        speed = F.softplus(_inverse_softplus(base_speed) + speed_residual)
+
+        heading_residual = self.heading_head(h)
+        heading = _wrap_angle_tensor(base_heading + heading_residual)
+        heading_delta = _wrap_angle_tensor(heading - previous_heading_rad)
 
         travel = speed + 0.5 * acceleration
         delta_xy = torch.cat(
