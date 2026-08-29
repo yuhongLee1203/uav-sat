@@ -206,31 +206,34 @@ def _wrap_angle_tensor(angle):
     )
 
 
-class AutonomousMotionGRU(nn.Module):
-    """Compact GRU that predicts motion state/change, never absolute position.
+def _inverse_softplus(value):
+    value = value.clamp_min(1e-4)
+    return value + torch.log(-torch.expm1(-value))
 
-    Full v8 input contains four projected feature groups:
+
+class AutonomousMotionGRU(nn.Module):
+    """Compact GRU that predicts motion changes, never absolute position.
+
+    Full recurrent input contains four independently projected feature groups:
       1) current MS1 visual localization coordinate (x, y),
       2) temporal visual mean of z_t and z_(t-1),
       3) first visual difference z_t - z_(t-1),
       4) previous motion information: speed, acceleration,
          sin(heading), cos(heading).
 
-    `config.GRU_ABLATION` removes exactly one branch for the ablation study.
-    The remaining branches are concatenated, so the GRU input is 512-d for the
-    full model and 384-d for every single-branch ablation. Previous hidden state
-    remains a separate 256-d GRUCell state.
+    The mean and first-difference operations do NOT reduce dimensionality:
+    z_t and z_(t-1) are 512-d, so both temporal_mean and first_difference are
+    still 512-d. Their dedicated projectors perform the 512 -> 128 reduction.
 
-    Explicitly excluded from every variant:
-      * observed_step = MS1(t) - final(t-1),
-      * previous_delta_xy,
-      * MS1(t) - MS1(t-1),
-      * MS uncertainty,
-      * reference-point coordinates.
+    `config.GRU_ABLATION` removes exactly one input branch for the ablation study.
+    Previous hidden state remains a separate GRUCell state and is not concatenated
+    with the projected input.
 
-    The GRU predicts speed/acceleration and a heading change. A second-order
-    polynomial converts those motion outputs into Delta_xy downstream; the GRU
-    itself does not predict an absolute localization position.
+    The output heads predict changes/corrections to the previous motion state:
+      * motion head -> speed change (in softplus latent space) + acceleration change
+      * heading head -> heading change
+    The updated speed, acceleration and heading are then passed to the downstream
+    second-order polynomial to form Delta_xy. The GRU never predicts absolute XY.
     """
 
     def __init__(self):
@@ -311,7 +314,8 @@ class AutonomousMotionGRU(nn.Module):
         previous_heading_rad=None,
         hidden: Optional[torch.Tensor] = None,
     ):
-        # Kept only for tracker API compatibility; never GRU inputs in v8.
+        # These stay in the call signature for tracker compatibility only.
+        # They are not recurrent-input branches in this compact architecture.
         del prior_xy, previous_ms1_xy, previous_delta_xy
 
         if hidden is None:
@@ -333,13 +337,15 @@ class AutonomousMotionGRU(nn.Module):
 
         temporal_mean = 0.5 * (z_uav + previous_z_uav)
         first_difference = z_uav - previous_z_uav
+
         ms_xy_normalized = (
             ms1_xy.float() / float(config.POSITION_INPUT_SCALE_M)
         )
+        motion_scale = max(float(config.STEP_INPUT_SCALE_M), 1e-6)
         previous_motion_information = torch.cat(
             [
-                previous_speed.float(),
-                previous_acceleration.float(),
+                previous_speed.float() / motion_scale,
+                previous_acceleration.float() / motion_scale,
                 torch.sin(previous_heading_rad.float()),
                 torch.cos(previous_heading_rad.float()),
             ],
@@ -367,19 +373,25 @@ class AutonomousMotionGRU(nn.Module):
         new_hidden = self.gru(recurrent_input, hidden)
         h = self.dropout(new_hidden)
 
-        # Motion head predicts inertial state, not XY position.
-        raw_motion = self.motion_head(h)
-        raw_speed = raw_motion[:, 0:1]
-        acceleration = raw_motion[:, 1:2]
-        speed = F.softplus(raw_speed)
+        # Predict changes relative to the previous motion state.
+        raw_change = self.motion_head(h)
+        speed_change_latent = raw_change[:, 0:1]
+        acceleration_change = raw_change[:, 1:2]
 
-        # Heading head predicts change relative to previous heading.
-        heading_delta = _wrap_angle_tensor(self.heading_head(h))
-        heading = _wrap_angle_tensor(
-            previous_heading_rad + heading_delta
+        previous_speed_safe = previous_speed.float().clamp_min(1e-4)
+        speed = F.softplus(
+            _inverse_softplus(previous_speed_safe) + speed_change_latent
+        )
+        acceleration = (
+            previous_acceleration.float() + acceleration_change
         )
 
-        # Polynomial conversion is downstream of the GRU prediction.
+        heading_delta = _wrap_angle_tensor(self.heading_head(h))
+        heading = _wrap_angle_tensor(
+            previous_heading_rad.float() + heading_delta
+        )
+
+        # Polynomial conversion is downstream of the GRU motion prediction.
         travel = speed + 0.5 * acceleration
         delta_xy = torch.cat(
             [
