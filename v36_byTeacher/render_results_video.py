@@ -1,4 +1,8 @@
+#!/usr/bin/env python3
+"""Render synchronized UAV + SAT-map videos for the autonomous tracker."""
+
 import argparse
+import json
 import math
 from pathlib import Path
 
@@ -9,19 +13,26 @@ import torch
 from PIL import Image
 
 import config
-from data import RouteDataset
+from data import RouteDataset, meters_from_latlon
 
-
-GT_COLOR = (0, 255, 0)
-PRED_COLOR = (255, 0, 255)
+REFERENCE_COLOR = (0, 255, 0)
+FINAL_COLOR = (255, 0, 255)
+MS1_COLOR = (255, 255, 0)
+KALMAN_COLOR = (0, 165, 255)
+PRIOR_COLOR = (255, 128, 0)
 WAYPOINT_COLOR = (0, 215, 255)
 
 
 def meters_to_latlon(x_m, y_m, origin_lat, origin_lon):
     radius = 6378137.0
     lat = float(origin_lat) + math.degrees(float(y_m) / radius)
-    lon_scale = radius * math.cos(math.radians(float(origin_lat)))
-    lon = float(origin_lon) + math.degrees(float(x_m) / lon_scale)
+    lon = float(origin_lon) + math.degrees(
+        float(x_m)
+        / (
+            radius
+            * max(abs(math.cos(math.radians(float(origin_lat)))), 1e-12)
+        )
+    )
     return lat, lon
 
 
@@ -36,7 +47,7 @@ def xy_to_source_pixels(xy, dataset, origin_lat, origin_lon):
 
 def contain_image(image, width, height):
     src_h, src_w = image.shape[:2]
-    scale = min(float(width) / float(src_w), float(height) / float(src_h))
+    scale = min(float(width) / src_w, float(height) / src_h)
     dst_w = max(1, int(round(src_w * scale)))
     dst_h = max(1, int(round(src_h * scale)))
     resized = cv2.resize(
@@ -51,25 +62,69 @@ def contain_image(image, width, height):
     return panel
 
 
-def load_waypoint_pixels(route_name, dataset, origin_lat, origin_lon):
-    import json
-    from data import meters_from_latlon
-
-    path = Path(config.WAYPOINT_FILES[route_name])
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    items = sorted(
-        payload["waypoints"], key=lambda item: int(item["waypoint_order"])
-    )
-    xy = []
+def load_waypoint_xy(route_name, origin_lat, origin_lon):
+    payload = json.loads(Path(config.WAYPOINT_FILES[route_name]).read_text(encoding="utf-8"))
+    items = sorted(payload["waypoints"], key=lambda x: int(x["waypoint_order"]))
+    result = []
     for item in items:
         x_m, y_m = meters_from_latlon(
             item["latitude"], item["longitude"], origin_lat, origin_lon
         )
-        xy.append([float(x_m), float(y_m)])
-    return np.asarray(xy, dtype=np.float64)
+        result.append([float(x_m), float(y_m)])
+    return np.asarray(result, dtype=np.float64)
 
 
-def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir, clip_label=""):
+def _required_columns(rows):
+    required = {
+        "frame_id", "image_path",
+        "reference_x", "reference_y",
+        "prior_x", "prior_y",
+        "ms1_x", "ms1_y",
+        "kalman_x_prime_x", "kalman_x_prime_y",
+        "final_x", "final_y",
+        "next_prior_x", "next_prior_y",
+        "pred_speed_m_per_frame",
+        "pred_acceleration_m_per_frame2",
+        "pred_heading_deg",
+        "delta_x", "delta_y",
+        "error_final_m",
+    }
+    missing = required.difference(rows.columns)
+    if missing:
+        raise RuntimeError(f"autonomous result CSV missing columns: {sorted(missing)}")
+
+
+def render_route(route_name, start_frame=None, frame_count=None):
+    csv_path = Path(config.OUTPUT_DIR) / (
+        f"{route_name}_autonomous_ms1_kf_gru_ms2_frames.csv"
+    )
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"{csv_path}\nRun: python robust_tracker.py --mode eval "
+            f"--eval-routes {route_name}"
+        )
+
+    rows = pd.read_csv(csv_path)
+    _required_columns(rows)
+    if start_frame is not None:
+        rows = rows[rows["frame_id"] >= int(start_frame)]
+    if frame_count is not None:
+        rows = rows.iloc[: int(frame_count)]
+    rows = rows.reset_index(drop=True)
+    if rows.empty:
+        raise RuntimeError("No rows remain after frame selection")
+
+    route_index = config.ROUTE_NAMES.index(route_name)
+    checkpoint = torch.load(config.VISUAL_CHECKPOINT, map_location="cpu")
+    origin_lat = float(checkpoint["origin_lat"])
+    origin_lon = float(checkpoint["origin_lon"])
+    dataset = RouteDataset(
+        Path(config.ROUTE_ROOTS[route_index]),
+        train=False,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+    )
+
     with Image.open(config.SAT_IMAGE) as image:
         source_width, source_height = image.size
         map_height = int(config.VIDEO_HEIGHT)
@@ -78,9 +133,7 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir, 
             int(config.VIDEO_WIDTH * 0.63),
         )
         map_rgb = np.asarray(
-            image.convert("RGB").resize(
-                (map_width, map_height), Image.Resampling.LANCZOS
-            )
+            image.convert("RGB").resize((map_width, map_height), Image.Resampling.LANCZOS)
         )
     map_panel = cv2.cvtColor(map_rgb, cv2.COLOR_RGB2BGR)
 
@@ -97,15 +150,25 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir, 
         result[:, 1] = source[:, 1] * scale_y
         return result
 
-    gt_xy = rows[["gt_x", "gt_y"]].to_numpy(dtype=float)
-    pred_xy = rows[["final_x", "final_y"]].to_numpy(dtype=float)
-    waypoint_xy = load_waypoint_pixels(route_name, dataset, origin_lat, origin_lon)
-    gt_canvas = xy_to_canvas(gt_xy)
-    pred_canvas = xy_to_canvas(pred_xy)
-    waypoint_canvas = xy_to_canvas(waypoint_xy)
+    reference = rows[["reference_x", "reference_y"]].to_numpy(float)
+    final = rows[["final_x", "final_y"]].to_numpy(float)
+    ms1 = rows[["ms1_x", "ms1_y"]].to_numpy(float)
+    kalman = rows[["kalman_x_prime_x", "kalman_x_prime_y"]].to_numpy(float)
+    prior = rows[["prior_x", "prior_y"]].to_numpy(float)
+    reference_canvas = xy_to_canvas(reference)
+    final_canvas = xy_to_canvas(final)
+    ms1_canvas = xy_to_canvas(ms1)
+    kalman_canvas = xy_to_canvas(kalman)
+    prior_canvas = xy_to_canvas(prior)
+    waypoint_canvas = xy_to_canvas(load_waypoint_xy(route_name, origin_lat, origin_lon))
 
-    suffix = ("_" + clip_label) if clip_label else ""
-    output_path = output_dir / (route_name + suffix + "_synchronized_inference.mp4")
+    output_dir = Path(config.OUTPUT_DIR) / "videos"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    suffix = ""
+    if start_frame is not None or frame_count is not None:
+        suffix = f"_frames_{int(rows.iloc[0].frame_id):04d}_{int(rows.iloc[-1].frame_id):04d}"
+    output_path = output_dir / f"{route_name}{suffix}_autonomous_inference.mp4"
+
     writer = cv2.VideoWriter(
         str(output_path),
         cv2.VideoWriter_fourcc(*"mp4v"),
@@ -113,251 +176,97 @@ def render_video(route_name, rows, dataset, origin_lat, origin_lon, output_dir, 
         (width, height),
     )
     if not writer.isOpened():
-        raise RuntimeError("cannot create video: %s" % output_path)
+        raise RuntimeError(f"cannot create video: {output_path}")
 
     try:
-        for row_index, row in rows.iterrows():
+        for i, row in rows.iterrows():
             canvas = np.zeros((height, width, 3), dtype=np.uint8)
             canvas[:, uav_width:] = map_panel
-
             uav_image = cv2.imread(str(row["image_path"]), cv2.IMREAD_COLOR)
             if uav_image is not None:
-                canvas[:, :uav_width] = contain_image(
-                    uav_image, uav_width, height
-                )
+                canvas[:, :uav_width] = contain_image(uav_image, uav_width, height)
 
             if len(waypoint_canvas) >= 2:
                 cv2.polylines(
-                    canvas,
-                    [waypoint_canvas.astype(np.int32)],
-                    False,
-                    WAYPOINT_COLOR,
-                    1,
-                    cv2.LINE_AA,
+                    canvas, [waypoint_canvas.astype(np.int32)], False,
+                    WAYPOINT_COLOR, 1, cv2.LINE_AA
                 )
-            for waypoint_index, point in enumerate(waypoint_canvas):
-                cv2.circle(
-                    canvas,
-                    (int(point[0]), int(point[1])),
-                    4,
-                    WAYPOINT_COLOR,
-                    -1,
-                    cv2.LINE_AA,
-                )
-                cv2.putText(
-                    canvas,
-                    "W%d" % waypoint_index,
-                    (int(point[0]) + 5, int(point[1]) - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.35,
-                    WAYPOINT_COLOR,
-                    1,
-                    cv2.LINE_AA,
-                )
-
-            if row_index > 0:
+            if i > 0:
                 cv2.polylines(
-                    canvas,
-                    [gt_canvas[: row_index + 1].astype(np.int32)],
-                    False,
-                    GT_COLOR,
-                    3,
-                    cv2.LINE_AA,
+                    canvas, [reference_canvas[: i + 1].astype(np.int32)], False,
+                    REFERENCE_COLOR, 3, cv2.LINE_AA
                 )
                 cv2.polylines(
-                    canvas,
-                    [pred_canvas[: row_index + 1].astype(np.int32)],
-                    False,
-                    PRED_COLOR,
-                    3,
-                    cv2.LINE_AA,
+                    canvas, [final_canvas[: i + 1].astype(np.int32)], False,
+                    FINAL_COLOR, 3, cv2.LINE_AA
                 )
 
-            gt_point = gt_canvas[row_index]
-            pred_point = pred_canvas[row_index]
-            cv2.drawMarker(
-                canvas,
-                (int(gt_point[0]), int(gt_point[1])),
-                GT_COLOR,
-                cv2.MARKER_CROSS,
-                20,
-                3,
-                cv2.LINE_AA,
-            )
-            cv2.drawMarker(
-                canvas,
-                (int(pred_point[0]), int(pred_point[1])),
-                PRED_COLOR,
-                cv2.MARKER_STAR,
-                22,
-                3,
-                cv2.LINE_AA,
-            )
-
-            # Estimated ground-track heading is part of the model state and is
-            # used by the polynomial predictor. Draw it from the final position.
-            if "estimated_heading_deg" in rows.columns:
-                heading_rad = math.radians(float(row.get("polynomial_heading_deg", row.get("estimated_heading_deg", 0.0))))
-                arrow_len_m = 14.0
-                arrow_xy = np.asarray([[
-                    float(row["final_x"]) + arrow_len_m * math.cos(heading_rad),
-                    float(row["final_y"]) + arrow_len_m * math.sin(heading_rad),
-                ]], dtype=np.float64)
-                arrow_canvas = xy_to_canvas(arrow_xy)[0]
-                cv2.arrowedLine(
-                    canvas,
-                    (int(pred_point[0]), int(pred_point[1])),
-                    (int(arrow_canvas[0]), int(arrow_canvas[1])),
-                    PRED_COLOR,
-                    2,
-                    cv2.LINE_AA,
-                    tipLength=0.25,
+            for point, color, marker in [
+                (prior_canvas[i], PRIOR_COLOR, cv2.MARKER_DIAMOND),
+                (ms1_canvas[i], MS1_COLOR, cv2.MARKER_SQUARE),
+                (kalman_canvas[i], KALMAN_COLOR, cv2.MARKER_TILTED_CROSS),
+                (reference_canvas[i], REFERENCE_COLOR, cv2.MARKER_CROSS),
+                (final_canvas[i], FINAL_COLOR, cv2.MARKER_STAR),
+            ]:
+                cv2.drawMarker(
+                    canvas, (int(point[0]), int(point[1])), color,
+                    marker, 18, 2, cv2.LINE_AA
                 )
 
-            lines = [
-                "CONTROLLED GT+SMOOTH-JITTER / HEADING-AWARE POLYNOMIAL / KALMAN FINAL",
-                "GT = GREEN    FINAL CONSTRAINED KALMAN = MAGENTA    WAYPOINT = YELLOW",
-                "frame=%d  target=W%d  pred_leg=%d  gt_leg=%d"
-                % (
-                    int(row["frame_id"]),
-                    int(row["target_waypoint"]),
-                    int(row["waypoint_leg"]),
-                    int(row.get("gt_waypoint_leg", -1)),
+            heading = math.radians(float(row["pred_heading_deg"]))
+            arrow_len_m = max(8.0, abs(float(row["pred_speed_m_per_frame"])) * 4.0)
+            arrow_xy = np.asarray([[
+                float(row["final_x"]) + arrow_len_m * math.cos(heading),
+                float(row["final_y"]) + arrow_len_m * math.sin(heading),
+            ]])
+            arrow_point = xy_to_canvas(arrow_xy)[0]
+            final_point = final_canvas[i]
+            cv2.arrowedLine(
+                canvas,
+                (int(final_point[0]), int(final_point[1])),
+                (int(arrow_point[0]), int(arrow_point[1])),
+                FINAL_COLOR, 2, cv2.LINE_AA, tipLength=0.25,
+            )
+
+            labels = [
+                "AUTONOMOUS: PRIOR -> MS#1 3x6 -> [KALMAN || GRU] -> MS#2 6x6 -> FINAL",
+                "Reference=GREEN  Prior=BLUE  MS#1=CYAN  Kalman X'=ORANGE  Final=MAGENTA",
+                f"frame={int(row['frame_id'])}  error={float(row['error_final_m']):.2f} m",
+                (
+                    f"v={float(row['pred_speed_m_per_frame']):.3f} m/frame  "
+                    f"a={float(row['pred_acceleration_m_per_frame2']):.3f} m/frame^2  "
+                    f"heading={float(row['pred_heading_deg']):.2f} deg"
                 ),
-                "v=%.2f gt_v=%.2f  step=%.2f gt_step=%.2f  speed_err=%.2f"
-                % (
-                    float(row["v_parallel"]),
-                    float(row.get("gt_velocity_parallel", 0.0)),
-                    float(row["poly_next_step_parallel"]),
-                    float(row.get("gt_step_parallel", 0.0)),
-                    float(row.get("speed_error_m_per_frame", 0.0)),
+                (
+                    f"Delta=({float(row['delta_x']):.3f}, {float(row['delta_y']):.3f})  "
+                    f"next prior=({float(row['next_prior_x']):.2f}, {float(row['next_prior_y']):.2f})"
                 ),
-                "causal heading=%.1fdeg gt=%.1fdeg turn=%.1fdeg/f err=%.1fdeg"
-                % (
-                    float(row.get("estimated_heading_deg", 0.0)),
-                    float(row.get("gt_heading_deg", 0.0)),
-                    float(row.get("turn_rate_deg_per_frame", 0.0)),
-                    float(row.get("heading_error_deg", 0.0)),
-                ),
-                "progress=%.1f gt=%.1f progress_err=%.1f  selected=%d bank=%d"
-                % (
-                    float(row["final_progress_s"]),
-                    float(row.get("gt_progress_s", 0.0)),
-                    float(row.get("progress_error_m", 0.0)),
-                    int(row.get("selected_candidate_capture", row.get("candidate_capture", 0))),
-                    int(row.get("bank_candidate_capture", 0)),
-                ),
-                "visual_conf=%.3f step_limit=%.2fm limited=%d  selected_s=%.1f"
-                % (
-                    float(row.get("local_visual_confidence", row.get("acquisition_confidence", 0.0))),
-                    float(row.get("kalman_step_limit_m", 0.0)),
-                    int(row.get("kalman_step_limited", 0)),
-                    float(row.get("selected_hypothesis_center_s", 0.0)),
-                ),
-                "final_step=%.2fm err=%.2fm H=%.2f margin=%.4f Rscale=%.2f"
-                % (
-                    float(row["final_step_m"]),
-                    float(row["error_final_m"]),
-                    float(row.get("visual_entropy", 0.0)),
-                    float(row.get("visual_margin", 0.0)),
-                    float(row.get("kalman_r_scale", 1.0)),
-                ),
+                "No current-frame reference/GT is used to select the runtime search center.",
             ]
-            for line_index, text in enumerate(lines):
+            for j, text in enumerate(labels):
                 cv2.putText(
-                    canvas,
-                    text,
-                    (18, 30 + line_index * 29),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.62,
-                    (255, 255, 255),
-                    1,
-                    cv2.LINE_AA,
+                    canvas, text, (18, 30 + j * 29),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.60,
+                    (255, 255, 255), 1, cv2.LINE_AA
                 )
             writer.write(canvas)
     finally:
         writer.release()
+
+    print(f"[OK] video: {output_path}", flush=True)
     return output_path
-
-
-def render_route(route_name, start_frame=None, frame_count=None):
-    csv_path = config.OUTPUT_DIR / (
-        route_name + "_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
-    )
-    if not csv_path.exists():
-        raise FileNotFoundError(
-            "Inference CSV missing: %s\nRun: bash run_robust_tracker.sh --mode eval"
-            % csv_path
-        )
-    rows = pd.read_csv(csv_path)
-    if rows.empty:
-        raise RuntimeError("CSV is empty: %s" % csv_path)
-
-    # Select by the recorded source-frame id rather than CSV row number, so
-    # the generated short clip is explicit and remains valid if rows are ever
-    # filtered before rendering.
-    clip_label = ""
-    if start_frame is not None:
-        rows = rows[rows["frame_id"] >= int(start_frame)]
-    if frame_count is not None:
-        rows = rows.iloc[: int(frame_count)]
-    if rows.empty:
-        raise RuntimeError("No rows remain after the requested frame selection")
-    if start_frame is not None or frame_count is not None:
-        first_id = int(rows.iloc[0]["frame_id"])
-        last_id = int(rows.iloc[-1]["frame_id"])
-        clip_label = "frames_%04d_%04d" % (first_id, last_id)
-
-    route_index = config.ROUTE_NAMES.index(route_name)
-    checkpoint = torch.load(config.VISUAL_CHECKPOINT, map_location="cpu")
-    origin_lat = float(checkpoint["origin_lat"])
-    origin_lon = float(checkpoint["origin_lon"])
-    dataset = RouteDataset(
-        Path(config.ROUTE_ROOTS[route_index]),
-        train=False,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon,
-    )
-    config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    video = render_video(
-        route_name=route_name,
-        rows=rows,
-        dataset=dataset,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon,
-        output_dir=config.OUTPUT_DIR,
-        clip_label=clip_label,
-    )
-    print("rendered:", video, flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--route", choices=["route_B", "route_C", "all"], default="all"
+        "--routes", nargs="+", choices=config.ROUTE_NAMES, default=["route_C", "route_B"]
     )
-    parser.add_argument(
-        "--start-frame",
-        type=int,
-        default=None,
-        help="First recorded frame_id to include (default: start of route).",
-    )
-    parser.add_argument(
-        "--frames",
-        type=int,
-        default=None,
-        help="Number of consecutive CSV frames to render (for example 15 or 25).",
-    )
+    parser.add_argument("--start-frame", type=int, default=None)
+    parser.add_argument("--frame-count", type=int, default=None)
     args = parser.parse_args()
-    if args.start_frame is not None and args.start_frame < 0:
-        parser.error("--start-frame must be non-negative")
-    if args.frames is not None and args.frames <= 0:
-        parser.error("--frames must be positive")
-    if args.route == "all":
-        for route_name in ["route_B", "route_C"]:
-            render_route(route_name, args.start_frame, args.frames)
-    else:
-        render_route(args.route, args.start_frame, args.frames)
+    for route_name in args.routes:
+        render_route(route_name, args.start_frame, args.frame_count)
 
 
 if __name__ == "__main__":
