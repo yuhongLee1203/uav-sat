@@ -129,9 +129,6 @@ def select_actual_sequence(query_points, tree, source_points, min_step_m, max_st
             source_pixel = source_points[source_index]
             if last_source_pixel is not None:
                 step_px = float(np.linalg.norm(source_pixel - last_source_pixel))
-                # Permit a somewhat larger step exactly across a planned corner,
-                # otherwise keep the temporal displacement close to the original
-                # v36 native-frame scale.
                 corner = last_leg is not None and int(query["leg"]) != int(last_leg)
                 allowed_max = max_step_px * (1.5 if corner else 1.0)
                 if step_px < min_step_px or step_px > allowed_max:
@@ -218,7 +215,6 @@ def _heading_from_points(points, index):
 
 
 def _waypoint_indices(selected):
-    """Use real selected samples nearest each planned leg boundary as waypoints."""
     result = [0]
     for index in range(1, len(selected)):
         if selected[index]["leg"] != selected[index - 1]["leg"]:
@@ -232,6 +228,10 @@ def write_route(name, city, selected, rows, bounds, query_spacing_m, rebuild=Fal
     root, vi = OUTPUT_ROOT / name, OUTPUT_ROOT / name / "vi"
     root.mkdir(parents=True, exist_ok=True)
     vi.mkdir(parents=True, exist_ok=True)
+    if rebuild:
+        for stale in vi.glob("vi_*.jpg"):
+            stale.unlink()
+
     timestamps, waypoints = [], []
     x_offset = CITY_OFFSETS[city]
     base_timestamp = 1_900_000_000_000_000_000
@@ -247,8 +247,7 @@ def write_route(name, city, selected, rows, bounds, query_spacing_m, rebuild=Fal
             target.unlink()
         target.symlink_to(source)
 
-        # IMPORTANT: label from the selected UAV sample's own source position,
-        # never from the synthetic query/polyline point.
+        # Label from the selected UAV sample's own source position.
         global_pixel = item["source_pixel"] + np.asarray([x_offset, 0.0])
         lat, lon = global_pixel_to_latlon(global_pixel, bounds)
         heading_rad = _heading_from_points(actual_pixels, frame_index)
@@ -319,15 +318,11 @@ def write_route(name, city, selected, rows, bounds, query_spacing_m, rebuild=Fal
 
 def main():
     parser = argparse.ArgumentParser()
-    # Query spacing is deliberately denser than the desired output step.  Real
-    # samples are then filtered using min/max actual displacement, so output
-    # steps vary naturally instead of being fixed by construction.
     parser.add_argument("--query-spacing-m", type=float, default=1.5)
     parser.add_argument("--min-step-m", type=float, default=1.5)
     parser.add_argument("--max-step-m", type=float, default=5.0)
     parser.add_argument("--max-query-error-m", type=float, default=8.0)
     parser.add_argument("--rebuild", action="store_true")
-    # Backward-compatible alias; it no longer controls label spacing.
     parser.add_argument("--spacing-m", type=float, default=None)
     args = parser.parse_args()
     if args.spacing_m is not None:
