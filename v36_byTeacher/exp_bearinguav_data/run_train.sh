@@ -5,19 +5,21 @@ PARENT="$(cd "$HERE/.." && pwd)"
 mkdir -p "$HERE/output"
 
 # Same-scene BearingUAV protocol:
-#   train_1 = 1000 frames, slow, multi-L route
-#   train_2 = 1000 frames, fast, multi-L route
-#   val_1   = 1000 frames, intermediate speed, multi-L route
-# All three use the SAME city-A satellite image. Every selected image keeps its
-# own source position label; no synthetic route coordinate is substituted.
+#   train_1 = up to 600 frames, slower irregular route
+#   train_2 = up to 600 frames, faster irregular route
+#   val_1   = up to 600 frames, intermediate irregular route
+# All three use the SAME city-A satellite image. Routes contain long straight
+# segments at arbitrary angles; different routes may cross. Every selected
+# image keeps its own source position label.
 python3 "$HERE/prepare_bearinguav_routes.py" \
-  --corridor-m "${BEARING_CORRIDOR_M:-14.0}" \
+  --corridor-m "${BEARING_CORRIDOR_M:-18.0}" \
   --min-step-m "${BEARING_MIN_STEP_M:-0.8}" \
   --max-step-m "${BEARING_PREFERRED_MAX_STEP_M:-13.0}" \
   --hard-max-step-m "${BEARING_HARD_MAX_STEP_M:-22.0}" \
-  --lookahead-m "${BEARING_LOOKAHEAD_M:-32.0}" \
-  --target-train-frames "${BEARING_TRAIN_FRAMES:-1000}" \
-  --target-eval-frames "${BEARING_VAL_FRAMES:-1000}" \
+  --lookahead-m "${BEARING_LOOKAHEAD_M:-34.0}" \
+  --target-train-frames "${BEARING_TRAIN_FRAMES:-600}" \
+  --target-eval-frames "${BEARING_VAL_FRAMES:-600}" \
+  --min-accepted-frames "${BEARING_MIN_ACCEPTED_FRAMES:-400}" \
   --rebuild
 
 export PYTHONPATH="$HERE:$PARENT${PYTHONPATH:+:$PYTHONPATH}"
