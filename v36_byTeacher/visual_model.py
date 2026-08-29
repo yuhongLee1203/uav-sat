@@ -212,20 +212,26 @@ def _inverse_softplus(value):
 
 
 class AutonomousMotionGRU(nn.Module):
-    """GRU motion model using current MS1 relative to previous FINAL position.
+    """GRU motion model with a stable previous-polynomial motion baseline.
 
-    `prior_xy` is the autonomous search prior:
+    Runtime geometry remains:
         prior_xy = previous_final_xy + previous_delta_xy
 
-    Therefore the previous final position available to the model is:
-        previous_final_xy = prior_xy - previous_delta_xy
+    Current MS1 still enters the GRU as visual/numeric evidence, but because
+    MS1 is intentionally restricted to the forward 3x6 support, its displacement
+    from the previous final position is NOT allowed to redefine the motion
+    baseline on every frame. Doing so creates positive feedback:
 
-    The visual frame-to-frame motion cue is:
-        observed_step = X_ms(t) - X_final(t-1)
+        forward-only MS1 bias -> larger Delta -> farther next prior ->
+        farther forward-only MS1 -> still larger Delta.
 
-    This avoids the unstable X_ms(t)-X_ms(t-1) positive-feedback loop.
-    No reference/GT coordinate, MS uncertainty, speed cap, acceleration cap,
-    turn cap, or displacement cap is used.
+    v6 therefore uses the previous polynomial displacement as a constant-velocity
+    baseline after motion has been initialized. MS1-derived displacement is used
+    only as the bootstrap when no previous displacement exists, and thereafter
+    remains an input that the recurrent network may use to learn corrections.
+
+    No reference coordinate, MS uncertainty, speed cap, acceleration cap, turn
+    cap, displacement cap, or reference-dependent runtime rule is used.
     """
 
     def __init__(self):
@@ -346,13 +352,35 @@ class AutonomousMotionGRU(nn.Module):
             observed_step[:, 1:2],
             observed_step[:, 0:1],
         )
-        motion_is_visible = (
-            observed_speed > 1e-4
+
+        previous_motion_speed = torch.linalg.vector_norm(
+            previous_delta_xy,
+            dim=1,
+            keepdim=True,
         )
-        base_heading = torch.where(
-            motion_is_visible,
+        previous_motion_heading = torch.atan2(
+            previous_delta_xy[:, 1:2],
+            previous_delta_xy[:, 0:1],
+        )
+        has_previous_motion = previous_motion_speed > 1e-4
+        observed_motion_visible = observed_speed > 1e-4
+
+        # Bootstrap from MS1 only before a polynomial displacement exists.
+        # After that, use the previous polynomial displacement as the baseline.
+        base_speed = torch.where(
+            has_previous_motion,
+            previous_motion_speed,
+            observed_speed,
+        )
+        bootstrap_heading = torch.where(
+            observed_motion_visible,
             observed_heading,
             previous_heading_rad,
+        )
+        base_heading = torch.where(
+            has_previous_motion,
+            previous_motion_heading,
+            bootstrap_heading,
         )
 
         if previous_ms1_xy is None:
@@ -416,7 +444,7 @@ class AutonomousMotionGRU(nn.Module):
         acceleration = raw_motion[:, 1:2]
 
         speed = F.softplus(
-            _inverse_softplus(observed_speed)
+            _inverse_softplus(base_speed)
             + speed_residual
         )
 
