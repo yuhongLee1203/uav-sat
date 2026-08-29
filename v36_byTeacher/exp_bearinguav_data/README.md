@@ -1,33 +1,55 @@
-# BearingUAV ordered multi-route training for v36_byTeacher
+# BearingUAV variable-step actual-pose training for v36_byTeacher
 
-The BearingUAV independent poses are materialized as waypoint polylines with
-ordered reference points every approximately 4.5 metres. Each reference point
-is attached to a nearby Bearing UAV view and written in the same sequential
-`vi/` + `sensor_with_yaw.json` format consumed by the original v36 pipeline.
+This experiment adapts BearingUAV samples to the sequential `vi/` +
+`sensor_with_yaw.json` format used by v36 without assigning synthetic route
+coordinates to the UAV images.
 
-Split:
+Key rules of the corrected adapter:
 
-- `train_1` (city-A): 2,047 frames, 12 waypoints
-- `train_2` (city-A): 2,047 frames, 12 waypoints
-- `train_3` (city-A): 2,250 frames, 14 waypoints
-- `val_1` (held-out city-B): 2,047 frames, 12 waypoints
-- `test_1` (held-out city-C): 2,047 frames, 12 waypoints
+- A planned polyline is used only to discover a spatially ordered sequence.
+- Every frame position label is the selected BearingUAV UAV sample's own
+  metadata position.
+- Consecutive output frames use variable actual displacement; they are not
+  forced to a constant 4.5 m step.
+- Default accepted native-frame displacement is 1.5--5.0 m, so stride-2 is much
+  closer to the motion scale used by the original v36 Route-A training.
+- Repeated source images are not used inside one generated route.
+- Waypoints are attached to real selected sample positions near route turns.
+- `generation_summary.json` reports step mean/std/quantiles and explicitly
+  reports zero image-label position mismatch by construction.
 
-Every route has a mean step of approximately 4.49 metres. Validation and test
-use different UAV images and satellite cities from training.
+Current split:
 
-The v36 forward 3x6 search, SoftMS, teacher feedback, GRU, polynomial motion,
-Kalman update, loss, and native+stride-2 protocol are unchanged. Temporal
-epochs rotate through one complete training route at a time; one three-epoch
-cycle visits all three routes and resets recurrent/Kalman state at route
-boundaries.
+- `train_1`, `train_2`, `train_3`: city-A
+- `val_1`: held-out city-B
+- `test_1`: held-out city-C
 
-Measured on GPU 6:
+The v36 forward 3x6 search, SoftMS, GRU, polynomial motion, learned variance,
+Kalman update, and native+stride-2 temporal training code are otherwise reused.
 
-- visual epoch: 194.7 seconds
-- temporal epoch including full held-out validation: 165.4 seconds
+Prepare only:
 
 ```bash
-CUDA_VISIBLE_DEVICES=6 ./run_train.sh \
+python3 prepare_bearinguav_routes.py \
+  --query-spacing-m 1.5 \
+  --min-step-m 1.5 \
+  --max-step-m 5.0 \
+  --max-query-error-m 8.0 \
+  --rebuild
+```
+
+Inspect `generated_routes_3train_1val_1test/generation_summary.json` before
+training.  The important sanity checks are:
+
+- `image_label_error_mean_m = 0.0`
+- `image_label_error_p90_m = 0.0`
+- `step_std_m > 0`
+- `step_p10_m`, `step_p50_m`, and `step_p90_m` are not identical
+- mean native step is in the same rough range as the original Route-A data
+
+Full training:
+
+```bash
+CUDA_VISIBLE_DEVICES=5 ./run_train.sh \
   --visual-epochs 30 --temporal-epochs 90 --patience 15 --jitter-m 8
 ```
