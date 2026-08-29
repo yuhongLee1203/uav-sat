@@ -2,6 +2,9 @@
 set -euo pipefail
 
 # Autonomous v36_byTeacher runner.
+# Temporal training uses ONLY Route-A at its original recorded frame rate/speed.
+# Route-C = validation/checkpoint selection; Route-B = final test.
+#
 # Usage:
 #   bash run_train_eval.sh train
 #   bash run_train_eval.sh eval
@@ -9,10 +12,7 @@ set -euo pipefail
 #
 # Optional environment overrides:
 #   PYTHON_BIN=python3
-#   UAVSAT_BACKBONE=mobilenet_v3_small
 #   UAVSAT_TEMPORAL_EPOCHS=60
-#   UAVSAT_TEMPORAL_EXTRA_A_STRIDE=2
-#   UAVSAT_RUN_TAG=my_run
 
 MODE="${1:-all}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,7 +34,7 @@ if sys.version_info < (3, 8):
 print("Python:", sys.executable, sys.version.split()[0], flush=True)
 PY
 
-# Fail immediately on syntax errors before spending time loading models/data.
+# Fail immediately on syntax errors before loading models/data.
 "${PYTHON_BIN}" -m py_compile \
   config.py \
   data.py \
@@ -46,28 +46,24 @@ PY
 
 echo "Python syntax preflight: OK" >&2
 
+echo "Temporal data policy: Route-A native speed ONLY (no stride-2 / 2x-speed sequence)" >&2
+
 case "${MODE}" in
   train)
     "${PYTHON_BIN}" train_multirate_a.py \
+      --mode train \
       --temporal-epochs "${UAVSAT_TEMPORAL_EPOCHS:-60}" \
-      --extra-stride "${UAVSAT_TEMPORAL_EXTRA_A_STRIDE:-2}" \
       --train-visual-if-missing
     ;;
   eval)
-    "${PYTHON_BIN}" robust_tracker.py \
-      --mode eval \
-      --extra-stride "${UAVSAT_TEMPORAL_EXTRA_A_STRIDE:-2}" \
-      --eval-routes route_C route_B
+    "${PYTHON_BIN}" train_multirate_a.py \
+      --mode eval
     ;;
   all)
     "${PYTHON_BIN}" train_multirate_a.py \
+      --mode all \
       --temporal-epochs "${UAVSAT_TEMPORAL_EPOCHS:-60}" \
-      --extra-stride "${UAVSAT_TEMPORAL_EXTRA_A_STRIDE:-2}" \
       --train-visual-if-missing
-    "${PYTHON_BIN}" robust_tracker.py \
-      --mode eval \
-      --extra-stride "${UAVSAT_TEMPORAL_EXTRA_A_STRIDE:-2}" \
-      --eval-routes route_C route_B
     ;;
   *)
     echo "usage: bash run_train_eval.sh {train|eval|all}" >&2
