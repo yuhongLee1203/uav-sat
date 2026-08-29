@@ -1,11 +1,14 @@
 """Build physically ordered BearingUAV pseudo-sequences from actual sample poses.
 
-The BearingUAV-90K images are independent samples rather than video frames.  This
-adapter therefore does not invent fixed-spacing position labels.  A planned
-polyline is used only as a spatial ordering guide; every written frame position
-is the selected BearingUAV sample's own metadata position.  Consecutive samples
-are selected with a preferred variable-step range and a bounded fallback for
-sparse regions.
+BearingUAV-90K contains independent cross-view samples rather than video frames.
+This adapter therefore uses the official sample pose as the frame label and uses
+a planned polyline only to order nearby real samples.  It never assigns a
+synthetic fixed-spacing position to an image.
+
+The route builder first projects every real sample onto a planned route, keeps
+samples inside a corridor, sorts them by route progress, and then greedily
+selects a continuous variable-step chain.  This is much more robust to the
+dataset's sparse/irregular sampling than chasing dense query points one by one.
 """
 
 import argparse
@@ -16,7 +19,6 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
-from scipy.spatial import cKDTree
 
 
 HERE = Path(__file__).resolve().parent
@@ -32,49 +34,54 @@ CITY_IMAGES = {
 }
 
 
-def horizontal_lawnmower(rows=10, x0=420, x1=3670, y0=420, y1=3670):
-    """Horizontal sweeps with explicit vertical connectors (90-degree turns)."""
+def horizontal_lawnmower(rows=8, x0=500, x1=3590, y0=500, y1=3590):
+    """Long horizontal sweeps joined by explicit vertical connectors."""
     ys = np.linspace(y0, y1, rows)
     points = []
     for i, y in enumerate(ys):
         start_x, end_x = (x0, x1) if i % 2 == 0 else (x1, x0)
+        a = (float(start_x), float(y))
+        b = (float(end_x), float(y))
         if not points:
-            points.append((float(start_x), float(y)))
-        elif points[-1] != (float(start_x), float(y)):
-            points.append((float(start_x), float(y)))
-        points.append((float(end_x), float(y)))
+            points.append(a)
+        elif points[-1] != a:
+            points.append(a)
+        points.append(b)
         if i + 1 < len(ys):
             points.append((float(end_x), float(ys[i + 1])))
     return points
 
 
-def vertical_lawnmower(cols=10, y0=420, y1=3670, x0=420, x1=3670):
-    """Vertical sweeps with explicit horizontal connectors."""
+def vertical_lawnmower(cols=8, y0=500, y1=3590, x0=500, x1=3590):
+    """Long vertical sweeps joined by explicit horizontal connectors."""
     xs = np.linspace(x0, x1, cols)
     points = []
     for i, x in enumerate(xs):
         start_y, end_y = (y0, y1) if i % 2 == 0 else (y1, y0)
+        a = (float(x), float(start_y))
+        b = (float(x), float(end_y))
         if not points:
-            points.append((float(x), float(start_y)))
-        elif points[-1] != (float(x), float(start_y)):
-            points.append((float(x), float(start_y)))
-        points.append((float(x), float(end_y)))
+            points.append(a)
+        elif points[-1] != a:
+            points.append(a)
+        points.append(b)
         if i + 1 < len(xs):
             points.append((float(xs[i + 1]), float(end_y)))
     return points
 
 
-def diagonal_sweep(lines=9, x0=520, x1=3570, y0=480, y1=3610):
-    """A second city-A route family with broad diagonal sweeps and connectors."""
-    offsets = np.linspace(0.0, 700.0, lines)
+def diagonal_sweep(lines=7, x0=620, x1=3470, y0=560, y1=3530):
+    """Broad diagonal sweeps with short connectors."""
+    offsets = np.linspace(0.0, 620.0, lines)
     points = []
     for i, off in enumerate(offsets):
-        a = (x0 + off, y0)
-        b = (x1, min(y1, y1 - 700.0 + off))
+        a = np.asarray([x0 + off, y0], dtype=np.float64)
+        b = np.asarray([x1, y1 - 620.0 + off], dtype=np.float64)
+        a = np.clip(a, 450, 3640)
+        b = np.clip(b, 450, 3640)
         if i % 2:
             a, b = b, a
-        a = (float(np.clip(a[0], 350, 3740)), float(np.clip(a[1], 350, 3740)))
-        b = (float(np.clip(b[0], 350, 3740)), float(np.clip(b[1], 350, 3740)))
+        a, b = tuple(a.tolist()), tuple(b.tolist())
         if not points:
             points.append(a)
         elif points[-1] != a:
@@ -110,144 +117,165 @@ def row_pixel(row):
     ], dtype=np.float64)
 
 
-def sample_polyline(waypoints, spacing_m):
-    """Dense route query points used only as an ordering/search guide."""
-    spacing_px = max(float(spacing_m) / METERS_PER_PIXEL, 1.0)
-    samples = []
-    route_order = 0
-    for leg, (start, end) in enumerate(zip(waypoints[:-1], waypoints[1:])):
-        start = np.asarray(start, dtype=np.float64)
-        end = np.asarray(end, dtype=np.float64)
-        length = float(np.linalg.norm(end - start))
-        steps = max(1, int(math.ceil(length / spacing_px)))
-        for step in range(steps + 1):
-            if leg > 0 and step == 0:
-                continue
-            alpha = step / float(steps)
-            samples.append({
-                "pixel": start + alpha * (end - start),
-                "leg": int(leg),
-                "route_order": int(route_order),
-            })
-            route_order += 1
-    return samples
+def _route_segments(waypoints):
+    points = np.asarray(waypoints, dtype=np.float64)
+    starts = points[:-1]
+    deltas = points[1:] - points[:-1]
+    lengths = np.linalg.norm(deltas, axis=1)
+    if np.any(lengths < 1e-6):
+        raise ValueError("route contains a zero-length segment")
+    units = deltas / lengths[:, None]
+    cumulative = np.concatenate([[0.0], np.cumsum(lengths)])
+    return points, starts, units, lengths, cumulative
 
 
-def _candidate_choice(query, distances, indices, source_points, used,
-                      last_source_pixel, preferred_min_px, preferred_max_px,
-                      hard_max_px, max_query_error_px, k_nearest):
-    """Pick the best unused actual sample for one query point.
+def project_samples_to_route(source_points, waypoints):
+    """Project all samples to the nearest planned-route segment.
 
-    1) Prefer a natural step in [preferred_min, preferred_max].
-    2) If the dataset is locally sparse, allow a bounded fallback step.
-    The fallback changes only frame spacing; the position label always remains
-    the selected source sample's actual pose.
+    Returns best route progress in pixels, nearest-route distance in pixels, and
+    the nearest segment index for every source sample.
     """
-    rows = []
-    for query_distance_px, source_index in zip(
-        np.atleast_1d(distances)[:k_nearest], np.atleast_1d(indices)[:k_nearest]
-    ):
-        source_index = int(source_index)
-        query_distance_px = float(query_distance_px)
-        if source_index in used:
-            continue
-        if not np.isfinite(query_distance_px) or query_distance_px > max_query_error_px:
-            continue
-        source_pixel = source_points[source_index]
-        if last_source_pixel is None:
-            step_px = 0.0
-        else:
-            step_px = float(np.linalg.norm(source_pixel - last_source_pixel))
-            if step_px > hard_max_px:
-                continue
-            # Avoid duplicate/near-identical positions even if they are distinct samples.
-            if step_px < 0.35 / METERS_PER_PIXEL:
-                continue
-        rows.append((source_index, source_pixel, query_distance_px, step_px))
+    _, starts, units, lengths, cumulative = _route_segments(waypoints)
+    n = len(source_points)
+    best_dist = np.full(n, np.inf, dtype=np.float64)
+    best_progress = np.zeros(n, dtype=np.float64)
+    best_leg = np.zeros(n, dtype=np.int32)
 
-    if not rows:
-        return None
-    if last_source_pixel is None:
-        best = min(rows, key=lambda x: x[2])
-        return best + (False,)
+    for leg in range(len(starts)):
+        rel = source_points - starts[leg]
+        along = np.sum(rel * units[leg], axis=1)
+        along_clip = np.clip(along, 0.0, lengths[leg])
+        nearest = starts[leg] + along_clip[:, None] * units[leg]
+        dist = np.linalg.norm(source_points - nearest, axis=1)
+        mask = dist < best_dist
+        best_dist[mask] = dist[mask]
+        best_progress[mask] = cumulative[leg] + along_clip[mask]
+        best_leg[mask] = leg
 
-    preferred = [x for x in rows if preferred_min_px <= x[3] <= preferred_max_px]
-    if preferred:
-        target_px = 0.5 * (preferred_min_px + preferred_max_px)
-        best = min(
-            preferred,
-            key=lambda x: x[2] + 0.15 * abs(x[3] - target_px),
+    return best_progress, best_dist, best_leg
+
+
+def select_actual_sequence(
+    source_points,
+    waypoints,
+    corridor_m=14.0,
+    min_step_m=1.0,
+    preferred_step_m=5.5,
+    preferred_max_step_m=10.0,
+    hard_max_step_m=18.0,
+    min_progress_m=0.6,
+    lookahead_m=24.0,
+):
+    """Build a route-progress-ordered chain from real BearingUAV samples.
+
+    The dataset is too sparse to demand 1.5--5 m at every step.  Instead, each
+    next frame is chosen from real samples ahead on the route.  Steps near the
+    preferred range are favored, while sparse regions may use a bounded larger
+    step.  The image label always remains the selected sample's actual pose.
+    """
+    progress_px, route_dist_px, legs = project_samples_to_route(source_points, waypoints)
+    corridor_px = float(corridor_m) / METERS_PER_PIXEL
+    keep = np.flatnonzero(route_dist_px <= corridor_px)
+    if len(keep) < 64:
+        raise RuntimeError(
+            "Too few BearingUAV samples lie inside the route corridor (%d). "
+            "Increase --corridor-m." % len(keep)
         )
-        return best + (False,)
 
-    # Sparse-region fallback.  Prefer a slightly larger step over a very tiny
-    # step, because the latter would create many almost-identical pseudo-frames.
-    fallback = [x for x in rows if x[3] >= 0.5 * preferred_min_px]
-    if not fallback:
-        return None
-    best = min(
-        fallback,
-        key=lambda x: x[2] + 0.35 * max(0.0, x[3] - preferred_max_px),
-    )
-    return best + (True,)
+    order = keep[np.argsort(progress_px[keep], kind="stable")]
+    progress_m = progress_px * METERS_PER_PIXEL
+    route_dist_m = route_dist_px * METERS_PER_PIXEL
 
+    min_step = float(min_step_m)
+    preferred = float(preferred_step_m)
+    preferred_max = float(preferred_max_step_m)
+    hard_max = float(hard_max_step_m)
+    min_progress = float(min_progress_m)
+    lookahead = float(lookahead_m)
 
-def select_actual_sequence(query_points, tree, source_points, min_step_m,
-                           max_step_m, max_query_error_m, hard_max_step_m=12.0,
-                           k=128):
-    """Select a physically ordered variable-step sequence of actual samples."""
+    selected_indices = []
     selected = []
     used = set()
-    preferred_min_px = float(min_step_m) / METERS_PER_PIXEL
-    preferred_max_px = float(max_step_m) / METERS_PER_PIXEL
-    hard_max_px = max(float(hard_max_step_m), float(max_step_m)) / METERS_PER_PIXEL
-    max_query_error_px = float(max_query_error_m) / METERS_PER_PIXEL
-    last_source_pixel = None
 
-    for query in query_points:
-        distances, indices = tree.query(query["pixel"], k=min(k, len(source_points)))
-        choice = _candidate_choice(
-            query,
-            distances,
-            indices,
-            source_points,
-            used,
-            last_source_pixel,
-            preferred_min_px,
-            preferred_max_px,
-            hard_max_px,
-            max_query_error_px,
-            min(k, len(source_points)),
+    first_pool = order[: min(256, len(order))]
+    first = int(first_pool[np.argmin(route_dist_m[first_pool])])
+    selected_indices.append(first)
+    used.add(first)
+
+    while True:
+        current = selected_indices[-1]
+        current_progress = float(progress_m[current])
+
+        lo = np.searchsorted(progress_m[order], current_progress + min_progress, side="left")
+        hi = np.searchsorted(progress_m[order], current_progress + lookahead, side="right")
+        candidates = [int(i) for i in order[lo:hi] if int(i) not in used]
+        if not candidates:
+            hi = np.searchsorted(progress_m[order], current_progress + 2.0 * lookahead, side="right")
+            candidates = [int(i) for i in order[lo:hi] if int(i) not in used]
+        if not candidates:
+            break
+
+        cand_arr = np.asarray(candidates, dtype=np.int64)
+        steps = np.linalg.norm(source_points[cand_arr] - source_points[current], axis=1) * METERS_PER_PIXEL
+        prog_delta = progress_m[cand_arr] - current_progress
+
+        valid = (steps >= min_step) & (steps <= hard_max) & (prog_delta > 0.0)
+        if not np.any(valid):
+            break
+
+        cand_arr = cand_arr[valid]
+        steps = steps[valid]
+        prog_delta = prog_delta[valid]
+
+        within_preferred = steps <= preferred_max
+        fallback = not bool(np.any(within_preferred))
+        if np.any(within_preferred):
+            cand_arr = cand_arr[within_preferred]
+            steps = steps[within_preferred]
+            prog_delta = prog_delta[within_preferred]
+
+        scores = (
+            np.abs(steps - preferred)
+            + 0.30 * route_dist_m[cand_arr]
+            + 0.08 * np.abs(prog_delta - preferred)
         )
-        if choice is None:
-            continue
+        next_index = int(cand_arr[int(np.argmin(scores))])
+        step_m = float(np.linalg.norm(source_points[next_index] - source_points[current]) * METERS_PER_PIXEL)
 
-        source_index, source_pixel, query_distance_px, step_px, used_fallback = choice
-        # Dense route queries can still map to a new source sample too soon.
-        # Keep it only when it advances a meaningful physical distance.
-        if last_source_pixel is not None and step_px < 0.5 * preferred_min_px:
-            continue
-
-        used.add(int(source_index))
+        selected_indices.append(next_index)
+        used.add(next_index)
         selected.append({
-            "source_index": int(source_index),
-            "source_pixel": np.asarray(source_pixel, dtype=np.float64).copy(),
-            "query_pixel": np.asarray(query["pixel"], dtype=np.float64).copy(),
-            "query_error_m": float(query_distance_px * METERS_PER_PIXEL),
-            "step_m": float(step_px * METERS_PER_PIXEL) if last_source_pixel is not None else 0.0,
-            "step_fallback": bool(used_fallback),
-            "leg": int(query["leg"]),
-            "route_order": int(query["route_order"]),
+            "source_index": next_index,
+            "source_pixel": source_points[next_index].copy(),
+            "route_progress_m": float(progress_m[next_index]),
+            "route_distance_m": float(route_dist_m[next_index]),
+            "step_m": step_m,
+            "step_fallback": bool(fallback or step_m > preferred_max),
+            "leg": int(legs[next_index]),
         })
-        last_source_pixel = np.asarray(source_pixel, dtype=np.float64).copy()
 
-    if len(selected) < 64:
+    if len(selected_indices) < 64:
         raise RuntimeError(
-            "Too few actual BearingUAV samples were selected (%d). "
-            "The route corridor is too sparse even with the bounded fallback. "
-            "Try --max-query-error-m 12 or --hard-max-step-m 14." % len(selected)
+            "Only %d continuous actual-pose samples could be chained. "
+            "Try --corridor-m 18 or --hard-max-step-m 22." % len(selected_indices)
         )
-    return selected
+
+    first = selected_indices[0]
+    rows = [{
+        "source_index": int(first),
+        "source_pixel": source_points[first].copy(),
+        "route_progress_m": float(progress_m[first]),
+        "route_distance_m": float(route_dist_m[first]),
+        "step_m": 0.0,
+        "step_fallback": False,
+        "leg": int(legs[first]),
+    }]
+    rows.extend(selected)
+
+    ids = [row["source_index"] for row in rows]
+    if len(ids) != len(set(ids)):
+        raise RuntimeError("duplicate BearingUAV source sample detected")
+    return rows
 
 
 def make_mosaic(rebuild=False):
@@ -308,16 +336,25 @@ def _heading_from_points(points, index):
 
 
 def _waypoint_indices(selected):
+    """Use actual selected samples at planned-leg transitions as waypoints."""
     result = [0]
     for index in range(1, len(selected)):
         if selected[index]["leg"] != selected[index - 1]["leg"]:
             result.append(index)
     if result[-1] != len(selected) - 1:
         result.append(len(selected) - 1)
-    return sorted(set(result))
+    max_gap = 80
+    expanded = [result[0]]
+    for a, b in zip(result[:-1], result[1:]):
+        cursor = a + max_gap
+        while cursor < b:
+            expanded.append(cursor)
+            cursor += max_gap
+        expanded.append(b)
+    return sorted(set(expanded))
 
 
-def write_route(name, city, selected, rows, bounds, query_spacing_m, rebuild=False):
+def write_route(name, city, selected, rows, bounds, rebuild=False):
     root, vi = OUTPUT_ROOT / name, OUTPUT_ROOT / name / "vi"
     root.mkdir(parents=True, exist_ok=True)
     vi.mkdir(parents=True, exist_ok=True)
@@ -342,7 +379,6 @@ def write_route(name, city, selected, rows, bounds, query_spacing_m, rebuild=Fal
             target.unlink()
         target.symlink_to(source)
 
-        # Crucial: the label is the selected source image's own actual position.
         global_pixel = item["source_pixel"] + np.asarray([x_offset, 0.0])
         lat, lon = global_pixel_to_latlon(global_pixel, bounds)
         heading_rad = _heading_from_points(actual_pixels, frame_index)
@@ -383,13 +419,13 @@ def write_route(name, city, selected, rows, bounds, query_spacing_m, rebuild=Fal
         "route": name,
         "split": name.split("_")[0],
         "city": city,
-        "query_spacing_m": float(query_spacing_m),
         "position_source": "selected BearingUAV sample actual metadata position",
+        "temporal_semantics": "spatially ordered actual-pose pseudo-sequence",
         "waypoints": waypoints,
     }, indent=2))
 
     steps = np.linalg.norm(np.diff(actual_pixels, axis=0), axis=1) * METERS_PER_PIXEL
-    query_errors = np.asarray([item["query_error_m"] for item in selected], dtype=np.float64)
+    route_dist = np.asarray([item["route_distance_m"] for item in selected], dtype=np.float64)
     fallback = np.asarray([item["step_fallback"] for item in selected[1:]], dtype=np.float64)
     summary = {
         "route": name,
@@ -407,8 +443,8 @@ def write_route(name, city, selected, rows, bounds, query_spacing_m, rebuild=Fal
         "fallback_step_pct": float(100.0 * np.mean(fallback)) if fallback.size else 0.0,
         "image_label_error_mean_m": 0.0,
         "image_label_error_p90_m": 0.0,
-        "query_to_source_mean_m": float(np.mean(query_errors)),
-        "query_to_source_p90_m": float(np.quantile(query_errors, 0.90)),
+        "route_corridor_mean_m": float(np.mean(route_dist)),
+        "route_corridor_p90_m": float(np.quantile(route_dist, 0.90)),
     }
     (root / "route_summary.json").write_text(json.dumps(summary, indent=2))
     return summary
@@ -428,53 +464,57 @@ def validate_summary(summary):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--query-spacing-m", type=float, default=1.5)
-    parser.add_argument("--min-step-m", type=float, default=1.5)
-    parser.add_argument("--max-step-m", type=float, default=5.0)
-    parser.add_argument("--hard-max-step-m", type=float, default=12.0)
-    parser.add_argument("--max-query-error-m", type=float, default=8.0)
+    parser.add_argument("--min-step-m", type=float, default=1.0)
+    parser.add_argument("--max-step-m", type=float, default=10.0)
+    parser.add_argument("--hard-max-step-m", type=float, default=18.0)
+    parser.add_argument("--max-query-error-m", type=float, default=14.0)
+    parser.add_argument("--corridor-m", type=float, default=None)
+    parser.add_argument("--preferred-step-m", type=float, default=5.5)
+    parser.add_argument("--lookahead-m", type=float, default=24.0)
     parser.add_argument("--rebuild", action="store_true")
     parser.add_argument("--spacing-m", type=float, default=None)
     args = parser.parse_args()
-    if args.spacing_m is not None:
-        print(
-            "NOTE: --spacing-m is deprecated. It now changes only the dense "
-            "route-query spacing; frame labels remain actual BearingUAV poses.",
-            flush=True,
-        )
-        args.query_spacing_m = float(args.spacing_m)
 
-    if args.min_step_m <= 0 or args.max_step_m <= args.min_step_m:
-        raise ValueError("require 0 < min-step-m < max-step-m")
-    if args.hard_max_step_m < args.max_step_m:
+    corridor_m = (
+        float(args.corridor_m)
+        if args.corridor_m is not None
+        else float(args.max_query_error_m)
+    )
+    preferred_max = float(args.max_step_m)
+
+    if args.min_step_m <= 0:
+        raise ValueError("min-step-m must be > 0")
+    if preferred_max <= args.min_step_m:
+        raise ValueError("max-step-m must be > min-step-m")
+    if args.hard_max_step_m < preferred_max:
         raise ValueError("hard-max-step-m must be >= max-step-m")
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     mosaic = make_mosaic(args.rebuild)
     bounds, georef = mosaic_georef()
+
     city_data = {}
     for city in CITY_OFFSETS:
         metadata = DATA_ROOT / city / "rawmetadata.csv"
         rows = list(csv.DictReader(metadata.open(encoding="utf-8-sig")))
         points = np.stack([row_pixel(row) for row in rows])
-        city_data[city] = (rows, points, cKDTree(points))
+        city_data[city] = (rows, points)
         print("%s raw samples=%d" % (city, len(rows)), flush=True)
 
     summaries = []
     for name, (city, waypoint_pixels) in ROUTES.items():
-        rows, source_points, tree = city_data[city]
-        query_points = sample_polyline(waypoint_pixels, args.query_spacing_m)
+        rows, source_points = city_data[city]
         selected = select_actual_sequence(
-            query_points,
-            tree,
             source_points,
-            min_step_m=args.min_step_m,
-            max_step_m=args.max_step_m,
-            hard_max_step_m=args.hard_max_step_m,
-            max_query_error_m=args.max_query_error_m,
+            waypoint_pixels,
+            corridor_m=corridor_m,
+            min_step_m=float(args.min_step_m),
+            preferred_step_m=float(args.preferred_step_m),
+            preferred_max_step_m=preferred_max,
+            hard_max_step_m=float(args.hard_max_step_m),
+            lookahead_m=float(args.lookahead_m),
         )
-        summary = write_route(
-            name, city, selected, rows, bounds, args.query_spacing_m, args.rebuild
-        )
+        summary = write_route(name, city, selected, rows, bounds, args.rebuild)
         validate_summary(summary)
         summaries.append(summary)
         print(json.dumps(summary), flush=True)
@@ -487,14 +527,14 @@ def main():
         },
         "adapter": {
             "position_labels": "actual selected BearingUAV sample positions",
-            "temporal_order": "spatially ordered pseudo-sequence along planned route",
-            "route_geometry": "lawnmower/diagonal sweeps with explicit connectors",
+            "temporal_order": "route-progress-ordered actual-pose pseudo-sequence",
+            "selection": "all real samples inside a route corridor, then bounded variable-step chaining",
             "variable_step": True,
-            "preferred_query_spacing_m": float(args.query_spacing_m),
-            "preferred_min_step_m": float(args.min_step_m),
-            "preferred_max_step_m": float(args.max_step_m),
+            "preferred_step_m": float(args.preferred_step_m),
+            "preferred_max_step_m": preferred_max,
             "hard_max_step_m": float(args.hard_max_step_m),
-            "max_query_error_m": float(args.max_query_error_m),
+            "corridor_m": corridor_m,
+            "lookahead_m": float(args.lookahead_m),
         },
         "satellite_mosaic": str(mosaic),
         "satellite_georef": str(georef),
