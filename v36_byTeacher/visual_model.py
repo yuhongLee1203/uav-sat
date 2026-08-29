@@ -207,19 +207,21 @@ def _wrap_angle_tensor(angle):
 
 
 class AutonomousMotionGRU(nn.Module):
-    """GRU that predicts motion state/change, never absolute position.
+    """Compact GRU that predicts motion state/change, never absolute position.
 
-    v8 recurrent input contains only four feature groups:
+    Full v8 input contains four projected feature groups:
       1) current MS1 visual localization coordinate (x, y),
       2) temporal visual mean of z_t and z_(t-1),
       3) first visual difference z_t - z_(t-1),
       4) previous motion information: speed, acceleration,
          sin(heading), cos(heading).
 
-    Previous hidden state is supplied directly to GRUCell as h_(t-1); it is not
-    concatenated to the input vector and does not pass through an MLP.
+    `config.GRU_ABLATION` removes exactly one branch for the ablation study.
+    The remaining branches are concatenated, so the GRU input is 512-d for the
+    full model and 384-d for every single-branch ablation. Previous hidden state
+    remains a separate 256-d GRUCell state.
 
-    Explicitly removed from the recurrent input:
+    Explicitly excluded from every variant:
       * observed_step = MS1(t) - final(t-1),
       * previous_delta_xy,
       * MS1(t) - MS1(t-1),
@@ -227,8 +229,8 @@ class AutonomousMotionGRU(nn.Module):
       * reference-point coordinates.
 
     The GRU predicts speed/acceleration and a heading change. A second-order
-    polynomial converts those motion outputs into Delta_xy outside the GRU role;
-    the GRU itself does not predict an absolute localization position.
+    polynomial converts those motion outputs into Delta_xy downstream; the GRU
+    itself does not predict an absolute localization position.
     """
 
     def __init__(self):
@@ -236,6 +238,7 @@ class AutonomousMotionGRU(nn.Module):
         feature_dim = int(config.RNN_FEATURE_DIM)
         hidden_dim = int(config.RNN_HIDDEN_DIM)
         dropout = float(config.RNN_DROPOUT)
+        self.active_groups = tuple(config.GRU_ACTIVE_GROUPS)
 
         def visual_projection(in_dim):
             return nn.Sequential(
@@ -259,7 +262,7 @@ class AutonomousMotionGRU(nn.Module):
         self.previous_motion_projection = low_dim_projection(4)
 
         self.gru = nn.GRUCell(
-            feature_dim * 4,
+            feature_dim * len(self.active_groups),
             hidden_dim,
         )
         self.dropout = nn.Dropout(dropout)
@@ -308,9 +311,7 @@ class AutonomousMotionGRU(nn.Module):
         previous_heading_rad=None,
         hidden: Optional[torch.Tensor] = None,
     ):
-        # These arguments remain in the call signature only so existing tracker
-        # code stays checkpoint/API compatible. They are intentionally NOT GRU
-        # inputs in v8.
+        # Kept only for tracker API compatibility; never GRU inputs in v8.
         del prior_xy, previous_ms1_xy, previous_delta_xy
 
         if hidden is None:
@@ -332,13 +333,9 @@ class AutonomousMotionGRU(nn.Module):
 
         temporal_mean = 0.5 * (z_uav + previous_z_uav)
         first_difference = z_uav - previous_z_uav
-
-        # MS1 provides a visual localization coordinate, not an inertial step.
-        # It is normalized only so the low-dimensional MLP sees a stable scale.
         ms_xy_normalized = (
             ms1_xy.float() / float(config.POSITION_INPUT_SCALE_M)
         )
-
         previous_motion_information = torch.cat(
             [
                 previous_speed.float(),
@@ -349,17 +346,18 @@ class AutonomousMotionGRU(nn.Module):
             dim=1,
         )
 
+        projected = {
+            "ms_xy": self.ms_xy_projection(ms_xy_normalized),
+            "temporal_mean": self.visual_mean_projection(temporal_mean),
+            "first_difference": self.visual_first_difference_projection(first_difference),
+            "previous_motion": self.previous_motion_projection(previous_motion_information),
+        }
         recurrent_input = torch.cat(
-            [
-                self.ms_xy_projection(ms_xy_normalized),
-                self.visual_mean_projection(temporal_mean),
-                self.visual_first_difference_projection(first_difference),
-                self.previous_motion_projection(previous_motion_information),
-            ],
+            [projected[name] for name in self.active_groups],
             dim=1,
         )
 
-        expected_input_dim = int(config.RNN_FEATURE_DIM) * 4
+        expected_input_dim = int(config.RNN_COMBINED_INPUT_DIM)
         if int(recurrent_input.shape[1]) != expected_input_dim:
             raise RuntimeError(
                 "GRU input dimension mismatch: got %d expected %d"
@@ -369,19 +367,19 @@ class AutonomousMotionGRU(nn.Module):
         new_hidden = self.gru(recurrent_input, hidden)
         h = self.dropout(new_hidden)
 
-        # Motion head predicts current/future inertial state, not XY position.
+        # Motion head predicts inertial state, not XY position.
         raw_motion = self.motion_head(h)
         raw_speed = raw_motion[:, 0:1]
         acceleration = raw_motion[:, 1:2]
         speed = F.softplus(raw_speed)
 
-        # Heading head predicts a change relative to the previous heading.
+        # Heading head predicts change relative to previous heading.
         heading_delta = _wrap_angle_tensor(self.heading_head(h))
         heading = _wrap_angle_tensor(
             previous_heading_rad + heading_delta
         )
 
-        # Polynomial conversion is downstream of the GRU motion prediction.
+        # Polynomial conversion is downstream of the GRU prediction.
         travel = speed + 0.5 * acceleration
         delta_xy = torch.cat(
             [
