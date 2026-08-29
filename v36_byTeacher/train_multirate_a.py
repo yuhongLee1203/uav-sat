@@ -163,13 +163,10 @@ def _reference_assisted_forward_frame(model, visual, uav_clip, state, device):
             % (route_name, reference_index, len(reference_sequence))
         )
 
-    # Controlled coarse prior used ONLY by MS1 candidate construction.
     reference_prior_xy = np.asarray(
         reference_sequence[reference_index], dtype=np.float64
     ).reshape(2)
 
-    # Autonomous temporal prior remains available to GRU so the reference point
-    # is not injected into the recurrent motion state.
     autonomous_prior_xy = np.asarray(
         state["prior_xy"], dtype=np.float64
     ).reshape(2)
@@ -219,7 +216,6 @@ def _reference_assisted_forward_frame(model, visual, uav_clip, state, device):
     state["reference_index"] = reference_index + 1
 
     return {
-        # prior_xy now intentionally means the controlled MS1 coarse prior.
         "prior_xy": reference_prior_xy,
         "autonomous_prior_xy": autonomous_prior_xy,
         "previous_final_xy": previous_final_xy,
@@ -358,6 +354,21 @@ def _evaluate_route_with_candidate_diagnostics(route_name, visual, model, cache,
 
 
 rt.evaluate_route = _evaluate_route_with_candidate_diagnostics
+
+# Label normal inference summaries accurately as reference-assisted too.
+_original_run_route_inference = rt.run_route_inference
+
+
+def _reference_run_route_inference(*args, **kwargs):
+    summary = _original_run_route_inference(*args, **kwargs)
+    summary["ReferenceUsage"] = (
+        "current reference point selects MS1 local-window center only"
+    )
+    summary["Protocol"] = "controlled reference-assisted local prior"
+    return summary
+
+
+rt.run_route_inference = _reference_run_route_inference
 
 
 def parse_args():
