@@ -1,4 +1,4 @@
-"""Autonomous v36_byTeacher tracker.
+"""Autonomous v36_byTeacher tracker, training-stable v2.
 
 Per frame t:
     prior X_pre(t) + predicted heading
@@ -10,21 +10,23 @@ Per frame t:
       -> MS #2 centered full 6x6 around X'_t -> final X_t
       -> X_pre(t+1) = X_t + Delta_t
 
-No current-frame GT/reference coordinate is read before X_t is produced during
-validation/test inference.  GT/reference coordinates are used only for:
-  * supervised training targets;
-  * validation/test metrics after the prediction has been produced.
-There are no hand-written speed, acceleration, turn-rate, innovation, posterior,
-or final-step clamps in this tracker.
+Validation/test inference never reads the current-frame reference coordinate
+before the final prediction is produced. Reference coordinates are used only
+for supervised training targets and post-prediction metrics.
+
+Training v2 fixes:
+  * kinematically consistent v/a labels so v + 0.5*a exactly equals the
+    measured per-step travel distance;
+  * no absolute next-prior correction loss based on the current MS2 error;
+  * first frame of each temporal-rate sequence is a recurrent warm-up only,
+    avoiding contradictory native-vs-stride2 labels for an identical input.
 """
 
 import argparse
 import csv
 import json
 import math
-import random
 import time
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -38,7 +40,6 @@ from visual_model import ThreeFrameRouteStateGRU
 
 ARCHITECTURE_NAME = str(config.ARCHITECTURE_NAME)
 
-# Compatibility exports used by plotting/scripts.
 RouteCache = b.RouteCache
 build_route_cache = b.build_route_cache
 load_waypoint_xy = b.load_waypoint_xy
@@ -55,8 +56,8 @@ def _tensor_scalar(value, device):
     return torch.as_tensor([[float(value)]], dtype=torch.float32, device=device)
 
 
-def _wrap_angle_tensor(angle):
-    return torch.atan2(torch.sin(angle), torch.cos(angle))
+def _wrap_angle_np(angle):
+    return float(math.atan2(math.sin(float(angle)), math.cos(float(angle))))
 
 
 def planned_route_start(route_name, origin_lat, origin_lon):
@@ -73,9 +74,9 @@ def planned_route_start(route_name, origin_lat, origin_lon):
 class XYKalman:
     """Standard linear Kalman filter in [x, y, vx, vy].
 
-    The motion prior position is supplied by the architecture as
-    X_pre(t)=X_(t-1)+Delta_(t-1).  This class does not clip motion, innovation,
-    velocity, posterior correction, or the final step.
+    The architecture supplies X_pre(t)=X_(t-1)+Delta_(t-1). No motion,
+    innovation, posterior-correction, speed, acceleration, or turn clamp is
+    applied here.
     """
 
     def __init__(self, initial_xy):
@@ -101,7 +102,8 @@ class XYKalman:
             dtype=np.float64,
         )
         self.H = np.asarray(
-            [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]], dtype=np.float64
+            [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]],
+            dtype=np.float64,
         )
         self.Q = np.diag(
             [
@@ -140,12 +142,12 @@ class XYKalman:
 
 
 def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad):
-    """MS #1: score only the forward 3x6 half of a local 6x6 gallery."""
+    """MS #1: score the forward 18 candidates of a regular local 6x6 grid."""
 
     grid_size = int(config.MS1_BASE_GRID_SIZE)
     keep_count = int(config.MS1_CANDIDATE_COUNT)
     if grid_size != 6 or keep_count != 18:
-        raise RuntimeError("MS#1 architecture requires forward 3x6 from a 6x6 grid")
+        raise RuntimeError("MS#1 requires the forward 3x6 half of a 6x6 grid")
 
     headings = torch.as_tensor(
         heading_rad, dtype=center_xy.dtype, device=center_xy.device
@@ -180,7 +182,6 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad):
     selected_forward = torch.gather(forward_projection, 1, selected_local)
     selected_cross = torch.gather(cross_projection, 1, selected_local)
 
-    # Deterministic ordering only; it does not remove/add candidates.
     ordering_key = -selected_forward * 1000.0 + selected_cross
     order = torch.argsort(ordering_key, dim=1)
     selected_indices = torch.gather(selected_indices, 1, order)
@@ -228,13 +229,12 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad):
 @torch.no_grad()
 def ms1_forward_search(visual, uav_clip, prior_xy, heading_rad, device):
     center = _tensor_xy(prior_xy, device)
-    candidate = forward_3x6_candidate_batch(
+    return forward_3x6_candidate_batch(
         visual=visual,
         uav_clip=uav_clip,
         center_xy=center,
         heading_rad=_tensor_scalar(heading_rad, device).reshape(-1),
     )
-    return candidate
 
 
 @torch.no_grad()
@@ -248,10 +248,19 @@ def ms2_center_search(visual, uav_clip, kalman_xy, device):
 
 
 def motion_targets_from_xy(xy, fallback_heading=0.0):
-    """Derive v/a/theta supervision from position labels only.
+    """Derive internally consistent v/a/theta supervision from positions.
 
-    Target at frame t predicts motion from t -> t+1.  This is training-label
-    construction; none of these targets is used by inference.
+    Let d_t = ||p_(t+1)-p_t|| and d_(t-1) be the previous interval distance.
+    We supervise:
+        v_t = 0.5 * (d_(t-1) + d_t)
+        a_t = d_t - d_(t-1)
+    therefore:
+        v_t + 0.5*a_t = d_t
+    exactly, matching the polynomial used by the model.
+
+    The first sample uses d_(t-1)=d_t, hence a_0=0. The first temporal sample
+    is warm-up-only during training because native and stride-2 sequences have
+    the same first visual input but different future interval lengths.
     """
 
     xy = np.asarray(xy, dtype=np.float64).reshape(-1, 2)
@@ -261,33 +270,51 @@ def motion_targets_from_xy(xy, fallback_heading=0.0):
         delta[:-1] = xy[1:] - xy[:-1]
         delta[-1] = delta[-2]
 
-    speed = np.linalg.norm(delta, axis=1)
-    acceleration = np.zeros(n, dtype=np.float64)
+    distance = np.linalg.norm(delta, axis=1)
+    previous_distance = distance.copy()
     if n > 1:
-        acceleration[1:] = speed[1:] - speed[:-1]
+        previous_distance[1:] = distance[:-1]
+        previous_distance[0] = distance[0]
+
+    speed = 0.5 * (previous_distance + distance)
+    acceleration = distance - previous_distance
 
     heading = np.zeros(n, dtype=np.float64)
+    heading_delta = np.zeros(n, dtype=np.float64)
     last_heading = float(fallback_heading)
     for i in range(n):
-        if float(np.linalg.norm(delta[i])) > 1e-8:
-            last_heading = float(math.atan2(delta[i, 1], delta[i, 0]))
-        heading[i] = last_heading
+        if float(distance[i]) > 1e-8:
+            current_heading = float(math.atan2(delta[i, 1], delta[i, 0]))
+        else:
+            current_heading = last_heading
+        heading[i] = current_heading
+        heading_delta[i] = _wrap_angle_np(current_heading - last_heading)
+        last_heading = current_heading
+
+    polynomial_distance = speed + 0.5 * acceleration
+    if n > 1 and not np.allclose(
+        polynomial_distance[:-1], distance[:-1], rtol=1e-6, atol=1e-6
+    ):
+        raise RuntimeError("internal motion-target consistency check failed")
 
     return {
         "delta_xy": delta,
+        "distance": distance,
         "speed": speed,
         "acceleration": acceleration,
         "heading": heading,
+        "heading_delta": heading_delta,
     }
 
 
-def temporal_loss(output, target, final_xy, next_reference_xy, device):
+def temporal_loss(output, target, device):
+    """Motion supervision only; never force Delta to repair localization error."""
+
     target_delta = _tensor_xy(target["delta_xy"], device)
     target_speed = _tensor_scalar(target["speed"], device)
     target_accel = _tensor_scalar(target["acceleration"], device)
     target_heading = _tensor_scalar(target["heading"], device)
-    next_reference = _tensor_xy(next_reference_xy, device)
-    final_xy_t = _tensor_xy(final_xy, device)
+    target_heading_delta = _tensor_scalar(target["heading_delta"], device)
 
     delta_loss = F.smooth_l1_loss(output.delta_xy, target_delta)
     speed_loss = F.smooth_l1_loss(output.speed_m_per_frame, target_speed)
@@ -297,23 +324,23 @@ def temporal_loss(output, target, final_xy, next_reference_xy, device):
     heading_loss = (
         1.0 - torch.cos(output.heading_rad - target_heading)
     ).mean()
-    next_prior_loss = F.smooth_l1_loss(
-        final_xy_t.detach() + output.delta_xy, next_reference
-    )
+    heading_delta_loss = (
+        1.0 - torch.cos(output.heading_delta_rad - target_heading_delta)
+    ).mean()
 
     total = (
         float(config.LOSS_DELTA) * delta_loss
         + float(config.LOSS_SPEED) * speed_loss
         + float(config.LOSS_ACCELERATION) * acceleration_loss
         + float(config.LOSS_HEADING) * heading_loss
-        + float(config.LOSS_NEXT_PRIOR) * next_prior_loss
+        + float(config.LOSS_HEADING_DELTA) * heading_delta_loss
     )
     return total, {
         "delta": float(delta_loss.detach().cpu()),
         "speed": float(speed_loss.detach().cpu()),
         "acceleration": float(acceleration_loss.detach().cpu()),
         "heading": float(heading_loss.detach().cpu()),
-        "next_prior": float(next_prior_loss.detach().cpu()),
+        "heading_delta": float(heading_delta_loss.detach().cpu()),
     }
 
 
@@ -335,12 +362,11 @@ def _initial_temporal_state(route_name, visual, device):
 
 
 def _forward_frame(model, visual, uav_clip, state, device):
-    """Run one frame without accessing any reference/GT position."""
+    """Run one frame without accessing the current reference coordinate."""
 
     prior_xy_np = np.asarray(state["prior_xy"], dtype=np.float64).reshape(2)
     heading_value = float(state["previous_heading"][0, 0].detach().cpu())
 
-    # MS #1: prior-centered forward 3x6.
     ms1 = ms1_forward_search(
         visual=visual,
         uav_clip=uav_clip,
@@ -350,7 +376,6 @@ def _forward_frame(model, visual, uav_clip, state, device):
     )
     ms1_xy = ms1.softms_xy
 
-    # Kalman and GRU are parallel children of MS #1.
     state["kalman"].predict_from_prior(
         prior_xy_np,
         state["previous_delta_xy"][0].detach().cpu().numpy(),
@@ -370,7 +395,6 @@ def _forward_frame(model, visual, uav_clip, state, device):
         hidden=state["hidden"],
     )
 
-    # MS #2: final visual refinement around X'_t using the complete 6x6.
     ms2 = ms2_center_search(
         visual=visual,
         uav_clip=uav_clip,
@@ -394,6 +418,7 @@ def _advance_state(state, frame):
     output = frame["output"]
     final_xy = frame["final_xy"]
     delta_xy = output.delta_xy
+
     state["prior_xy"] = (
         final_xy + delta_xy[0].detach().cpu().numpy().astype(np.float64)
     )
@@ -433,6 +458,22 @@ def _slice_cache(cache, indices, route_name):
     )
 
 
+def _sequence_target_stats(cache, fallback_heading):
+    targets = motion_targets_from_xy(
+        cache.gt_xy.detach().cpu().numpy(), fallback_heading=fallback_heading
+    )
+    distance = targets["distance"][:-1]
+    acceleration = targets["acceleration"][:-1]
+    return {
+        "mean_step": float(np.mean(distance)) if len(distance) else 0.0,
+        "median_step": float(np.median(distance)) if len(distance) else 0.0,
+        "p90_step": float(np.quantile(distance, 0.90)) if len(distance) else 0.0,
+        "mean_abs_accel": (
+            float(np.mean(np.abs(acceleration))) if len(acceleration) else 0.0
+        ),
+    }
+
+
 def _training_sequence_loss(
     model,
     optimizer,
@@ -441,28 +482,36 @@ def _training_sequence_loss(
     route_name,
     device,
 ):
-    if len(cache) < 2:
+    if len(cache) < 3:
         return float("nan")
 
+    base_route = route_name.split("_stride")[0]
     _, _, initial_heading = planned_route_start(
-        route_name.split("_stride")[0],
+        base_route,
         visual.origin_lat,
         visual.origin_lon,
     )
     targets = motion_targets_from_xy(
         cache.gt_xy.detach().cpu().numpy(), fallback_heading=initial_heading
     )
-    state = _initial_temporal_state(
-        route_name.split("_stride")[0], visual, device
-    )
+    state = _initial_temporal_state(base_route, visual, device)
 
     optimizer.zero_grad(set_to_none=True)
+
+    # Frame 0 only warms up the temporal state. Native and stride-2 sequences
+    # have the same frame-0 observation but different future spacing, so
+    # supervising both at frame 0 would give the same input conflicting labels.
+    with torch.no_grad():
+        warmup_clip = cache.uav_clip[0:1].to(device).float()
+        warmup_frame = _forward_frame(model, visual, warmup_clip, state, device)
+        _advance_state(state, warmup_frame)
+        _detach_state(state)
+
     chunk_loss = None
     chunk_count = 0
     losses = []
 
-    # Last frame has no new next-frame label; it is still used during evaluation.
-    for index in range(len(cache) - 1):
+    for index in range(1, len(cache) - 1):
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
         frame = _forward_frame(model, visual, uav_clip, state, device)
 
@@ -471,17 +520,12 @@ def _training_sequence_loss(
             "speed": targets["speed"][index],
             "acceleration": targets["acceleration"][index],
             "heading": targets["heading"][index],
+            "heading_delta": targets["heading_delta"][index],
         }
-        loss, _ = temporal_loss(
-            frame["output"],
-            target,
-            frame["final_xy"],
-            cache.gt_xy[index + 1].cpu().numpy(),
-            device,
-        )
+        loss, _ = temporal_loss(frame["output"], target, device)
+
         chunk_loss = loss if chunk_loss is None else chunk_loss + loss
         chunk_count += 1
-
         _advance_state(state, frame)
 
         is_last = index + 1 >= len(cache) - 1
@@ -512,7 +556,7 @@ def run_route_inference(
     save_csv=True,
     measure_latency=False,
 ):
-    """Autonomous rollout. References are touched only after final_xy exists."""
+    """Autonomous rollout; reference is read only after final_xy is produced."""
 
     model.eval()
     state = _initial_temporal_state(route_name, visual, device)
@@ -523,6 +567,7 @@ def run_route_inference(
 
     for index in range(len(cache)):
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
+
         if measure_latency and device.type == "cuda":
             torch.cuda.synchronize(device)
         t0 = time.perf_counter()
@@ -535,8 +580,7 @@ def run_route_inference(
         if measure_latency:
             timing_ms.append(elapsed_ms)
 
-        # IMPORTANT: reference_xy is first read only here, after this frame's
-        # final prediction has already been produced.
+        # Current-frame reference is first read here, after final_xy exists.
         reference_xy = cache.gt_xy[index].cpu().numpy().astype(np.float64)
         final_xy = frame["final_xy"]
         error = float(np.linalg.norm(final_xy - reference_xy))
@@ -566,6 +610,9 @@ def run_route_inference(
                 ),
                 "pred_heading_deg": float(
                     math.degrees(float(output.heading_rad[0, 0]))
+                ),
+                "pred_heading_delta_deg": float(
+                    math.degrees(float(output.heading_delta_rad[0, 0]))
                 ),
                 "delta_x": float(output.delta_xy[0, 0]),
                 "delta_y": float(output.delta_xy[0, 1]),
@@ -609,7 +656,7 @@ def run_route_inference(
             "warmup_frames": int(min(warmup, len(timing_ms))),
         }
 
-    if save_csv:
+    if save_csv and rows:
         config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         csv_path = (
             config.OUTPUT_DIR
@@ -684,10 +731,51 @@ def train_temporal_multirate(
 
     config.CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
+    _, _, a_initial_heading = planned_route_start(
+        "route_A", visual.origin_lat, visual.origin_lon
+    )
+    native_stats = _sequence_target_stats(route_a_cache, a_initial_heading)
+    stride_stats = _sequence_target_stats(stride_cache, a_initial_heading)
+
+    _, a_start, _ = planned_route_start(
+        "route_A", visual.origin_lat, visual.origin_lon
+    )
+    _, c_start, _ = planned_route_start(
+        "route_C", visual.origin_lat, visual.origin_lon
+    )
+    a_start_ref = route_a_cache.gt_xy[0].cpu().numpy().astype(np.float64)
+    c_start_ref = route_c_cache.gt_xy[0].cpu().numpy().astype(np.float64)
+
     print(
-        "Temporal training: Route-A native + Route-A stride-%d; "
-        "validation=Route-C; test Route-B is not used for checkpoint selection"
-        % stride,
+        "Temporal training v2: Route-A native + Route-A stride-%d; "
+        "validation=Route-C; Route-B remains untouched test" % stride,
+        flush=True,
+    )
+    print(
+        "target step: A mean=%.3fm median=%.3fm p90=%.3fm | "
+        "A_stride%d mean=%.3fm median=%.3fm p90=%.3fm"
+        % (
+            native_stats["mean_step"],
+            native_stats["median_step"],
+            native_stats["p90_step"],
+            stride,
+            stride_stats["mean_step"],
+            stride_stats["median_step"],
+            stride_stats["p90_step"],
+        ),
+        flush=True,
+    )
+    print(
+        "planned-start alignment: A=%.3fm C=%.3fm"
+        % (
+            float(np.linalg.norm(a_start - a_start_ref)),
+            float(np.linalg.norm(c_start - c_start_ref)),
+        ),
+        flush=True,
+    )
+    print(
+        "training loss = delta + speed + acceleration + heading + heading_delta; "
+        "NO final_MS2-to-next-reference correction term",
         flush=True,
     )
 
@@ -700,9 +788,7 @@ def train_temporal_multirate(
             model, optimizer, visual, stride_cache, f"route_A_stride{stride}", device
         )
 
-        val = evaluate_route(
-            "route_C", visual, model, route_c_cache, device
-        )
+        val = evaluate_route("route_C", visual, model, route_c_cache, device)
         score = float(val["MLE_m"])
         improved = score < best_score - float(config.EARLY_STOP_MIN_DELTA)
 
@@ -724,6 +810,10 @@ def train_temporal_multirate(
                     "reference_usage": (
                         "training targets and post-prediction metrics only; "
                         "no GT-centered runtime search or motion caps"
+                    ),
+                    "training_fix": (
+                        "kinematic-consistent targets; first-frame warm-up; "
+                        "no absolute localization-error correction in Delta loss"
                     ),
                 },
                 config.TEMPORAL_CHECKPOINT,
@@ -835,8 +925,10 @@ def eval_pipeline(args, device):
             measure_latency=bool(args.measure_latency),
         )
         results["results"][route_name] = summary
-        role = "validation" if route_name == "route_C" else (
-            "test" if route_name == "route_B" else "evaluation"
+        role = (
+            "validation"
+            if route_name == "route_C"
+            else ("test" if route_name == "route_B" else "evaluation")
         )
         print(
             f"{route_name} ({role}): MLE={summary['MLE_m']:.3f}m "
@@ -871,7 +963,7 @@ def parse_args():
         "--extra-stride",
         type=int,
         default=int(config.TEMPORAL_EXTRA_A_STRIDE),
-        help="Route-A subsampling stride; stride=2 is the requested 2x-speed sequence",
+        help="Route-A subsampling stride; stride=2 is the 2x-motion sequence",
     )
     parser.add_argument(
         "--patience", type=int, default=int(config.EARLY_STOP_PATIENCE)
@@ -908,7 +1000,7 @@ def main():
         flush=True,
     )
     print(
-        "Runtime GT/reference use: NONE before final prediction; "
+        "Runtime reference use: NONE before final prediction; "
         "no manual speed/accel/turn/Kalman correction caps.",
         flush=True,
     )
