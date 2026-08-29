@@ -2,11 +2,23 @@
 
 import importlib.util
 import os
+import sys
 from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
 PARENT = HERE.parent
+
+# Standalone tools in exp_bearinguav_data (for example plot_bearinguav_route.py)
+# are commonly launched while the working directory is this subdirectory.  In
+# that case Python sees this local config.py first, but the parent v36 config.py
+# cannot resolve sibling modules such as config_base unless v36_byTeacher itself
+# is on sys.path.  Add it before executing the parent config so both direct
+# plotting and run_train.sh use the same import behavior.
+parent_str = str(PARENT)
+if parent_str not in sys.path:
+    sys.path.insert(0, parent_str)
+
 spec = importlib.util.spec_from_file_location("_original_v36_config", PARENT / "config.py")
 original = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(original)
