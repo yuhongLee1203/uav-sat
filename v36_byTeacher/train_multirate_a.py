@@ -28,6 +28,31 @@ import robust_tracker as rt
 from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_only
 
 
+# robust_tracker still contains two historical v4 status strings. Override the
+# module-global print name so runtime output matches the actual v6 configuration
+# without touching epoch/result lines.
+_builtin_print = print
+
+
+def _tracker_print(*args, **kwargs):
+    if args and isinstance(args[0], str):
+        text = args[0]
+        if text.startswith("Temporal training v4:"):
+            text = text.replace("Temporal training v4:", "Temporal training v6:", 1)
+        elif text.startswith("MS1 v4 = center-adjacent forward 3x6"):
+            text = (
+                "MS1 v6 = STRICT FORWARD HALF 3x6; "
+                "Kalman positional prior = previous final; "
+                "GRU baseline = previous polynomial Delta; "
+                "frame0 = temporal warm-up"
+            )
+        args = (text,) + args[1:]
+    _builtin_print(*args, **kwargs)
+
+
+rt.print = _tracker_print
+
+
 def _strict_forward_half_3x6(full_centers, center_xy, heading_rad):
     """Select the true forward HALF of the regular 6x6 lattice.
 
