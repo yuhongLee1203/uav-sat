@@ -7,7 +7,7 @@ Validation:
 Test:
   * Route-B only after checkpoint selection.
 
-Controlled protocol used in v7
+Controlled protocol used in v8
 ------------------------------
 Each frame's predefined route reference point is used ONLY as the coarse center
 that opens MS1's local candidate window. It is not sent to Kalman as a
@@ -16,13 +16,17 @@ to the final output.
 
 Spatial roles remain fixed:
   * reference point -> open MS1 strict forward 3x6 (18 visual candidates)
-  * MS1 visual position -> Kalman measurement and GRU evidence in parallel
+  * MS1 visual position -> Kalman measurement and compact motion-GRU evidence
   * Kalman -> NEW full 6x6 centered MS2 search
   * MS2 -> final localization position
 
-The autonomous previous-final + polynomial prior is still maintained internally
-for the GRU temporal state, but it no longer decides where MS1 is opened in this
-controlled v7 protocol.
+Compact GRU v8 input:
+  * MS1 visual XY -> 128-d
+  * temporal visual mean -> 128-d
+  * first visual difference -> 128-d
+  * previous motion [speed, acceleration, sin heading, cos heading] -> 128-d
+  * concatenate to 512-d GRU input
+  * previous hidden state is separate 256-d GRUCell state
 """
 
 import argparse
@@ -36,24 +40,24 @@ from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_onl
 
 
 # -----------------------------------------------------------------------------
-# Isolate the controlled reference-assisted experiment from autonomous v6.
+# Isolate the controlled reference-assisted v8 experiment.
 # -----------------------------------------------------------------------------
 _REFERENCE_PROTOCOL = (
     "V36_byTeacher_ReferencePrior_MS1StrictForwardHalf3x6_KalmanPrevFinal_"
-    "GRUPrevDeltaBaselinePolynomial_MS2CenteredFull6x6_v7_nativeA"
+    "CompactGRU_MSXY_TemporalMean_FirstDiff_PrevMotion_MS2Centered6x6_v8_nativeA"
 )
 config.ARCHITECTURE_NAME = _REFERENCE_PROTOCOL
 rt.ARCHITECTURE_NAME = _REFERENCE_PROTOCOL
 config.OUTPUT_DIR = (
-    config.BACKBONE_OUTPUT_DIR / "reference_prior_ms1_kf_gru_ms2_v7_nativeA"
+    config.BACKBONE_OUTPUT_DIR / "reference_prior_compact_gru_v8_nativeA"
 )
 config.TEMPORAL_CHECKPOINT = (
     config.CHECKPOINT_DIR
-    / f"reference_prior_motion_gru_A_native_v7_{config.BACKBONE_KEY}.pt"
+    / f"reference_prior_compact_gru_A_native_v8_{config.BACKBONE_KEY}.pt"
 )
 config.LATEST_TEMPORAL_CHECKPOINT = (
     config.CHECKPOINT_DIR
-    / f"reference_prior_motion_gru_A_native_v7_{config.BACKBONE_KEY}_latest.pt"
+    / f"reference_prior_compact_gru_A_native_v8_{config.BACKBONE_KEY}_latest.pt"
 )
 
 # Route-name -> Nx2 metric reference coordinates. Populated only after each
@@ -148,7 +152,7 @@ rt._initial_temporal_state = _reference_initial_temporal_state
 
 
 def _reference_assisted_forward_frame(model, visual, uav_clip, state, device):
-    """Use the frame reference only to open MS1; keep estimator state independent."""
+    """Use frame reference only to open MS1; estimator remains independent."""
 
     route_name = str(state.get("reference_route_name", ""))
     reference_index = int(state.get("reference_index", 0))
@@ -338,7 +342,7 @@ def _evaluate_route_with_candidate_diagnostics(route_name, visual, model, cache,
     )
 
     print(
-        "Cdiag-v7: "
+        "Cdiag-v8: "
         f"refPrior={summary['Prior_MLE_m']:.2f}m "
         f"autoPrior={summary['AutonomousPrior_MLE_m']:.2f}m | "
         f"MS1oracle={summary['MS1_OracleMin_MLE_m']:.2f}m "
@@ -470,13 +474,15 @@ def main():
     visual = ensure_visual(device, args)
 
     print("=" * 96, flush=True)
-    print("CONTROLLED v7: corresponding route reference point opens MS1 local window", flush=True)
+    print("CONTROLLED v8: corresponding route reference point opens MS1 local window", flush=True)
     print("Reference point is NOT Kalman measurement, GRU input, MS2 center, or final output", flush=True)
     print("Temporal training: Route-A ORIGINAL SPEED ONLY", flush=True)
     print("Route-C validation; Route-B final untouched test", flush=True)
     print("MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior", flush=True)
     print("Kalman = previous final state + MS1 visual measurement", flush=True)
-    print("GRU = visual/temporal state with previous-Delta motion baseline; no reference input", flush=True)
+    print("GRU v8 input = MS1 XY(2->128) + temporal mean(512->128) + first diff(512->128) + previous motion(4->128)", flush=True)
+    print("GRUCell = concatenated 512-d input + separate previous hidden 256-d", flush=True)
+    print("GRU output = speed + acceleration + heading change; polynomial only then forms Delta XY", flush=True)
     print("MS2 = NEW CENTERED FULL 6x6 around Kalman output", flush=True)
     print("=" * 96, flush=True)
 
