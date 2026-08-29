@@ -1,4 +1,4 @@
-"""Train/evaluate v36_byTeacher using only native-speed Route A.
+"""Train/evaluate v36_byTeacher with a controlled reference-assisted local prior.
 
 Training:
   * Route-A at the recorded/original temporal rate only.
@@ -7,15 +7,22 @@ Validation:
 Test:
   * Route-B only after checkpoint selection.
 
-Spatial roles are fixed and must not be mixed:
-  * MS1 searches ONLY the strict forward half (3x6=18) of the predicted 6x6.
-  * Kalman fuses the MS1 position measurement with its prior state.
-  * MS2 opens a NEW full 6x6 CENTERED on the Kalman result.
+Controlled protocol used in v7
+------------------------------
+Each frame's predefined route reference point is used ONLY as the coarse center
+that opens MS1's local candidate window. It is not sent to Kalman as a
+measurement, not sent to the GRU, not used as the MS2 center, and never copied
+to the final output.
 
-This entry point also adds validation-only oracle diagnostics.  Reference
-positions are read only AFTER each complete frame prediction, and are used only
-to answer whether the correct position was geometrically present in the MS1/MS2
-candidate support.  They never alter a search center or estimator state.
+Spatial roles remain fixed:
+  * reference point -> open MS1 strict forward 3x6 (18 visual candidates)
+  * MS1 visual position -> Kalman measurement and GRU evidence in parallel
+  * Kalman -> NEW full 6x6 centered MS2 search
+  * MS2 -> final localization position
+
+The autonomous previous-final + polynomial prior is still maintained internally
+for the GRU temporal state, but it no longer decides where MS1 is opened in this
+controlled v7 protocol.
 """
 
 import argparse
@@ -28,21 +35,40 @@ import robust_tracker as rt
 from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_only
 
 
+# -----------------------------------------------------------------------------
+# Isolate the controlled reference-assisted experiment from autonomous v6.
+# -----------------------------------------------------------------------------
+_REFERENCE_PROTOCOL = (
+    "V36_byTeacher_ReferencePrior_MS1StrictForwardHalf3x6_KalmanPrevFinal_"
+    "GRUPrevDeltaBaselinePolynomial_MS2CenteredFull6x6_v7_nativeA"
+)
+config.ARCHITECTURE_NAME = _REFERENCE_PROTOCOL
+rt.ARCHITECTURE_NAME = _REFERENCE_PROTOCOL
+config.OUTPUT_DIR = (
+    config.BACKBONE_OUTPUT_DIR / "reference_prior_ms1_kf_gru_ms2_v7_nativeA"
+)
+config.TEMPORAL_CHECKPOINT = (
+    config.CHECKPOINT_DIR
+    / f"reference_prior_motion_gru_A_native_v7_{config.BACKBONE_KEY}.pt"
+)
+config.LATEST_TEMPORAL_CHECKPOINT = (
+    config.CHECKPOINT_DIR
+    / f"reference_prior_motion_gru_A_native_v7_{config.BACKBONE_KEY}_latest.pt"
+)
+
+# Route-name -> Nx2 metric reference coordinates. Populated only after each
+# route cache has been built by the normal dataset pipeline.
+_REFERENCE_PRIORS = {}
+
+
+def _install_reference_priors(route_name, cache):
+    _REFERENCE_PRIORS[str(route_name)] = (
+        cache.gt_xy.detach().cpu().numpy().astype(np.float64).copy()
+    )
+
+
 def _strict_forward_half_3x6(full_centers, center_xy, heading_rad):
-    """Select the true forward HALF of the regular 6x6 lattice.
-
-    Six is even, so the geometric center lies between the two middle lattice
-    rows/columns.  The dominant heading axis therefore splits the predicted
-    6x6 into an exact rear 3x6 half and forward 3x6 half:
-
-      east  -> right  three columns
-      west  -> left   three columns
-      north -> positive-Y three rows
-      south -> negative-Y three rows
-
-    MS1 is intentionally NOT a centered search.  MS2 is the only full centered
-    6x6 search, and it is created after Kalman fusion.
-    """
+    """Select the true forward HALF of the regular 6x6 lattice."""
 
     del center_xy
 
@@ -101,8 +127,112 @@ def _strict_forward_half_3x6(full_centers, center_xy, heading_rad):
     return torch.gather(selected_local, 1, order)
 
 
-# forward_3x6_candidate_batch resolves this module-global function at call time.
+# MS1 stays strict forward-half 3x6.
 rt._nearest_forward_3x6 = _strict_forward_half_3x6
+
+
+# -----------------------------------------------------------------------------
+# Reference-assisted MS1 center.
+# -----------------------------------------------------------------------------
+_original_initial_temporal_state = rt._initial_temporal_state
+
+
+def _reference_initial_temporal_state(route_name, visual, device):
+    state = _original_initial_temporal_state(route_name, visual, device)
+    state["reference_route_name"] = str(route_name)
+    state["reference_index"] = 0
+    return state
+
+
+rt._initial_temporal_state = _reference_initial_temporal_state
+
+
+def _reference_assisted_forward_frame(model, visual, uav_clip, state, device):
+    """Use the frame reference only to open MS1; keep estimator state independent."""
+
+    route_name = str(state.get("reference_route_name", ""))
+    reference_index = int(state.get("reference_index", 0))
+    if route_name not in _REFERENCE_PRIORS:
+        raise RuntimeError(
+            "reference prior sequence not installed for route %s" % route_name
+        )
+    reference_sequence = _REFERENCE_PRIORS[route_name]
+    if reference_index < 0 or reference_index >= len(reference_sequence):
+        raise RuntimeError(
+            "reference prior index out of range: route=%s index=%d n=%d"
+            % (route_name, reference_index, len(reference_sequence))
+        )
+
+    # Controlled coarse prior used ONLY by MS1 candidate construction.
+    reference_prior_xy = np.asarray(
+        reference_sequence[reference_index], dtype=np.float64
+    ).reshape(2)
+
+    # Autonomous temporal prior remains available to GRU so the reference point
+    # is not injected into the recurrent motion state.
+    autonomous_prior_xy = np.asarray(
+        state["prior_xy"], dtype=np.float64
+    ).reshape(2)
+    previous_final_xy = np.asarray(
+        state["previous_final_xy"], dtype=np.float64
+    ).reshape(2)
+    heading_value = float(state["previous_heading"][0, 0].detach().cpu())
+
+    ms1 = rt.ms1_forward_search(
+        visual=visual,
+        uav_clip=uav_clip,
+        prior_xy=reference_prior_xy,
+        heading_rad=heading_value,
+        device=device,
+    )
+    ms1_xy = ms1.softms_xy
+
+    state["kalman"].prepare(
+        previous_final_xy,
+        state["previous_delta_xy"][0].detach().cpu().numpy(),
+    )
+    kalman_xy = state["kalman"].update(
+        ms1_xy[0].detach().cpu().numpy()
+    )
+
+    output = model.forward_step(
+        z_uav=ms1.z_uav,
+        previous_z_uav=state["previous_z"],
+        ms1_xy=ms1_xy,
+        prior_xy=rt._tensor_xy(autonomous_prior_xy, device),
+        previous_ms1_xy=state["previous_ms1_xy"],
+        previous_delta_xy=state["previous_delta_xy"],
+        previous_speed=state["previous_speed"],
+        previous_acceleration=state["previous_acceleration"],
+        previous_heading_rad=state["previous_heading"],
+        hidden=state["hidden"],
+    )
+
+    ms2 = rt.ms2_center_search(
+        visual=visual,
+        uav_clip=uav_clip,
+        kalman_xy=kalman_xy,
+        device=device,
+    )
+    final_xy = ms2.softms_xy[0].detach().cpu().numpy().astype(np.float64)
+
+    state["reference_index"] = reference_index + 1
+
+    return {
+        # prior_xy now intentionally means the controlled MS1 coarse prior.
+        "prior_xy": reference_prior_xy,
+        "autonomous_prior_xy": autonomous_prior_xy,
+        "previous_final_xy": previous_final_xy,
+        "ms1": ms1,
+        "ms1_xy": ms1_xy,
+        "kalman_xy": kalman_xy,
+        "output": output,
+        "ms2": ms2,
+        "final_xy": final_xy,
+    }
+
+
+rt._forward_frame = _reference_assisted_forward_frame
 
 
 def _mean(values):
@@ -112,13 +242,14 @@ def _mean(values):
 
 @torch.no_grad()
 def _evaluate_route_with_candidate_diagnostics(route_name, visual, model, cache, device):
-    """Validation inference plus post-prediction candidate-support diagnostics."""
+    """Reference-assisted validation plus candidate-support diagnostics."""
 
     model.eval()
     state = rt._initial_temporal_state(route_name, visual, device)
 
     final_errors = []
     prior_errors = []
+    autonomous_prior_errors = []
     previous_final_errors = []
     ms1_errors = []
     kalman_errors = []
@@ -135,13 +266,14 @@ def _evaluate_route_with_candidate_diagnostics(route_name, visual, model, cache,
         uav_clip = cache.uav_clip[index : index + 1].to(device).float()
         frame = rt._forward_frame(model, visual, uav_clip, state, device)
 
-        # Reference is deliberately read only after the complete frame output
-        # (MS1 -> Kalman/GRU -> MS2 -> final) already exists.
         reference_xy = cache.gt_xy[index].cpu().numpy().astype(np.float64)
         final_xy = frame["final_xy"]
         ms1_xy = frame["ms1_xy"][0].detach().cpu().numpy().astype(np.float64)
 
         prior_error = float(np.linalg.norm(frame["prior_xy"] - reference_xy))
+        autonomous_prior_error = float(
+            np.linalg.norm(frame["autonomous_prior_xy"] - reference_xy)
+        )
         previous_final_error = float(
             np.linalg.norm(frame["previous_final_xy"] - reference_xy)
         )
@@ -151,11 +283,16 @@ def _evaluate_route_with_candidate_diagnostics(route_name, visual, model, cache,
 
         ms1_centers = frame["ms1"].centers[0].detach().cpu().numpy().astype(np.float64)
         ms2_centers = frame["ms2"].centers[0].detach().cpu().numpy().astype(np.float64)
-        ms1_min = float(np.linalg.norm(ms1_centers - reference_xy[None, :], axis=1).min())
-        ms2_min = float(np.linalg.norm(ms2_centers - reference_xy[None, :], axis=1).min())
+        ms1_min = float(
+            np.linalg.norm(ms1_centers - reference_xy[None, :], axis=1).min()
+        )
+        ms2_min = float(
+            np.linalg.norm(ms2_centers - reference_xy[None, :], axis=1).min()
+        )
 
         previous_final_errors.append(previous_final_error)
         prior_errors.append(prior_error)
+        autonomous_prior_errors.append(autonomous_prior_error)
         ms1_errors.append(ms1_error)
         kalman_errors.append(kalman_error)
         final_errors.append(final_error)
@@ -183,6 +320,7 @@ def _evaluate_route_with_candidate_diagnostics(route_name, visual, model, cache,
             "Route": route_name,
             "PreviousFinalToCurrentRef_MLE_m": _mean(previous_final_errors),
             "Prior_MLE_m": _mean(prior_errors),
+            "AutonomousPrior_MLE_m": _mean(autonomous_prior_errors),
             "MS1_MLE_m": _mean(ms1_errors),
             "Kalman_MLE_m": _mean(kalman_errors),
             "MS2_Final_MLE_m": _mean(final_errors),
@@ -190,16 +328,23 @@ def _evaluate_route_with_candidate_diagnostics(route_name, visual, model, cache,
             "FirstFinalErrorOver50mFrame": first_over_50,
             "MS1_OracleMin_MLE_m": _mean(ms1_oracle),
             "MS2_OracleMin_MLE_m": _mean(ms2_oracle),
-            "MS1_CandidateCapture_pct": float(np.mean(ms1_oracle_np <= capture_radius) * 100.0),
-            "MS2_CandidateCapture_pct": float(np.mean(ms2_oracle_np <= capture_radius) * 100.0),
+            "MS1_CandidateCapture_pct": float(
+                np.mean(ms1_oracle_np <= capture_radius) * 100.0
+            ),
+            "MS2_CandidateCapture_pct": float(
+                np.mean(ms2_oracle_np <= capture_radius) * 100.0
+            ),
             "FirstMS1CandidateMissFrame": first_ms1_miss,
             "FirstMS2CandidateMissFrame": first_ms2_miss,
             "CandidateCaptureRadius_m": capture_radius,
+            "ReferenceUsage": "current reference point selects MS1 local-window center only",
         }
     )
 
     print(
-        "Cdiag: "
+        "Cdiag-v7: "
+        f"refPrior={summary['Prior_MLE_m']:.2f}m "
+        f"autoPrior={summary['AutonomousPrior_MLE_m']:.2f}m | "
         f"MS1oracle={summary['MS1_OracleMin_MLE_m']:.2f}m "
         f"MS1cap={summary['MS1_CandidateCapture_pct']:.1f}% "
         f"MS1miss={summary['FirstMS1CandidateMissFrame']} | "
@@ -212,9 +357,6 @@ def _evaluate_route_with_candidate_diagnostics(route_name, visual, model, cache,
     return summary
 
 
-# train_temporal_route_a() looks up evaluate_route in the robust_tracker module
-# at runtime. Replace only validation evaluation; estimator/search logic remains
-# unchanged.
 rt.evaluate_route = _evaluate_route_with_candidate_diagnostics
 
 
@@ -264,6 +406,10 @@ def train_native_a(visual, device, args):
     route_c_cache = rt.build_route_cache(
         "route_C", config.ROUTE_ROOTS[c_index], visual, device
     )
+
+    _install_reference_priors("route_A", route_a_cache)
+    _install_reference_priors("route_C", route_c_cache)
+
     return rt.train_temporal_route_a(
         visual=visual,
         route_a_cache=route_a_cache,
@@ -282,6 +428,8 @@ def evaluate_c_and_b(visual, device, args):
         cache = rt.build_route_cache(
             route_name, config.ROUTE_ROOTS[route_index], visual, device
         )
+        _install_reference_priors(route_name, cache)
+
         summary = rt.run_route_inference(
             route_name,
             visual,
@@ -293,8 +441,8 @@ def evaluate_c_and_b(visual, device, args):
         )
         role = "validation" if route_name == "route_C" else "test"
         print(
-            f"{route_name} ({role}): "
-            f"prior={summary['Prior_MLE_m']:.3f}m "
+            f"{route_name} ({role}, reference-assisted): "
+            f"refPrior={summary['Prior_MLE_m']:.3f}m "
             f"MS1={summary['MS1_MLE_m']:.3f}m "
             f"KF={summary['Kalman_MLE_m']:.3f}m "
             f"MS2/final={summary['MLE_m']:.3f}m "
@@ -311,13 +459,14 @@ def main():
     visual = ensure_visual(device, args)
 
     print("=" * 96, flush=True)
+    print("CONTROLLED v7: corresponding route reference point opens MS1 local window", flush=True)
+    print("Reference point is NOT Kalman measurement, GRU input, MS2 center, or final output", flush=True)
     print("Temporal training: Route-A ORIGINAL SPEED ONLY", flush=True)
     print("Route-C validation; Route-B final untouched test", flush=True)
-    print("MS1 = STRICT FORWARD HALF 3x6 from predicted position", flush=True)
-    print("Kalman = fuse prior state + MS1 measurement", flush=True)
+    print("MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior", flush=True)
+    print("Kalman = previous final state + MS1 visual measurement", flush=True)
+    print("GRU = visual/temporal state with previous-Delta motion baseline; no reference input", flush=True)
     print("MS2 = NEW CENTERED FULL 6x6 around Kalman output", flush=True)
-    print("GRU v6 = bootstrap from MS1 once, then previous-Delta motion baseline", flush=True)
-    print("Cdiag = post-prediction candidate oracle/capture diagnostics only", flush=True)
     print("=" * 96, flush=True)
 
     if args.mode in ("train", "all"):
