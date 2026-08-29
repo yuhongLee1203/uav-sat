@@ -7,7 +7,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 # Experiment identity
 # ---------------------------------------------------------------------------
-BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobilenet_v3_small").strip().lower()
+# Keep the existing v36 default backbone.  The architecture rewrite changes the
+# temporal/localization flow, not the visual backbone; an environment variable
+# can still select one of the existing ablation backbones.
+BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobileclip2_s2").strip().lower()
 if BACKBONE_KEY not in BACKBONE_SPECS:
     raise ValueError(
         "UAVSAT_BACKBONE must be one of %s; got %r"
@@ -87,7 +90,8 @@ MEANSHIFT_MODE_BETA = float(
 # ---------------------------------------------------------------------------
 # GRU inputs/outputs
 # ---------------------------------------------------------------------------
-# Numeric input = MS1 offset(2) + MS1 temporal displacement(2)
+# Numeric input = MS1 offset from previous final(2)
+#               + MS1 temporal displacement(2)
 #               + previous predicted velocity XY(2)
 #               + previous predicted acceleration XY(2)
 #               + cos/sin(previous predicted heading)(2)
