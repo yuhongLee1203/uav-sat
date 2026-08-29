@@ -206,32 +206,29 @@ def _wrap_angle_tensor(angle):
     )
 
 
-def _inverse_softplus(value):
-    value = value.clamp_min(1e-4)
-    return value + torch.log(-torch.expm1(-value))
-
-
 class AutonomousMotionGRU(nn.Module):
-    """GRU motion model with a stable previous-polynomial motion baseline.
+    """GRU that predicts motion state/change, never absolute position.
 
-    Runtime geometry remains:
-        prior_xy = previous_final_xy + previous_delta_xy
+    v8 recurrent input contains only four feature groups:
+      1) current MS1 visual localization coordinate (x, y),
+      2) temporal visual mean of z_t and z_(t-1),
+      3) first visual difference z_t - z_(t-1),
+      4) previous motion information: speed, acceleration,
+         sin(heading), cos(heading).
 
-    Current MS1 still enters the GRU as visual/numeric evidence, but because
-    MS1 is intentionally restricted to the forward 3x6 support, its displacement
-    from the previous final position is NOT allowed to redefine the motion
-    baseline on every frame. Doing so creates positive feedback:
+    Previous hidden state is supplied directly to GRUCell as h_(t-1); it is not
+    concatenated to the input vector and does not pass through an MLP.
 
-        forward-only MS1 bias -> larger Delta -> farther next prior ->
-        farther forward-only MS1 -> still larger Delta.
+    Explicitly removed from the recurrent input:
+      * observed_step = MS1(t) - final(t-1),
+      * previous_delta_xy,
+      * MS1(t) - MS1(t-1),
+      * MS uncertainty,
+      * reference-point coordinates.
 
-    v6 therefore uses the previous polynomial displacement as a constant-velocity
-    baseline after motion has been initialized. MS1-derived displacement is used
-    only as the bootstrap when no previous displacement exists, and thereafter
-    remains an input that the recurrent network may use to learn corrections.
-
-    No reference coordinate, MS uncertainty, speed cap, acceleration cap, turn
-    cap, displacement cap, or reference-dependent runtime rule is used.
+    The GRU predicts speed/acceleration and a heading change. A second-order
+    polynomial converts those motion outputs into Delta_xy outside the GRU role;
+    the GRU itself does not predict an absolute localization position.
     """
 
     def __init__(self):
@@ -240,31 +237,29 @@ class AutonomousMotionGRU(nn.Module):
         hidden_dim = int(config.RNN_HIDDEN_DIM)
         dropout = float(config.RNN_DROPOUT)
 
-        def projection(in_dim):
+        def visual_projection(in_dim):
             return nn.Sequential(
                 nn.Linear(in_dim, feature_dim),
                 nn.GELU(),
                 nn.LayerNorm(feature_dim),
             )
 
-        self.visual_mean_projection = projection(
-            config.EMBED_DIM
-        )
-        self.visual_delta_projection = projection(
-            config.EMBED_DIM
-        )
-        self.numeric_projection = nn.Sequential(
-            nn.Linear(
-                int(config.RNN_NUMERIC_DIM),
-                feature_dim,
-            ),
-            nn.GELU(),
-            nn.Linear(feature_dim, feature_dim),
-            nn.GELU(),
-            nn.LayerNorm(feature_dim),
-        )
+        def low_dim_projection(in_dim):
+            return nn.Sequential(
+                nn.Linear(in_dim, feature_dim),
+                nn.GELU(),
+                nn.Linear(feature_dim, feature_dim),
+                nn.GELU(),
+                nn.LayerNorm(feature_dim),
+            )
+
+        self.ms_xy_projection = low_dim_projection(2)
+        self.visual_mean_projection = visual_projection(config.EMBED_DIM)
+        self.visual_first_difference_projection = visual_projection(config.EMBED_DIM)
+        self.previous_motion_projection = low_dim_projection(4)
+
         self.gru = nn.GRUCell(
-            feature_dim * 3,
+            feature_dim * 4,
             hidden_dim,
         )
         self.dropout = nn.Dropout(dropout)
@@ -282,18 +277,10 @@ class AutonomousMotionGRU(nn.Module):
             nn.Linear(hidden_dim // 2, 1),
         )
 
-        nn.init.zeros_(
-            self.motion_head[-1].weight
-        )
-        nn.init.zeros_(
-            self.motion_head[-1].bias
-        )
-        nn.init.zeros_(
-            self.heading_head[-1].weight
-        )
-        nn.init.zeros_(
-            self.heading_head[-1].bias
-        )
+        nn.init.zeros_(self.motion_head[-1].weight)
+        nn.init.zeros_(self.motion_head[-1].bias)
+        nn.init.zeros_(self.heading_head[-1].weight)
+        nn.init.zeros_(self.heading_head[-1].bias)
 
     def initial_hidden(
         self,
@@ -313,14 +300,19 @@ class AutonomousMotionGRU(nn.Module):
         z_uav,
         previous_z_uav,
         ms1_xy,
-        prior_xy,
-        previous_ms1_xy,
-        previous_delta_xy,
-        previous_speed,
-        previous_acceleration,
-        previous_heading_rad,
+        prior_xy=None,
+        previous_ms1_xy=None,
+        previous_delta_xy=None,
+        previous_speed=None,
+        previous_acceleration=None,
+        previous_heading_rad=None,
         hidden: Optional[torch.Tensor] = None,
     ):
+        # These arguments remain in the call signature only so existing tracker
+        # code stays checkpoint/API compatible. They are intentionally NOT GRU
+        # inputs in v8.
+        del prior_xy, previous_ms1_xy, previous_delta_xy
+
         if hidden is None:
             hidden = self.initial_hidden(
                 z_uav.shape[0],
@@ -329,136 +321,68 @@ class AutonomousMotionGRU(nn.Module):
             )
         if previous_z_uav is None:
             previous_z_uav = z_uav
-
-        visual_mean = 0.5 * (
-            z_uav + previous_z_uav
-        )
-        visual_delta = (
-            z_uav - previous_z_uav
-        )
-
-        previous_final_xy = (
-            prior_xy - previous_delta_xy
-        )
-        observed_step = (
-            ms1_xy - previous_final_xy
-        )
-        observed_speed = torch.linalg.vector_norm(
-            observed_step,
-            dim=1,
-            keepdim=True,
-        )
-        observed_heading = torch.atan2(
-            observed_step[:, 1:2],
-            observed_step[:, 0:1],
-        )
-
-        previous_motion_speed = torch.linalg.vector_norm(
-            previous_delta_xy,
-            dim=1,
-            keepdim=True,
-        )
-        previous_motion_heading = torch.atan2(
-            previous_delta_xy[:, 1:2],
-            previous_delta_xy[:, 0:1],
-        )
-        has_previous_motion = previous_motion_speed > 1e-4
-        observed_motion_visible = observed_speed > 1e-4
-
-        # Bootstrap from MS1 only before a polynomial displacement exists.
-        # After that, use the previous polynomial displacement as the baseline.
-        base_speed = torch.where(
-            has_previous_motion,
-            previous_motion_speed,
-            observed_speed,
-        )
-        bootstrap_heading = torch.where(
-            observed_motion_visible,
-            observed_heading,
-            previous_heading_rad,
-        )
-        base_heading = torch.where(
-            has_previous_motion,
-            previous_motion_heading,
-            bootstrap_heading,
-        )
-
-        if previous_ms1_xy is None:
-            ms1_temporal_change = torch.zeros_like(
-                ms1_xy
+        if previous_speed is None:
+            previous_speed = torch.zeros(
+                z_uav.shape[0], 1, device=z_uav.device, dtype=z_uav.dtype
             )
-        else:
-            ms1_temporal_change = (
-                ms1_xy - previous_ms1_xy
-            )
+        if previous_acceleration is None:
+            previous_acceleration = torch.zeros_like(previous_speed)
+        if previous_heading_rad is None:
+            previous_heading_rad = torch.zeros_like(previous_speed)
 
-        numeric = torch.cat(
+        temporal_mean = 0.5 * (z_uav + previous_z_uav)
+        first_difference = z_uav - previous_z_uav
+
+        # MS1 provides a visual localization coordinate, not an inertial step.
+        # It is normalized only so the low-dimensional MLP sees a stable scale.
+        ms_xy_normalized = (
+            ms1_xy.float() / float(config.POSITION_INPUT_SCALE_M)
+        )
+
+        previous_motion_information = torch.cat(
             [
-                observed_step
-                / float(config.STEP_INPUT_SCALE_M),
-                previous_delta_xy
-                / float(config.STEP_INPUT_SCALE_M),
-                previous_speed,
-                previous_acceleration,
-                torch.sin(previous_heading_rad),
-                torch.cos(previous_heading_rad),
-                ms1_temporal_change
-                / float(config.STEP_INPUT_SCALE_M),
+                previous_speed.float(),
+                previous_acceleration.float(),
+                torch.sin(previous_heading_rad.float()),
+                torch.cos(previous_heading_rad.float()),
             ],
             dim=1,
         )
-        if int(numeric.shape[1]) != int(
-            config.RNN_NUMERIC_DIM
-        ):
-            raise RuntimeError(
-                "RNN numeric dimension mismatch: "
-                "got %d expected %d"
-                % (
-                    int(numeric.shape[1]),
-                    int(config.RNN_NUMERIC_DIM),
-                )
-            )
 
         recurrent_input = torch.cat(
             [
-                self.visual_mean_projection(
-                    visual_mean
-                ),
-                self.visual_delta_projection(
-                    visual_delta
-                ),
-                self.numeric_projection(
-                    numeric
-                ),
+                self.ms_xy_projection(ms_xy_normalized),
+                self.visual_mean_projection(temporal_mean),
+                self.visual_first_difference_projection(first_difference),
+                self.previous_motion_projection(previous_motion_information),
             ],
             dim=1,
         )
-        new_hidden = self.gru(
-            recurrent_input,
-            hidden,
-        )
+
+        expected_input_dim = int(config.RNN_FEATURE_DIM) * 4
+        if int(recurrent_input.shape[1]) != expected_input_dim:
+            raise RuntimeError(
+                "GRU input dimension mismatch: got %d expected %d"
+                % (int(recurrent_input.shape[1]), expected_input_dim)
+            )
+
+        new_hidden = self.gru(recurrent_input, hidden)
         h = self.dropout(new_hidden)
 
+        # Motion head predicts current/future inertial state, not XY position.
         raw_motion = self.motion_head(h)
-        speed_residual = raw_motion[:, 0:1]
+        raw_speed = raw_motion[:, 0:1]
         acceleration = raw_motion[:, 1:2]
+        speed = F.softplus(raw_speed)
 
-        speed = F.softplus(
-            _inverse_softplus(base_speed)
-            + speed_residual
-        )
-
-        heading_residual = self.heading_head(h)
+        # Heading head predicts a change relative to the previous heading.
+        heading_delta = _wrap_angle_tensor(self.heading_head(h))
         heading = _wrap_angle_tensor(
-            base_heading + heading_residual
-        )
-        heading_delta = _wrap_angle_tensor(
-            heading - previous_heading_rad
+            previous_heading_rad + heading_delta
         )
 
-        travel = (
-            speed + 0.5 * acceleration
-        )
+        # Polynomial conversion is downstream of the GRU motion prediction.
+        travel = speed + 0.5 * acceleration
         delta_xy = torch.cat(
             [
                 travel * torch.cos(heading),
