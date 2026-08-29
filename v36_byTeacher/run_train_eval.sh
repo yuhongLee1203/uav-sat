@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# v36_byTeacher v2 runner.
-# Training = Route-A native + Route-A stride-N (default stride=2).
+# v36_byTeacher v3 runner.
+# Training = Route-A native/original speed ONLY.
 # Validation = Route-C. Final test = Route-B.
 #
 # Usage:
@@ -13,7 +13,6 @@ set -euo pipefail
 # Optional:
 #   PYTHON_BIN=python3
 #   UAVSAT_TEMPORAL_EPOCHS=60
-#   UAVSAT_TEMPORAL_EXTRA_A_STRIDE=2
 
 MODE="${1:-all}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,7 +20,6 @@ cd "${SCRIPT_DIR}"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 EPOCHS="${UAVSAT_TEMPORAL_EPOCHS:-60}"
-STRIDE="${UAVSAT_TEMPORAL_EXTRA_A_STRIDE:-2}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "ERROR: ${PYTHON_BIN} not found." >&2
@@ -51,26 +49,22 @@ PY
   render_results_video.py
 
 echo "Python syntax preflight: OK" >&2
-echo "Temporal data policy: Route-A native + stride-${STRIDE}; C=val; B=test" >&2
+echo "Temporal data policy: Route-A native/original speed ONLY; C=val; B=test" >&2
 
 case "${MODE}" in
   train)
     "${PYTHON_BIN}" train_multirate_a.py \
       --mode train \
       --temporal-epochs "${EPOCHS}" \
-      --extra-stride "${STRIDE}" \
       --train-visual-if-missing
     ;;
   eval)
-    "${PYTHON_BIN}" train_multirate_a.py \
-      --mode eval \
-      --extra-stride "${STRIDE}"
+    "${PYTHON_BIN}" train_multirate_a.py --mode eval
     ;;
   all)
     "${PYTHON_BIN}" train_multirate_a.py \
       --mode all \
       --temporal-epochs "${EPOCHS}" \
-      --extra-stride "${STRIDE}" \
       --train-visual-if-missing
     ;;
   *)
