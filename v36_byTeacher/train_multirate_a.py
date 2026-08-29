@@ -7,20 +7,21 @@ Validation:
 Test:
   * Route-B only after checkpoint selection.
 
-Controlled protocol used in v8
-------------------------------
+Controlled protocol used in compact v8 revision 1
+-------------------------------------------------
 Each frame's predefined route reference point is used ONLY as the coarse center
 that opens MS1's local candidate window. It is not sent to Kalman as a
 measurement, not sent to the GRU, not used as the MS2 center, and never copied
 to the final output.
 
-Spatial roles remain fixed:
+Spatial roles:
   * reference point -> open MS1 strict forward 3x6 (18 visual candidates)
   * MS1 visual position -> Kalman measurement and compact motion-GRU evidence
   * Kalman -> NEW full 6x6 centered MS2 search
-  * MS2 -> final localization position
+  * MS2 visual logits + smooth Kalman-centered Gaussian prior -> MeanShift
+  * posterior MS2 -> final localization position
 
-Compact GRU v8 input:
+Compact GRU input:
   * MS1 visual XY -> 128-d
   * temporal visual mean -> 128-d
   * first visual difference -> 128-d
@@ -28,6 +29,8 @@ Compact GRU v8 input:
   * full model concatenates to 512-d GRU input
   * each ablation removes exactly one branch -> 384-d GRU input
   * previous hidden state is separate 256-d GRUCell state
+
+The GRU predicts motion changes/corrections, not absolute XY position.
 """
 
 import argparse
@@ -41,27 +44,28 @@ from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_onl
 
 
 # -----------------------------------------------------------------------------
-# Isolate full/ablation controlled reference-assisted v8 experiments.
+# Isolate full/ablation revised controlled reference-assisted experiments.
 # -----------------------------------------------------------------------------
 _ABLATION = str(config.GRU_ABLATION)
+_REVISION = "v8r1"
 _REFERENCE_PROTOCOL = (
     "V36_byTeacher_ReferencePrior_MS1StrictForwardHalf3x6_KalmanPrevFinal_"
-    "CompactGRU_MSXY_TemporalMean_FirstDiff_PrevMotion_MS2Centered6x6_"
-    "v8_nativeA_" + _ABLATION
+    "CompactGRUChange_MSXY_TemporalMean_FirstDiff_PrevMotion_"
+    "MS2KalmanPosterior6x6_" + _REVISION + "_nativeA_" + _ABLATION
 )
 config.ARCHITECTURE_NAME = _REFERENCE_PROTOCOL
 rt.ARCHITECTURE_NAME = _REFERENCE_PROTOCOL
 config.OUTPUT_DIR = (
     config.BACKBONE_OUTPUT_DIR
-    / ("reference_prior_compact_gru_v8_%s_nativeA" % _ABLATION)
+    / ("reference_prior_compact_gru_%s_%s_nativeA" % (_REVISION, _ABLATION))
 )
 config.TEMPORAL_CHECKPOINT = (
     config.CHECKPOINT_DIR
-    / f"reference_prior_compact_gru_A_native_v8_{_ABLATION}_{config.BACKBONE_KEY}.pt"
+    / f"reference_prior_compact_gru_A_native_{_REVISION}_{_ABLATION}_{config.BACKBONE_KEY}.pt"
 )
 config.LATEST_TEMPORAL_CHECKPOINT = (
     config.CHECKPOINT_DIR
-    / f"reference_prior_compact_gru_A_native_v8_{_ABLATION}_{config.BACKBONE_KEY}_latest.pt"
+    / f"reference_prior_compact_gru_A_native_{_REVISION}_{_ABLATION}_{config.BACKBONE_KEY}_latest.pt"
 )
 
 # Route-name -> Nx2 metric reference coordinates. Populated only after each
@@ -139,6 +143,63 @@ def _strict_forward_half_3x6(full_centers, center_xy, heading_rad):
 rt._nearest_forward_3x6 = _strict_forward_half_3x6
 
 
+@torch.no_grad()
+def _kalman_conditioned_ms2(visual, uav_clip, kalman_xy, device):
+    """Full centered 6x6 MS2 with a smooth Kalman spatial prior.
+
+    We keep every MS2 candidate. The posterior score is
+        visual_logit + log N(candidate ; Kalman_X_prime, sigma^2 I)
+    up to an additive constant. There is no hard gate, clipping, snapping, or
+    reference-dependent rule. MeanShift is then run on this posterior score.
+    """
+
+    batch = rt.ms2_center_search(
+        visual=visual,
+        uav_clip=uav_clip,
+        kalman_xy=kalman_xy,
+        device=device,
+    )
+    kalman_center = rt._tensor_xy(kalman_xy, device)
+    sigma = max(float(config.MS2_KALMAN_PRIOR_SIGMA_M), 1e-6)
+    prior_weight = float(config.MS2_KALMAN_PRIOR_WEIGHT)
+
+    displacement = batch.centers - kalman_center[:, None, :]
+    distance_squared = displacement.square().sum(dim=2)
+    spatial_log_prior = (
+        -0.5 * prior_weight * distance_squared / (sigma * sigma)
+    )
+    posterior_logits = batch.raw_logits + spatial_log_prior
+    posterior_prob = torch.softmax(
+        posterior_logits / float(config.MEANSHIFT_SCORE_TAU), dim=1
+    )
+    posterior_index = posterior_logits.argmax(dim=1)
+    posterior_top1_xy = batch.centers[
+        torch.arange(batch.centers.shape[0], device=device), posterior_index
+    ]
+
+    softms_xy, softms_support, _, _, mode_weights, _ = rt.soft_mean_shift(
+        posterior_logits,
+        batch.centers,
+        config.MEANSHIFT_SCORE_TAU,
+        config.MEANSHIFT_BANDWIDTH_M,
+        config.MEANSHIFT_ITERATIONS,
+        config.MEANSHIFT_MODE_BETA,
+    )
+
+    return rt.CandidateBatch(
+        indices=batch.indices,
+        centers=batch.centers,
+        z_uav=batch.z_uav,
+        z_sat=batch.z_sat,
+        raw_logits=posterior_logits,
+        raw_prob=posterior_prob,
+        raw_top1_xy=posterior_top1_xy,
+        softms_xy=softms_xy,
+        softms_support=softms_support,
+        softms_mode_count=(mode_weights > 0).sum(dim=1),
+    )
+
+
 # -----------------------------------------------------------------------------
 # Reference-assisted MS1 center.
 # -----------------------------------------------------------------------------
@@ -213,7 +274,7 @@ def _reference_assisted_forward_frame(model, visual, uav_clip, state, device):
         hidden=state["hidden"],
     )
 
-    ms2 = rt.ms2_center_search(
+    ms2 = _kalman_conditioned_ms2(
         visual=visual,
         uav_clip=uav_clip,
         kalman_xy=kalman_xy,
@@ -343,11 +404,12 @@ def _evaluate_route_with_candidate_diagnostics(route_name, visual, model, cache,
             "FirstMS2CandidateMissFrame": first_ms2_miss,
             "CandidateCaptureRadius_m": capture_radius,
             "ReferenceUsage": "current reference point selects MS1 local-window center only",
+            "MS2Posterior": "visual logits + smooth Kalman-centered Gaussian log prior",
         }
     )
 
     print(
-        f"Cdiag-v8[{_ABLATION}]: "
+        f"Cdiag-{_REVISION}[{_ABLATION}]: "
         f"refPrior={summary['Prior_MLE_m']:.2f}m "
         f"autoPrior={summary['AutonomousPrior_MLE_m']:.2f}m | "
         f"MS1oracle={summary['MS1_OracleMin_MLE_m']:.2f}m "
@@ -375,6 +437,9 @@ def _reference_run_route_inference(*args, **kwargs):
     )
     summary["Protocol"] = "controlled reference-assisted local prior"
     summary["Ablation"] = _ABLATION
+    summary["MS2Posterior"] = (
+        "visual logits + smooth Kalman-centered Gaussian log prior"
+    )
     return summary
 
 
@@ -480,7 +545,7 @@ def main():
     visual = ensure_visual(device, args)
 
     print("=" * 96, flush=True)
-    print(f"CONTROLLED v8 ablation={_ABLATION}", flush=True)
+    print(f"CONTROLLED {_REVISION} ablation={_ABLATION}", flush=True)
     print("Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input", flush=True)
     print("Temporal training: Route-A ORIGINAL SPEED ONLY", flush=True)
     print("Route-C validation; Route-B final untouched test", flush=True)
@@ -491,8 +556,12 @@ def main():
         % (",".join(config.GRU_ACTIVE_GROUPS), int(config.RNN_COMBINED_INPUT_DIM)),
         flush=True,
     )
-    print("GRU output = speed + acceleration + heading change; polynomial then forms Delta XY", flush=True)
-    print("MS2 = NEW CENTERED FULL 6x6 around Kalman output", flush=True)
+    print("GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY", flush=True)
+    print(
+        "MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior "
+        f"(sigma={config.MS2_KALMAN_PRIOR_SIGMA_M:.1f}m, weight={config.MS2_KALMAN_PRIOR_WEIGHT:.2f})",
+        flush=True,
+    )
     print("=" * 96, flush=True)
 
     if args.mode in ("train", "all"):
