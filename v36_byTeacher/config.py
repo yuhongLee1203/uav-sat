@@ -5,14 +5,14 @@ from config_base import *
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 # =============================================================================
-# v36_byTeacher autonomous closed-loop architecture, training-stable v2
+# v36_byTeacher autonomous closed-loop architecture, stable v3
 # =============================================================================
 # Inference never uses per-frame reference coordinates to choose a search
 # center, route leg, speed limit, turn limit, Kalman gate, or posterior cap.
 # Reference coordinates are labels/metrics only.
 ARCHITECTURE_NAME = (
     "V36_byTeacher_Autonomous_MS1Forward3x6_Kalman_GRU_"
-    "Polynomial_MS2Center6x6_v2"
+    "Polynomial_MS2Center6x6_v3_nativeA"
 )
 
 BACKBONE_KEY = os.environ.get(
@@ -29,7 +29,7 @@ RUN_TAG = os.environ.get("UAVSAT_RUN_TAG", "").strip()
 OUTPUT_DIR = (
     BACKBONE_OUTPUT_DIR / "experiments" / RUN_TAG
     if RUN_TAG
-    else BACKBONE_OUTPUT_DIR / "autonomous_ms1_kf_gru_ms2_v2"
+    else BACKBONE_OUTPUT_DIR / "autonomous_ms1_kf_gru_ms2_v3_nativeA"
 )
 CHECKPOINT_DIR = BACKBONE_OUTPUT_DIR / "checkpoints"
 VISUAL_CHECKPOINT = (
@@ -37,11 +37,11 @@ VISUAL_CHECKPOINT = (
 )
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / f"autonomous_motion_gru_A_multirate_v2_{BACKBONE_KEY}.pt"
+    / f"autonomous_motion_gru_A_native_v3_{BACKBONE_KEY}.pt"
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / f"autonomous_motion_gru_A_multirate_v2_{BACKBONE_KEY}_latest.pt"
+    / f"autonomous_motion_gru_A_native_v3_{BACKBONE_KEY}_latest.pt"
 )
 FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
 
@@ -89,7 +89,9 @@ LOCAL_PRIOR_JITTER_M = float(
 # -----------------------------------------------------------------------------
 RNN_HIDDEN_DIM = int(os.environ.get("UAVSAT_RNN_HIDDEN", "256"))
 RNN_FEATURE_DIM = int(os.environ.get("UAVSAT_RNN_FEATURE", "128"))
-RNN_DROPOUT = float(os.environ.get("UAVSAT_RNN_DROPOUT", "0.05"))
+# One Route-A sequence is enough; deterministic recurrent training is more
+# stable than injecting dropout into this single-route motion learner.
+RNN_DROPOUT = float(os.environ.get("UAVSAT_RNN_DROPOUT", "0.0"))
 RNN_NUMERIC_DIM = 10
 
 POSITION_INPUT_SCALE_M = float(
@@ -100,9 +102,7 @@ STEP_INPUT_SCALE_M = float(
 )
 
 TEMPORAL_EPOCHS = int(os.environ.get("UAVSAT_TEMPORAL_EPOCHS", "60"))
-# v2 uses a slightly faster temporal optimizer after removing the conflicting
-# hundreds-of-meters next-prior correction loss.
-TEMPORAL_LR = float(os.environ.get("UAVSAT_TEMPORAL_LR", "3e-4"))
+TEMPORAL_LR = float(os.environ.get("UAVSAT_TEMPORAL_LR", "1e-3"))
 TEMPORAL_WEIGHT_DECAY = float(
     os.environ.get("UAVSAT_TEMPORAL_WEIGHT_DECAY", "1e-4")
 )
@@ -118,24 +118,13 @@ EARLY_STOP_MIN_DELTA = float(
     os.environ.get("UAVSAT_EARLY_STOP_MIN_DELTA", "0.01")
 )
 
-# Route A native + stride-2 temporal-rate augmentation.
-TEMPORAL_EXTRA_A_STRIDE = int(
-    os.environ.get("UAVSAT_TEMPORAL_EXTRA_A_STRIDE", "2")
-)
-if TEMPORAL_EXTRA_A_STRIDE < 2:
-    raise ValueError("UAVSAT_TEMPORAL_EXTRA_A_STRIDE must be >= 2")
-
-# Position-derived supervision is made kinematically consistent with:
-#   displacement distance d_t = ||p_(t+1)-p_t||
-#   v_t = 0.5 * (d_(t-1)+d_t)
-#   a_t = d_t-d_(t-1)
-# so v_t + 0.5*a_t == d_t exactly.
-LOSS_DELTA = float(os.environ.get("UAVSAT_LOSS_DELTA", "3.0"))
+# Position-derived kinematic supervision.
+LOSS_DELTA = float(os.environ.get("UAVSAT_LOSS_DELTA", "5.0"))
 LOSS_SPEED = float(os.environ.get("UAVSAT_LOSS_SPEED", "1.0"))
 LOSS_ACCELERATION = float(
-    os.environ.get("UAVSAT_LOSS_ACCELERATION", "0.5")
+    os.environ.get("UAVSAT_LOSS_ACCELERATION", "0.25")
 )
-LOSS_HEADING = float(os.environ.get("UAVSAT_LOSS_HEADING", "1.0"))
+LOSS_HEADING = float(os.environ.get("UAVSAT_LOSS_HEADING", "2.0"))
 LOSS_HEADING_DELTA = float(
     os.environ.get("UAVSAT_LOSS_HEADING_DELTA", "0.5")
 )
@@ -162,7 +151,7 @@ CONTROLLED_FINAL_PROGRESS_CAP_TO_GT = False
 CONTROLLED_GT_MOTION_ENVELOPE = False
 CONTROLLED_PACE_ASSIST = False
 
-TEMPORAL_TRAIN_ROUTES = ["route_A", "route_A_stride2"]
+TEMPORAL_TRAIN_ROUTES = ["route_A"]
 TEMPORAL_VALIDATION_ROUTE = "route_C"
 TEMPORAL_TEST_ROUTE = "route_B"
 
