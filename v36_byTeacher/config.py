@@ -5,7 +5,7 @@ from config_base import *
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 # ---------------------------------------------------------------------------
-# Backbone / experiment identity
+# Experiment identity
 # ---------------------------------------------------------------------------
 BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobilenet_v3_small").strip().lower()
 if BACKBONE_KEY not in BACKBONE_SPECS:
@@ -17,30 +17,16 @@ BACKBONE_NAME, CLIP_DIM = BACKBONE_SPECS[BACKBONE_KEY]
 
 EXPERIMENT_FRAME_COUNT = int(os.environ.get("UAVSAT_EXPERIMENT_FRAME_COUNT", "2"))
 if EXPERIMENT_FRAME_COUNT not in (1, 2):
-    raise ValueError("UAVSAT_EXPERIMENT_FRAME_COUNT must be 1 or 2 for v36_byTeacher")
+    raise ValueError("UAVSAT_EXPERIMENT_FRAME_COUNT must be 1 or 2")
 TEMPORAL_WINDOW_FRAMES = EXPERIMENT_FRAME_COUNT
 
-TEMPORAL_EXTRA_A_STRIDE = int(
-    os.environ.get("UAVSAT_TEMPORAL_EXTRA_A_STRIDE", "2")
-)
-if TEMPORAL_EXTRA_A_STRIDE < 2:
-    raise ValueError("UAVSAT_TEMPORAL_EXTRA_A_STRIDE must be >= 2")
-TEMPORAL_TRAINING_PROTOCOL = f"routeA_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}"
-
-# Role-separated v7:
-#   SoftMS     -> current visual measurement z_t
-#   GRU        -> motion / heading + learned measurement variance R_t
-#   Polynomial -> motion step for Kalman predict
-#   Kalman     -> the only motion/visual fusion block
 ARCHITECTURE_NAME = (
-    "V36_byTeacher_MSPreviousPosition_"
-    f"{EXPERIMENT_FRAME_COUNT}Frame_{BACKBONE_KEY}_"
-    "DirectSoftMSMeasurement_GRUMotionHeadingLearnedVariance_Polynomial_Kalman_"
-    f"MultiRateAstride{TEMPORAL_EXTRA_A_STRIDE}_v7"
+    "V36_byTeacher_Causal_MS1Forward3x6_GRUMotionPolynomial_"
+    "PositionKalman_MS2Full6x6_NoReferenceInput_v8"
 )
 
 BACKBONE_OUTPUT_DIR = PROJECT_ROOT / "output" / BACKBONE_KEY
-DEFAULT_OUTPUT_DIR = BACKBONE_OUTPUT_DIR / f"{EXPERIMENT_FRAME_COUNT}frame"
+DEFAULT_OUTPUT_DIR = BACKBONE_OUTPUT_DIR / f"{EXPERIMENT_FRAME_COUNT}frame_no_reference_input"
 RUN_TAG = os.environ.get("UAVSAT_RUN_TAG", "").strip()
 OUTPUT_DIR = (
     BACKBONE_OUTPUT_DIR / "experiments" / RUN_TAG
@@ -48,30 +34,43 @@ OUTPUT_DIR = (
     else DEFAULT_OUTPUT_DIR
 )
 CHECKPOINT_DIR = BACKBONE_OUTPUT_DIR / "checkpoints"
-VISUAL_CHECKPOINT = CHECKPOINT_DIR / f"visual_retrieval_A_only_{BACKBONE_KEY}.pt"
+VISUAL_CHECKPOINT = CHECKPOINT_DIR / f"visual_A_train_B_val_global_{BACKBONE_KEY}_v8.pt"
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / (
-        "controlled_referenceprior_forward3x6_ms_previous_position_"
-        f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-        "direct_softms_gru_motion_heading_learned_variance_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v7.pt"
-    )
+    / f"temporal_A_train_B_val_ms1_kf_ms2_{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_v8.pt"
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / (
-        "controlled_referenceprior_forward3x6_ms_previous_position_"
-        f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-        "direct_softms_gru_motion_heading_learned_variance_"
-        f"multirate_A_native_plus_stride{TEMPORAL_EXTRA_A_STRIDE}_v7_latest.pt"
-    )
+    / f"temporal_A_train_B_val_ms1_kf_ms2_{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_v8_latest.pt"
 )
-FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache"
+FEATURE_CACHE_DIR = BACKBONE_OUTPUT_DIR / "feature_cache_v8"
+
+TRAIN_ROUTE_NAME = "route_A"
+VALIDATION_ROUTE_NAME = "route_B"
+TEST_ROUTE_NAME = "route_C"
 
 # ---------------------------------------------------------------------------
-# MeanShift ablation overrides
+# Causal localization protocol
 # ---------------------------------------------------------------------------
+# Inference never reads the current frame reference/GT position.  The only
+# position used to open MS1 is the previous MS2 output.  The known planned-route
+# start is used once for initialization; after that, every position is predicted.
+REFERENCE_POSITION_AS_INFERENCE_INPUT = False
+KNOWN_START_FROM_PLANNED_ROUTE = True
+HARD_MOTION_LIMITS_ENABLED = False
+
+MS1_BASE_GRID_SIZE = 6
+MS1_FORWARD_ROWS = 3
+MS1_FORWARD_COLS = 6
+MS1_CANDIDATE_COUNT = MS1_FORWARD_ROWS * MS1_FORWARD_COLS
+MS2_GRID_SIZE = 6
+MS2_CANDIDATE_COUNT = MS2_GRID_SIZE * MS2_GRID_SIZE
+FORWARD_SEARCH_ORIGIN_BACKSHIFT_M = float(
+    os.environ.get("UAVSAT_FORWARD_ORIGIN_BACKSHIFT_M", "0.0")
+)
+
+# Keep the thesis Mean-Shift controls configurable.  These are decoder
+# hyperparameters, not motion/heading clamps.
 MEANSHIFT_ITERATIONS = int(
     os.environ.get("UAVSAT_MS_ITERATIONS", str(MEANSHIFT_ITERATIONS))
 )
@@ -84,145 +83,69 @@ MEANSHIFT_SCORE_TAU = float(
 MEANSHIFT_MODE_BETA = float(
     os.environ.get("UAVSAT_MS_MODE_BETA", str(MEANSHIFT_MODE_BETA))
 )
-if MEANSHIFT_ITERATIONS < 1:
-    raise ValueError("UAVSAT_MS_ITERATIONS must be >= 1")
-if MEANSHIFT_BANDWIDTH_M <= 0.0:
-    raise ValueError("UAVSAT_MS_BANDWIDTH_M must be > 0")
-if MEANSHIFT_SCORE_TAU <= 0.0:
-    raise ValueError("UAVSAT_MS_SCORE_TAU must be > 0")
-if MEANSHIFT_MODE_BETA <= 0.0:
-    raise ValueError("UAVSAT_MS_MODE_BETA must be > 0")
 
 # ---------------------------------------------------------------------------
-# Previous-position MeanShift cue to GRU
+# GRU inputs/outputs
 # ---------------------------------------------------------------------------
-TEACHER_MEANSHIFT_FEEDBACK = True
-TEACHER_FEEDBACK_PRESERVE_KALMAN_VELOCITY = True
-TEACHER_FEEDBACK_USE_FORWARD_3X6 = True
-MEANSHIFT_POSITION_AS_GRU_INPUT = True
-
-# ---------------------------------------------------------------------------
-# GRU / Kalman role separation
-# ---------------------------------------------------------------------------
-DIRECT_SOFTMS_MEASUREMENT = True
-USE_GRU_VISUAL_MEASUREMENT_HEAD = False
-GRU_VISUAL_MEASUREMENT_PROGRESS_RANGE_M = 6.0
-GRU_VISUAL_MEASUREMENT_CROSS_RANGE_M = 4.0
-GRU_VISUAL_MEASUREMENT_INIT_PROGRESS_M = 0.0
-
-MEANSHIFT_VARIANCE_AS_GRU_INPUT = True
-DIRECT_SOFTMS_VARIANCE = False
-USE_LEARNED_VARIANCE_HEAD = True
-GRU_VISUAL_VARIANCE_INIT_M2 = 4.0
+# Numeric input = MS1 offset(2) + MS1 temporal displacement(2)
+#               + previous predicted velocity XY(2)
+#               + previous predicted acceleration XY(2)
+#               + cos/sin(previous predicted heading)(2)
+# No Mean-Shift variance/reference position is fed to the GRU.
+RNN_NUMERIC_DIM = 10
+RNN_DROPOUT = float(os.environ.get("UAVSAT_RNN_DROPOUT", "0.05"))
 
 # ---------------------------------------------------------------------------
-# Learned-R Kalman: visual-first progress + cross-track-only smoothing
+# Position-only external Kalman
 # ---------------------------------------------------------------------------
-# The q18/q36/q72 sweep showed a monotonic result: increasing Q_progress
-# (therefore reducing Kalman smoothing along the route) consistently improved
-# both B and C.  The previous visual-first setting was also better than all
-# three anisotropic progress-smoothing runs.  Therefore the motion prior must
-# not pull the current along-route measurement away from SoftMS.
-#
-# This default makes progress s essentially visual-first (very large Q_s), and
-# keeps only a small amount of Kalman smoothing in cross-track e where temporal
-# consistency can remove lateral SoftMS jitter.  Visual updates still cannot
-# rewrite velocity, and innovation/posterior/final-step clipping stays open so
-# the estimator can immediately recover to the current visual observation.
-# No B/C reference localization error is used by this parameterization.
-KALMAN_R_MIN_VAR = float(os.environ.get("UAVSAT_KF_R_MIN", "0.25"))
-KALMAN_R_MAX_VAR = float(os.environ.get("UAVSAT_KF_R_MAX", "9.0"))
+# The GRU already predicts motion.  Kalman therefore fuses exactly two current
+# position hypotheses: inertial prior X_pre and MS1 visual measurement.
+# No reference-dependent clipping, speed envelope, turn envelope or step cap.
+KALMAN_POSITION_INIT_VAR = float(os.environ.get("UAVSAT_KF_INIT_VAR", "16.0"))
+KALMAN_POSITION_PROCESS_VAR_X = float(os.environ.get("UAVSAT_KF_Q_X", "4.0"))
+KALMAN_POSITION_PROCESS_VAR_Y = float(os.environ.get("UAVSAT_KF_Q_Y", "4.0"))
+KALMAN_NUMERICAL_VARIANCE_EPS = float(os.environ.get("UAVSAT_KF_VAR_EPS", "1e-4"))
 
-KALMAN_USE_MS_CONFIDENCE = False
-VISUAL_CONFIDENCE_FLOOR = 1.0
-VISUAL_CONFIDENCE_CEIL = 1.0
-KALMAN_NIS_CONFIDENCE_BOOST = 0.0
-KALMAN_NIS_MAX_R_SCALE = 1.0
-ACQ_LOW_CONF_VARIANCE_GAIN = 0.0
-
-# Q_s is intentionally huge: do not smooth route progress with a weaker motion
-# prior.  Q_e is the only useful fusion knob in this round.
-KALMAN_Q_PROGRESS = float(os.environ.get("UAVSAT_KF_Q_PROGRESS", "1000.0"))
-KALMAN_Q_CROSS = float(os.environ.get("UAVSAT_KF_Q_CROSS", "36.0"))
-KALMAN_Q_VELOCITY = float(os.environ.get("UAVSAT_KF_Q_VELOCITY", "1.0"))
-
-KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M = float(
-    os.environ.get("UAVSAT_KF_INNOVATION_S", "1000.0")
-)
-KALMAN_MAX_MEASUREMENT_INNOVATION_CROSS_M = float(
-    os.environ.get("UAVSAT_KF_INNOVATION_E", "1000.0")
-)
-KALMAN_MAX_POSTERIOR_CORRECTION_PROGRESS_M = float(
-    os.environ.get("UAVSAT_KF_POSTERIOR_S", "1000.0")
-)
-KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M = float(
-    os.environ.get("UAVSAT_KF_POSTERIOR_E", "1000.0")
-)
-KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME = float(
-    os.environ.get("UAVSAT_KF_VELOCITY_CORRECTION", "0.0")
-)
-KALMAN_FINAL_STEP_SLACK_M = float(
-    os.environ.get("UAVSAT_KF_STEP_SLACK", "1000.0")
-)
-KALMAN_FINAL_STEP_MAX_M = float(
-    os.environ.get("UAVSAT_KF_STEP_MAX", "1000.0")
-)
-
-# Keep the current-progress no-ahead cap, but do not add a second reference-speed
-# envelope after the Kalman update.  This makes KF/no-KF differ by fusion only.
-CONTROLLED_GT_MOTION_ENVELOPE = os.environ.get(
-    "UAVSAT_CONTROLLED_GT_MOTION_ENVELOPE", "0"
-) == "1"
-CONTROLLED_PACE_ASSIST = os.environ.get(
-    "UAVSAT_CONTROLLED_PACE_ASSIST", "0"
-) == "1"
-CONTROLLED_MAX_STEP_RATIO = float(
-    os.environ.get("UAVSAT_CONTROLLED_MAX_STEP_RATIO", "2.0")
-)
-CONTROLLED_PACE_MIN_RATIO = float(
-    os.environ.get("UAVSAT_CONTROLLED_PACE_MIN_RATIO", "0.95")
-)
-CONTROLLED_PACE_CATCHUP_GAIN = float(
-    os.environ.get("UAVSAT_CONTROLLED_PACE_CATCHUP_GAIN", "0.25")
-)
-CONTROLLED_PACE_MAX_EXTRA_M = float(
-    os.environ.get("UAVSAT_CONTROLLED_PACE_MAX_EXTRA_M", "3.0")
+# ---------------------------------------------------------------------------
+# Visual retrieval training
+# ---------------------------------------------------------------------------
+# Route A is trained against the complete satellite gallery.  GT/reference XY
+# selects the supervised target only; it never determines a local search window.
+VISUAL_GLOBAL_TRAINING = True
+VISUAL_COORD_LOSS_WEIGHT = float(os.environ.get("UAVSAT_VISUAL_COORD_W", "0.05"))
+VISUAL_EARLY_STOPPING_PATIENCE = int(
+    os.environ.get("UAVSAT_VISUAL_PATIENCE", str(VISUAL_EARLY_STOPPING_PATIENCE))
 )
 
 # ---------------------------------------------------------------------------
-# Compact temporal state
+# Temporal supervision
 # ---------------------------------------------------------------------------
-USE_SATELLITE_CONTEXT_IN_GRU = False
-RNN_NUMERIC_DIM = 8
+# v and a targets are derived directly from the Route-A reference position
+# sequence by finite differences.  For frame t (dt=1 frame):
+#   v_t = (p_{t+1} - p_{t-1}) / 2
+#   a_t = p_{t+1} - 2 p_t + p_{t-1}
+# so v_t + 0.5 a_t = p_{t+1} - p_t for interior frames.
+LOSS_NEXT_STEP = float(os.environ.get("UAVSAT_LOSS_NEXT_STEP", "3.0"))
+LOSS_VELOCITY = float(os.environ.get("UAVSAT_LOSS_VELOCITY", "1.0"))
+LOSS_ACCELERATION = float(os.environ.get("UAVSAT_LOSS_ACCELERATION", "0.5"))
+LOSS_HEADING = float(os.environ.get("UAVSAT_LOSS_HEADING", "1.0"))
+LOSS_TURN_RATE = float(os.environ.get("UAVSAT_LOSS_TURN_RATE", "0.25"))
 
-# ---------------------------------------------------------------------------
-# Training balance
-# ---------------------------------------------------------------------------
-LOSS_MEASUREMENT = 0.0
-LOSS_NEXT_STEP = 2.0
-LOSS_VARIANCE_NLL = 0.02
-TEMPORAL_LR = 1e-4
-RNN_DROPOUT = 0.05
-TBPTT_STEPS = 32
-GRAD_CLIP_NORM = 3.0
-EARLY_STOP_PATIENCE = 15
-EARLY_STOP_MIN_DELTA = 0.02
-EARLY_STOP_MIN_EPOCH = 20
+TEMPORAL_LR = float(os.environ.get("UAVSAT_TEMPORAL_LR", "1e-4"))
+TEMPORAL_WEIGHT_DECAY = float(os.environ.get("UAVSAT_TEMPORAL_WEIGHT_DECAY", "1e-3"))
+TBPTT_STEPS = int(os.environ.get("UAVSAT_TBPTT_STEPS", "32"))
+GRAD_CLIP_NORM = float(os.environ.get("UAVSAT_GRAD_CLIP_NORM", "5.0"))
+EARLY_STOP_PATIENCE = int(os.environ.get("UAVSAT_PATIENCE", "15"))
+EARLY_STOP_MIN_DELTA = float(os.environ.get("UAVSAT_EARLY_DELTA", "0.02"))
+EARLY_STOP_MIN_EPOCH = int(os.environ.get("UAVSAT_EARLY_MIN_EPOCH", "20"))
 
-# ---------------------------------------------------------------------------
-# Forward-search accuracy/speed ablation
-# ---------------------------------------------------------------------------
-FORWARD_SEARCH_ROWS = 3
-FORWARD_SEARCH_COLS = 6
-FORWARD_SEARCH_CANDIDATE_COUNT = FORWARD_SEARCH_ROWS * FORWARD_SEARCH_COLS
-FORWARD_SEARCH_EXPERIMENT_ROWS = (3, 4, 5, 6)
 LATENCY_WARMUP_FRAMES = 30
 
-CONTROLLED_PROTOCOL_NAME = (
-    "reference-point+smooth-jitter_forward3x6_MS-previous-position-to-GRU_"
-    f"{EXPERIMENT_FRAME_COUNT}frame_{BACKBONE_KEY}_"
-    "direct-SoftMS-z_GRU-motion-heading-learned-R_"
-    f"polynomial_Kalman_multirate-{TEMPORAL_TRAINING_PROTOCOL}_v7_cross-smoothing"
+PROTOCOL_NAME = (
+    "A-train_B-validation_C-test; known planned start only; "
+    "MS1 forward3x6 from previous MS2 final; GRU predicts v/a/heading; "
+    "polynomial predicts next inertial position; position Kalman fuses MS1+prior; "
+    "MS2 full6x6 refines final; reference positions are supervision/metrics only"
 )
 
 WAYPOINT_DIR = PROJECT_ROOT.parent / "route_waypoints"
