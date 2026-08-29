@@ -1,8 +1,7 @@
-"""Train/evaluate v36_byTeacher with Route-A native + stride-N motion.
+"""Train/evaluate v36_byTeacher using only native-speed Route A.
 
 Training:
-  * Route-A at the recorded temporal rate.
-  * Route-A stride-N (default N=2) as the requested faster-motion sequence.
+  * Route-A at the recorded/original temporal rate only.
 Validation:
   * Route-C for checkpoint selection / early stopping.
 Test:
@@ -18,19 +17,12 @@ from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_onl
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--mode", choices=["train", "eval", "all"], default="all"
-    )
+    parser.add_argument("--mode", choices=["train", "eval", "all"], default="all")
     parser.add_argument(
         "--temporal-epochs", type=int, default=int(config.TEMPORAL_EPOCHS)
     )
     parser.add_argument(
         "--patience", type=int, default=int(config.EARLY_STOP_PATIENCE)
-    )
-    parser.add_argument(
-        "--extra-stride",
-        type=int,
-        default=int(config.TEMPORAL_EXTRA_A_STRIDE),
     )
     parser.add_argument(
         "--jitter-m", type=float, default=float(config.LOCAL_PRIOR_JITTER_M)
@@ -61,7 +53,7 @@ def ensure_visual(device, args):
     return FrozenVisualLocalizer(device)
 
 
-def train_multirate(visual, device, args):
+def train_native_a(visual, device, args):
     route_a_cache = rt.build_route_cache(
         "route_A", config.ROUTE_ROOTS[0], visual, device
     )
@@ -69,7 +61,7 @@ def train_multirate(visual, device, args):
     route_c_cache = rt.build_route_cache(
         "route_C", config.ROUTE_ROOTS[c_index], visual, device
     )
-    return rt.train_temporal_multirate(
+    return rt.train_temporal_route_a(
         visual=visual,
         route_a_cache=route_a_cache,
         route_c_cache=route_c_cache,
@@ -77,7 +69,6 @@ def train_multirate(visual, device, args):
         epochs=int(args.temporal_epochs),
         patience_limit=int(args.patience),
         resume=bool(args.resume),
-        extra_stride=int(args.extra_stride),
     )
 
 
@@ -100,7 +91,10 @@ def evaluate_c_and_b(visual, device, args):
         role = "validation" if route_name == "route_C" else "test"
         print(
             f"{route_name} ({role}): "
-            f"MLE={summary['MLE_m']:.3f}m "
+            f"prior={summary['Prior_MLE_m']:.3f}m "
+            f"MS1={summary['MS1_MLE_m']:.3f}m "
+            f"KF={summary['Kalman_MLE_m']:.3f}m "
+            f"MS2/final={summary['MLE_m']:.3f}m "
             f"P90={summary['P90_m']:.3f}m "
             f"LSR@15={summary['LSR@15_pct']:.2f}%",
             flush=True,
@@ -109,23 +103,17 @@ def evaluate_c_and_b(visual, device, args):
 
 def main():
     args = parse_args()
-    if int(args.extra_stride) < 2:
-        raise ValueError("--extra-stride must be >= 2")
-
     rt.set_seed(config.SEED)
     device = rt.resolve_device()
     visual = ensure_visual(device, args)
 
     print("=" * 96, flush=True)
-    print(
-        f"Route-A native + Route-A stride-{args.extra_stride} temporal training",
-        flush=True,
-    )
-    print("Route-C validation; Route-B final test", flush=True)
+    print("Temporal training: Route-A ORIGINAL SPEED ONLY", flush=True)
+    print("Route-C validation; Route-B final untouched test", flush=True)
     print("=" * 96, flush=True)
 
     if args.mode in ("train", "all"):
-        _, best = train_multirate(visual, device, args)
+        _, best = train_native_a(visual, device, args)
         print(f"best Route-C validation MLE={best:.3f}m", flush=True)
 
     if args.mode in ("eval", "all"):
