@@ -14,8 +14,9 @@ for name, value in vars(original).items():
     if not name.startswith("__"):
         globals()[name] = value
 
-# Data-only substitution.  The generated route labels are now the selected
-# BearingUAV samples' actual positions, with variable physical frame spacing.
+# Data-only substitution.  Every generated frame label is the selected
+# BearingUAV sample's actual source position.  The pseudo-sequence is ordered by
+# route progress and has naturally variable physical frame spacing.
 PROJECT_ROOT = HERE
 GENERATED_ROOT = HERE / "generated_routes_3train_1val_1test"
 TRAIN_ROUTE_NAMES = ["train_1", "train_2", "train_3"]
@@ -28,10 +29,16 @@ WAYPOINT_FILES = {name: WAYPOINT_DIR / (name + "_waypoints.json") for name in RO
 SAT_IMAGE = GENERATED_ROOT / "bearing_cities_abc.jpg"
 SAT_JSON = GENERATED_ROOT / "bearing_cities_abc_geo.json"
 
-# IMPORTANT: this protocol must never reuse the old synthetic-fixed-spacing
-# BearingUAV visual checkpoint or UAV feature cache.  Version every data-derived
-# artifact so the first corrected run necessarily rebuilds them.
-BEARING_DATA_PROTOCOL = "actualpose_variable_step_v2"
+# A BearingUAV sample may lie several metres away from the simplified planned
+# route centerline.  The original 10 m cross-track clamp was designed for the
+# user's real flight routes and caused the old public-dataset P90 to pin at
+# exactly 10 m.  Give the actual-pose public-data adapter enough geometric room;
+# this is only a state-domain bound, not a test-label-dependent correction.
+MAX_FINAL_CROSS_TRACK_M = float(os.environ.get("BEARING_MAX_CROSS_TRACK_M", "25.0"))
+
+# Version all data-derived artifacts so the corridor-chain protocol cannot reuse
+# checkpoints/caches from the earlier fixed-spacing or query-chasing adapters.
+BEARING_DATA_PROTOCOL = "actualpose_corridor_chain_v3"
 BACKBONE_OUTPUT_DIR = HERE / "output" / BACKBONE_KEY
 DEFAULT_OUTPUT_DIR = BACKBONE_OUTPUT_DIR / (str(EXPERIMENT_FRAME_COUNT) + "frame")
 RUN_TAG = os.environ.get("UAVSAT_RUN_TAG", "").strip()
