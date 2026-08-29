@@ -147,6 +147,21 @@ MS1_CANDIDATE_COUNT = (
 )
 MS2_GRID_SIZE = 6
 
+# MS2 remains a full centered 6x6 visual search, but its candidate posterior is
+# conditioned on the Kalman center with a smooth Gaussian prior. This prevents
+# a distant visual mode from undoing a better Kalman estimate while keeping all
+# 36 candidates and avoiding hard gates/clips.
+MS2_KALMAN_PRIOR_SIGMA_M = float(
+    os.environ.get(
+        "UAVSAT_MS2_KF_PRIOR_SIGMA_M", "12.0"
+    )
+)
+MS2_KALMAN_PRIOR_WEIGHT = float(
+    os.environ.get(
+        "UAVSAT_MS2_KF_PRIOR_WEIGHT", "1.0"
+    )
+)
+
 LOCAL_PRIOR_JITTER_M = float(
     os.environ.get(
         "UAVSAT_VISUAL_TRAIN_JITTER_M",
@@ -180,10 +195,13 @@ RNN_PREVIOUS_MOTION_DIM = 4
 RNN_PROJECTED_GROUPS = len(GRU_ACTIVE_GROUPS)
 RNN_COMBINED_INPUT_DIM = RNN_FEATURE_DIM * RNN_PROJECTED_GROUPS
 
+# MS1 coordinates are map-scale metric coordinates (hundreds of metres), so the
+# 2-d position branch is normalized at kilometre scale before its MLP. The old
+# 50-m scale produced unnecessarily large magnitudes (e.g. -800m -> -16).
 POSITION_INPUT_SCALE_M = float(
     os.environ.get(
         "UAVSAT_POSITION_INPUT_SCALE_M",
-        "50.0",
+        "1000.0",
     )
 )
 STEP_INPUT_SCALE_M = float(
