@@ -7,7 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 # Experiment identity
 # ---------------------------------------------------------------------------
-# Keep the existing v36 default backbone.  The architecture rewrite changes the
+# Keep the existing v36 default backbone. The architecture rewrite changes the
 # temporal/localization flow, not the visual backbone; an environment variable
 # can still select one of the existing ablation backbones.
 BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobileclip2_s2").strip().lower()
@@ -55,8 +55,8 @@ TEST_ROUTE_NAME = "route_C"
 # ---------------------------------------------------------------------------
 # Causal localization protocol
 # ---------------------------------------------------------------------------
-# Inference never reads the current frame reference/GT position.  The only
-# position used to open MS1 is the previous MS2 output.  The known planned-route
+# Inference never reads the current frame reference/GT position. The only
+# position used to open MS1 is the previous MS2 output. The known planned-route
 # start is used once for initialization; after that, every position is predicted.
 REFERENCE_POSITION_AS_INFERENCE_INPUT = False
 KNOWN_START_FROM_PLANNED_ROUTE = True
@@ -72,7 +72,7 @@ FORWARD_SEARCH_ORIGIN_BACKSHIFT_M = float(
     os.environ.get("UAVSAT_FORWARD_ORIGIN_BACKSHIFT_M", "0.0")
 )
 
-# Keep the thesis Mean-Shift controls configurable.  These are decoder
+# Keep the thesis Mean-Shift controls configurable. These are decoder
 # hyperparameters, not motion/heading clamps.
 MEANSHIFT_ITERATIONS = int(
     os.environ.get("UAVSAT_MS_ITERATIONS", str(MEANSHIFT_ITERATIONS))
@@ -90,19 +90,20 @@ MEANSHIFT_MODE_BETA = float(
 # ---------------------------------------------------------------------------
 # GRU inputs/outputs
 # ---------------------------------------------------------------------------
-# Numeric input = MS1 offset from previous final(2)
-#               + MS1 temporal displacement(2)
-#               + previous predicted velocity XY(2)
-#               + previous predicted acceleration XY(2)
-#               + cos/sin(previous predicted heading)(2)
+# Match the existing byTeacher temporal input as closely as possible while
+# removing Mean-Shift uncertainty:
+#   MS1 temporal displacement XY(2)
+# + previous predicted velocity XY(2)
+# + previous predicted heading and turn-rate(2)
+# plus current/previous UAV embedding mean/difference and previous hidden state.
 # No Mean-Shift variance/reference position is fed to the GRU.
-RNN_NUMERIC_DIM = 10
+RNN_NUMERIC_DIM = 6
 RNN_DROPOUT = float(os.environ.get("UAVSAT_RNN_DROPOUT", "0.05"))
 
 # ---------------------------------------------------------------------------
 # Position-only external Kalman
 # ---------------------------------------------------------------------------
-# The GRU already predicts motion.  Kalman therefore fuses exactly two current
+# The GRU already predicts motion. Kalman therefore fuses exactly two current
 # position hypotheses: inertial prior X_pre and MS1 visual measurement.
 # No reference-dependent clipping, speed envelope, turn envelope or step cap.
 KALMAN_POSITION_INIT_VAR = float(os.environ.get("UAVSAT_KF_INIT_VAR", "16.0"))
@@ -113,7 +114,7 @@ KALMAN_NUMERICAL_VARIANCE_EPS = float(os.environ.get("UAVSAT_KF_VAR_EPS", "1e-4"
 # ---------------------------------------------------------------------------
 # Visual retrieval training
 # ---------------------------------------------------------------------------
-# Route A is trained against the complete satellite gallery.  GT/reference XY
+# Route A is trained against the complete satellite gallery. GT/reference XY
 # selects the supervised target only; it never determines a local search window.
 VISUAL_GLOBAL_TRAINING = True
 VISUAL_COORD_LOSS_WEIGHT = float(os.environ.get("UAVSAT_VISUAL_COORD_W", "0.05"))
@@ -125,7 +126,7 @@ VISUAL_EARLY_STOPPING_PATIENCE = int(
 # Temporal supervision
 # ---------------------------------------------------------------------------
 # v and a targets are derived directly from the Route-A reference position
-# sequence by finite differences.  For frame t (dt=1 frame):
+# sequence by finite differences. For frame t (dt=1 frame):
 #   v_t = (p_{t+1} - p_{t-1}) / 2
 #   a_t = p_{t+1} - 2 p_t + p_{t-1}
 # so v_t + 0.5 a_t = p_{t+1} - p_t for interior frames.
