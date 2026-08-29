@@ -154,23 +154,20 @@ def _inverse_softplus(value):
 
 
 class AutonomousMotionGRU(nn.Module):
-    """Predict v, a and heading from MS#1 temporal evidence.
+    """Predict v, a and heading from the current MS1 result and history.
 
-    The important v3 change is that the recurrent heads no longer have to
-    invent absolute motion from zero on an unseen route.  The measured motion
-    between consecutive MS#1 positions is used as a data-derived baseline:
+    v4 removes the unstable X_ms(t)-X_ms(t-1) positive-feedback baseline.
+    The data-derived motion cue is instead:
 
-      observed_step = X_ms(t) - X_ms(t-1)
-      observed_speed = ||observed_step||
-      observed_heading = atan2(observed_step_y, observed_step_x)
+        observed_step = X_ms(t) - X_final(t-1)
 
-    The GRU learns residual speed/acceleration/heading corrections around this
-    baseline.  This is not a hand-coded speed or turn limit: there is no upper
-    bound on speed, acceleration, heading residual, or polynomial displacement.
-    It simply removes the unstable cumulative-heading parameterization that
-    caused Route-C rollout errors to compound frame after frame.
+    This is the current visual position relative to the previous final position,
+    which is exactly the frame-to-frame quantity needed by the motion model.
+    The GRU learns residual v/a/heading corrections around that cue. There is
+    no hand-coded maximum speed, acceleration, turn rate, or displacement.
 
-    No MS uncertainty and no per-frame reference coordinate enters this model.
+    `prior_xy` in this module means the previous final XY supplied to the GRU;
+    it is NOT a reference/GT coordinate.
     """
 
     def __init__(self):
@@ -195,18 +192,15 @@ class AutonomousMotionGRU(nn.Module):
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
-
         self.gru = nn.GRUCell(feature_dim * 3, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
-        # Two learned residuals: speed and acceleration.
         self.motion_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim // 2, 2),
         )
-        # Learned residual around the heading observed from consecutive MS1 XY.
         self.heading_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
@@ -214,7 +208,8 @@ class AutonomousMotionGRU(nn.Module):
             nn.Linear(hidden_dim // 2, 1),
         )
 
-        # Residual heads start from exactly the MS1-derived baseline.
+        # Zero residual initially means: trust the current visual displacement
+        # cue, rather than injecting a learned Route-A motion before training.
         nn.init.zeros_(self.motion_head[-1].weight)
         nn.init.zeros_(self.motion_head[-1].bias)
         nn.init.zeros_(self.heading_head[-1].weight)
@@ -243,15 +238,13 @@ class AutonomousMotionGRU(nn.Module):
         if previous_z_uav is None:
             previous_z_uav = z_uav
 
-        has_previous_ms1 = previous_ms1_xy is not None
-        if previous_ms1_xy is None:
-            previous_ms1_xy = ms1_xy.detach()
-
         visual_mean = 0.5 * (z_uav + previous_z_uav)
         visual_delta = z_uav - previous_z_uav
-        observed_step = ms1_xy - previous_ms1_xy
-        observed_speed = torch.linalg.vector_norm(observed_step, dim=1, keepdim=True)
 
+        # Here prior_xy is the previous FINAL position, not the predicted search
+        # center and not any reference/GT position.
+        observed_step = ms1_xy - prior_xy
+        observed_speed = torch.linalg.vector_norm(observed_step, dim=1, keepdim=True)
         observed_heading = torch.atan2(
             observed_step[:, 1:2], observed_step[:, 0:1]
         )
@@ -262,15 +255,22 @@ class AutonomousMotionGRU(nn.Module):
             previous_heading_rad,
         )
 
+        # 10 numeric values: current visual displacement (2), previous motion
+        # polynomial displacement (2), previous speed (1), previous accel (1),
+        # previous heading sin/cos (2), and MS1-vs-previous-MS1 change (2).
+        if previous_ms1_xy is None:
+            ms1_temporal_change = torch.zeros_like(ms1_xy)
+        else:
+            ms1_temporal_change = ms1_xy - previous_ms1_xy
         numeric = torch.cat(
             [
-                (ms1_xy - prior_xy) / float(config.POSITION_INPUT_SCALE_M),
                 observed_step / float(config.STEP_INPUT_SCALE_M),
                 previous_delta_xy / float(config.STEP_INPUT_SCALE_M),
                 previous_speed,
                 previous_acceleration,
                 torch.sin(previous_heading_rad),
                 torch.cos(previous_heading_rad),
+                ms1_temporal_change / float(config.STEP_INPUT_SCALE_M),
             ],
             dim=1,
         )
@@ -294,11 +294,7 @@ class AutonomousMotionGRU(nn.Module):
         raw_motion = self.motion_head(h)
         speed_residual = raw_motion[:, 0:1]
         acceleration = raw_motion[:, 1:2]
-
-        # Positive speed with no maximum.  At zero residual this equals the
-        # observed MS1 speed (apart from a negligible 1e-4 floor).
-        base_speed = observed_speed if has_previous_ms1 else previous_speed.abs()
-        speed = F.softplus(_inverse_softplus(base_speed) + speed_residual)
+        speed = F.softplus(_inverse_softplus(observed_speed) + speed_residual)
 
         heading_residual = self.heading_head(h)
         heading = _wrap_angle_tensor(base_heading + heading_residual)
@@ -319,7 +315,6 @@ class AutonomousMotionGRU(nn.Module):
         )
 
 
-# Existing entry points import this name.
 ThreeFrameRouteStateGRU = AutonomousMotionGRU
 RouteProgressGRU = AutonomousMotionGRU
 TwoFrameRouteStateGRU = AutonomousMotionGRU
