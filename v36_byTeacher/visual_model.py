@@ -184,8 +184,8 @@ class TwoFrameRouteStateGRU(nn.Module):
       * previous GRU hidden state.
 
     There is no response-variance input, no current reference/GT coordinate, and
-    no current Kalman prior in the GRU input.  The output heads predict v/a and
-    heading/turn.  No hand-coded speed, acceleration, heading, turn-rate, EMA,
+    no current Kalman prior in the GRU input. The output heads predict v/a and
+    heading/turn. No hand-coded speed, acceleration, heading, turn-rate, EMA,
     or per-frame step limit is applied.
     """
 
@@ -256,8 +256,16 @@ class TwoFrameRouteStateGRU(nn.Module):
         previous_ms1_xy,
         previous_velocity_xy,
         previous_heading_state,
+        previous_final_xy=None,
+        previous_acceleration_xy=None,
         hidden: Optional[torch.Tensor] = None,
     ):
+        # These two compatibility arguments are accepted because the surrounding
+        # tracker state still records them, but they are intentionally NOT GRU
+        # inputs. Keeping the explicit discard makes the no-extra-input contract
+        # auditable in code.
+        del previous_final_xy, previous_acceleration_xy
+
         if hidden is None:
             hidden = self.initial_hidden(z_uav.shape[0], z_uav.device, z_uav.dtype)
 
@@ -265,10 +273,7 @@ class TwoFrameRouteStateGRU(nn.Module):
         if previous_ms1_xy is None:
             previous_ms1_xy = ms1_xy.detach()
 
-        # Same position-domain temporal cue as the current byTeacher idea:
-        # current visual localization relative to the previous visual localization.
         visual_step_xy = ms1_xy - previous_ms1_xy
-
         numeric = torch.cat(
             [
                 _signed_log1p(visual_step_xy),
