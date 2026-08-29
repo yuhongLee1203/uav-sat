@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# v36_byTeacher v3 runner.
+# v36_byTeacher controlled reference-assisted v8 runner.
 # Training = Route-A native/original speed ONLY.
 # Validation = Route-C. Final test = Route-B.
+# GRU input = MS1 XY + temporal mean + first difference + previous motion info.
 #
 # Usage:
 #   bash run_train_eval.sh train
@@ -50,6 +51,7 @@ PY
 
 echo "Python syntax preflight: OK" >&2
 echo "Temporal data policy: Route-A native/original speed ONLY; C=val; B=test" >&2
+echo "GRU v8: MS1 XY + temporal mean + first difference + previous motion info" >&2
 
 case "${MODE}" in
   train)
