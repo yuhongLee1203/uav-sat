@@ -1,21 +1,20 @@
 """Create same-scene BearingUAV pseudo-sequences for v36_byTeacher.
 
 BearingUAV-90K contains independent cross-view samples rather than a recorded
-video trajectory. This adapter therefore constructs spatial pseudo-sequences
-from REAL city-A samples only. Every output frame keeps the selected source
-sample's own position label.
+video trajectory.  This adapter therefore keeps two different geometric objects
+explicit instead of drawing them as if they were the same thing:
 
-Protocol:
-- one satellite scene only: city-A;
-- train_1, train_2 and val_1 all lie on the SAME satellite image;
-- each route is an irregular sparse polyline made of long straight segments;
-- segments may be horizontal, vertical or diagonal and different routes may cross;
-- every planned segment junction that is actually traversed becomes a waypoint;
-- no generated route may exceed 600 frames;
-- train_1 is slower, train_2 is faster, and val_1 is between them;
-- exact source images are not reused across train/validation routes;
-- effective speed means displacement per spatial pseudo-frame, not measured UAV
-  velocity, because BearingUAV is not a temporal video sequence.
+1. The route/reference geometry is an exact piecewise-straight polyline.  It may
+   contain horizontal, vertical, and diagonal legs.  Waypoints are placed on
+   this exact polyline.
+2. UAV images are real BearingUAV samples selected near that polyline.  Their
+   own source positions remain the visual labels; they are never snapped onto
+   the route.  The shared v36 controlled protocol later applies its normal
+   deterministic smooth jitter to the local search prior.
+
+All splits use city-A only.  train_1/train_2 are training routes and val_1 is a
+validation route.  Different routes may cross, source images are not reused
+across routes, and no generated route exceeds 600 frames.
 """
 
 import argparse
@@ -40,17 +39,14 @@ DEFAULT_MIN_ACCEPTED_FRAMES = 400
 
 
 def irregular_polyline(points):
-    """Return a deterministic sparse route from manually chosen map vertices."""
     route = [tuple(map(float, p)) for p in points]
     if len(route) < 3:
         raise ValueError("an irregular route needs at least three vertices")
     return route
 
 
-# The three paths intentionally spread over the same city-A map instead of being
-# stacked in separate horizontal bands.  Each path itself is simple (no
-# self-crossing), but train routes and validation may cross one another.  This
-# looks much closer to independent UAV sorties through the same operating area.
+# Sparse, normal-looking sorties across the same map.  Individual legs are
+# straight; directions are intentionally varied and different routes may cross.
 ROUTES = {
     "train_1": (
         SCENE,
@@ -100,8 +96,8 @@ ROUTES = {
     ),
 }
 
-# Effective pseudo-motion order retained from the previous requirement:
-# train_1 (slow) < val_1 (intermediate) < train_2 (fast).
+# Variable effective displacement per pseudo-frame.  This is a spatial
+# pseudo-motion rate, not a measured physical UAV velocity.
 ROUTE_PROFILES = {
     "train_1": {
         "name": "train_slow",
@@ -151,25 +147,52 @@ def route_geometry(waypoints):
     delta = wp[1:] - wp[:-1]
     lengths = np.linalg.norm(delta, axis=1)
     units = delta / np.maximum(lengths[:, None], 1e-9)
+    crosses = np.stack([-units[:, 1], units[:, 0]], axis=1)
     cumulative = np.concatenate([[0.0], np.cumsum(lengths)])
-    return wp, starts, delta, lengths, units, cumulative
+    return wp, starts, delta, lengths, units, crosses, cumulative
 
 
 def project_samples_to_route(points, waypoints):
-    _wp, starts, _delta, lengths, units, cumulative = route_geometry(waypoints)
+    _wp, starts, _delta, lengths, units, crosses, cumulative = route_geometry(waypoints)
     best_dist = np.full(len(points), np.inf, dtype=np.float64)
     best_progress = np.zeros(len(points), dtype=np.float64)
     best_leg = np.zeros(len(points), dtype=np.int32)
-    for leg, (start, unit, length) in enumerate(zip(starts, units, lengths)):
+    best_cross = np.zeros(len(points), dtype=np.float64)
+
+    for leg, (start, unit, cross, length) in enumerate(zip(starts, units, crosses, lengths)):
         rel = points - start
         along = np.clip(np.sum(rel * unit, axis=1), 0.0, length)
         nearest = start + along[:, None] * unit
-        dist = np.linalg.norm(points - nearest, axis=1)
+        residual = points - nearest
+        dist = np.linalg.norm(residual, axis=1)
+        signed_cross = np.sum(residual * cross, axis=1)
         mask = dist < best_dist
         best_dist[mask] = dist[mask]
         best_progress[mask] = cumulative[leg] + along[mask]
         best_leg[mask] = leg
-    return best_progress, best_dist, best_leg
+        best_cross[mask] = signed_cross[mask]
+
+    return best_progress, best_dist, best_leg, best_cross
+
+
+def reference_pixel_at_progress(waypoints, progress_m):
+    wp, starts, _delta, lengths, units, _crosses, cumulative = route_geometry(waypoints)
+    progress_px = float(progress_m) / METERS_PER_PIXEL
+    progress_px = float(np.clip(progress_px, 0.0, cumulative[-1]))
+    leg = int(np.searchsorted(cumulative, progress_px, side="right") - 1)
+    leg = int(np.clip(leg, 0, len(lengths) - 1))
+    along = float(np.clip(progress_px - cumulative[leg], 0.0, lengths[leg]))
+    return starts[leg] + along * units[leg], leg
+
+
+def route_heading_at_progress(waypoints, progress_m):
+    _wp, _starts, _delta, lengths, units, _crosses, cumulative = route_geometry(waypoints)
+    progress_px = float(progress_m) / METERS_PER_PIXEL
+    progress_px = float(np.clip(progress_px, 0.0, cumulative[-1]))
+    leg = int(np.searchsorted(cumulative, progress_px, side="right") - 1)
+    leg = int(np.clip(leg, 0, len(lengths) - 1))
+    unit = units[leg]
+    return float(math.atan2(float(unit[1]), float(unit[0])))
 
 
 def target_step_for_frame(profile, frame_index):
@@ -192,6 +215,7 @@ def _build_chain_from_start(
     points,
     progress_m,
     route_dist_m,
+    route_cross_m,
     legs,
     order,
     ordered_progress,
@@ -243,11 +267,16 @@ def _build_chain_from_start(
         if np.any(preferred):
             cand, ds, step = cand[preferred], ds[preferred], step[preferred]
 
+        # Strongly prefer samples close to the straight reference segment and
+        # avoid alternating from one side of the segment to the other.  This
+        # removes the artificial saw-tooth look without moving any source label.
+        lateral_change = np.abs(route_cross_m[cand] - route_cross_m[current])
         score = (
             np.abs(step - target)
             + 0.42 * np.abs(ds - target)
-            + 0.30 * route_dist_m[cand]
-            + 0.12 * np.maximum(0.0, legs[cand] - int(legs[current]))
+            + 0.85 * route_dist_m[cand]
+            + 0.22 * lateral_change
+            + 0.10 * np.maximum(0.0, legs[cand] - int(legs[current]))
         )
         nxt = int(cand[int(np.argmin(score))])
         actual_step = float(np.linalg.norm(points[nxt] - points[current]) * METERS_PER_PIXEL)
@@ -271,11 +300,13 @@ def select_actual_sequence(
     profile,
     forbidden_indices=None,
 ):
-    """Select up to target_frames real samples along one irregular polyline."""
+    """Select up to target_frames real samples near one exact straight polyline."""
     target_frames = min(int(target_frames), MAX_ROUTE_FRAMES)
-    progress_px, route_dist_px, legs = project_samples_to_route(points, waypoints)
+    progress_px, route_dist_px, legs, route_cross_px = project_samples_to_route(points, waypoints)
     progress_m = progress_px * METERS_PER_PIXEL
     route_dist_m = route_dist_px * METERS_PER_PIXEL
+    route_cross_m = route_cross_px * METERS_PER_PIXEL
+
     keep_mask = route_dist_m <= float(corridor_m)
     if forbidden_indices:
         forbidden = np.fromiter((int(x) for x in forbidden_indices), dtype=np.int64)
@@ -291,7 +322,7 @@ def select_actual_sequence(
     order = keep[np.argsort(progress_m[keep], kind="stable")]
     ordered_progress = progress_m[order]
     first_pool = order[: min(1024, len(order))]
-    start_score = route_dist_m[first_pool] + 0.012 * (
+    start_score = 1.20 * route_dist_m[first_pool] + 0.012 * (
         progress_m[first_pool] - progress_m[first_pool].min()
     )
     start_candidates = first_pool[np.argsort(start_score)[: min(48, len(first_pool))]]
@@ -299,7 +330,7 @@ def select_actual_sequence(
     best_chain, best_flags = [], []
     for start in start_candidates:
         chain, flags = _build_chain_from_start(
-            int(start), points, progress_m, route_dist_m, legs,
+            int(start), points, progress_m, route_dist_m, route_cross_m, legs,
             order, ordered_progress, target_frames, profile,
             min_step_m, preferred_max_step_m, hard_max_step_m, lookahead_m,
         )
@@ -328,11 +359,14 @@ def select_actual_sequence(
         step_m = 0.0 if previous is None else float(
             np.linalg.norm(points[source_index] - points[previous]) * METERS_PER_PIXEL
         )
+        reference_pixel, _ = reference_pixel_at_progress(waypoints, progress_m[source_index])
         rows.append({
             "source_index": int(source_index),
             "source_pixel": points[source_index].copy(),
+            "reference_pixel": reference_pixel.copy(),
             "route_progress_m": float(progress_m[source_index]),
             "route_distance_m": float(route_dist_m[source_index]),
+            "route_cross_m": float(route_cross_m[source_index]),
             "step_m": step_m,
             "target_step_m": 0.0 if frame_index == 0 else target_step_for_frame(profile, frame_index),
             "step_fallback": bool(fallback),
@@ -354,12 +388,11 @@ def make_satellite_image(rebuild=False):
 
 
 def satellite_georef():
-    width_px = height_px = MAP_PX
     top_lat, left_lon = 23.6, 120.0
     lat_per_m = 1.0 / 111320.0
     lon_per_m = 1.0 / (111320.0 * math.cos(math.radians(top_lat)))
-    bottom_lat = top_lat - height_px * METERS_PER_PIXEL * lat_per_m
-    right_lon = left_lon + width_px * METERS_PER_PIXEL * lon_per_m
+    bottom_lat = top_lat - MAP_PX * METERS_PER_PIXEL * lat_per_m
+    right_lon = left_lon + MAP_PX * METERS_PER_PIXEL * lon_per_m
     payload = {
         "scene": SCENE,
         "geo_bounds": {
@@ -378,39 +411,36 @@ def satellite_georef():
 def pixel_to_latlon(pixel, bounds):
     tl = bounds["geo_bounds"]["top_left"]
     br = bounds["geo_bounds"]["bottom_right"]
-    lon = tl["longitude"] + pixel[0] / (MAP_PX - 1) * (br["longitude"] - tl["longitude"])
-    lat = tl["latitude"] - pixel[1] / (MAP_PX - 1) * (tl["latitude"] - br["latitude"])
+    lon = tl["longitude"] + float(pixel[0]) / (MAP_PX - 1) * (br["longitude"] - tl["longitude"])
+    lat = tl["latitude"] - float(pixel[1]) / (MAP_PX - 1) * (tl["latitude"] - br["latitude"])
     return float(lat), float(lon)
 
 
-def heading_from_points(points, index):
-    if len(points) <= 1:
-        return 0.0
-    if index == 0:
-        delta = points[1] - points[0]
-    elif index == len(points) - 1:
-        delta = points[-1] - points[-2]
-    else:
-        delta = points[index + 1] - points[index - 1]
-    if np.linalg.norm(delta) <= 1e-9:
-        return 0.0
-    return float(math.atan2(float(delta[1]), float(delta[0])))
-
-
-def planned_waypoint_indices(selected, planned_route):
-    """Map every traversed planned segment junction to the nearest selected frame."""
-    _wp, _starts, _delta, _lengths, _units, cumulative_px = route_geometry(planned_route)
-    turn_progress_m = cumulative_px * METERS_PER_PIXEL
+def reference_waypoint_rows(selected, planned_route):
+    """Build exact route waypoints while attaching the nearest selected frame id."""
+    _wp, _starts, _delta, _lengths, _units, _crosses, cumulative_px = route_geometry(planned_route)
     selected_progress = np.asarray([x["route_progress_m"] for x in selected], dtype=np.float64)
     covered_min = float(selected_progress[0])
     covered_max = float(selected_progress[-1])
 
-    indices = [0]
-    for progress in turn_progress_m[1:-1]:
-        if covered_min - 1.0 <= progress <= covered_max + 1.0:
-            indices.append(int(np.argmin(np.abs(selected_progress - float(progress)))))
-    indices.append(len(selected) - 1)
-    return sorted(set(indices))
+    candidates = [(covered_min, "start")]
+    for progress_px in cumulative_px[1:-1]:
+        progress_m = float(progress_px * METERS_PER_PIXEL)
+        if covered_min + 1e-6 < progress_m < covered_max - 1e-6:
+            candidates.append((progress_m, "turn"))
+    candidates.append((covered_max, "end"))
+
+    rows = []
+    for progress_m, role in candidates:
+        frame_index = int(np.argmin(np.abs(selected_progress - progress_m)))
+        reference_pixel, _ = reference_pixel_at_progress(planned_route, progress_m)
+        rows.append({
+            "progress_m": float(progress_m),
+            "role": role,
+            "frame_index": frame_index,
+            "reference_pixel": reference_pixel,
+        })
+    return rows
 
 
 def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebuild, profile, target_frames):
@@ -423,10 +453,9 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
             stale.unlink()
 
     actual = np.stack([x["source_pixel"] for x in selected])
-    wp_indices = set(planned_waypoint_indices(selected, planned_route))
-    timestamps, waypoints = [], []
-    waypoint_order = 0
+    reference = np.stack([x["reference_pixel"] for x in selected])
     base_timestamp = 1_900_000_000_000_000_000
+    timestamps = []
 
     for frame_index, item in enumerate(selected):
         meta = metadata_rows[item["source_index"]]
@@ -439,7 +468,8 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
         target.symlink_to(source)
 
         lat, lon = pixel_to_latlon(item["source_pixel"], bounds)
-        heading = heading_from_points(actual, frame_index)
+        ref_lat, ref_lon = pixel_to_latlon(item["reference_pixel"], bounds)
+        heading = route_heading_at_progress(planned_route, item["route_progress_m"])
         timestamp_ns = base_timestamp + int(round(frame_index * PSEUDO_DT_S * 1e9))
         timestamps.append({
             "timestamp_ns": timestamp_ns,
@@ -452,45 +482,72 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
             "source_bearinguav_index": int(item["source_index"]),
             "route_progress_m": float(item["route_progress_m"]),
             "effective_step_m": float(item["step_m"]),
+            "reference_latitude": ref_lat,
+            "reference_longitude": ref_lon,
+            "source_to_reference_m": float(item["route_distance_m"]),
         })
 
-        if frame_index in wp_indices:
-            role = "start" if frame_index == 0 else (
-                "end" if frame_index == len(selected) - 1 else "turn"
-            )
-            waypoints.append({
-                "waypoint_order": waypoint_order,
-                "role": role,
-                "frame_index": frame_index,
-                "image": target.name,
-                "timestamp_ns": timestamp_ns,
-                "latitude": lat,
-                "longitude": lon,
-                "altitude_m": 120.0,
-                "route_progress_m": float(item["route_progress_m"]),
-                "source_bearinguav_index": int(item["source_index"]),
-            })
-            waypoint_order += 1
-
     (root / "sensor_with_yaw.json").write_text(json.dumps({"timestamp": timestamps}, indent=2))
+
+    ref_dir = OUTPUT_ROOT / "reference_points"
+    ref_dir.mkdir(exist_ok=True)
+    ref_payload = {
+        "route": name,
+        "scene": city,
+        "note": "exact piecewise-straight route reference points; source UAV labels remain unsnapped",
+        "points": [
+            {
+                "frame_index": i,
+                "route_progress_m": float(item["route_progress_m"]),
+                "latitude": pixel_to_latlon(item["reference_pixel"], bounds)[0],
+                "longitude": pixel_to_latlon(item["reference_pixel"], bounds)[1],
+            }
+            for i, item in enumerate(selected)
+        ],
+    }
+    (ref_dir / f"{name}_reference_points.json").write_text(json.dumps(ref_payload, indent=2))
+
+    waypoint_rows = reference_waypoint_rows(selected, planned_route)
+    waypoints = []
+    for order, wp in enumerate(waypoint_rows):
+        frame_index = int(wp["frame_index"])
+        item = selected[frame_index]
+        ref_lat, ref_lon = pixel_to_latlon(wp["reference_pixel"], bounds)
+        waypoints.append({
+            "waypoint_order": order,
+            "role": wp["role"],
+            "frame_index": frame_index,
+            "image": f"vi_{frame_index:06d}.jpg",
+            "timestamp_ns": int(timestamps[frame_index]["timestamp_ns"]),
+            "latitude": ref_lat,
+            "longitude": ref_lon,
+            "altitude_m": 120.0,
+            "route_progress_m": float(wp["progress_m"]),
+            "nearest_source_bearinguav_index": int(item["source_index"]),
+            "geometry_source": "exact planned polyline",
+        })
+
     wp_dir = OUTPUT_ROOT / "waypoints"
     wp_dir.mkdir(exist_ok=True)
     (wp_dir / f"{name}_waypoints.json").write_text(json.dumps({
         "route": name,
         "split": "validation" if name == "val_1" else "train",
         "scene": city,
-        "position_source": "selected BearingUAV sample actual metadata position",
+        "position_source": "exact planned route geometry",
+        "uav_label_source": "selected BearingUAV sample actual metadata position",
         "temporal_semantics": "spatially ordered actual-pose pseudo-sequence",
-        "route_layout": "sparse irregular straight-segment polyline with diagonal legs allowed",
-        "waypoint_policy": "start + every traversed planned segment junction + end",
+        "route_layout": "exact sparse piecewise-straight polyline; diagonal legs allowed",
+        "waypoint_policy": "exact centerline start + traversed planned vertices + exact centerline end",
         "waypoints": waypoints,
     }, indent=2))
 
     steps = np.linalg.norm(np.diff(actual, axis=0), axis=1) * METERS_PER_PIXEL
+    reference_steps = np.linalg.norm(np.diff(reference, axis=0), axis=1) * METERS_PER_PIXEL
     targets = np.asarray([x["target_step_m"] for x in selected[1:]], dtype=np.float64)
     corridor = np.asarray([x["route_distance_m"] for x in selected], dtype=np.float64)
     fallback = np.asarray([x["step_fallback"] for x in selected[1:]], dtype=np.float64)
     turn_count = sum(1 for x in waypoints if x["role"] == "turn")
+
     summary = {
         "route": name,
         "split": "validation" if name == "val_1" else "train",
@@ -500,6 +557,7 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
         "waypoints": len(waypoints),
         "turn_waypoints": int(turn_count),
         "planned_vertices": int(len(planned_route)),
+        "reference_geometry": "exact piecewise-straight polyline",
         "speed_profile": str(profile["name"]),
         "target_step_base_m": float(profile["base_step_m"]),
         "target_step_mean_m": float(np.mean(targets)),
@@ -512,11 +570,14 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
         "step_p90_m": float(np.quantile(steps, 0.90)),
         "step_min_m": float(np.min(steps)),
         "step_max_m": float(np.max(steps)),
+        "reference_step_mean_m": float(np.mean(reference_steps)),
         "effective_speed_mean_mps": float(np.mean(steps) / PSEUDO_DT_S),
         "effective_speed_note": "derived from spatial pseudo-frame spacing; not a recorded UAV velocity",
         "fallback_step_pct": float(100.0 * np.mean(fallback)) if fallback.size else 0.0,
         "image_label_error_mean_m": 0.0,
         "image_label_error_p90_m": 0.0,
+        "source_to_reference_mean_m": float(np.mean(corridor)),
+        "source_to_reference_p90_m": float(np.quantile(corridor, 0.90)),
         "route_corridor_mean_m": float(np.mean(corridor)),
         "route_corridor_p90_m": float(np.quantile(corridor, 0.90)),
     }
@@ -535,6 +596,8 @@ def validate_summary(summary, min_accepted_frames):
         )
     if summary["image_label_error_mean_m"] != 0.0:
         raise RuntimeError(f'{summary["route"]}: image/label mismatch')
+    if summary["reference_geometry"] != "exact piecewise-straight polyline":
+        raise RuntimeError(f'{summary["route"]}: reference route is not exact straight-segment geometry')
     if summary["step_std_m"] < 0.10:
         raise RuntimeError(f'{summary["route"]}: step distribution is still too fixed')
     if summary["turn_waypoints"] < 4:
@@ -591,7 +654,7 @@ def main():
     metadata = DATA_ROOT / SCENE / "rawmetadata.csv"
     metadata_rows = list(csv.DictReader(metadata.open(encoding="utf-8-sig")))
     points = np.stack([row_pixel(row) for row in metadata_rows])
-    print(f"same-scene irregular-route protocol: scene={SCENE}, raw samples={len(metadata_rows)}", flush=True)
+    print(f"same-scene exact-reference protocol: scene={SCENE}, raw samples={len(metadata_rows)}", flush=True)
 
     summaries = []
     used_source_indices = set()
@@ -639,15 +702,18 @@ def main():
             "same_satellite_scene_for_all_splits": True,
             "scene": SCENE,
             "satellite_image": str(satellite),
-            "route_layout": "irregular sparse straight-segment polylines across the full map",
+            "route_layout": "irregular sparse exact straight-segment polylines across the full map",
             "diagonal_segments_allowed": True,
             "inter_route_crossings_allowed": True,
             "exact_source_image_reuse_across_routes": False,
         },
         "adapter": {
             "position_labels": "actual selected BearingUAV sample positions",
+            "reference_geometry": "exact piecewise-straight planned route",
+            "reference_points": "per-frame projection on the exact planned route; stored for inspection only",
+            "local_prior_jitter": "shared v36 deterministic smooth jitter is applied at runtime; labels are not jittered",
             "temporal_order": "route-progress-ordered actual-pose pseudo-sequence",
-            "selection": "same-city irregular-polyline corridor plus bounded variable-speed chaining",
+            "selection": "same-city exact straight-polyline corridor plus smooth bounded variable-speed chaining",
             "variable_step": True,
             "max_route_frames": MAX_ROUTE_FRAMES,
             "target_train_frames": int(args.target_train_frames),
@@ -657,7 +723,7 @@ def main():
             "preferred_max_step_m": float(args.max_step_m),
             "hard_max_step_m": float(args.hard_max_step_m),
             "lookahead_m": float(args.lookahead_m),
-            "waypoint_policy": "start + every traversed planned segment junction + end",
+            "waypoint_policy": "exact centerline start + traversed planned vertices + exact centerline end",
             "speed_order_target": "train_1 < val_1 < train_2",
             "speed_semantics": "effective displacement per spatial pseudo-frame, not recorded UAV velocity",
         },
