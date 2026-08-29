@@ -1,4 +1,4 @@
-"""3-train/1-val/1-test orchestration for corrected BearingUAV actual-pose routes."""
+"""2-train/1-validation orchestration for same-scene BearingUAV actual-pose routes."""
 
 import argparse
 import json
@@ -19,7 +19,7 @@ from visual_model import AllMapGeoCLIP, ThreeFrameRouteStateGRU
 
 
 def validate_generated_protocol():
-    """Fail early if stale fixed-spacing/synthetic-label routes are still present."""
+    """Fail early if stale cross-city or fixed-spacing routes are still present."""
     summary_path = Path(config.GENERATED_ROOT) / "generation_summary.json"
     if not summary_path.exists():
         raise FileNotFoundError(
@@ -27,21 +27,42 @@ def validate_generated_protocol():
         )
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     adapter = payload.get("adapter", {})
-    if adapter.get("position_labels") != "actual selected BearingUAV sample positions":
-        raise RuntimeError(
-            "stale BearingUAV routes detected: expected actual source-position labels"
-        )
-    if not bool(adapter.get("variable_step", False)):
-        raise RuntimeError("stale BearingUAV routes detected: variable_step is not enabled")
+    split = payload.get("split", {})
+    scene_policy = payload.get("scene_policy", {})
 
-    for route in payload.get("routes", []):
+    if split.get("train") != ["train_1", "train_2"]:
+        raise RuntimeError(f"wrong BearingUAV train split: {split.get('train')}")
+    if split.get("validation") != ["val_1"] or split.get("test") not in ([], None):
+        raise RuntimeError(f"wrong BearingUAV validation/test split: {split}")
+    if not bool(scene_policy.get("same_satellite_scene_for_all_splits", False)):
+        raise RuntimeError("BearingUAV routes are not marked as same-satellite-scene")
+    if scene_policy.get("scene") != "citya":
+        raise RuntimeError(f"expected one city-A scene, got {scene_policy.get('scene')}")
+    if adapter.get("position_labels") != "actual selected BearingUAV sample positions":
+        raise RuntimeError("expected actual source-position labels")
+    if not bool(adapter.get("variable_step", False)):
+        raise RuntimeError("variable_step is not enabled")
+
+    routes = payload.get("routes", [])
+    if {r.get("route") for r in routes} != {"train_1", "train_2", "val_1"}:
+        raise RuntimeError("generation summary does not contain exactly train_1/train_2/val_1")
+
+    means = {}
+    for route in routes:
         name = route.get("route", "unknown")
+        if route.get("scene") != "citya":
+            raise RuntimeError(f"{name}: expected citya, got {route.get('scene')}")
+        if int(route.get("frames", 0)) != 1000:
+            raise RuntimeError(f"{name}: expected 1000 frames, got {route.get('frames')}")
+        if int(route.get("turn_waypoints", 0)) < 4:
+            raise RuntimeError(f"{name}: too few turn waypoints")
         label_mean = float(route.get("image_label_error_mean_m", float("inf")))
         label_p90 = float(route.get("image_label_error_p90_m", float("inf")))
         step_std = float(route.get("step_std_m", 0.0))
         step_mean = float(route.get("step_mean_m", 0.0))
         step_p10 = float(route.get("step_p10_m", 0.0))
         step_p90 = float(route.get("step_p90_m", 0.0))
+        means[name] = step_mean
         if label_mean > 1e-6 or label_p90 > 1e-6:
             raise RuntimeError(
                 f"{name}: image/position labels are misaligned "
@@ -54,11 +75,17 @@ def validate_generated_protocol():
                 f"p10={step_p10:.3f}m p90={step_p90:.3f}m)"
             )
         print(
-            f"{name} corrected-data check: frames={route['frames']} "
-            f"step_mean={step_mean:.3f}m std={step_std:.3f}m "
-            f"p10={step_p10:.3f}m p90={step_p90:.3f}m "
+            f"{name} same-scene check: scene=citya frames={route['frames']} "
+            f"turns={route['turn_waypoints']} step_mean={step_mean:.3f}m "
+            f"std={step_std:.3f}m p10={step_p10:.3f}m p90={step_p90:.3f}m "
             f"image_label_error=0m",
             flush=True,
+        )
+
+    if not (means["train_1"] < means["val_1"] < means["train_2"]):
+        raise RuntimeError(
+            "effective speed must satisfy train_1 < val_1 < train_2; "
+            f"got {means}"
         )
 
 
@@ -153,7 +180,7 @@ def train_visual_multiroute(device, epochs, jitter_m):
             "epoch": epoch, "best_score": best_score,
             "visual_train_routes": list(config.TRAIN_ROUTE_NAMES),
             "visual_validation_routes": list(config.VALIDATION_ROUTE_NAMES),
-            "visual_eval_routes": list(config.TEST_ROUTE_NAMES),
+            "visual_eval_routes": [],
             "previous_task_checkpoint_loaded": False,
             "backbone_source": config.BACKBONE_NAME,
             "task_specific_initialization": "random", "jitter_m": float(jitter_m),
@@ -242,8 +269,7 @@ def train_temporal_multiroute(visual, objects, device, epochs, patience_limit, r
                         "epoch": epoch, "validation": val,
                         "train_routes": list(config.TRAIN_ROUTE_NAMES), "epoch_route": name,
                         "validation_routes": list(config.VALIDATION_ROUTE_NAMES),
-                        "test_routes": list(config.TEST_ROUTE_NAMES),
-                        "train_forward_rows": 3,
+                        "test_routes": [], "train_forward_rows": 3,
                         "bearing_data_protocol": str(config.BEARING_DATA_PROTOCOL)},
                        config.TEMPORAL_CHECKPOINT)
         else:
@@ -253,8 +279,7 @@ def train_temporal_multiroute(visual, objects, device, epochs, patience_limit, r
                     "epoch": epoch, "best_score": best_score, "patience": patience,
                     "train_routes": list(config.TRAIN_ROUTE_NAMES), "epoch_route": name,
                     "validation_routes": list(config.VALIDATION_ROUTE_NAMES),
-                    "test_routes": list(config.TEST_ROUTE_NAMES),
-                    "bearing_data_protocol": str(config.BEARING_DATA_PROTOCOL)},
+                    "test_routes": [], "bearing_data_protocol": str(config.BEARING_DATA_PROTOCOL)},
                    config.LATEST_TEMPORAL_CHECKPOINT)
         elapsed = time.perf_counter() - started
         print("multiroute epoch=%03d/%d route=%s native_loss=%.5f stride%d_loss=%.5f "
@@ -291,15 +316,21 @@ def main():
     objects = build_route_objects(visual, device)
     model = train_temporal_multiroute(visual, objects, device, args.temporal_epochs,
                                       args.patience, args.resume)
-    results = {}
-    for name in config.TEST_ROUTE_NAMES:
-        cache, route, gt = objects[name]
-        results[name] = rt.evaluate_closed_loop(model, visual, cache, route, gt,
-                                                (0, len(cache)), device)
-    output = config.OUTPUT_DIR / "heldout_test_results.json"
+
+    val_name = config.VALIDATION_ROUTE_NAMES[0]
+    val_cache, val_route, val_gt = objects[val_name]
+    validation = rt.evaluate_closed_loop(
+        model, visual, val_cache, val_route, val_gt, (0, len(val_cache)), device
+    )
+    results = {
+        "protocol": "same city-A satellite image; train_1+train_2 train, val_1 validation",
+        "validation_route": val_name,
+        "validation": validation,
+    }
+    output = config.OUTPUT_DIR / "validation_results.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(results, indent=2))
-    print("heldout test=" + json.dumps(results), flush=True)
+    print("validation=" + json.dumps(results), flush=True)
 
 
 if __name__ == "__main__":
