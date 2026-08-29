@@ -1,0 +1,101 @@
+same-scene exact-reference protocol: scene=citya, raw samples=22500
+building train_1: SAME scene=citya, max_frames=600, profile=train_slow, base_step=3.20m/frame, straight_legs=9, diagonal_allowed=True
+WARNING train_slow: requested max 600 frames, using longest valid chain of 577 frames
+{"route": "train_1", "split": "train", "scene": "citya", "frames": 577, "requested_max_frames": 600, "waypoints": 10, "turn_waypoints": 8, "planned_vertices": 10, "reference_geometry": "exact piecewise-straight polyline", "speed_profile": "train_slow", "target_step_base_m": 3.2, "target_step_mean_m": 3.1816541835220216, "target_step_min_m": 2.2, "target_step_max_m": 4.2, "step_mean_m": 5.863732186292266, "step_std_m": 2.837392143252545, "step_p10_m": 2.606096664479531, "step_p50_m": 5.304066403525526, "step_p90_m": 9.789879751176166, "step_min_m": 0.8386928589770575, "step_max_m": 18.4811470613822, "reference_step_mean_m": 4.165219559800312, "effective_speed_mean_mps": 17.5911965588768, "effective_speed_note": "derived from spatial pseudo-frame spacing; not a recorded UAV velocity", "fallback_step_pct": 44.44444444444444, "image_label_error_mean_m": 0.0, "image_label_error_p90_m": 0.0, "source_to_reference_mean_m": 4.671510454558235, "source_to_reference_p90_m": 9.696951301931104, "route_corridor_mean_m": 4.671510454558235, "route_corridor_p90_m": 9.696951301931104}
+building train_2: SAME scene=citya, max_frames=600, profile=train_fast, base_step=4.70m/frame, straight_legs=10, diagonal_allowed=True
+{"route": "train_2", "split": "train", "scene": "citya", "frames": 600, "requested_max_frames": 600, "waypoints": 11, "turn_waypoints": 9, "planned_vertices": 11, "reference_geometry": "exact piecewise-straight polyline", "speed_profile": "train_fast", "target_step_base_m": 4.7, "target_step_mean_m": 4.628870673746822, "target_step_min_m": 3.5, "target_step_max_m": 6.1, "step_mean_m": 6.326066055796383, "step_std_m": 2.5753884107341474, "step_p10_m": 3.433442038693864, "step_p50_m": 6.054260829182327, "step_p90_m": 9.454863859435703, "step_min_m": 0.9336575603209036, "step_max_m": 18.104799537390914, "reference_step_mean_m": 4.79866325144643, "effective_speed_mean_mps": 18.97819816738915, "effective_speed_note": "derived from spatial pseudo-frame spacing; not a recorded UAV velocity", "fallback_step_pct": 14.691151919866444, "image_label_error_mean_m": 0.0, "image_label_error_p90_m": 0.0, "source_to_reference_mean_m": 4.302372599088335, "source_to_reference_p90_m": 9.634518186581225, "route_corridor_mean_m": 4.302372599088335, "route_corridor_p90_m": 9.634518186581225}
+building val_1: SAME scene=citya, max_frames=600, profile=validation_intermediate, base_step=3.90m/frame, straight_legs=9, diagonal_allowed=True
+WARNING validation_intermediate: requested max 600 frames, using longest valid chain of 511 frames
+{"route": "val_1", "split": "validation", "scene": "citya", "frames": 511, "requested_max_frames": 600, "waypoints": 10, "turn_waypoints": 8, "planned_vertices": 10, "reference_geometry": "exact piecewise-straight polyline", "speed_profile": "validation_intermediate", "target_step_base_m": 3.9, "target_step_mean_m": 3.896366017746245, "target_step_min_m": 2.8, "target_step_max_m": 5.0, "step_mean_m": 6.059217401514625, "step_std_m": 3.049120950623457, "step_p10_m": 2.782304422886908, "step_p50_m": 5.575924530667075, "step_p90_m": 10.148627526835583, "step_min_m": 0.984277934905486, "step_max_m": 21.104126246101085, "reference_step_mean_m": 4.503468586394189, "effective_speed_mean_mps": 18.17765220454388, "effective_speed_note": "derived from spatial pseudo-frame spacing; not a recorded UAV velocity", "fallback_step_pct": 31.56862745098039, "image_label_error_mean_m": 0.0, "image_label_error_p90_m": 0.0, "source_to_reference_mean_m": 4.872483172883088, "source_to_reference_p90_m": 11.017246464941428, "route_corridor_mean_m": 4.872483172883088, "route_corridor_p90_m": 11.017246464941428}
+generation summary: /yh/study/uav-sat/v36_byTeacher/exp_bearinguav_data/generated_routes_2train_1val_samecity/generation_summary.json
+train_1 same-scene irregular-route check: scene=citya frames=577 turns=8 step_mean=5.864m std=2.837m p10=2.606m p90=9.790m image_label_error=0m
+train_2 same-scene irregular-route check: scene=citya frames=600 turns=9 step_mean=6.326m std=2.575m p10=3.433m p90=9.455m image_label_error=0m
+val_1 same-scene irregular-route check: scene=citya frames=511 turns=8 step_mean=6.059m std=3.049m p10=2.782m p90=10.149m image_label_error=0m
+satellite backbone cache: 256/14161
+satellite backbone cache: 5376/14161
+satellite backbone cache: 10496/14161
+satellite backbone cache: 14161/14161
+satellite gallery size=14161
+train_1 visual backbone cache: 256/577
+train_1 visual backbone cache: 577/577
+train_1 visual candidate capture=100.00%
+train_2 visual backbone cache: 256/600
+train_2 visual backbone cache: 600/600
+train_2 visual candidate capture=100.00%
+val_1 visual backbone cache: 256/511
+val_1 visual backbone cache: 511/511
+val_1 visual candidate capture=100.00%
+visual epoch=001/30 loss=5.13584 val_softms_mle=9.418m val_p90=15.552m val_lsr10=55.97% time=40.2s
+visual epoch=002/30 loss=4.63230 val_softms_mle=8.680m val_p90=14.602m val_lsr10=65.17% time=44.7s
+visual epoch=003/30 loss=4.60472 val_softms_mle=8.521m val_p90=14.396m val_lsr10=64.38% time=48.2s
+visual epoch=004/30 loss=4.41893 val_softms_mle=8.579m val_p90=14.772m val_lsr10=63.21% time=46.9s
+visual epoch=005/30 loss=4.36329 val_softms_mle=8.759m val_p90=15.065m val_lsr10=64.19% time=47.1s
+visual epoch=006/30 loss=4.25107 val_softms_mle=8.536m val_p90=14.453m val_lsr10=65.75% time=45.7s
+visual epoch=007/30 loss=4.22610 val_softms_mle=8.502m val_p90=14.613m val_lsr10=66.14% time=47.2s
+visual epoch=008/30 loss=4.17017 val_softms_mle=8.905m val_p90=14.656m val_lsr10=61.25% time=44.6s
+visual epoch=009/30 loss=4.10929 val_softms_mle=8.813m val_p90=14.565m val_lsr10=62.82% time=43.6s
+visual epoch=010/30 loss=4.08834 val_softms_mle=8.858m val_p90=15.144m val_lsr10=63.99% time=44.6s
+visual epoch=011/30 loss=4.05088 val_softms_mle=9.383m val_p90=15.686m val_lsr10=58.32% time=43.5s
+visual epoch=012/30 loss=4.11921 val_softms_mle=9.258m val_p90=14.906m val_lsr10=57.73% time=46.9s
+visual epoch=013/30 loss=4.02008 val_softms_mle=9.157m val_p90=15.774m val_lsr10=61.64% time=45.2s
+visual epoch=014/30 loss=3.89383 val_softms_mle=9.359m val_p90=15.892m val_lsr10=59.69% time=45.0s
+visual epoch=015/30 loss=3.93481 val_softms_mle=9.269m val_p90=16.353m val_lsr10=60.27% time=43.6s
+train_1 backbone cache: 256/577
+train_1 backbone cache: 577/577
+train_2 backbone cache: 256/600
+train_2 backbone cache: 600/600
+val_1 backbone cache: 256/511
+val_1 backbone cache: 511/511
+train_1 native=577 mean_step=5.865m stride2=289 mean_step=10.166m
+train_2 native=600 mean_step=6.328m stride2=300 mean_step=11.304m
+multiroute epoch=001/90 route=train_1 native_loss=8.15645 stride2_loss=12.38640 val_mle=5.681m val_p90=11.053m score=18.228 best=18.228 time=50.3s
+multiroute epoch=002/90 route=train_2 native_loss=7.50043 stride2_loss=24.62507 val_mle=5.598m val_p90=10.885m score=17.127 best=17.127 time=57.9s
+multiroute epoch=003/90 route=train_1 native_loss=5.67631 stride2_loss=9.01273 val_mle=5.702m val_p90=10.961m score=15.315 best=15.315 time=48.5s
+multiroute epoch=004/90 route=train_2 native_loss=4.99364 stride2_loss=16.42867 val_mle=5.656m val_p90=10.799m score=13.233 best=13.233 time=50.0s
+multiroute epoch=005/90 route=train_1 native_loss=5.05205 stride2_loss=7.20048 val_mle=5.665m val_p90=10.798m score=13.056 best=13.056 time=48.2s
+multiroute epoch=006/90 route=train_2 native_loss=4.81421 stride2_loss=16.39191 val_mle=5.494m val_p90=10.653m score=12.655 best=12.655 time=50.4s
+multiroute epoch=007/90 route=train_1 native_loss=5.10265 stride2_loss=7.03611 val_mle=5.551m val_p90=10.698m score=12.785 best=12.655 time=48.6s
+multiroute epoch=008/90 route=train_2 native_loss=4.83721 stride2_loss=16.39818 val_mle=5.170m val_p90=10.050m score=12.332 best=12.332 time=49.0s
+multiroute epoch=009/90 route=train_1 native_loss=5.09129 stride2_loss=7.03150 val_mle=5.174m val_p90=10.096m score=12.404 best=12.332 time=43.8s
+multiroute epoch=010/90 route=train_2 native_loss=4.84189 stride2_loss=16.37131 val_mle=5.170m val_p90=10.045m score=12.323 best=12.332 time=45.3s
+multiroute epoch=011/90 route=train_1 native_loss=5.06913 stride2_loss=7.08557 val_mle=5.174m val_p90=10.103m score=12.406 best=12.332 time=44.4s
+multiroute epoch=012/90 route=train_2 native_loss=4.80346 stride2_loss=16.33761 val_mle=5.170m val_p90=10.043m score=12.310 best=12.310 time=44.8s
+multiroute epoch=013/90 route=train_1 native_loss=5.03152 stride2_loss=7.29615 val_mle=5.173m val_p90=10.100m score=12.433 best=12.310 time=43.9s
+multiroute epoch=014/90 route=train_2 native_loss=4.75097 stride2_loss=16.13400 val_mle=5.133m val_p90=10.023m score=12.289 best=12.289 time=44.1s
+multiroute epoch=015/90 route=train_1 native_loss=4.96898 stride2_loss=6.96366 val_mle=5.234m val_p90=10.508m score=12.223 best=12.223 time=43.5s
+multiroute epoch=016/90 route=train_2 native_loss=4.73334 stride2_loss=15.88782 val_mle=5.033m val_p90=10.002m score=12.034 best=12.034 time=45.5s
+multiroute epoch=017/90 route=train_1 native_loss=4.90235 stride2_loss=6.95706 val_mle=5.348m val_p90=10.493m score=12.233 best=12.034 time=44.1s
+multiroute epoch=018/90 route=train_2 native_loss=4.67647 stride2_loss=19.08696 val_mle=5.215m val_p90=10.012m score=11.976 best=11.976 time=44.4s
+multiroute epoch=019/90 route=train_1 native_loss=4.83580 stride2_loss=6.65877 val_mle=5.100m val_p90=10.182m score=11.814 best=11.814 time=42.7s
+multiroute epoch=020/90 route=train_2 native_loss=4.60735 stride2_loss=19.58201 val_mle=5.247m val_p90=10.850m score=12.026 best=11.814 time=44.6s
+multiroute epoch=021/90 route=train_1 native_loss=4.64510 stride2_loss=6.40544 val_mle=5.315m val_p90=11.119m score=12.084 best=11.814 time=44.4s
+multiroute epoch=022/90 route=train_2 native_loss=4.36628 stride2_loss=19.54120 val_mle=5.187m val_p90=10.598m score=11.849 best=11.814 time=44.5s
+multiroute epoch=023/90 route=train_1 native_loss=4.30548 stride2_loss=5.99244 val_mle=5.313m val_p90=11.094m score=12.003 best=11.814 time=43.1s
+multiroute epoch=024/90 route=train_2 native_loss=4.13433 stride2_loss=19.36499 val_mle=5.246m val_p90=10.537m score=11.785 best=11.785 time=45.7s
+multiroute epoch=025/90 route=train_1 native_loss=4.25597 stride2_loss=5.98756 val_mle=5.186m val_p90=10.141m score=11.704 best=11.704 time=44.4s
+multiroute epoch=026/90 route=train_2 native_loss=4.08244 stride2_loss=19.59183 val_mle=5.202m val_p90=10.623m score=11.720 best=11.704 time=45.0s
+multiroute epoch=027/90 route=train_1 native_loss=4.22213 stride2_loss=5.78235 val_mle=5.176m val_p90=10.052m score=11.606 best=11.606 time=42.6s
+multiroute epoch=028/90 route=train_2 native_loss=3.94743 stride2_loss=19.14986 val_mle=5.140m val_p90=10.594m score=11.575 best=11.575 time=44.8s
+multiroute epoch=029/90 route=train_1 native_loss=4.09844 stride2_loss=5.63082 val_mle=5.197m val_p90=10.341m score=11.702 best=11.575 time=44.6s
+multiroute epoch=030/90 route=train_2 native_loss=3.78322 stride2_loss=18.91687 val_mle=5.225m val_p90=10.750m score=11.684 best=11.575 time=45.0s
+multiroute epoch=031/90 route=train_1 native_loss=3.96476 stride2_loss=5.62796 val_mle=5.245m val_p90=10.391m score=11.572 best=11.575 time=42.2s
+multiroute epoch=032/90 route=train_2 native_loss=3.73842 stride2_loss=18.87084 val_mle=5.206m val_p90=10.749m score=11.706 best=11.575 time=44.2s
+multiroute epoch=033/90 route=train_1 native_loss=3.97061 stride2_loss=5.53880 val_mle=5.584m val_p90=11.351m score=12.257 best=11.575 time=42.7s
+multiroute epoch=034/90 route=train_2 native_loss=3.67523 stride2_loss=18.59604 val_mle=5.277m val_p90=10.872m score=11.831 best=11.575 time=44.7s
+multiroute epoch=035/90 route=train_1 native_loss=3.83325 stride2_loss=5.31656 val_mle=5.129m val_p90=10.316m score=11.532 best=11.532 time=43.1s
+multiroute epoch=036/90 route=train_2 native_loss=3.61658 stride2_loss=18.73368 val_mle=5.185m val_p90=10.594m score=11.648 best=11.532 time=44.8s
+multiroute epoch=037/90 route=train_1 native_loss=3.88964 stride2_loss=5.48109 val_mle=5.186m val_p90=10.052m score=11.576 best=11.532 time=44.0s
+multiroute epoch=038/90 route=train_2 native_loss=3.48620 stride2_loss=18.40742 val_mle=5.201m val_p90=10.737m score=11.813 best=11.532 time=44.7s
+multiroute epoch=039/90 route=train_1 native_loss=3.78078 stride2_loss=5.18433 val_mle=5.252m val_p90=10.749m score=11.784 best=11.532 time=41.8s
+multiroute epoch=040/90 route=train_2 native_loss=3.48063 stride2_loss=18.46395 val_mle=5.277m val_p90=10.839m score=11.901 best=11.532 time=44.5s
+multiroute epoch=041/90 route=train_1 native_loss=3.64637 stride2_loss=5.25050 val_mle=5.327m val_p90=10.749m score=11.870 best=11.532 time=54.4s
+multiroute epoch=042/90 route=train_2 native_loss=3.37287 stride2_loss=18.30797 val_mle=5.592m val_p90=11.303m score=12.465 best=11.532 time=56.3s
+multiroute epoch=043/90 route=train_1 native_loss=3.59208 stride2_loss=5.08835 val_mle=5.376m val_p90=10.798m score=12.098 best=11.532 time=47.8s
+multiroute epoch=044/90 route=train_2 native_loss=3.38226 stride2_loss=18.38144 val_mle=5.384m val_p90=10.817m score=12.007 best=11.532 time=44.0s
+multiroute epoch=045/90 route=train_1 native_loss=3.55414 stride2_loss=5.34517 val_mle=5.181m val_p90=10.630m score=11.700 best=11.532 time=43.1s
+multiroute epoch=046/90 route=train_2 native_loss=3.25395 stride2_loss=18.14558 val_mle=5.297m val_p90=10.781m score=12.043 best=11.532 time=44.2s
+multiroute epoch=047/90 route=train_1 native_loss=3.51044 stride2_loss=5.18199 val_mle=5.341m val_p90=10.842m score=11.886 best=11.532 time=42.9s
+multiroute epoch=048/90 route=train_2 native_loss=3.08786 stride2_loss=18.10879 val_mle=5.264m val_p90=10.707m score=12.352 best=11.532 time=43.3s
+multiroute epoch=049/90 route=train_1 native_loss=3.58123 stride2_loss=5.10453 val_mle=5.339m val_p90=10.812m score=11.923 best=11.532 time=43.3s
+multiroute epoch=050/90 route=train_2 native_loss=3.06026 stride2_loss=17.95647 val_mle=5.260m val_p90=10.680m score=12.119 best=11.532 time=44.7s
+validation={"protocol": "same city-A satellite image; irregular train_1+train_2 train, val_1 validation", "validation_route": "val_1", "validation": {"mle": 5.129039501319357, "p90": 10.316121730483044, "speed_mae": 2.0135436968541436, "progress_mae": 0.07830579846448056, "heading_mae_deg": 34.5750948967785, "capture_pct": 77.88649706457925, "score": 11.531935787825917}}

@@ -1,0 +1,54 @@
+{
+  "architecture": "V36_byTeacher_MSPreviousPosition_2Frame_mobilenet_v3_small_DirectSoftMSMeasurement_GRUMotionHeadingLearnedVariance_Polynomial_Kalman_MultiRateAstride2_v7",
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "trained_default_search": "3x6",
+  "ablation_note": "4x6/5x6/6x6 use the same trained temporal checkpoint so the comparison isolates inference candidate-count accuracy/time trade-off",
+  "kalman": "previous posterior/covariance -> recurrent motion prior; update with GRU measurement and GRU variance",
+  "meanshift": "new image re-localizes previous Kalman output for GRU previous-position cue; current SoftMS position is GRU evidence, not algebraically added to measurement head",
+  "results": {
+    "4x6": {
+      "route_B": {
+        "MLE_m": 5.523812983763594,
+        "MedLE_m": 5.154391222285229,
+        "P90_m": 10.16388478351273,
+        "P95_m": 10.985907396294667,
+        "P99_m": 13.096745584050833,
+        "LSR@5_pct": 48.33040421792619,
+        "LSR@10_pct": 88.62038664323374,
+        "LSR@15_pct": 99.42882249560633,
+        "LSR@20_pct": 99.69244288224957,
+        "ForwardRows": 4,
+        "CandidateCount": 24,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/search_4x6_recheck_gpu5/route_B_forward4x6_v36_byTeacher_frames.csv",
+        "KalmanMeasurementSource": "GRU measurement head",
+        "KalmanVarianceSource": "GRU variance head",
+        "KalmanMSConfidence": false,
+        "MeanShiftRole": "re-localized previous-position cue + current GRU visual evidence"
+      },
+      "route_C": {
+        "MLE_m": 5.124186005759183,
+        "MedLE_m": 4.802123294588624,
+        "P90_m": 9.49078603845975,
+        "P95_m": 11.433890363076754,
+        "P99_m": 13.743448300794805,
+        "LSR@5_pct": 51.90779014308426,
+        "LSR@10_pct": 92.2893481717011,
+        "LSR@15_pct": 100.0,
+        "LSR@20_pct": 100.0,
+        "ForwardRows": 4,
+        "CandidateCount": 24,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/experiments/search_4x6_recheck_gpu5/route_C_forward4x6_v36_byTeacher_frames.csv",
+        "KalmanMeasurementSource": "GRU measurement head",
+        "KalmanVarianceSource": "GRU variance head",
+        "KalmanMSConfidence": false,
+        "MeanShiftRole": "re-localized previous-position cue + current GRU visual evidence"
+      }
+    }
+  }
+}
