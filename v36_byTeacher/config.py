@@ -5,13 +5,17 @@ from config_base import *
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 # =============================================================================
-# v36_byTeacher autonomous closed-loop architecture, stable v4
+# v36_byTeacher autonomous closed-loop architecture, strict v5
 # =============================================================================
 # Runtime never uses the current-frame reference coordinate to choose a search
 # center, heading, Kalman update, or final position.
+#
+# Spatial roles are intentionally different:
+#   MS1 = strict forward HALF of predicted 6x6 -> exactly 3x6=18 candidates.
+#   MS2 = new full 6x6 CENTERED on the Kalman-fused position.
 ARCHITECTURE_NAME = (
-    "V36_byTeacher_Autonomous_MS1NearestForward3x6_KalmanPrevFinal_"
-    "GRUPolynomial_MS2Center6x6_v4_nativeA"
+    "V36_byTeacher_Autonomous_MS1StrictForwardHalf3x6_KalmanPrevFinal_"
+    "GRUPolynomial_MS2CenteredFull6x6_v5_nativeA"
 )
 
 BACKBONE_KEY = os.environ.get(
@@ -36,7 +40,7 @@ OUTPUT_DIR = (
     BACKBONE_OUTPUT_DIR / "experiments" / RUN_TAG
     if RUN_TAG
     else BACKBONE_OUTPUT_DIR
-    / "autonomous_ms1_kf_gru_ms2_v4_nativeA"
+    / "autonomous_ms1_kf_gru_ms2_v5_nativeA"
 )
 CHECKPOINT_DIR = (
     BACKBONE_OUTPUT_DIR / "checkpoints"
@@ -47,11 +51,11 @@ VISUAL_CHECKPOINT = (
 )
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / f"autonomous_motion_gru_A_native_v4_{BACKBONE_KEY}.pt"
+    / f"autonomous_motion_gru_A_native_v5_{BACKBONE_KEY}.pt"
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / f"autonomous_motion_gru_A_native_v4_{BACKBONE_KEY}_latest.pt"
+    / f"autonomous_motion_gru_A_native_v5_{BACKBONE_KEY}_latest.pt"
 )
 FEATURE_CACHE_DIR = (
     BACKBONE_OUTPUT_DIR / "feature_cache"
