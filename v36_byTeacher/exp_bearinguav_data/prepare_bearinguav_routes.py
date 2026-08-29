@@ -1,14 +1,20 @@
-"""Create v36-compatible BearingUAV pseudo-sequences from real sample poses.
+"""Create same-scene BearingUAV pseudo-sequences for v36_byTeacher.
 
 BearingUAV-90K contains independent cross-view samples rather than a recorded
-video trajectory.  This adapter therefore builds spatial pseudo-sequences:
-real samples are selected near a planned multi-segment route, ordered by route
-progress, and always keep their own source position as the label.
+video trajectory. This adapter therefore constructs spatial pseudo-sequences
+from REAL city-A samples only. Every output frame keeps the selected source
+sample's own position label.
 
-The planned routes contain many straight legs connected by 90-degree turns.
-Every traversed turn is emitted as a waypoint.  Route-specific target
-step-per-frame profiles create slow/medium/fast pseudo-motion without changing
-or synthesizing any source position label.
+Protocol in this file:
+- one satellite scene only: city-A;
+- train_1 and train_2: exactly 1000 frames each;
+- val_1: exactly 1000 frames;
+- all three routes are spatially separated bands on the SAME satellite image;
+- each route is a chain of many straight legs connected by 90-degree turns;
+- every traversed planned turn is written as a waypoint;
+- train_1 is slower, train_2 is faster, and val_1 is between them;
+- effective speed means displacement per spatial pseudo-frame, not measured UAV
+  velocity, because BearingUAV is not a temporal video sequence.
 """
 
 import argparse
@@ -22,90 +28,74 @@ from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 DATA_ROOT = Path("/yh/study/cvpr_data/Bearing_UAV_90K")
-OUTPUT_ROOT = HERE / "generated_routes_3train_1val_1test"
+OUTPUT_ROOT = HERE / "generated_routes_2train_1val_samecity"
 MAP_PX = 4096
 METERS_PER_PIXEL = 0.25
 PSEUDO_DT_S = 1.0 / 3.0
-CITY_OFFSETS = {"citya": 0, "cityb": MAP_PX, "cityc": MAP_PX * 2}
-CITY_IMAGES = {
-    "citya": DATA_ROOT / "city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
-    "cityb": DATA_ROOT / "city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
-    "cityc": DATA_ROOT / "city_rsi/1.2897673873873876_103.84197619336068_1791.95_1024_1024_4326_city.jpg",
-}
+SCENE = "citya"
+CITY_IMAGE = DATA_ROOT / "city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg"
 
 
-def horizontal_lawnmower(rows=12, x0=650, x1=3440, y0=550, y1=3540):
-    """Many connected L-shaped turns: horizontal leg, turn, connector, turn."""
-    ys = np.linspace(y0, y1, rows)
+def horizontal_multi_l(rows, x0, x1, y0, y1, reverse=False):
+    """Long connected L-shaped route made from straight horizontal legs."""
+    ys = np.linspace(float(y0), float(y1), int(rows))
+    if reverse:
+        ys = ys[::-1]
     out = []
     for i, y in enumerate(ys):
-        a = (x0, y) if i % 2 == 0 else (x1, y)
-        b = (x1, y) if i % 2 == 0 else (x0, y)
-        a, b = tuple(map(float, a)), tuple(map(float, b))
+        left_to_right = (i % 2 == 0) ^ bool(reverse)
+        a = (float(x0), float(y)) if left_to_right else (float(x1), float(y))
+        b = (float(x1), float(y)) if left_to_right else (float(x0), float(y))
         if not out or out[-1] != a:
             out.append(a)
         out.append(b)
-        if i + 1 < rows:
+        if i + 1 < len(ys):
             out.append((float(b[0]), float(ys[i + 1])))
     return out
 
 
-def vertical_lawnmower(cols=12, x0=550, x1=3540, y0=650, y1=3440):
-    """Vertical counterpart of the multi-L route."""
-    xs = np.linspace(x0, x1, cols)
-    out = []
-    for i, x in enumerate(xs):
-        a = (x, y0) if i % 2 == 0 else (x, y1)
-        b = (x, y1) if i % 2 == 0 else (x, y0)
-        a, b = tuple(map(float, a)), tuple(map(float, b))
-        if not out or out[-1] != a:
-            out.append(a)
-        out.append(b)
-        if i + 1 < cols:
-            out.append((float(xs[i + 1]), float(b[1])))
-    return out
-
-
-def rectangular_spiral(levels=5, x0=500, x1=3590, y0=500, y1=3590, inset=220):
-    """Long orthogonal spiral with many 90-degree waypoint turns."""
-    out = []
-    left, right, top, bottom = map(float, (x0, x1, y0, y1))
-    for level in range(int(levels)):
-        if left >= right or top >= bottom:
-            break
-        corners = [(left, top), (right, top), (right, bottom), (left, bottom)]
-        if not out or out[-1] != corners[0]:
-            out.append(corners[0])
-        out.extend(corners[1:])
-        nl, nr = left + inset, right - inset
-        nt, nb = top + inset, bottom - inset
-        if level + 1 < levels and nl < nr and nt < nb:
-            # Orthogonal inward connector keeps the next loop causally linked.
-            out.append((float(left), float(nb)))
-            out.append((float(nl), float(nb)))
-            out.append((float(nl), float(nt)))
-        left, right, top, bottom = nl, nr, nt, nb
-    return out
-
-
+# Three disjoint bands of the SAME city-A satellite image. The gaps are much
+# wider than the default 14 m corridor, so train/validation source pools do not
+# collapse into the same local strip.
 ROUTES = {
-    "train_1": ("citya", horizontal_lawnmower()),
-    "train_2": ("citya", vertical_lawnmower()),
-    "train_3": ("citya", rectangular_spiral()),
-    "val_1": ("cityb", horizontal_lawnmower(x0=600, x1=3490, y0=600, y1=3490)),
-    "test_1": ("cityc", vertical_lawnmower(x0=600, x1=3490, y0=600, y1=3490)),
+    "train_1": (
+        SCENE,
+        horizontal_multi_l(rows=12, x0=250, x1=3840, y0=250, y1=1200, reverse=False),
+    ),
+    "val_1": (
+        SCENE,
+        horizontal_multi_l(rows=11, x0=250, x1=3840, y0=1575, y1=2525, reverse=True),
+    ),
+    "train_2": (
+        SCENE,
+        horizontal_multi_l(rows=12, x0=250, x1=3840, y0=2900, y1=3850, reverse=True),
+    ),
 }
 
-# Effective displacement targets in metres per pseudo-frame.  They are not
-# measured UAV velocities because BearingUAV is not a video sequence.  The
-# ordering is deliberately interleaved:
-# train_1 (slow) < val_1 < train_2 (medium) < test_1 < train_3 (fast).
+# Requested effective pseudo-motion order:
+# train_1 (slow) < val_1 (intermediate) < train_2 (fast).
 ROUTE_PROFILES = {
-    "train_1": {"name": "train_slow", "base_step_m": 3.5, "min_target_m": 2.5, "max_target_m": 4.5, "phase": 0},
-    "train_2": {"name": "train_medium", "base_step_m": 5.8, "min_target_m": 4.4, "max_target_m": 7.0, "phase": 2},
-    "train_3": {"name": "train_fast", "base_step_m": 8.5, "min_target_m": 6.8, "max_target_m": 10.5, "phase": 4},
-    "val_1": {"name": "validation_between_train", "base_step_m": 4.7, "min_target_m": 3.5, "max_target_m": 5.9, "phase": 1},
-    "test_1": {"name": "test_between_train", "base_step_m": 7.0, "min_target_m": 5.5, "max_target_m": 8.6, "phase": 3},
+    "train_1": {
+        "name": "train_slow",
+        "base_step_m": 3.8,
+        "min_target_m": 2.7,
+        "max_target_m": 5.0,
+        "phase": 0,
+    },
+    "val_1": {
+        "name": "validation_intermediate",
+        "base_step_m": 5.5,
+        "min_target_m": 4.0,
+        "max_target_m": 7.0,
+        "phase": 2,
+    },
+    "train_2": {
+        "name": "train_fast",
+        "base_step_m": 7.3,
+        "min_target_m": 5.6,
+        "max_target_m": 9.4,
+        "phase": 4,
+    },
 }
 SPEED_PATTERN = np.asarray([0.82, 1.04, 0.91, 1.18, 0.88, 1.11], dtype=np.float64)
 
@@ -158,7 +148,6 @@ def target_step_for_frame(profile, frame_index):
     block = int(frame_index) // 45
     phase = int(profile.get("phase", 0))
     factor = float(SPEED_PATTERN[(block + phase) % len(SPEED_PATTERN)])
-    # Small deterministic intra-block variation avoids a piecewise-fixed speed.
     wobble = 1.0 + 0.055 * math.sin(0.17 * float(frame_index) + 0.8 * phase)
     value = float(profile["base_step_m"]) * factor * wobble
     return float(np.clip(value, profile["min_target_m"], profile["max_target_m"]))
@@ -259,18 +248,17 @@ def select_actual_sequence(
     keep = np.flatnonzero(route_dist_m <= float(corridor_m))
     if len(keep) < int(target_frames):
         raise RuntimeError(
-            f"Only {len(keep)} samples are inside the {corridor_m:.1f} m route corridor; "
+            f"Only {len(keep)} source samples are inside the {corridor_m:.1f} m route corridor; "
             f"need at least {target_frames}."
         )
 
     order = keep[np.argsort(progress_m[keep], kind="stable")]
     ordered_progress = progress_m[order]
-
-    # Multiple starts prevent one unlucky sparse sample near the route entrance
-    # from terminating an otherwise valid 1000-frame chain.
     first_pool = order[: min(768, len(order))]
-    start_score = route_dist_m[first_pool] + 0.015 * (progress_m[first_pool] - progress_m[first_pool].min())
-    start_candidates = first_pool[np.argsort(start_score)[: min(24, len(first_pool))]]
+    start_score = route_dist_m[first_pool] + 0.015 * (
+        progress_m[first_pool] - progress_m[first_pool].min()
+    )
+    start_candidates = first_pool[np.argsort(start_score)[: min(32, len(first_pool))]]
 
     best_chain, best_flags = [], []
     for start in start_candidates:
@@ -282,14 +270,14 @@ def select_actual_sequence(
         if len(chain) > len(best_chain):
             best_chain, best_flags = chain, flags
         if len(chain) >= int(target_frames):
-            best_chain, best_flags = chain[: int(target_frames)], flags[: int(target_frames)]
+            best_chain = chain[: int(target_frames)]
+            best_flags = flags[: int(target_frames)]
             break
 
     if len(best_chain) < int(target_frames):
         raise RuntimeError(
-            f"Only {len(best_chain)}/{target_frames} continuous samples could be chained "
-            f"for profile={profile['name']}. Try a larger --corridor-m or --hard-max-step-m, "
-            "but inspect the route visualization before training."
+            f"Only {len(best_chain)}/{target_frames} continuous real samples could be chained "
+            f"for {profile['name']}. Do not train yet; inspect this route and adjust the corridor."
         )
 
     rows = []
@@ -312,41 +300,43 @@ def select_actual_sequence(
     return rows
 
 
-def make_mosaic(rebuild=False):
-    path = OUTPUT_ROOT / "bearing_cities_abc.jpg"
+def make_satellite_image(rebuild=False):
+    path = OUTPUT_ROOT / "bearing_citya.jpg"
     if path.exists() and not rebuild:
         return path
-    mosaic = Image.new("RGB", (MAP_PX * 3, MAP_PX))
-    for city, image_path in CITY_IMAGES.items():
-        with Image.open(image_path) as image:
-            mosaic.paste(image.convert("RGB"), (CITY_OFFSETS[city], 0))
-    mosaic.save(path, quality=95)
+    if not CITY_IMAGE.exists():
+        raise FileNotFoundError(CITY_IMAGE)
+    with Image.open(CITY_IMAGE) as image:
+        image.convert("RGB").save(path, quality=95)
     return path
 
 
-def mosaic_georef():
-    width_px, height_px = MAP_PX * 3, MAP_PX
+def satellite_georef():
+    width_px = height_px = MAP_PX
     top_lat, left_lon = 23.6, 120.0
     lat_per_m = 1.0 / 111320.0
     lon_per_m = 1.0 / (111320.0 * math.cos(math.radians(top_lat)))
     bottom_lat = top_lat - height_px * METERS_PER_PIXEL * lat_per_m
     right_lon = left_lon + width_px * METERS_PER_PIXEL * lon_per_m
     payload = {
+        "scene": SCENE,
         "geo_bounds": {
             "top_left": {"latitude": top_lat, "longitude": left_lon},
             "bottom_right": {"latitude": bottom_lat, "longitude": right_lon},
         },
         "meters_per_pixel": METERS_PER_PIXEL,
+        "width_px": MAP_PX,
+        "height_px": MAP_PX,
     }
-    path = OUTPUT_ROOT / "bearing_cities_abc_geo.json"
+    path = OUTPUT_ROOT / "bearing_citya_geo.json"
     path.write_text(json.dumps(payload, indent=2))
     return payload, path
 
 
-def global_pixel_to_latlon(pixel, bounds):
+def pixel_to_latlon(pixel, bounds):
     tl = bounds["geo_bounds"]["top_left"]
     br = bounds["geo_bounds"]["bottom_right"]
-    lon = tl["longitude"] + pixel[0] / (MAP_PX * 3 - 1) * (br["longitude"] - tl["longitude"])
+    lon = tl["longitude"] + pixel[0] / (MAP_PX - 1) * (br["longitude"] - tl["longitude"])
     lat = tl["latitude"] - pixel[1] / (MAP_PX - 1) * (tl["latitude"] - br["latitude"])
     return float(lat), float(lon)
 
@@ -360,12 +350,14 @@ def heading_from_points(points, index):
         delta = points[-1] - points[-2]
     else:
         delta = points[index + 1] - points[index - 1]
-    return float(math.atan2(float(delta[1]), float(delta[0]))) if np.linalg.norm(delta) > 1e-9 else 0.0
+    if np.linalg.norm(delta) <= 1e-9:
+        return 0.0
+    return float(math.atan2(float(delta[1]), float(delta[0])))
 
 
 def planned_waypoint_indices(selected, planned_route):
-    """Map every traversed planned turn to the nearest selected real frame."""
-    _wp, _starts, _delta, lengths_px, _units, cumulative_px = route_geometry(planned_route)
+    """Map every traversed planned 90-degree turn to the nearest selected frame."""
+    _wp, _starts, _delta, _lengths, _units, cumulative_px = route_geometry(planned_route)
     turn_progress_m = cumulative_px * METERS_PER_PIXEL
     selected_progress = np.asarray([x["route_progress_m"] for x in selected], dtype=np.float64)
     covered_min = float(selected_progress[0])
@@ -373,9 +365,8 @@ def planned_waypoint_indices(selected, planned_route):
 
     indices = [0]
     for progress in turn_progress_m[1:-1]:
-        if progress < covered_min - 1.0 or progress > covered_max + 1.0:
-            continue
-        indices.append(int(np.argmin(np.abs(selected_progress - float(progress)))))
+        if covered_min - 1.0 <= progress <= covered_max + 1.0:
+            indices.append(int(np.argmin(np.abs(selected_progress - float(progress)))))
     indices.append(len(selected) - 1)
     return sorted(set(indices))
 
@@ -393,7 +384,6 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
     wp_indices = set(planned_waypoint_indices(selected, planned_route))
     timestamps, waypoints = [], []
     waypoint_order = 0
-    x_offset = CITY_OFFSETS[city]
     base_timestamp = 1_900_000_000_000_000_000
 
     for frame_index, item in enumerate(selected):
@@ -406,8 +396,7 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
             target.unlink()
         target.symlink_to(source)
 
-        global_pixel = item["source_pixel"] + np.asarray([x_offset, 0.0])
-        lat, lon = global_pixel_to_latlon(global_pixel, bounds)
+        lat, lon = pixel_to_latlon(item["source_pixel"], bounds)
         heading = heading_from_points(actual, frame_index)
         timestamp_ns = base_timestamp + int(round(frame_index * PSEUDO_DT_S * 1e9))
         timestamps.append({
@@ -424,7 +413,9 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
         })
 
         if frame_index in wp_indices:
-            role = "start" if frame_index == 0 else ("end" if frame_index == len(selected) - 1 else "turn")
+            role = "start" if frame_index == 0 else (
+                "end" if frame_index == len(selected) - 1 else "turn"
+            )
             waypoints.append({
                 "waypoint_order": waypoint_order,
                 "role": role,
@@ -444,8 +435,8 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
     wp_dir.mkdir(exist_ok=True)
     (wp_dir / f"{name}_waypoints.json").write_text(json.dumps({
         "route": name,
-        "split": name.split("_")[0],
-        "city": city,
+        "split": "validation" if name == "val_1" else "train",
+        "scene": city,
         "position_source": "selected BearingUAV sample actual metadata position",
         "temporal_semantics": "spatially ordered actual-pose pseudo-sequence",
         "waypoint_policy": "start + every traversed planned 90-degree turn + end",
@@ -459,8 +450,8 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
     turn_count = sum(1 for x in waypoints if x["role"] == "turn")
     summary = {
         "route": name,
-        "split": name.split("_")[0],
-        "city": city,
+        "split": "validation" if name == "val_1" else "train",
+        "scene": city,
         "frames": len(selected),
         "target_frames": int(target_frames),
         "waypoints": len(waypoints),
@@ -478,7 +469,7 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
         "step_min_m": float(np.min(steps)),
         "step_max_m": float(np.max(steps)),
         "effective_speed_mean_mps": float(np.mean(steps) / PSEUDO_DT_S),
-        "effective_speed_note": "derived from spatial pseudo-frame spacing; not a recorded UAV velocity",
+        "effective_speed_note": "derived from spatial pseudo-frame spacing; not recorded UAV velocity",
         "fallback_step_pct": float(100.0 * np.mean(fallback)) if fallback.size else 0.0,
         "image_label_error_mean_m": 0.0,
         "image_label_error_p90_m": 0.0,
@@ -490,6 +481,8 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
 
 
 def validate_summary(summary):
+    if summary["scene"] != SCENE:
+        raise RuntimeError(f'{summary["route"]}: wrong scene {summary["scene"]}')
     if summary["frames"] != summary["target_frames"]:
         raise RuntimeError(
             f'{summary["route"]}: expected exactly {summary["target_frames"]} frames, got {summary["frames"]}'
@@ -504,25 +497,22 @@ def validate_summary(summary):
 
 def validate_speed_order(summaries):
     by_name = {x["route"]: x for x in summaries}
-    values = {name: float(by_name[name]["step_mean_m"]) for name in by_name}
-    required = values["train_1"] < values["val_1"] < values["train_2"] < values["test_1"] < values["train_3"]
-    if not required:
+    t1 = float(by_name["train_1"]["step_mean_m"])
+    va = float(by_name["val_1"]["step_mean_m"])
+    t2 = float(by_name["train_2"]["step_mean_m"])
+    if not (t1 < va < t2):
         raise RuntimeError(
-            "actual effective-speed order does not match the requested split: "
-            f"train_1={values['train_1']:.3f}, val_1={values['val_1']:.3f}, "
-            f"train_2={values['train_2']:.3f}, test_1={values['test_1']:.3f}, "
-            f"train_3={values['train_3']:.3f} m/frame"
+            "actual effective-speed order must be train_1 < val_1 < train_2, got "
+            f"{t1:.3f} < {va:.3f} < {t2:.3f} m/frame"
         )
 
 
 def main():
     parser = argparse.ArgumentParser()
-    # Deprecated compatibility arguments from older route builders.
     parser.add_argument("--query-spacing-m", type=float, default=None)
     parser.add_argument("--max-query-error-m", type=float, default=None)
     parser.add_argument("--spacing-m", type=float, default=None)
     parser.add_argument("--preferred-step-m", type=float, default=None)
-
     parser.add_argument("--corridor-m", type=float, default=14.0)
     parser.add_argument("--min-step-m", type=float, default=0.8)
     parser.add_argument("--max-step-m", type=float, default=13.0)
@@ -541,25 +531,23 @@ def main():
         raise ValueError("target frame counts must be >= 64")
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
-    mosaic = make_mosaic(args.rebuild)
-    bounds, georef = mosaic_georef()
+    satellite = make_satellite_image(args.rebuild)
+    bounds, georef = satellite_georef()
 
-    city_data = {}
-    for city in CITY_OFFSETS:
-        metadata = DATA_ROOT / city / "rawmetadata.csv"
-        rows = list(csv.DictReader(metadata.open(encoding="utf-8-sig")))
-        points = np.stack([row_pixel(row) for row in rows])
-        city_data[city] = (rows, points)
-        print(f"{city} raw samples={len(rows)}", flush=True)
+    metadata = DATA_ROOT / SCENE / "rawmetadata.csv"
+    metadata_rows = list(csv.DictReader(metadata.open(encoding="utf-8-sig")))
+    points = np.stack([row_pixel(row) for row in metadata_rows])
+    print(f"same-scene protocol: scene={SCENE}, raw samples={len(metadata_rows)}", flush=True)
 
     summaries = []
-    for name, (city, planned_route) in ROUTES.items():
-        rows, points = city_data[city]
+    for name in ("train_1", "train_2", "val_1"):
+        city, planned_route = ROUTES[name]
         profile = dict(ROUTE_PROFILES[name])
-        target_frames = args.target_train_frames if name.startswith("train_") else args.target_eval_frames
+        target_frames = args.target_eval_frames if name == "val_1" else args.target_train_frames
         print(
-            f"building {name}: target_frames={target_frames} profile={profile['name']} "
-            f"base_step={profile['base_step_m']:.2f}m/frame turns={len(planned_route)-2}",
+            f"building {name}: SAME scene={city}, target_frames={target_frames}, "
+            f"profile={profile['name']}, base_step={profile['base_step_m']:.2f}m/frame, "
+            f"planned_turns={len(planned_route)-2}",
             flush=True,
         )
         selected = select_actual_sequence(
@@ -574,7 +562,8 @@ def main():
             profile=profile,
         )
         summary = write_route(
-            name, city, planned_route, selected, rows, bounds, args.rebuild, profile, target_frames
+            name, city, planned_route, selected, metadata_rows,
+            bounds, args.rebuild, profile, target_frames,
         )
         validate_summary(summary)
         summaries.append(summary)
@@ -584,14 +573,20 @@ def main():
 
     payload = {
         "split": {
-            "train": ["train_1", "train_2", "train_3"],
+            "train": ["train_1", "train_2"],
             "validation": ["val_1"],
-            "test": ["test_1"],
+            "test": [],
+        },
+        "scene_policy": {
+            "same_satellite_scene_for_all_splits": True,
+            "scene": SCENE,
+            "satellite_image": str(satellite),
+            "train_validation_spatial_bands_are_separate": True,
         },
         "adapter": {
             "position_labels": "actual selected BearingUAV sample positions",
             "temporal_order": "route-progress-ordered actual-pose pseudo-sequence",
-            "selection": "multi-turn route corridor plus exact-count variable-speed chaining",
+            "selection": "same-city multi-turn route corridor plus exact-count variable-speed chaining",
             "variable_step": True,
             "target_train_frames": int(args.target_train_frames),
             "target_eval_frames": int(args.target_eval_frames),
@@ -600,10 +595,10 @@ def main():
             "hard_max_step_m": float(args.hard_max_step_m),
             "lookahead_m": float(args.lookahead_m),
             "waypoint_policy": "start + every traversed planned 90-degree turn + end",
-            "speed_order": "train_1 < val_1 < train_2 < test_1 < train_3",
+            "speed_order": "train_1 < val_1 < train_2",
             "speed_semantics": "effective displacement per spatial pseudo-frame, not recorded UAV velocity",
         },
-        "satellite_mosaic": str(mosaic),
+        "satellite_image": str(satellite),
         "satellite_georef": str(georef),
         "routes": summaries,
     }
