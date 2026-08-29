@@ -5,21 +5,21 @@ from config_base import *
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 # =============================================================================
-# v36_byTeacher autonomous closed-loop architecture, strict v6
+# v36_byTeacher compact motion-GRU architecture, v8
 # =============================================================================
-# Runtime never uses the current-frame reference coordinate to choose a search
-# center, heading, Kalman update, or final position.
+# The train/eval entrypoint may install the controlled reference-assisted MS1
+# coarse prior, but the GRU itself never receives a reference coordinate.
 #
-# Spatial roles are intentionally different:
-#   MS1 = strict forward HALF of predicted 6x6 -> exactly 3x6=18 candidates.
-#   MS2 = new full 6x6 CENTERED on the Kalman-fused position.
-#
-# Temporal v6 change:
-#   after bootstrap, GRU motion is residualized around the previous polynomial
-#   displacement instead of reusing forward-only MS1 displacement as the base.
+# GRU input groups:
+#   1) MS1 visual localization XY             2 -> 128
+#   2) temporal visual mean                  512 -> 128
+#   3) first visual difference               512 -> 128
+#   4) previous motion [v,a,sin(theta),cos]   4 -> 128
+# Concatenate: 4 x 128 = 512 input dimensions.
+# Previous hidden state is supplied separately to GRUCell as a 256-d state.
 ARCHITECTURE_NAME = (
-    "V36_byTeacher_Autonomous_MS1StrictForwardHalf3x6_KalmanPrevFinal_"
-    "GRUPrevDeltaBaselinePolynomial_MS2CenteredFull6x6_v6_nativeA"
+    "V36_byTeacher_CompactMotionGRU_MSXY_TemporalMean_FirstDiff_"
+    "PrevMotionInfo_H256_v8_nativeA"
 )
 
 BACKBONE_KEY = os.environ.get(
@@ -44,7 +44,7 @@ OUTPUT_DIR = (
     BACKBONE_OUTPUT_DIR / "experiments" / RUN_TAG
     if RUN_TAG
     else BACKBONE_OUTPUT_DIR
-    / "autonomous_ms1_kf_gru_ms2_v6_nativeA"
+    / "compact_motion_gru_v8_nativeA"
 )
 CHECKPOINT_DIR = (
     BACKBONE_OUTPUT_DIR / "checkpoints"
@@ -55,11 +55,11 @@ VISUAL_CHECKPOINT = (
 )
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / f"autonomous_motion_gru_A_native_v6_{BACKBONE_KEY}.pt"
+    / f"compact_motion_gru_A_native_v8_{BACKBONE_KEY}.pt"
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / f"autonomous_motion_gru_A_native_v6_{BACKBONE_KEY}_latest.pt"
+    / f"compact_motion_gru_A_native_v8_{BACKBONE_KEY}_latest.pt"
 )
 FEATURE_CACHE_DIR = (
     BACKBONE_OUTPUT_DIR / "feature_cache"
@@ -118,7 +118,7 @@ LOCAL_PRIOR_JITTER_M = float(
 )
 
 # -----------------------------------------------------------------------------
-# Autonomous GRU motion model
+# Compact motion GRU
 # -----------------------------------------------------------------------------
 RNN_HIDDEN_DIM = int(
     os.environ.get(
@@ -135,7 +135,13 @@ RNN_DROPOUT = float(
         "UAVSAT_RNN_DROPOUT", "0.0"
     )
 )
-RNN_NUMERIC_DIM = 10
+
+RNN_MS_XY_DIM = 2
+RNN_TEMPORAL_MEAN_DIM = EMBED_DIM
+RNN_FIRST_DIFFERENCE_DIM = EMBED_DIM
+RNN_PREVIOUS_MOTION_DIM = 4
+RNN_PROJECTED_GROUPS = 4
+RNN_COMBINED_INPUT_DIM = RNN_FEATURE_DIM * RNN_PROJECTED_GROUPS
 
 POSITION_INPUT_SCALE_M = float(
     os.environ.get(
@@ -252,7 +258,9 @@ KALMAN_R_POSITION = float(
     )
 )
 
-# Disable inherited legacy controlled-protocol switches.
+# Disable inherited legacy controlled-protocol switches. The controlled
+# reference-assisted MS1 prior, when used, is installed explicitly by
+# train_multirate_a.py and is kept separate from the estimator itself.
 CONTROLLED_GT_PRIOR = False
 CONTROLLED_GT_PRIOR_JITTER_M = 0.0
 CONTROLLED_FINAL_PROGRESS_CAP_TO_GT = False
