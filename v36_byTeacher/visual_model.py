@@ -154,8 +154,6 @@ class MotionGRUOutput:
     hidden: torch.Tensor
     state: torch.Tensor
 
-    # Compatibility properties for old plotting/import code.  They now contain
-    # global XY quantities; no route-coordinate Kalman state is used by v8.
     @property
     def velocity_se(self):
         return self.velocity_xy
@@ -174,16 +172,21 @@ class MotionGRUOutput:
 
 
 class TwoFrameRouteStateGRU(nn.Module):
-    """Causal motion predictor used by v36_byTeacher v8.
+    """Causal motion predictor for the rewritten v36_byTeacher.
 
-    Inputs are current/previous UAV embeddings, MS1 coordinate cues, and the
-    previous *predicted* motion/heading state.  Mean-Shift uncertainty and any
-    current reference/GT position are deliberately absent.
+    The recurrent inputs deliberately follow the current byTeacher temporal
+    design as closely as possible while removing Mean-Shift uncertainty:
 
-    The motion head predicts local-frame velocity and acceleration.  The heading
-    head predicts the new absolute heading (as an unconstrained delta from the
-    previous heading) and turn rate.  No hard speed, acceleration, heading,
-    turn-rate, EMA or per-frame step limits are applied.
+      * current/previous UAV embedding -> temporal mean and first difference;
+      * current MS1 coordinate relative to previous MS1 coordinate;
+      * previous predicted velocity;
+      * previous predicted heading + turn-rate;
+      * previous GRU hidden state.
+
+    There is no response-variance input, no current reference/GT coordinate, and
+    no current Kalman prior in the GRU input.  The output heads predict v/a and
+    heading/turn.  No hand-coded speed, acceleration, heading, turn-rate, EMA,
+    or per-frame step limit is applied.
     """
 
     def __init__(self):
@@ -223,9 +226,6 @@ class TwoFrameRouteStateGRU(nn.Module):
         self.motion_head = head(4)  # v_forward, v_cross, a_forward, a_cross
         self.heading_head = head(2)  # heading_delta, turn_rate
 
-        # Zero output is a safe causal initialization: the tracker starts at the
-        # known planned-route start and lets MS1/MS2 provide visual corrections
-        # until the supervised motion predictor learns Route-A dynamics.
         nn.init.zeros_(self.motion_head[-1].weight)
         nn.init.zeros_(self.motion_head[-1].bias)
         nn.init.zeros_(self.heading_head[-1].weight)
@@ -241,7 +241,7 @@ class TwoFrameRouteStateGRU(nn.Module):
         if frame_count == 1:
             return torch.zeros_like(z_uav), z_uav
         if frame_count != 2:
-            raise RuntimeError("v36_byTeacher v8 supports only 1-frame or 2-frame input")
+            raise RuntimeError("v36_byTeacher supports only 1-frame or 2-frame input")
         if previous_z_uav is None:
             previous_z_uav = z_uav
         clip_mean = (previous_z_uav + z_uav) / 2.0
@@ -254,9 +254,7 @@ class TwoFrameRouteStateGRU(nn.Module):
         previous_z_uav,
         ms1_xy,
         previous_ms1_xy,
-        previous_final_xy,
         previous_velocity_xy,
-        previous_acceleration_xy,
         previous_heading_state,
         hidden: Optional[torch.Tensor] = None,
     ):
@@ -267,19 +265,15 @@ class TwoFrameRouteStateGRU(nn.Module):
         if previous_ms1_xy is None:
             previous_ms1_xy = ms1_xy.detach()
 
-        # Coordinate-only visual cue.  No MS variance/confidence and no GT/reference.
-        ms1_offset = ms1_xy - previous_final_xy
-        ms1_step = ms1_xy - previous_ms1_xy
-        previous_heading = previous_heading_state[:, 0:1]
+        # Same position-domain temporal cue as the current byTeacher idea:
+        # current visual localization relative to the previous visual localization.
+        visual_step_xy = ms1_xy - previous_ms1_xy
 
         numeric = torch.cat(
             [
-                _signed_log1p(ms1_offset),
-                _signed_log1p(ms1_step),
+                _signed_log1p(visual_step_xy),
                 _signed_log1p(previous_velocity_xy),
-                _signed_log1p(previous_acceleration_xy),
-                torch.cos(previous_heading),
-                torch.sin(previous_heading),
+                previous_heading_state,
             ],
             dim=1,
         )
@@ -305,13 +299,14 @@ class TwoFrameRouteStateGRU(nn.Module):
         acceleration_local = raw_motion[:, 2:4]
 
         raw_heading = self.heading_head(h)
+        previous_heading = previous_heading_state[:, 0:1]
         heading = _wrap_angle_tensor(previous_heading + raw_heading[:, 0:1])
         turn_rate = raw_heading[:, 1:2]
 
         velocity_xy = _rotate_local_to_global(velocity_local, heading)
         acceleration_xy = _rotate_local_to_global(acceleration_local, heading)
 
-        # dt = 1 frame.  No clipping or rate limit is applied.
+        # dt = 1 frame. No clipping, min/max speed, or turn limit is applied.
         next_step_local = velocity_local + 0.5 * acceleration_local
         next_step_xy = _rotate_local_to_global(next_step_local, heading)
 
@@ -340,7 +335,6 @@ class TwoFrameRouteStateGRU(nn.Module):
         )
 
 
-# Compatibility aliases used elsewhere in the project.
 RouteProgressGRUOutput = MotionGRUOutput
 ThreeFrameRouteStateGRU = TwoFrameRouteStateGRU
 RouteProgressGRU = TwoFrameRouteStateGRU
