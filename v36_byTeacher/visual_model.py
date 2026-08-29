@@ -12,7 +12,7 @@ import config
 
 
 class TorchvisionImageEncoder(nn.Module):
-    """Frozen ImageNet backbone exposing the encode_image API used by v33."""
+    """Frozen ImageNet backbone exposing the encode_image API."""
 
     def __init__(self, key):
         super().__init__()
@@ -71,7 +71,7 @@ class FourierCoordEncoder(nn.Module):
 
 
 class AllMapGeoCLIP(nn.Module):
-    """Checkpoint-compatible visual retrieval model."""
+    """Checkpoint-compatible UAV/SAT retrieval model."""
 
     def __init__(self):
         super().__init__()
@@ -135,38 +135,25 @@ class AllMapGeoCLIP(nn.Module):
 
 
 @dataclass
-class RouteProgressGRUOutput:
-    measurement_se: torch.Tensor
-    correction_se: torch.Tensor
-    measurement_variance_se: torch.Tensor
-    velocity_se: torch.Tensor
-    acceleration_se: torch.Tensor
-    next_step_se: torch.Tensor
-    heading_residual_rad: torch.Tensor
-    turn_rate_rad: torch.Tensor
+class MotionGRUOutput:
+    speed_m_per_frame: torch.Tensor
+    acceleration_m_per_frame2: torch.Tensor
+    heading_rad: torch.Tensor
+    heading_delta_rad: torch.Tensor
+    delta_xy: torch.Tensor
     hidden: torch.Tensor
-    state: torch.Tensor
 
 
-class TwoFrameRouteStateGRU(nn.Module):
-    """Role-separated teacher temporal model.
+class AutonomousMotionGRU(nn.Module):
+    """Predict v, a and heading from visual/MS temporal evidence.
 
-    The visual and probabilistic-estimation roles are deliberately separated:
-
-      * current Soft MeanShift position is the visual measurement z_t directly;
-      * the GRU does not output/correct the current position;
-      * the GRU estimates motion/heading for the inertial polynomial and learns
-        only the visual measurement variance R_t;
-      * the external Kalman filter is the only block that fuses the polynomial
-        motion prior with z_t.
-
-    The original teacher hand-off is retained. The newly arrived UAV frame can
-    re-localize the previous Kalman output by MeanShift, and that previous
-    re-localized position X_(t-1)^MS is used only as a temporal cue to the GRU.
-
-    EXPERIMENT_FRAME_COUNT=2 uses current+previous UAV embeddings through their
-    temporal mean and first difference. EXPERIMENT_FRAME_COUNT=1 keeps the same
-    recurrent/head capacity but removes the explicit previous-frame visual cue.
+    Inputs contain the current MS#1 position and temporal state, but no MS
+    uncertainty and no per-frame reference/GT coordinate.  The predicted motion
+    polynomial is:
+        d_t = v_t + 0.5 * a_t
+        Delta_t = d_t [cos(theta_t), sin(theta_t)]
+    There is no hand-coded maximum speed, acceleration, turn-rate, EMA, or
+    heading-rate clamp.
     """
 
     def __init__(self):
@@ -182,8 +169,8 @@ class TwoFrameRouteStateGRU(nn.Module):
                 nn.LayerNorm(feature_dim),
             )
 
-        self.clip_mean_projection = projection(config.EMBED_DIM)
-        self.delta_recent_projection = projection(config.EMBED_DIM)
+        self.visual_mean_projection = projection(config.EMBED_DIM)
+        self.visual_delta_projection = projection(config.EMBED_DIM)
         self.numeric_projection = nn.Sequential(
             nn.Linear(int(config.RNN_NUMERIC_DIM), feature_dim),
             nn.GELU(),
@@ -195,128 +182,64 @@ class TwoFrameRouteStateGRU(nn.Module):
         self.gru = nn.GRUCell(feature_dim * 3, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
-        def head(out_dim):
-            return nn.Sequential(
-                nn.Linear(hidden_dim, hidden_dim // 2),
-                nn.GELU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_dim // 2, out_dim),
-            )
+        self.motion_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim // 2, 2),
+        )
+        self.heading_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim // 2, 1),
+        )
 
-        # GRU heads have distinct roles: dynamics, heading, and measurement
-        # uncertainty. There is intentionally no learned position/measurement head.
-        self.motion_head = head(4)
-        self.heading_head = head(2)
-        self.variance_head = head(2)
-
+        # Neutral initialization: near-zero speed/acceleration and heading
+        # increment. No dataset speed is hard-coded here.
         nn.init.zeros_(self.motion_head[-1].weight)
-        nn.init.zeros_(self.motion_head[-1].bias)
-        init_speed = 0.75
-        self.motion_head[-1].bias.data[0] = math.log(math.exp(init_speed) - 1.0)
-
+        nn.init.constant_(self.motion_head[-1].bias, -2.0)
+        self.motion_head[-1].bias.data[1] = 0.0
         nn.init.zeros_(self.heading_head[-1].weight)
         nn.init.zeros_(self.heading_head[-1].bias)
-
-        nn.init.zeros_(self.variance_head[-1].weight)
-        nn.init.constant_(
-            self.variance_head[-1].bias,
-            math.log(float(config.GRU_VISUAL_VARIANCE_INIT_M2)),
-        )
 
     def initial_hidden(self, batch_size, device, dtype):
         return torch.zeros(
             int(batch_size), int(config.RNN_HIDDEN_DIM), device=device, dtype=dtype
         )
 
-    def _two_frame_features(self, z_uav, previous_z_uav):
-        frame_count = int(getattr(config, "EXPERIMENT_FRAME_COUNT", 2))
-        if frame_count == 1:
-            return torch.zeros_like(z_uav), z_uav
-        if frame_count != 2:
-            raise RuntimeError("v36_byTeacher supports only 1-frame or 2-frame input")
-        if previous_z_uav is None:
-            previous_z_uav = z_uav
-        clip_mean = (previous_z_uav + z_uav) / 2.0
-        delta_recent = z_uav - previous_z_uav
-        return delta_recent, clip_mean
-
-    def score_hypotheses(
-        self,
-        z_uav,
-        previous_z_uav,
-        previous2_z_uav,
-        sat_context,
-        entropy,
-        margin,
-        response_variance_se,
-        hypothesis_anchor_se,
-        predicted_se,
-        top1_distance_m,
-        softms_support,
-        hidden: Optional[torch.Tensor] = None,
-    ):
-        count = int(sat_context.shape[0])
-        if count != 1:
-            raise RuntimeError(
-                "v36_byTeacher expects exactly one controlled local hypothesis"
-            )
-        return torch.zeros(count, dtype=z_uav.dtype, device=z_uav.device)
-
     def forward_step(
         self,
         z_uav,
         previous_z_uav,
-        previous2_z_uav,
-        sat_context,
-        posterior_probability,
-        visual_anchor_se,
-        response_variance_se,
-        predicted_se,
-        previous_measurement_se,
-        previous_velocity_se,
-        previous_acceleration_se,
-        previous_heading_state,
-        polynomial_step_se,
-        route_remaining_m,
-        predicted_cross_m,
-        total_progress_fraction,
-        leg_progress_fraction,
-        top1_distance_m,
-        softms_support,
+        ms1_xy,
+        prior_xy,
+        previous_ms1_xy,
+        previous_delta_xy,
+        previous_speed,
+        previous_acceleration,
+        previous_heading_rad,
         hidden: Optional[torch.Tensor] = None,
     ):
         if hidden is None:
             hidden = self.initial_hidden(z_uav.shape[0], z_uav.device, z_uav.dtype)
+        if previous_z_uav is None:
+            previous_z_uav = z_uav
+        if previous_ms1_xy is None:
+            previous_ms1_xy = ms1_xy.detach()
 
-        delta_recent, clip_mean = self._two_frame_features(z_uav, previous_z_uav)
-
-        # On the first frame there is no previous MeanShift hand-off. Using the
-        # current visual anchor makes the visual displacement exactly zero rather
-        # than injecting the Kalman prior into the GRU.
-        if previous_measurement_se is None:
-            previous_measurement_se = visual_anchor_se.detach()
-
-        # Position-domain temporal cue only. The CURRENT Kalman prior is
-        # deliberately not part of the GRU numeric input, which prevents the GRU
-        # from performing a hidden second prior/measurement fusion.
-        visual_step_se = visual_anchor_se - previous_measurement_se
+        visual_mean = 0.5 * (z_uav + previous_z_uav)
+        visual_delta = z_uav - previous_z_uav
 
         numeric = torch.cat(
             [
-                torch.log1p(response_variance_se.clamp_min(0.0)) / 7.0,
-                torch.cat(
-                    [
-                        visual_step_se[:, 0:1] / float(config.ROUTE_STEP_SCALE_M),
-                        visual_step_se[:, 1:2]
-                        / float(config.ROUTE_CROSS_TRACK_SCALE_M),
-                    ],
-                    dim=1,
-                ),
-                previous_velocity_se / float(config.ROUTE_STEP_SCALE_M),
-                previous_heading_state[:, 0:1]
-                / math.radians(float(config.MAX_HEADING_RESIDUAL_DEG)),
-                previous_heading_state[:, 1:2]
-                / math.radians(float(config.MAX_TURN_RATE_DEG_PER_FRAME)),
+                (ms1_xy - prior_xy) / float(config.POSITION_INPUT_SCALE_M),
+                (ms1_xy - previous_ms1_xy) / float(config.STEP_INPUT_SCALE_M),
+                previous_delta_xy / float(config.STEP_INPUT_SCALE_M),
+                previous_speed,
+                previous_acceleration,
+                torch.sin(previous_heading_rad),
+                torch.cos(previous_heading_rad),
             ],
             dim=1,
         )
@@ -328,8 +251,8 @@ class TwoFrameRouteStateGRU(nn.Module):
 
         recurrent_input = torch.cat(
             [
-                self.clip_mean_projection(clip_mean),
-                self.delta_recent_projection(delta_recent),
+                self.visual_mean_projection(visual_mean),
+                self.visual_delta_projection(visual_delta),
                 self.numeric_projection(numeric),
             ],
             dim=1,
@@ -337,112 +260,30 @@ class TwoFrameRouteStateGRU(nn.Module):
         new_hidden = self.gru(recurrent_input, hidden)
         h = self.dropout(new_hidden)
 
-        # ------------------------------------------------------------------
-        # GRU motion/heading -> deterministic heading-aware polynomial
-        # ------------------------------------------------------------------
         raw_motion = self.motion_head(h)
-        v_parallel = F.softplus(raw_motion[:, 0:1]).clamp(
-            max=float(config.MAX_FORWARD_SPEED_M_PER_FRAME)
-        )
-        v_cross = torch.tanh(raw_motion[:, 1:2]) * float(
-            config.MAX_CROSS_SPEED_M_PER_FRAME
-        )
-        a_parallel = torch.tanh(raw_motion[:, 2:3]) * float(
-            config.MAX_FORWARD_ACCEL_M_PER_FRAME2
-        )
-        a_cross = torch.tanh(raw_motion[:, 3:4]) * float(
-            config.MAX_CROSS_ACCEL_M_PER_FRAME2
-        )
-        velocity = torch.cat([v_parallel, v_cross], dim=1)
-        acceleration = torch.cat([a_parallel, a_cross], dim=1)
+        speed = F.softplus(raw_motion[:, 0:1])
+        acceleration = raw_motion[:, 1:2]
 
-        raw_heading = self.heading_head(h)
-        raw_heading_residual = torch.tanh(raw_heading[:, 0:1]) * math.radians(
-            float(config.MAX_HEADING_RESIDUAL_DEG)
-        )
-        raw_turn_rate = torch.tanh(raw_heading[:, 1:2]) * math.radians(
-            float(config.MAX_TURN_RATE_DEG_PER_FRAME)
-        )
-        prev_heading = previous_heading_state[:, 0:1]
-        prev_turn = previous_heading_state[:, 1:2]
-        heading_delta = torch.atan2(
-            torch.sin(raw_heading_residual - prev_heading),
-            torch.cos(raw_heading_residual - prev_heading),
-        ).clamp(
-            min=-math.radians(float(config.MAX_HEADING_DELTA_DEG_PER_FRAME)),
-            max=math.radians(float(config.MAX_HEADING_DELTA_DEG_PER_FRAME)),
-        )
-        turn_delta = (raw_turn_rate - prev_turn).clamp(
-            min=-math.radians(float(config.MAX_TURN_RATE_DELTA_DEG_PER_FRAME2)),
-            max=math.radians(float(config.MAX_TURN_RATE_DELTA_DEG_PER_FRAME2)),
-        )
-        heading_residual = (
-            prev_heading + float(config.HEADING_STATE_EMA_ALPHA) * heading_delta
-        )
-        turn_rate = prev_turn + float(config.TURN_RATE_EMA_ALPHA) * turn_delta
+        heading_delta = self.heading_head(h)
+        heading = previous_heading_rad + heading_delta
+        heading = torch.atan2(torch.sin(heading), torch.cos(heading))
 
-        base_forward = (v_parallel + 0.5 * a_parallel).clamp(
-            min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
-        )
-        base_cross = v_cross + 0.5 * a_cross
-        cos_h = torch.cos(heading_residual)
-        sin_h = torch.sin(heading_residual)
-        next_parallel = base_forward * cos_h - base_cross * sin_h
-        next_cross = base_forward * sin_h + base_cross * cos_h
-        next_parallel = next_parallel.clamp(min=0.0)
-        next_step = torch.cat([next_parallel, next_cross], dim=1)
-        norm = torch.linalg.norm(next_step, dim=1, keepdim=True).clamp_min(1e-6)
-        scale = torch.clamp(
-            float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / norm, max=1.0
-        )
-        next_step = next_step * scale
-
-        # ------------------------------------------------------------------
-        # Visual measurement / uncertainty -> Kalman update
-        # ------------------------------------------------------------------
-        # z_t is the current SoftMS anchor directly. There is no GRU position
-        # correction, so Kalman remains the sole motion/vision fusion block.
-        measurement = visual_anchor_se
-        measurement_residual = torch.zeros_like(visual_anchor_se)
-
-        # R_t remains learned. SoftMS spread is an input quality cue; the GRU
-        # variance head converts temporal/visual reliability into final Kalman R.
-        raw_log_variance = self.variance_head(h)
-        min_log_var = math.log(float(config.KALMAN_R_MIN_VAR))
-        max_log_var = math.log(float(config.KALMAN_R_MAX_VAR))
-        measurement_variance = torch.exp(
-            raw_log_variance.clamp(min=min_log_var, max=max_log_var)
+        travel = speed + 0.5 * acceleration
+        delta_xy = torch.cat(
+            [travel * torch.cos(heading), travel * torch.sin(heading)], dim=1
         )
 
-        state = torch.cat(
-            [
-                velocity,
-                acceleration,
-                heading_residual,
-                turn_rate,
-                measurement_residual,
-                measurement_variance,
-            ],
-            dim=1,
-        )
-        return RouteProgressGRUOutput(
-            measurement_se=measurement,
-            correction_se=measurement_residual,
-            measurement_variance_se=measurement_variance,
-            velocity_se=velocity,
-            acceleration_se=acceleration,
-            next_step_se=next_step,
-            heading_residual_rad=heading_residual,
-            turn_rate_rad=turn_rate,
+        return MotionGRUOutput(
+            speed_m_per_frame=speed,
+            acceleration_m_per_frame2=acceleration,
+            heading_rad=heading,
+            heading_delta_rad=heading_delta,
+            delta_xy=delta_xy,
             hidden=new_hidden,
-            state=state,
         )
 
 
-# Compatibility aliases used by the existing pipeline.
-ThreeFrameRouteStateGRU = TwoFrameRouteStateGRU
-RouteProgressGRU = TwoFrameRouteStateGRU
-WaypointLocalPrimaryRecoveryGRU = TwoFrameRouteStateGRU
-WaypointRouteGlobalRecoveryGRU = TwoFrameRouteStateGRU
-WaypointTemporalMotionGRU = TwoFrameRouteStateGRU
-WaypointConditionedGRU = TwoFrameRouteStateGRU
+# Existing entry points import this name.
+ThreeFrameRouteStateGRU = AutonomousMotionGRU
+RouteProgressGRU = AutonomousMotionGRU
+TwoFrameRouteStateGRU = AutonomousMotionGRU
