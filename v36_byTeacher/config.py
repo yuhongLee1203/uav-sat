@@ -7,10 +7,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 # Experiment identity
 # ---------------------------------------------------------------------------
-# Keep the existing v36 default backbone. The architecture rewrite changes the
-# temporal/localization flow, not the visual backbone; an environment variable
-# can still select one of the existing ablation backbones.
-BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobileclip2_s2").strip().lower()
+# Preserve the current v36_byTeacher default backbone. The rewrite changes the
+# localization/temporal architecture, not the visual backbone experiment.
+BACKBONE_KEY = os.environ.get("UAVSAT_BACKBONE", "mobilenet_v3_small").strip().lower()
 if BACKBONE_KEY not in BACKBONE_SPECS:
     raise ValueError(
         "UAVSAT_BACKBONE must be one of %s; got %r"
