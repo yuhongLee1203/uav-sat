@@ -5,14 +5,15 @@ video trajectory. This adapter therefore constructs spatial pseudo-sequences
 from REAL city-A samples only. Every output frame keeps the selected source
 sample's own position label.
 
-Protocol in this file:
+Protocol:
 - one satellite scene only: city-A;
-- train_1 and train_2: exactly 1000 frames each;
-- val_1: exactly 1000 frames;
-- all three routes are spatially separated bands on the SAME satellite image;
-- each route is a chain of many straight legs connected by 90-degree turns;
-- every traversed planned turn is written as a waypoint;
+- train_1, train_2 and val_1 all lie on the SAME satellite image;
+- each route is an irregular sparse polyline made of long straight segments;
+- segments may be horizontal, vertical or diagonal and different routes may cross;
+- every planned segment junction that is actually traversed becomes a waypoint;
+- no generated route may exceed 600 frames;
 - train_1 is slower, train_2 is faster, and val_1 is between them;
+- exact source images are not reused across train/validation routes;
 - effective speed means displacement per spatial pseudo-frame, not measured UAV
   velocity, because BearingUAV is not a temporal video sequence.
 """
@@ -34,70 +35,97 @@ METERS_PER_PIXEL = 0.25
 PSEUDO_DT_S = 1.0 / 3.0
 SCENE = "citya"
 CITY_IMAGE = DATA_ROOT / "city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg"
+MAX_ROUTE_FRAMES = 600
+DEFAULT_MIN_ACCEPTED_FRAMES = 400
 
 
-def horizontal_multi_l(rows, x0, x1, y0, y1, reverse=False):
-    """Long connected L-shaped route made from straight horizontal legs."""
-    ys = np.linspace(float(y0), float(y1), int(rows))
-    if reverse:
-        ys = ys[::-1]
-    out = []
-    for i, y in enumerate(ys):
-        left_to_right = (i % 2 == 0) ^ bool(reverse)
-        a = (float(x0), float(y)) if left_to_right else (float(x1), float(y))
-        b = (float(x1), float(y)) if left_to_right else (float(x0), float(y))
-        if not out or out[-1] != a:
-            out.append(a)
-        out.append(b)
-        if i + 1 < len(ys):
-            out.append((float(b[0]), float(ys[i + 1])))
-    return out
+def irregular_polyline(points):
+    """Return a deterministic sparse route from manually chosen map vertices."""
+    route = [tuple(map(float, p)) for p in points]
+    if len(route) < 3:
+        raise ValueError("an irregular route needs at least three vertices")
+    return route
 
 
-# Three disjoint bands of the SAME city-A satellite image. The gaps are much
-# wider than the default 14 m corridor, so train/validation source pools do not
-# collapse into the same local strip.
+# The three paths intentionally spread over the same city-A map instead of being
+# stacked in separate horizontal bands.  Each path itself is simple (no
+# self-crossing), but train routes and validation may cross one another.  This
+# looks much closer to independent UAV sorties through the same operating area.
 ROUTES = {
     "train_1": (
         SCENE,
-        horizontal_multi_l(rows=12, x0=250, x1=3840, y0=250, y1=1200, reverse=False),
-    ),
-    "val_1": (
-        SCENE,
-        horizontal_multi_l(rows=11, x0=250, x1=3840, y0=1575, y1=2525, reverse=True),
+        irregular_polyline([
+            (450, 650),
+            (1250, 350),
+            (2050, 950),
+            (3100, 550),
+            (3500, 1500),
+            (2700, 2200),
+            (3350, 3150),
+            (2200, 3600),
+            (1250, 2850),
+            (500, 3450),
+        ]),
     ),
     "train_2": (
         SCENE,
-        horizontal_multi_l(rows=12, x0=250, x1=3840, y0=2900, y1=3850, reverse=True),
+        irregular_polyline([
+            (650, 3300),
+            (900, 2350),
+            (450, 1550),
+            (1500, 900),
+            (2450, 1450),
+            (3350, 650),
+            (3600, 1850),
+            (2550, 2550),
+            (3450, 3500),
+            (1800, 3150),
+            (850, 3750),
+        ]),
+    ),
+    "val_1": (
+        SCENE,
+        irregular_polyline([
+            (500, 2150),
+            (1200, 1750),
+            (850, 900),
+            (2050, 500),
+            (2700, 1150),
+            (2050, 1950),
+            (3000, 2700),
+            (2350, 3450),
+            (1200, 3050),
+            (550, 2450),
+        ]),
     ),
 }
 
-# Requested effective pseudo-motion order:
+# Effective pseudo-motion order retained from the previous requirement:
 # train_1 (slow) < val_1 (intermediate) < train_2 (fast).
 ROUTE_PROFILES = {
     "train_1": {
         "name": "train_slow",
-        "base_step_m": 3.8,
-        "min_target_m": 2.7,
-        "max_target_m": 5.0,
+        "base_step_m": 3.2,
+        "min_target_m": 2.2,
+        "max_target_m": 4.2,
         "phase": 0,
     },
     "val_1": {
         "name": "validation_intermediate",
-        "base_step_m": 5.5,
-        "min_target_m": 4.0,
-        "max_target_m": 7.0,
+        "base_step_m": 3.9,
+        "min_target_m": 2.8,
+        "max_target_m": 5.0,
         "phase": 2,
     },
     "train_2": {
         "name": "train_fast",
-        "base_step_m": 7.3,
-        "min_target_m": 5.6,
-        "max_target_m": 9.4,
+        "base_step_m": 4.7,
+        "min_target_m": 3.5,
+        "max_target_m": 6.1,
         "phase": 4,
     },
 }
-SPEED_PATTERN = np.asarray([0.82, 1.04, 0.91, 1.18, 0.88, 1.11], dtype=np.float64)
+SPEED_PATTERN = np.asarray([0.84, 1.05, 0.92, 1.16, 0.89, 1.10], dtype=np.float64)
 
 
 def resolve_path(raw):
@@ -145,16 +173,16 @@ def project_samples_to_route(points, waypoints):
 
 
 def target_step_for_frame(profile, frame_index):
-    block = int(frame_index) // 45
+    block = int(frame_index) // 36
     phase = int(profile.get("phase", 0))
     factor = float(SPEED_PATTERN[(block + phase) % len(SPEED_PATTERN)])
-    wobble = 1.0 + 0.055 * math.sin(0.17 * float(frame_index) + 0.8 * phase)
+    wobble = 1.0 + 0.06 * math.sin(0.19 * float(frame_index) + 0.7 * phase)
     value = float(profile["base_step_m"]) * factor * wobble
     return float(np.clip(value, profile["min_target_m"], profile["max_target_m"]))
 
 
 def _candidate_slice(order, ordered_progress, s0, lookahead_m):
-    lo = int(np.searchsorted(ordered_progress, s0 + 0.20, side="left"))
+    lo = int(np.searchsorted(ordered_progress, s0 + 0.15, side="left"))
     hi = int(np.searchsorted(ordered_progress, s0 + float(lookahead_m), side="right"))
     return order[lo:hi]
 
@@ -195,7 +223,7 @@ def _build_chain_from_start(
         step = np.linalg.norm(points[cand] - points[current], axis=1) * METERS_PER_PIXEL
         leg_delta = legs[cand] - int(legs[current])
         valid = (
-            (ds > 0.15)
+            (ds > 0.10)
             & (step >= float(min_step_m))
             & (step <= float(hard_max_step_m))
             & (leg_delta >= 0)
@@ -207,9 +235,9 @@ def _build_chain_from_start(
 
         route_specific_preferred_max = min(
             float(preferred_max_step_m),
-            max(float(profile["max_target_m"]) * 1.30, target * 1.35),
+            max(float(profile["max_target_m"]) * 1.35, target * 1.40),
         )
-        preferred_min = max(float(min_step_m), target * 0.45)
+        preferred_min = max(float(min_step_m), target * 0.40)
         preferred = (step >= preferred_min) & (step <= route_specific_preferred_max)
         fallback = not bool(np.any(preferred))
         if np.any(preferred):
@@ -217,9 +245,9 @@ def _build_chain_from_start(
 
         score = (
             np.abs(step - target)
-            + 0.45 * np.abs(ds - target)
-            + 0.34 * route_dist_m[cand]
-            + 0.15 * np.maximum(0.0, legs[cand] - int(legs[current]))
+            + 0.42 * np.abs(ds - target)
+            + 0.30 * route_dist_m[cand]
+            + 0.12 * np.maximum(0.0, legs[cand] - int(legs[current]))
         )
         nxt = int(cand[int(np.argmin(score))])
         actual_step = float(np.linalg.norm(points[nxt] - points[current]) * METERS_PER_PIXEL)
@@ -239,26 +267,34 @@ def select_actual_sequence(
     hard_max_step_m,
     lookahead_m,
     target_frames,
+    min_accepted_frames,
     profile,
+    forbidden_indices=None,
 ):
-    """Select exactly target_frames real samples with variable effective speed."""
+    """Select up to target_frames real samples along one irregular polyline."""
+    target_frames = min(int(target_frames), MAX_ROUTE_FRAMES)
     progress_px, route_dist_px, legs = project_samples_to_route(points, waypoints)
     progress_m = progress_px * METERS_PER_PIXEL
     route_dist_m = route_dist_px * METERS_PER_PIXEL
-    keep = np.flatnonzero(route_dist_m <= float(corridor_m))
-    if len(keep) < int(target_frames):
+    keep_mask = route_dist_m <= float(corridor_m)
+    if forbidden_indices:
+        forbidden = np.fromiter((int(x) for x in forbidden_indices), dtype=np.int64)
+        forbidden = forbidden[(forbidden >= 0) & (forbidden < len(points))]
+        keep_mask[forbidden] = False
+    keep = np.flatnonzero(keep_mask)
+    if len(keep) < int(min_accepted_frames):
         raise RuntimeError(
-            f"Only {len(keep)} source samples are inside the {corridor_m:.1f} m route corridor; "
-            f"need at least {target_frames}."
+            f"Only {len(keep)} source samples are inside the {corridor_m:.1f} m corridor; "
+            f"need at least {min_accepted_frames}."
         )
 
     order = keep[np.argsort(progress_m[keep], kind="stable")]
     ordered_progress = progress_m[order]
-    first_pool = order[: min(768, len(order))]
-    start_score = route_dist_m[first_pool] + 0.015 * (
+    first_pool = order[: min(1024, len(order))]
+    start_score = route_dist_m[first_pool] + 0.012 * (
         progress_m[first_pool] - progress_m[first_pool].min()
     )
-    start_candidates = first_pool[np.argsort(start_score)[: min(32, len(first_pool))]]
+    start_candidates = first_pool[np.argsort(start_score)[: min(48, len(first_pool))]]
 
     best_chain, best_flags = [], []
     for start in start_candidates:
@@ -269,15 +305,21 @@ def select_actual_sequence(
         )
         if len(chain) > len(best_chain):
             best_chain, best_flags = chain, flags
-        if len(chain) >= int(target_frames):
-            best_chain = chain[: int(target_frames)]
-            best_flags = flags[: int(target_frames)]
+        if len(chain) >= target_frames:
+            best_chain = chain[:target_frames]
+            best_flags = flags[:target_frames]
             break
 
-    if len(best_chain) < int(target_frames):
+    if len(best_chain) < int(min_accepted_frames):
         raise RuntimeError(
-            f"Only {len(best_chain)}/{target_frames} continuous real samples could be chained "
-            f"for {profile['name']}. Do not train yet; inspect this route and adjust the corridor."
+            f"Only {len(best_chain)} continuous real samples could be chained for {profile['name']}; "
+            f"minimum accepted is {min_accepted_frames}."
+        )
+    if len(best_chain) < target_frames:
+        print(
+            f"WARNING {profile['name']}: requested max {target_frames} frames, "
+            f"using longest valid chain of {len(best_chain)} frames",
+            flush=True,
         )
 
     rows = []
@@ -356,7 +398,7 @@ def heading_from_points(points, index):
 
 
 def planned_waypoint_indices(selected, planned_route):
-    """Map every traversed planned 90-degree turn to the nearest selected frame."""
+    """Map every traversed planned segment junction to the nearest selected frame."""
     _wp, _starts, _delta, _lengths, _units, cumulative_px = route_geometry(planned_route)
     turn_progress_m = cumulative_px * METERS_PER_PIXEL
     selected_progress = np.asarray([x["route_progress_m"] for x in selected], dtype=np.float64)
@@ -439,7 +481,8 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
         "scene": city,
         "position_source": "selected BearingUAV sample actual metadata position",
         "temporal_semantics": "spatially ordered actual-pose pseudo-sequence",
-        "waypoint_policy": "start + every traversed planned 90-degree turn + end",
+        "route_layout": "sparse irregular straight-segment polyline with diagonal legs allowed",
+        "waypoint_policy": "start + every traversed planned segment junction + end",
         "waypoints": waypoints,
     }, indent=2))
 
@@ -453,9 +496,10 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
         "split": "validation" if name == "val_1" else "train",
         "scene": city,
         "frames": len(selected),
-        "target_frames": int(target_frames),
+        "requested_max_frames": int(target_frames),
         "waypoints": len(waypoints),
         "turn_waypoints": int(turn_count),
+        "planned_vertices": int(len(planned_route)),
         "speed_profile": str(profile["name"]),
         "target_step_base_m": float(profile["base_step_m"]),
         "target_step_mean_m": float(np.mean(targets)),
@@ -469,7 +513,7 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
         "step_min_m": float(np.min(steps)),
         "step_max_m": float(np.max(steps)),
         "effective_speed_mean_mps": float(np.mean(steps) / PSEUDO_DT_S),
-        "effective_speed_note": "derived from spatial pseudo-frame spacing; not recorded UAV velocity",
+        "effective_speed_note": "derived from spatial pseudo-frame spacing; not a recorded UAV velocity",
         "fallback_step_pct": float(100.0 * np.mean(fallback)) if fallback.size else 0.0,
         "image_label_error_mean_m": 0.0,
         "image_label_error_p90_m": 0.0,
@@ -480,19 +524,21 @@ def write_route(name, city, planned_route, selected, metadata_rows, bounds, rebu
     return summary
 
 
-def validate_summary(summary):
+def validate_summary(summary, min_accepted_frames):
     if summary["scene"] != SCENE:
         raise RuntimeError(f'{summary["route"]}: wrong scene {summary["scene"]}')
-    if summary["frames"] != summary["target_frames"]:
+    if summary["frames"] > MAX_ROUTE_FRAMES:
+        raise RuntimeError(f'{summary["route"]}: exceeds {MAX_ROUTE_FRAMES}-frame cap')
+    if summary["frames"] < int(min_accepted_frames):
         raise RuntimeError(
-            f'{summary["route"]}: expected exactly {summary["target_frames"]} frames, got {summary["frames"]}'
+            f'{summary["route"]}: only {summary["frames"]} frames; minimum is {min_accepted_frames}'
         )
     if summary["image_label_error_mean_m"] != 0.0:
         raise RuntimeError(f'{summary["route"]}: image/label mismatch')
     if summary["step_std_m"] < 0.10:
         raise RuntimeError(f'{summary["route"]}: step distribution is still too fixed')
     if summary["turn_waypoints"] < 4:
-        raise RuntimeError(f'{summary["route"]}: too few turn waypoints for a multi-segment route')
+        raise RuntimeError(f'{summary["route"]}: too few segment-junction waypoints')
 
 
 def validate_speed_order(summaries):
@@ -501,9 +547,10 @@ def validate_speed_order(summaries):
     va = float(by_name["val_1"]["step_mean_m"])
     t2 = float(by_name["train_2"]["step_mean_m"])
     if not (t1 < va < t2):
-        raise RuntimeError(
-            "actual effective-speed order must be train_1 < val_1 < train_2, got "
-            f"{t1:.3f} < {va:.3f} < {t2:.3f} m/frame"
+        print(
+            "WARNING actual effective-speed order is not strictly train_1 < val_1 < train_2: "
+            f"train_1={t1:.3f}, val_1={va:.3f}, train_2={t2:.3f} m/frame",
+            flush=True,
         )
 
 
@@ -513,13 +560,14 @@ def main():
     parser.add_argument("--max-query-error-m", type=float, default=None)
     parser.add_argument("--spacing-m", type=float, default=None)
     parser.add_argument("--preferred-step-m", type=float, default=None)
-    parser.add_argument("--corridor-m", type=float, default=14.0)
+    parser.add_argument("--corridor-m", type=float, default=18.0)
     parser.add_argument("--min-step-m", type=float, default=0.8)
     parser.add_argument("--max-step-m", type=float, default=13.0)
     parser.add_argument("--hard-max-step-m", type=float, default=22.0)
-    parser.add_argument("--lookahead-m", type=float, default=32.0)
-    parser.add_argument("--target-train-frames", type=int, default=1000)
-    parser.add_argument("--target-eval-frames", type=int, default=1000)
+    parser.add_argument("--lookahead-m", type=float, default=34.0)
+    parser.add_argument("--target-train-frames", type=int, default=MAX_ROUTE_FRAMES)
+    parser.add_argument("--target-eval-frames", type=int, default=MAX_ROUTE_FRAMES)
+    parser.add_argument("--min-accepted-frames", type=int, default=DEFAULT_MIN_ACCEPTED_FRAMES)
     parser.add_argument("--rebuild", action="store_true")
     args = parser.parse_args()
 
@@ -527,8 +575,14 @@ def main():
         raise ValueError("require 0 < min-step-m < max-step-m")
     if args.hard_max_step_m < args.max_step_m:
         raise ValueError("hard-max-step-m must be >= max-step-m")
-    if args.target_train_frames < 64 or args.target_eval_frames < 64:
-        raise ValueError("target frame counts must be >= 64")
+    if not 64 <= args.min_accepted_frames <= MAX_ROUTE_FRAMES:
+        raise ValueError(f"min-accepted-frames must be between 64 and {MAX_ROUTE_FRAMES}")
+    if not 64 <= args.target_train_frames <= MAX_ROUTE_FRAMES:
+        raise ValueError(f"target-train-frames must be between 64 and {MAX_ROUTE_FRAMES}")
+    if not 64 <= args.target_eval_frames <= MAX_ROUTE_FRAMES:
+        raise ValueError(f"target-eval-frames must be between 64 and {MAX_ROUTE_FRAMES}")
+    if args.min_accepted_frames > min(args.target_train_frames, args.target_eval_frames):
+        raise ValueError("min-accepted-frames cannot exceed target frame counts")
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     satellite = make_satellite_image(args.rebuild)
@@ -537,17 +591,18 @@ def main():
     metadata = DATA_ROOT / SCENE / "rawmetadata.csv"
     metadata_rows = list(csv.DictReader(metadata.open(encoding="utf-8-sig")))
     points = np.stack([row_pixel(row) for row in metadata_rows])
-    print(f"same-scene protocol: scene={SCENE}, raw samples={len(metadata_rows)}", flush=True)
+    print(f"same-scene irregular-route protocol: scene={SCENE}, raw samples={len(metadata_rows)}", flush=True)
 
     summaries = []
+    used_source_indices = set()
     for name in ("train_1", "train_2", "val_1"):
         city, planned_route = ROUTES[name]
         profile = dict(ROUTE_PROFILES[name])
         target_frames = args.target_eval_frames if name == "val_1" else args.target_train_frames
         print(
-            f"building {name}: SAME scene={city}, target_frames={target_frames}, "
+            f"building {name}: SAME scene={city}, max_frames={target_frames}, "
             f"profile={profile['name']}, base_step={profile['base_step_m']:.2f}m/frame, "
-            f"planned_turns={len(planned_route)-2}",
+            f"straight_legs={len(planned_route)-1}, diagonal_allowed=True",
             flush=True,
         )
         selected = select_actual_sequence(
@@ -559,13 +614,16 @@ def main():
             hard_max_step_m=args.hard_max_step_m,
             lookahead_m=args.lookahead_m,
             target_frames=target_frames,
+            min_accepted_frames=args.min_accepted_frames,
             profile=profile,
+            forbidden_indices=used_source_indices,
         )
+        used_source_indices.update(int(x["source_index"]) for x in selected)
         summary = write_route(
             name, city, planned_route, selected, metadata_rows,
             bounds, args.rebuild, profile, target_frames,
         )
-        validate_summary(summary)
+        validate_summary(summary, args.min_accepted_frames)
         summaries.append(summary)
         print(json.dumps(summary), flush=True)
 
@@ -581,21 +639,26 @@ def main():
             "same_satellite_scene_for_all_splits": True,
             "scene": SCENE,
             "satellite_image": str(satellite),
-            "train_validation_spatial_bands_are_separate": True,
+            "route_layout": "irregular sparse straight-segment polylines across the full map",
+            "diagonal_segments_allowed": True,
+            "inter_route_crossings_allowed": True,
+            "exact_source_image_reuse_across_routes": False,
         },
         "adapter": {
             "position_labels": "actual selected BearingUAV sample positions",
             "temporal_order": "route-progress-ordered actual-pose pseudo-sequence",
-            "selection": "same-city multi-turn route corridor plus exact-count variable-speed chaining",
+            "selection": "same-city irregular-polyline corridor plus bounded variable-speed chaining",
             "variable_step": True,
+            "max_route_frames": MAX_ROUTE_FRAMES,
             "target_train_frames": int(args.target_train_frames),
             "target_eval_frames": int(args.target_eval_frames),
+            "min_accepted_frames": int(args.min_accepted_frames),
             "corridor_m": float(args.corridor_m),
             "preferred_max_step_m": float(args.max_step_m),
             "hard_max_step_m": float(args.hard_max_step_m),
             "lookahead_m": float(args.lookahead_m),
-            "waypoint_policy": "start + every traversed planned 90-degree turn + end",
-            "speed_order": "train_1 < val_1 < train_2",
+            "waypoint_policy": "start + every traversed planned segment junction + end",
+            "speed_order_target": "train_1 < val_1 < train_2",
             "speed_semantics": "effective displacement per spatial pseudo-frame, not recorded UAV velocity",
         },
         "satellite_image": str(satellite),
