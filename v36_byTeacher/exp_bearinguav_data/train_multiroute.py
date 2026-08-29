@@ -1,4 +1,4 @@
-"""3-train/1-val/1-test data orchestration using unchanged v36 operations."""
+"""3-train/1-val/1-test orchestration for corrected BearingUAV actual-pose routes."""
 
 import argparse
 import json
@@ -18,9 +18,52 @@ from train_multirate_a import ARCHITECTURE_NAME, _slice_cache, _step_stats, _tra
 from visual_model import AllMapGeoCLIP, ThreeFrameRouteStateGRU
 
 
+def validate_generated_protocol():
+    """Fail early if stale fixed-spacing/synthetic-label routes are still present."""
+    summary_path = Path(config.GENERATED_ROOT) / "generation_summary.json"
+    if not summary_path.exists():
+        raise FileNotFoundError(
+            f"missing {summary_path}; run prepare_bearinguav_routes.py first"
+        )
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    adapter = payload.get("adapter", {})
+    if adapter.get("position_labels") != "actual selected BearingUAV sample positions":
+        raise RuntimeError(
+            "stale BearingUAV routes detected: expected actual source-position labels"
+        )
+    if not bool(adapter.get("variable_step", False)):
+        raise RuntimeError("stale BearingUAV routes detected: variable_step is not enabled")
+
+    for route in payload.get("routes", []):
+        name = route.get("route", "unknown")
+        label_mean = float(route.get("image_label_error_mean_m", float("inf")))
+        label_p90 = float(route.get("image_label_error_p90_m", float("inf")))
+        step_std = float(route.get("step_std_m", 0.0))
+        step_mean = float(route.get("step_mean_m", 0.0))
+        step_p10 = float(route.get("step_p10_m", 0.0))
+        step_p90 = float(route.get("step_p90_m", 0.0))
+        if label_mean > 1e-6 or label_p90 > 1e-6:
+            raise RuntimeError(
+                f"{name}: image/position labels are misaligned "
+                f"(mean={label_mean:.3f}m p90={label_p90:.3f}m)"
+            )
+        if step_std < 0.05 or abs(step_p90 - step_p10) < 0.10:
+            raise RuntimeError(
+                f"{name}: frame spacing is still effectively fixed "
+                f"(mean={step_mean:.3f}m std={step_std:.3f}m "
+                f"p10={step_p10:.3f}m p90={step_p90:.3f}m)"
+            )
+        print(
+            f"{name} corrected-data check: frames={route['frames']} "
+            f"step_mean={step_mean:.3f}m std={step_std:.3f}m "
+            f"p10={step_p10:.3f}m p90={step_p90:.3f}m "
+            f"image_label_error=0m",
+            flush=True,
+        )
+
+
 @torch.no_grad()
 def build_visual_cache(model, gallery, root, route_index, origin_lat, origin_lon, device, jitter_m):
-    """Original v36 visual cache logic, parameterized only by route root."""
     dataset = RouteDataset(root, train=False, origin_lat=origin_lat, origin_lon=origin_lon)
     uav_rows, gt_rows, frame_rows = [], [], []
     batch_size = int(config.VISUAL_CACHE_BATCH_SIZE)
@@ -114,6 +157,7 @@ def train_visual_multiroute(device, epochs, jitter_m):
             "previous_task_checkpoint_loaded": False,
             "backbone_source": config.BACKBONE_NAME,
             "task_specific_initialization": "random", "jitter_m": float(jitter_m),
+            "bearing_data_protocol": str(config.BEARING_DATA_PROTOCOL),
         }, config.VISUAL_CHECKPOINT)
         elapsed = time.perf_counter() - started
         print("visual epoch=%03d/%d loss=%.5f val_softms_mle=%.3fm val_p90=%.3fm "
@@ -130,6 +174,8 @@ def load_multiroute_visual(device):
     checkpoint = torch.load(config.VISUAL_CHECKPOINT, map_location="cpu")
     if checkpoint.get("visual_train_routes") != list(config.TRAIN_ROUTE_NAMES):
         raise RuntimeError("visual checkpoint train split mismatch")
+    if checkpoint.get("bearing_data_protocol") != str(config.BEARING_DATA_PROTOCOL):
+        raise RuntimeError("visual checkpoint BearingUAV data protocol mismatch")
     original_validator = vl._validate_visual_provenance
     vl._validate_visual_provenance = lambda _checkpoint: None
     try:
@@ -169,14 +215,13 @@ def train_temporal_multiroute(visual, objects, device, epochs, patience_limit, r
     start_epoch, best_score, best_state, patience = 1, float("inf"), None, 0
     if resume and config.LATEST_TEMPORAL_CHECKPOINT.exists():
         payload = torch.load(config.LATEST_TEMPORAL_CHECKPOINT, map_location="cpu")
+        if payload.get("bearing_data_protocol") != str(config.BEARING_DATA_PROTOCOL):
+            raise RuntimeError("temporal checkpoint BearingUAV data protocol mismatch")
         model.load_state_dict(payload["model"]); optimizer.load_state_dict(payload["optimizer"])
         start_epoch = int(payload["epoch"]) + 1; best_score = float(payload["best_score"])
         best_state = payload.get("best_model"); patience = int(payload.get("patience", 0))
     for epoch in range(start_epoch, int(epochs) + 1):
         started = time.perf_counter(); model.train(); native_losses, stride_losses = [], []
-        # One complete route per epoch keeps wall time bounded. A three-epoch
-        # cycle sees every training route once; recurrent/Kalman state still
-        # resets at every genuine route boundary.
         name = config.TRAIN_ROUTE_NAMES[(epoch - 1) % len(config.TRAIN_ROUTE_NAMES)]
         cache, route, gt, stride_cache, stride_gt = prepared[name]
         native_losses.extend(_train_one_sequence(
@@ -198,7 +243,9 @@ def train_temporal_multiroute(visual, objects, device, epochs, patience_limit, r
                         "train_routes": list(config.TRAIN_ROUTE_NAMES), "epoch_route": name,
                         "validation_routes": list(config.VALIDATION_ROUTE_NAMES),
                         "test_routes": list(config.TEST_ROUTE_NAMES),
-                        "train_forward_rows": 3}, config.TEMPORAL_CHECKPOINT)
+                        "train_forward_rows": 3,
+                        "bearing_data_protocol": str(config.BEARING_DATA_PROTOCOL)},
+                       config.TEMPORAL_CHECKPOINT)
         else:
             patience += 1
         torch.save({"architecture": ARCHITECTURE_NAME, "model": model.state_dict(),
@@ -206,7 +253,9 @@ def train_temporal_multiroute(visual, objects, device, epochs, patience_limit, r
                     "epoch": epoch, "best_score": best_score, "patience": patience,
                     "train_routes": list(config.TRAIN_ROUTE_NAMES), "epoch_route": name,
                     "validation_routes": list(config.VALIDATION_ROUTE_NAMES),
-                    "test_routes": list(config.TEST_ROUTE_NAMES)}, config.LATEST_TEMPORAL_CHECKPOINT)
+                    "test_routes": list(config.TEST_ROUTE_NAMES),
+                    "bearing_data_protocol": str(config.BEARING_DATA_PROTOCOL)},
+                   config.LATEST_TEMPORAL_CHECKPOINT)
         elapsed = time.perf_counter() - started
         print("multiroute epoch=%03d/%d route=%s native_loss=%.5f stride%d_loss=%.5f "
               "val_mle=%.3fm val_p90=%.3fm score=%.3f best=%.3f time=%.1fs" %
@@ -230,6 +279,8 @@ def main():
     parser.add_argument("--jitter-m", type=float, default=float(config.LOCAL_PRIOR_JITTER_M))
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
+
+    validate_generated_protocol()
     rt._set_forward_rows(3)
     config.LOCAL_PRIOR_JITTER_M = float(args.jitter_m)
     config.CONTROLLED_GT_PRIOR_JITTER_M = float(args.jitter_m)
