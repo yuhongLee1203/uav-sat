@@ -1,39 +1,30 @@
-# BearingUAV 1000-frame multi-turn actual-pose training for v36_byTeacher
+# BearingUAV same-scene 2-train / 1-validation protocol
 
 This experiment adapts BearingUAV samples to the sequential `vi/` +
-`sensor_with_yaw.json` format used by v36 without assigning synthetic route
-coordinates to the UAV images.
+`sensor_with_yaw.json` format used by v36 while preserving every selected UAV
+image's own source position label.
 
-Important data semantics:
+The protocol now uses **one satellite scene only: city-A**. There is no city-B
+or city-C route in this experiment.
 
-- BearingUAV-90K provides independent cross-view samples rather than a recorded
-  video trajectory. The generated data is therefore a spatial pseudo-sequence.
-- A planned polyline is used only to order nearby real samples.
-- Every frame position label is the selected BearingUAV sample's own metadata
-  position; source coordinates are never moved to an artificial route point.
-- Each generated route contains straight legs connected by many 90-degree
-  turns. Every traversed turn is written as a waypoint.
-- `train_1`, `train_2`, and `train_3` each default to exactly 1000 frames.
-- `val_1` and `test_1` also default to 1000 frames for balanced inspection.
-- Effective displacement per pseudo-frame is deliberately different across
-  routes and also varies within each route. The requested ordering is:
-  `train_1 < val_1 < train_2 < test_1 < train_3`.
-- The effective step rate is a spatial pseudo-motion rate, not a measured UAV
-  velocity, because the original data is not a temporal video sequence.
-- Repeated source images are not used inside one generated route.
-- `generation_summary.json` reports frame count, turn-waypoint count, target and
-  actual step statistics, corridor statistics, and zero image/label mismatch.
+Split:
 
-Current split:
+- `train_1`: city-A upper band, 1000 frames, slower variable pseudo-motion.
+- `train_2`: city-A lower band, 1000 frames, faster variable pseudo-motion.
+- `val_1`: city-A middle band, 1000 frames, intermediate variable pseudo-motion.
+- no separate test route in this data experiment.
 
-- `train_1`: city-A, slow multi-L lawnmower route
-- `train_2`: city-A, medium multi-L lawnmower route
-- `train_3`: city-A, fast orthogonal spiral route
-- `val_1`: held-out city-B, speed between training rates
-- `test_1`: held-out city-C, speed between training rates
+All three routes are long chains of straight segments connected by 90-degree
+turns. Every traversed planned turn is written as a waypoint. The spatial bands
+are separated on the same satellite image so validation sees the same scene
+type/map while following a different route region.
 
-The v36 forward 3x6 search, SoftMS, GRU, polynomial motion, learned variance,
-Kalman update, and temporal training code are otherwise reused.
+The requested effective displacement order is:
+
+`train_1 < val_1 < train_2`.
+
+Because BearingUAV-90K is not a recorded temporal video, this is effective
+spatial displacement per pseudo-frame, not measured physical UAV velocity.
 
 Prepare only:
 
@@ -49,20 +40,28 @@ python3 prepare_bearinguav_routes.py \
   --rebuild
 ```
 
-Generate full-satellite route figures:
+Visualize all three routes on the same city-A satellite image:
 
 ```bash
 python3 plot_bearinguav_route.py --all
 ```
 
-Inspect `generated_routes_3train_1val_1test/generation_summary.json` before
-training. The key checks are: each train route has 1000 frames, each route has
-multiple turn waypoints, image-label error is zero, step standard deviation is
-non-zero, and actual mean step follows the requested interleaved speed order.
+Generated summary:
+
+`generated_routes_2train_1val_samecity/generation_summary.json`
+
+Before training, confirm all three routes have 1000 frames, multiple turn
+waypoints, zero image/label mismatch, non-fixed step distributions, and actual
+mean step satisfying `train_1 < val_1 < train_2`.
 
 Full training on GPU 6:
 
 ```bash
-CUDA_VISIBLE_DEVICES=6 UAVSAT_RUN_TAG=bearinguav_multiturn_v4 ./run_train.sh \
-  --visual-epochs 30 --temporal-epochs 90 --patience 15 --jitter-m 8
+CUDA_VISIBLE_DEVICES=6 \
+UAVSAT_RUN_TAG=bearinguav_samecity_v5 \
+./run_train.sh \
+  --visual-epochs 30 \
+  --temporal-epochs 90 \
+  --patience 15 \
+  --jitter-m 8
 ```
