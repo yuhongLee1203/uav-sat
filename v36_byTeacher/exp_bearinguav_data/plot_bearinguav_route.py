@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Visualize same-scene BearingUAV routes on the city-A satellite image."""
+"""Visualize same-scene irregular BearingUAV routes on the city-A satellite image."""
 
 import argparse
 import json
@@ -85,19 +85,22 @@ def draw_route(route_name, output_path=None, show=False):
 
     fig, ax = plt.subplots(figsize=(12, 12), dpi=160)
     ax.imshow(satellite, extent=(0, prep.MAP_PX, prep.MAP_PX, 0))
-    ax.plot(planned[:, 0], planned[:, 1], linewidth=2.8, label="Planned multi-L route")
-    ax.scatter(planned[:, 0], planned[:, 1], s=24, marker="o", label="Planned turn points")
+    ax.plot(planned[:, 0], planned[:, 1], linewidth=2.8,
+            label="Planned irregular straight-segment route")
+    ax.scatter(planned[:, 0], planned[:, 1], s=26, marker="o",
+               label="Planned segment junctions")
 
     if actual is not None and len(actual) > 1:
         ax.plot(actual[:, 0], actual[:, 1], linewidth=1.0, alpha=0.72,
-                label="Selected 1000 real samples")
+                label=f"Selected real samples (n={len(actual)})")
 
     if selected_wp is not None:
         ax.scatter(selected_wp[:, 0], selected_wp[:, 1], s=55, marker="x",
                    label="Generated waypoints")
         for p, row in zip(selected_wp, waypoint_rows):
             label = f"W{row['waypoint_order']}:{row['role']}"
-            ax.annotate(label, (p[0], p[1]), xytext=(4, 4), textcoords="offset points", fontsize=7)
+            ax.annotate(label, (p[0], p[1]), xytext=(4, 4),
+                        textcoords="offset points", fontsize=7)
 
     ax.scatter([planned[0, 0]], [planned[0, 1]], s=90, marker="^", label="Start")
     ax.scatter([planned[-1, 0]], [planned[-1, 1]], s=90, marker="s", label="Planned end")
@@ -106,7 +109,7 @@ def draw_route(route_name, output_path=None, show=False):
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel("Satellite image x (px)")
     ax.set_ylabel("Satellite image y (px)")
-    ax.set_title(f"BearingUAV {route_name} - SAME city-A satellite scene")
+    ax.set_title(f"BearingUAV {route_name} - Irregular route on SAME city-A scene")
     ax.legend(loc="best")
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight")
@@ -135,21 +138,23 @@ def draw_all_same_scene(output_path=None, show=False):
     for route_name in ("train_1", "train_2", "val_1"):
         _, planned_waypoints = prep.ROUTES[route_name]
         planned = np.asarray(planned_waypoints, dtype=np.float64)
-        ax.plot(planned[:, 0], planned[:, 1], linewidth=2.4, label=f"{route_name} planned")
+        ax.plot(planned[:, 0], planned[:, 1], linewidth=2.3,
+                label=f"{route_name} planned")
+        ax.scatter(planned[:, 0], planned[:, 1], s=18, marker="o")
         actual = load_actual_path(route_name)
         if actual is not None and len(actual) > 1:
-            ax.plot(actual[:, 0], actual[:, 1], linewidth=0.9, alpha=0.65,
-                    label=f"{route_name} selected")
+            ax.plot(actual[:, 0], actual[:, 1], linewidth=0.85, alpha=0.62,
+                    label=f"{route_name} selected n={len(actual)}")
         selected_wp, _ = load_waypoint_pixels(route_name)
         if selected_wp is not None:
-            ax.scatter(selected_wp[:, 0], selected_wp[:, 1], s=32, marker="x")
+            ax.scatter(selected_wp[:, 0], selected_wp[:, 1], s=30, marker="x")
 
     ax.set_xlim(0, prep.MAP_PX)
     ax.set_ylim(prep.MAP_PX, 0)
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel("Satellite image x (px)")
     ax.set_ylabel("Satellite image y (px)")
-    ax.set_title("BearingUAV: 2 Train + 1 Validation on ONE city-A Satellite Image")
+    ax.set_title("BearingUAV: Irregular 2-Train + 1-Val Routes on ONE city-A Satellite Image")
     ax.legend(loc="best", fontsize=8)
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight")
