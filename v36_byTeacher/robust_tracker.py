@@ -1,26 +1,22 @@
-"""Autonomous v36_byTeacher tracker, stable v3 (native Route-A only).
+"""Autonomous v36_byTeacher tracker, stable v4.
 
-Per frame t:
-    prior X_pre(t) + previous predicted heading
-      -> MS #1 forward 3x6 -> X_ms(t)
-      -> [parallel]
-           standard XY Kalman(X_pre(t), X_ms(t)) -> X'_t
-           GRU(X_ms(t), temporal visual/state) -> v_t, a_t, theta_t
-           polynomial(v_t, a_t, theta_t) -> Delta_t
-      -> MS #2 centered full 6x6 around X'_t -> final X_t
-      -> X_pre(t+1) = X_t + Delta_t
+Architecture per frame t
+------------------------
+previous final X_(t-1) + previous learned polynomial Delta_(t-1)
+    -> predicted search center X_pre(t)
+    -> MS #1: nearest forward 3x6 -> X_ms(t)
 
-Validation/test inference never reads the current-frame reference coordinate
-before the final prediction is produced. Reference coordinates are used only
-for supervised training targets and post-prediction metrics.
+In parallel:
+    Kalman(previous final X_(t-1), measurement X_ms(t)) -> X'_t
+    GRU(current X_ms(t), temporal state) -> v_t, a_t, theta_t
+    polynomial(v_t, a_t, theta_t) -> Delta_t
 
-v3 changes:
-  * temporal training uses ONLY native-speed Route A;
-  * no stride-2 / 2x-speed sequence;
-  * the GRU motion heads are anchored to consecutive MS1 displacement instead
-    of accumulating an unconstrained heading delta from Route-A timing;
-  * validation prints prior/MS1/Kalman/MS2 stage errors so a closed-loop loss
-    of capture is visible immediately.
+X'_t -> MS #2 full centered 6x6 -> final X_t
+next search center = X_t + Delta_t
+
+The current-frame reference coordinate is never read before final X_t exists.
+Reference coordinates are used only for Route-A supervision and post-prediction
+validation/test metrics.
 """
 
 import argparse
@@ -35,8 +31,13 @@ import torch.nn.functional as F
 
 import config
 import robust_tracker_base as b
-from visual_localizer import CandidateBatch, FrozenVisualLocalizer, soft_mean_shift
-from visual_localizer import regular_grid_indices, train_visual_retrieval_a_only
+from visual_localizer import (
+    CandidateBatch,
+    FrozenVisualLocalizer,
+    regular_grid_indices,
+    soft_mean_shift,
+    train_visual_retrieval_a_only,
+)
 from visual_model import ThreeFrameRouteStateGRU
 
 ARCHITECTURE_NAME = str(config.ARCHITECTURE_NAME)
@@ -66,25 +67,27 @@ def planned_route_start(route_name, origin_lat, origin_lon):
     start_xy = points[0].astype(np.float64)
     direction = points[1] - points[0]
     if float(np.linalg.norm(direction)) < 1e-9:
-        initial_heading = 0.0
+        heading = 0.0
     else:
-        initial_heading = float(math.atan2(direction[1], direction[0]))
-    return points, start_xy, initial_heading
+        heading = float(math.atan2(direction[1], direction[0]))
+    return points, start_xy, heading
 
 
 class XYKalman:
-    """Standard linear XY Kalman in [x, y, vx, vy].
+    """Linear XY Kalman whose positional prior is the previous FINAL position.
 
-    X_pre(t) is supplied by the architecture as X_(t-1)+Delta_(t-1), and MS1
-    is the visual measurement. There is no speed/acceleration/turn clamp,
-    innovation clipping, GT gate, or posterior correction cap.
+    This matches the requested role:
+        measurement = current MS1 position
+        second positional input = previous final position
+
+    Previous polynomial displacement is kept only as the velocity state. It is
+    NOT added a second time to the positional state before the visual update.
+    There are no motion caps, innovation gates, or reference-dependent limits.
     """
 
     def __init__(self, initial_xy):
-        initial_xy = np.asarray(initial_xy, dtype=np.float64).reshape(2)
-        self.x = np.asarray(
-            [initial_xy[0], initial_xy[1], 0.0, 0.0], dtype=np.float64
-        )
+        p = np.asarray(initial_xy, dtype=np.float64).reshape(2)
+        self.x = np.asarray([p[0], p[1], 0.0, 0.0], dtype=np.float64)
         self.P = np.diag(
             [
                 float(config.KALMAN_INIT_POSITION_VAR),
@@ -118,12 +121,12 @@ class XYKalman:
             [float(config.KALMAN_R_POSITION), float(config.KALMAN_R_POSITION)]
         )
 
-    def predict_from_prior(self, prior_xy, prior_delta_xy):
-        prior_xy = np.asarray(prior_xy, dtype=np.float64).reshape(2)
-        prior_delta_xy = np.asarray(prior_delta_xy, dtype=np.float64).reshape(2)
+    def prepare(self, previous_final_xy, previous_delta_xy):
+        previous_final_xy = np.asarray(previous_final_xy, dtype=np.float64).reshape(2)
+        previous_delta_xy = np.asarray(previous_delta_xy, dtype=np.float64).reshape(2)
         self.P = self.F @ self.P @ self.F.T + self.Q
-        self.x[:2] = prior_xy
-        self.x[2:] = prior_delta_xy
+        self.x[:2] = previous_final_xy
+        self.x[2:] = previous_delta_xy
         return self.x[:2].copy()
 
     def update(self, measurement_xy):
@@ -142,25 +145,73 @@ class XYKalman:
         return self.x[:2].copy()
 
 
+def _nearest_forward_3x6(full_centers, center_xy, heading_rad):
+    """Select center-adjacent forward three rows/columns from the 6x6 grid.
+
+    The old code selected the 18 largest forward projections. Because the 6x6
+    offsets are [-3,-2,-1,0,1,2], west/south headings could select
+    [-3,-2,-1] and exclude the center row entirely. Here the dominant heading
+    axis is used as the longitudinal axis, and the nearest 18 candidates on or
+    in front of the center plane are selected. Cardinal cases become exactly:
+      east/north: 0,+1,+2
+      west/south: 0,-1,-2
+    times all six lateral columns.
+    """
+
+    relative = full_centers - center_xy[:, None, :]
+    headings = torch.as_tensor(
+        heading_rad, dtype=relative.dtype, device=relative.device
+    ).reshape(-1)
+    if headings.numel() == 1 and relative.shape[0] > 1:
+        headings = headings.expand(relative.shape[0])
+    if headings.numel() != relative.shape[0]:
+        raise ValueError("heading count must match center batch size")
+
+    cos_h = torch.cos(headings)
+    sin_h = torch.sin(headings)
+    use_x = cos_h.abs() >= sin_h.abs()
+    sign_x = torch.where(cos_h >= 0, torch.ones_like(cos_h), -torch.ones_like(cos_h))
+    sign_y = torch.where(sin_h >= 0, torch.ones_like(sin_h), -torch.ones_like(sin_h))
+
+    primary = torch.where(
+        use_x[:, None],
+        relative[:, :, 0] * sign_x[:, None],
+        relative[:, :, 1] * sign_y[:, None],
+    )
+    secondary = torch.where(
+        use_x[:, None],
+        relative[:, :, 1],
+        relative[:, :, 0],
+    )
+
+    forward_mask = primary >= -1e-4
+    if not bool(torch.all(forward_mask.sum(dim=1) >= int(config.MS1_CANDIDATE_COUNT))):
+        raise RuntimeError("MS1 grid does not contain 18 forward candidates")
+
+    huge = torch.full_like(primary, 1e9)
+    forward_cost = torch.where(forward_mask, primary.abs(), huge)
+    selected_local = torch.topk(
+        forward_cost,
+        k=int(config.MS1_CANDIDATE_COUNT),
+        dim=1,
+        largest=False,
+        sorted=False,
+    ).indices
+
+    chosen_primary = torch.gather(primary, 1, selected_local)
+    chosen_secondary = torch.gather(secondary, 1, selected_local)
+    ordering_key = chosen_primary * 1000.0 + chosen_secondary
+    order = torch.argsort(ordering_key, dim=1)
+    return torch.gather(selected_local, 1, order)
+
+
 def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad):
-    """MS #1: score exactly the forward 18 candidates of a local 6x6 grid."""
+    """MS #1: nearest forward 3x6 around the autonomous predicted center."""
 
     grid_size = int(config.MS1_BASE_GRID_SIZE)
     keep_count = int(config.MS1_CANDIDATE_COUNT)
     if grid_size != 6 or keep_count != 18:
-        raise RuntimeError("MS#1 requires the forward 3x6 half of a 6x6 grid")
-
-    headings = torch.as_tensor(
-        heading_rad, dtype=center_xy.dtype, device=center_xy.device
-    ).reshape(-1)
-    batch = int(center_xy.shape[0])
-    if headings.numel() == 1 and batch > 1:
-        headings = headings.expand(batch)
-    if headings.numel() != batch:
-        raise ValueError("heading count must match center batch size")
-
-    forward_unit = torch.stack([torch.cos(headings), torch.sin(headings)], dim=1)
-    cross_unit = torch.stack([-torch.sin(headings), torch.cos(headings)], dim=1)
+        raise RuntimeError("MS1 must be forward 3x6 selected from a 6x6 lattice")
 
     full_indices = regular_grid_indices(
         visual.gallery["xy"],
@@ -172,20 +223,12 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad):
         visual.device,
     )
     full_centers = visual.gallery["xy"][full_indices]
-    relative = full_centers - center_xy[:, None, :]
-    forward_projection = (relative * forward_unit[:, None, :]).sum(dim=2)
-    cross_projection = (relative * cross_unit[:, None, :]).sum(dim=2)
-
-    selected_local = torch.topk(
-        forward_projection, k=keep_count, dim=1, largest=True, sorted=False
-    ).indices
+    selected_local = _nearest_forward_3x6(
+        full_centers=full_centers,
+        center_xy=center_xy,
+        heading_rad=heading_rad,
+    )
     selected_indices = torch.gather(full_indices, 1, selected_local)
-    selected_forward = torch.gather(forward_projection, 1, selected_local)
-    selected_cross = torch.gather(cross_projection, 1, selected_local)
-
-    ordering_key = -selected_forward * 1000.0 + selected_cross
-    order = torch.argsort(ordering_key, dim=1)
-    selected_indices = torch.gather(selected_indices, 1, order)
 
     centers = visual.gallery["xy"][selected_indices]
     satellite_clip = visual.gallery["clip_feat"][selected_indices]
@@ -195,8 +238,6 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad):
         centers.reshape(-1, 2),
     ).reshape(centers.shape[0], centers.shape[1], -1)
 
-    # This clamp is only the usual logit-scale numerical protection. It is not
-    # a motion, speed, acceleration, turn, or Kalman correction limit.
     raw_logits = visual.model.logit_scale.exp().clamp(max=100.0) * (
         z_uav[:, None] * z_sat
     ).sum(dim=2)
@@ -231,34 +272,24 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad):
 
 @torch.no_grad()
 def ms1_forward_search(visual, uav_clip, prior_xy, heading_rad, device):
-    center = _tensor_xy(prior_xy, device)
     return forward_3x6_candidate_batch(
         visual=visual,
         uav_clip=uav_clip,
-        center_xy=center,
+        center_xy=_tensor_xy(prior_xy, device),
         heading_rad=_tensor_scalar(heading_rad, device).reshape(-1),
     )
 
 
 @torch.no_grad()
 def ms2_center_search(visual, uav_clip, kalman_xy, device):
-    center = _tensor_xy(kalman_xy, device)
     return visual.candidate_batch(
         uav_clip=uav_clip,
-        center_xy=center,
+        center_xy=_tensor_xy(kalman_xy, device),
         grid_size=int(config.MS2_GRID_SIZE),
     )
 
 
 def motion_targets_from_xy(xy, fallback_heading=0.0):
-    """Derive v/a/theta supervision from reference positions.
-
-    For interval distance d_t=||p_(t+1)-p_t|| and previous distance d_(t-1):
-        v_t = 0.5 * (d_(t-1) + d_t)
-        a_t = d_t - d_(t-1)
-    so the one-frame polynomial v_t + 0.5*a_t equals d_t exactly.
-    """
-
     xy = np.asarray(xy, dtype=np.float64).reshape(-1, 2)
     n = len(xy)
     delta = np.zeros((n, 2), dtype=np.float64)
@@ -287,11 +318,12 @@ def motion_targets_from_xy(xy, fallback_heading=0.0):
         heading_delta[i] = _wrap_angle_np(current_heading - last_heading)
         last_heading = current_heading
 
-    polynomial_distance = speed + 0.5 * acceleration
-    if n > 1 and not np.allclose(
-        polynomial_distance[:-1], distance[:-1], rtol=1e-6, atol=1e-6
-    ):
-        raise RuntimeError("internal motion-target consistency check failed")
+    if n > 1:
+        polynomial_distance = speed + 0.5 * acceleration
+        if not np.allclose(
+            polynomial_distance[:-1], distance[:-1], rtol=1e-6, atol=1e-6
+        ):
+            raise RuntimeError("motion target consistency failed")
 
     return {
         "delta_xy": delta,
@@ -312,9 +344,7 @@ def temporal_loss(output, target, device):
 
     delta_loss = F.smooth_l1_loss(output.delta_xy, target_delta)
     speed_loss = F.smooth_l1_loss(output.speed_m_per_frame, target_speed)
-    acceleration_loss = F.smooth_l1_loss(
-        output.acceleration_m_per_frame2, target_accel
-    )
+    accel_loss = F.smooth_l1_loss(output.acceleration_m_per_frame2, target_accel)
     heading_loss = (1.0 - torch.cos(output.heading_rad - target_heading)).mean()
     heading_delta_loss = (
         1.0 - torch.cos(output.heading_delta_rad - target_heading_delta)
@@ -323,14 +353,14 @@ def temporal_loss(output, target, device):
     total = (
         float(config.LOSS_DELTA) * delta_loss
         + float(config.LOSS_SPEED) * speed_loss
-        + float(config.LOSS_ACCELERATION) * acceleration_loss
+        + float(config.LOSS_ACCELERATION) * accel_loss
         + float(config.LOSS_HEADING) * heading_loss
         + float(config.LOSS_HEADING_DELTA) * heading_delta_loss
     )
     return total, {
         "delta": float(delta_loss.detach().cpu()),
         "speed": float(speed_loss.detach().cpu()),
-        "acceleration": float(acceleration_loss.detach().cpu()),
+        "acceleration": float(accel_loss.detach().cpu()),
         "heading": float(heading_loss.detach().cpu()),
         "heading_delta": float(heading_delta_loss.detach().cpu()),
     }
@@ -342,6 +372,7 @@ def _initial_temporal_state(route_name, visual, device):
     )
     return {
         "prior_xy": start_xy.copy(),
+        "previous_final_xy": start_xy.copy(),
         "previous_delta_xy": torch.zeros(1, 2, device=device),
         "previous_speed": torch.zeros(1, 1, device=device),
         "previous_acceleration": torch.zeros(1, 1, device=device),
@@ -349,36 +380,38 @@ def _initial_temporal_state(route_name, visual, device):
         "previous_z": None,
         "previous_ms1_xy": None,
         "hidden": None,
+        "motion_ready": False,
         "kalman": XYKalman(start_xy),
     }
 
 
 def _forward_frame(model, visual, uav_clip, state, device):
-    """Run one frame without accessing the current reference coordinate."""
-
-    prior_xy_np = np.asarray(state["prior_xy"], dtype=np.float64).reshape(2)
+    search_prior_xy = np.asarray(state["prior_xy"], dtype=np.float64).reshape(2)
+    previous_final_xy = np.asarray(state["previous_final_xy"], dtype=np.float64).reshape(2)
     heading_value = float(state["previous_heading"][0, 0].detach().cpu())
 
     ms1 = ms1_forward_search(
         visual=visual,
         uav_clip=uav_clip,
-        prior_xy=prior_xy_np,
+        prior_xy=search_prior_xy,
         heading_rad=heading_value,
         device=device,
     )
     ms1_xy = ms1.softms_xy
 
-    state["kalman"].predict_from_prior(
-        prior_xy_np,
+    state["kalman"].prepare(
+        previous_final_xy,
         state["previous_delta_xy"][0].detach().cpu().numpy(),
     )
-    kalman_xy = state["kalman"].update(ms1_xy[0].detach().cpu().numpy())
+    kalman_xy = state["kalman"].update(
+        ms1_xy[0].detach().cpu().numpy()
+    )
 
     output = model.forward_step(
         z_uav=ms1.z_uav,
         previous_z_uav=state["previous_z"],
         ms1_xy=ms1_xy,
-        prior_xy=_tensor_xy(prior_xy_np, device),
+        prior_xy=_tensor_xy(search_prior_xy, device),
         previous_ms1_xy=state["previous_ms1_xy"],
         previous_delta_xy=state["previous_delta_xy"],
         previous_speed=state["previous_speed"],
@@ -396,7 +429,8 @@ def _forward_frame(model, visual, uav_clip, state, device):
     final_xy = ms2.softms_xy[0].detach().cpu().numpy().astype(np.float64)
 
     return {
-        "prior_xy": prior_xy_np,
+        "prior_xy": search_prior_xy,
+        "previous_final_xy": previous_final_xy,
         "ms1": ms1,
         "ms1_xy": ms1_xy,
         "kalman_xy": kalman_xy,
@@ -409,10 +443,23 @@ def _forward_frame(model, visual, uav_clip, state, device):
 def _advance_state(state, frame):
     output = frame["output"]
     final_xy = frame["final_xy"]
-    delta_xy = output.delta_xy
 
-    # Search geometry is discrete/non-differentiable; the next runtime center
-    # is therefore detached by design. Motion itself is supervised directly.
+    state["previous_z"] = frame["ms1"].z_uav
+    state["previous_ms1_xy"] = frame["ms1_xy"]
+    state["hidden"] = output.hidden
+    state["previous_final_xy"] = final_xy.copy()
+
+    if not bool(state["motion_ready"]):
+        state["prior_xy"] = final_xy.copy()
+        state["previous_delta_xy"] = torch.zeros_like(output.delta_xy)
+        state["previous_speed"] = torch.zeros_like(output.speed_m_per_frame)
+        state["previous_acceleration"] = torch.zeros_like(
+            output.acceleration_m_per_frame2
+        )
+        state["motion_ready"] = True
+        return
+
+    delta_xy = output.delta_xy
     state["prior_xy"] = (
         final_xy + delta_xy[0].detach().cpu().numpy().astype(np.float64)
     )
@@ -420,9 +467,6 @@ def _advance_state(state, frame):
     state["previous_speed"] = output.speed_m_per_frame
     state["previous_acceleration"] = output.acceleration_m_per_frame2
     state["previous_heading"] = output.heading_rad
-    state["previous_z"] = frame["ms1"].z_uav
-    state["previous_ms1_xy"] = frame["ms1_xy"]
-    state["hidden"] = output.hidden
 
 
 def _detach_state(state):
@@ -444,15 +488,13 @@ def _target_stats(cache, fallback_heading):
     targets = motion_targets_from_xy(
         cache.gt_xy.detach().cpu().numpy(), fallback_heading=fallback_heading
     )
-    distance = targets["distance"][:-1]
-    acceleration = targets["acceleration"][:-1]
+    d = targets["distance"][:-1]
+    a = targets["acceleration"][:-1]
     return {
-        "mean_step": float(np.mean(distance)) if len(distance) else 0.0,
-        "median_step": float(np.median(distance)) if len(distance) else 0.0,
-        "p90_step": float(np.quantile(distance, 0.90)) if len(distance) else 0.0,
-        "mean_abs_accel": (
-            float(np.mean(np.abs(acceleration))) if len(acceleration) else 0.0
-        ),
+        "mean_step": float(np.mean(d)) if len(d) else 0.0,
+        "median_step": float(np.median(d)) if len(d) else 0.0,
+        "p90_step": float(np.quantile(d, 0.90)) if len(d) else 0.0,
+        "mean_abs_accel": float(np.mean(np.abs(a))) if len(a) else 0.0,
     }
 
 
@@ -469,22 +511,33 @@ def _training_sequence_loss(model, optimizer, visual, cache, device):
     state = _initial_temporal_state("route_A", visual, device)
     optimizer.zero_grad(set_to_none=True)
 
-    # First frame only initializes MS1/hidden. The first trainable prediction is
-    # frame 1, where consecutive MS1 coordinates provide an actual motion cue.
     with torch.no_grad():
-        warmup_clip = cache.uav_clip[0:1].to(device).float()
-        warmup_frame = _forward_frame(model, visual, warmup_clip, state, device)
-        _advance_state(state, warmup_frame)
+        frame0 = _forward_frame(
+            model,
+            visual,
+            cache.uav_clip[0:1].to(device).float(),
+            state,
+            device,
+        )
+        _advance_state(state, frame0)
         _detach_state(state)
 
     chunk_loss = None
     chunk_count = 0
     total_values = []
-    component_values = {k: [] for k in ["delta", "speed", "acceleration", "heading", "heading_delta"]}
+    component_values = {
+        key: []
+        for key in ["delta", "speed", "acceleration", "heading", "heading_delta"]
+    }
 
     for index in range(1, len(cache) - 1):
-        uav_clip = cache.uav_clip[index : index + 1].to(device).float()
-        frame = _forward_frame(model, visual, uav_clip, state, device)
+        frame = _forward_frame(
+            model,
+            visual,
+            cache.uav_clip[index : index + 1].to(device).float(),
+            state,
+            device,
+        )
         target = {
             "delta_xy": targets["delta_xy"][index],
             "speed": targets["speed"][index],
@@ -515,21 +568,16 @@ def _training_sequence_loss(model, optimizer, visual, cache, device):
             chunk_loss = None
             chunk_count = 0
 
-    mean_components = {
+    components = {
         key: float(np.mean(values)) if values else float("nan")
         for key, values in component_values.items()
     }
-    return (
-        float(np.mean(total_values)) if total_values else float("nan"),
-        mean_components,
-    )
+    return float(np.mean(total_values)) if total_values else float("nan"), components
 
 
-def _stage_metric(errors):
-    values = np.asarray(errors, dtype=np.float64)
-    if values.size == 0:
-        return float("inf")
-    return float(np.mean(values))
+def _mean(values):
+    values = np.asarray(values, dtype=np.float64)
+    return float(np.mean(values)) if values.size else float("inf")
 
 
 @torch.no_grad()
@@ -542,17 +590,16 @@ def run_route_inference(
     save_csv=True,
     measure_latency=False,
 ):
-    """Autonomous rollout; reference is read only after final_xy is produced."""
-
     model.eval()
     state = _initial_temporal_state(route_name, visual, device)
+
     rows = []
-    errors = []
+    final_errors = []
     prior_errors = []
+    previous_final_errors = []
     ms1_errors = []
     kalman_errors = []
     timing_ms = []
-    warmup = int(config.LATENCY_WARMUP_FRAMES)
     first_over_20 = None
     first_over_50 = None
 
@@ -569,40 +616,51 @@ def run_route_inference(
         if measure_latency:
             timing_ms.append(elapsed_ms)
 
-        # IMPORTANT: current reference is first accessed here, after the full
-        # prior -> MS1 -> Kalman/GRU -> MS2 prediction already exists.
         reference_xy = cache.gt_xy[index].cpu().numpy().astype(np.float64)
         final_xy = frame["final_xy"]
+        ms1_xy = frame["ms1_xy"][0].detach().cpu().numpy().astype(np.float64)
+
         prior_error = float(np.linalg.norm(frame["prior_xy"] - reference_xy))
-        ms1_xy_np = frame["ms1_xy"][0].detach().cpu().numpy().astype(np.float64)
-        ms1_error = float(np.linalg.norm(ms1_xy_np - reference_xy))
+        previous_final_error = float(
+            np.linalg.norm(frame["previous_final_xy"] - reference_xy)
+        )
+        ms1_error = float(np.linalg.norm(ms1_xy - reference_xy))
         kalman_error = float(np.linalg.norm(frame["kalman_xy"] - reference_xy))
         final_error = float(np.linalg.norm(final_xy - reference_xy))
 
         prior_errors.append(prior_error)
+        previous_final_errors.append(previous_final_error)
         ms1_errors.append(ms1_error)
         kalman_errors.append(kalman_error)
-        errors.append(final_error)
+        final_errors.append(final_error)
+
         if first_over_20 is None and final_error > 20.0:
             first_over_20 = int(index)
         if first_over_50 is None and final_error > 50.0:
             first_over_50 = int(index)
 
         output = frame["output"]
-        next_prior_xy = (
-            final_xy + output.delta_xy[0].detach().cpu().numpy().astype(np.float64)
-        )
+        if bool(state["motion_ready"]):
+            next_prior_xy = (
+                final_xy + output.delta_xy[0].detach().cpu().numpy().astype(np.float64)
+            )
+        else:
+            next_prior_xy = final_xy.copy()
+
         rows.append(
             {
                 "frame_id": int(cache.frame_ids[index]),
                 "image_path": cache.image_paths[index],
                 "reference_x": float(reference_xy[0]),
                 "reference_y": float(reference_xy[1]),
+                "previous_final_x": float(frame["previous_final_xy"][0]),
+                "previous_final_y": float(frame["previous_final_xy"][1]),
+                "previous_final_error_to_current_ref_m": previous_final_error,
                 "prior_x": float(frame["prior_xy"][0]),
                 "prior_y": float(frame["prior_xy"][1]),
                 "prior_error_m": prior_error,
-                "ms1_x": float(frame["ms1_xy"][0, 0]),
-                "ms1_y": float(frame["ms1_xy"][0, 1]),
+                "ms1_x": float(ms1_xy[0]),
+                "ms1_y": float(ms1_xy[1]),
                 "ms1_error_m": ms1_error,
                 "ms1_support": float(frame["ms1"].softms_support[0]),
                 "kalman_x_prime_x": float(frame["kalman_xy"][0]),
@@ -612,7 +670,9 @@ def run_route_inference(
                 "pred_acceleration_m_per_frame2": float(
                     output.acceleration_m_per_frame2[0, 0]
                 ),
-                "pred_heading_deg": float(math.degrees(float(output.heading_rad[0, 0]))),
+                "pred_heading_deg": float(
+                    math.degrees(float(output.heading_rad[0, 0]))
+                ),
                 "pred_heading_delta_deg": float(
                     math.degrees(float(output.heading_delta_rad[0, 0]))
                 ),
@@ -629,29 +689,32 @@ def run_route_inference(
                 "tracking_core_latency_ms": float(elapsed_ms),
             }
         )
+
         _advance_state(state, frame)
         _detach_state(state)
 
-    summary = metric_summary(errors)
+    summary = metric_summary(final_errors)
     summary.update(
         {
             "Architecture": ARCHITECTURE_NAME,
             "Route": route_name,
-            "Prior_MLE_m": _stage_metric(prior_errors),
-            "MS1_MLE_m": _stage_metric(ms1_errors),
-            "Kalman_MLE_m": _stage_metric(kalman_errors),
-            "MS2_Final_MLE_m": _stage_metric(errors),
+            "PreviousFinalToCurrentRef_MLE_m": _mean(previous_final_errors),
+            "Prior_MLE_m": _mean(prior_errors),
+            "MS1_MLE_m": _mean(ms1_errors),
+            "Kalman_MLE_m": _mean(kalman_errors),
+            "MS2_Final_MLE_m": _mean(final_errors),
             "FirstFinalErrorOver20mFrame": first_over_20,
             "FirstFinalErrorOver50mFrame": first_over_50,
-            "MS1": "forward 3x6 centered at predicted prior",
-            "Kalman": "standard XY linear Kalman; no GT/gating/clipping",
-            "GRU": "MS1-displacement-anchored residual v,a,theta; no uncertainty input",
+            "MS1": "nearest forward 3x6; center-adjacent, no far-forward bias",
+            "Kalman": "previous final position + current MS1 measurement",
+            "GRU": "MS1/current temporal state -> v,a,theta; no uncertainty input",
             "MS2": "full centered 6x6 around Kalman X_prime",
-            "ReferenceUsage": "metrics only after final prediction",
+            "ReferenceUsage": "supervision/metrics only; never runtime search center",
         }
     )
 
     if measure_latency and timing_ms:
+        warmup = int(config.LATENCY_WARMUP_FRAMES)
         steady = np.asarray(timing_ms[warmup:], dtype=np.float64)
         if steady.size == 0:
             steady = np.asarray(timing_ms, dtype=np.float64)
@@ -666,7 +729,10 @@ def run_route_inference(
 
     if save_csv and rows:
         config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        csv_path = config.OUTPUT_DIR / f"{route_name}_autonomous_ms1_kf_gru_ms2_frames.csv"
+        csv_path = (
+            config.OUTPUT_DIR
+            / f"{route_name}_autonomous_ms1_kf_gru_ms2_frames.csv"
+        )
         with csv_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
             writer.writeheader()
@@ -699,9 +765,8 @@ def train_temporal_route_a(
     resume=False,
 ):
     model = ThreeFrameRouteStateGRU().to(device)
-    params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(
-        params,
+        [p for p in model.parameters() if p.requires_grad],
         lr=float(config.TEMPORAL_LR),
         weight_decay=float(config.TEMPORAL_WEIGHT_DECAY),
     )
@@ -729,36 +794,41 @@ def train_temporal_route_a(
     _, _, a_initial_heading = planned_route_start(
         "route_A", visual.origin_lat, visual.origin_lon
     )
-    native_stats = _target_stats(route_a_cache, a_initial_heading)
-    _, a_start, _ = planned_route_start("route_A", visual.origin_lat, visual.origin_lon)
-    _, c_start, _ = planned_route_start("route_C", visual.origin_lat, visual.origin_lon)
-    a_start_ref = route_a_cache.gt_xy[0].cpu().numpy().astype(np.float64)
-    c_start_ref = route_c_cache.gt_xy[0].cpu().numpy().astype(np.float64)
+    stats = _target_stats(route_a_cache, a_initial_heading)
+
+    _, a_start, _ = planned_route_start(
+        "route_A", visual.origin_lat, visual.origin_lon
+    )
+    _, c_start, _ = planned_route_start(
+        "route_C", visual.origin_lat, visual.origin_lon
+    )
+    a_ref0 = route_a_cache.gt_xy[0].cpu().numpy().astype(np.float64)
+    c_ref0 = route_c_cache.gt_xy[0].cpu().numpy().astype(np.float64)
 
     print(
-        "Temporal training v3: ONLY Route-A native speed; validation=Route-C; Route-B untouched test",
+        "Temporal training v4: Route-A ORIGINAL SPEED ONLY; C=validation; B=test",
         flush=True,
     )
     print(
-        "Route-A target step: mean=%.3fm median=%.3fm p90=%.3fm mean|a|=%.3f"
+        "Route-A target step mean=%.3fm median=%.3fm p90=%.3fm mean|a|=%.3f"
         % (
-            native_stats["mean_step"],
-            native_stats["median_step"],
-            native_stats["p90_step"],
-            native_stats["mean_abs_accel"],
+            stats["mean_step"],
+            stats["median_step"],
+            stats["p90_step"],
+            stats["mean_abs_accel"],
         ),
         flush=True,
     )
     print(
         "planned-start alignment: A=%.3fm C=%.3fm"
         % (
-            float(np.linalg.norm(a_start - a_start_ref)),
-            float(np.linalg.norm(c_start - c_start_ref)),
+            float(np.linalg.norm(a_start - a_ref0)),
+            float(np.linalg.norm(c_start - c_ref0)),
         ),
         flush=True,
     )
     print(
-        "GRU baseline = consecutive MS1 displacement; learned heads predict residual v/a/heading; no motion caps",
+        "MS1 v4 = center-adjacent forward 3x6; Kalman positional prior = previous final; frame0 = temporal warm-up",
         flush=True,
     )
 
@@ -787,13 +857,10 @@ def train_temporal_route_a(
                     "validation_route": "route_C",
                     "validation": val,
                     "training_routes": ["route_A"],
-                    "reference_usage": (
-                        "training motion targets and post-prediction metrics only; "
-                        "no reference-centered runtime search"
-                    ),
+                    "reference_usage": "Route-A motion supervision and post-prediction metrics only",
                     "training_fix": (
-                        "native Route-A only; MS1-displacement motion baseline; "
-                        "absolute heading anchored to observed MS1 motion"
+                        "nearest-forward 3x6; previous-final Kalman prior; "
+                        "single-frame warm-up; no MS1-to-MS1 speed feedback"
                     ),
                 },
                 config.TEMPORAL_CHECKPOINT,
@@ -820,9 +887,13 @@ def train_temporal_route_a(
             f"v={comp.get('speed', float('nan')):.3f} "
             f"a={comp.get('acceleration', float('nan')):.3f} "
             f"h={comp.get('heading', float('nan')):.3f}] "
-            f"C: prior={val['Prior_MLE_m']:.1f} MS1={val['MS1_MLE_m']:.1f} "
-            f"KF={val['Kalman_MLE_m']:.1f} MS2={val['MLE_m']:.1f}m "
-            f"P90={val['P90_m']:.1f}m fail20={val['FirstFinalErrorOver20mFrame']} "
+            f"C: prevFinal={val['PreviousFinalToCurrentRef_MLE_m']:.1f} "
+            f"prior={val['Prior_MLE_m']:.1f} "
+            f"MS1={val['MS1_MLE_m']:.1f} "
+            f"KF={val['Kalman_MLE_m']:.1f} "
+            f"MS2={val['MLE_m']:.1f}m "
+            f"P90={val['P90_m']:.1f}m "
+            f"fail20={val['FirstFinalErrorOver20mFrame']} "
             f"best={best_score:.3f} patience={patience}/{patience_limit}",
             flush=True,
         )
@@ -831,7 +902,7 @@ def train_temporal_route_a(
             break
 
     if best_state is None:
-        raise RuntimeError("temporal training did not produce a checkpoint")
+        raise RuntimeError("temporal training produced no checkpoint")
     model.load_state_dict(best_state)
     return model, best_score
 
@@ -861,15 +932,17 @@ def train_pipeline(args, device):
         )
 
     visual = FrozenVisualLocalizer(device)
-    route_a_cache = build_route_cache("route_A", config.ROUTE_ROOTS[0], visual, device)
-    route_c_index = config.ROUTE_NAMES.index("route_C")
-    route_c_cache = build_route_cache(
-        "route_C", config.ROUTE_ROOTS[route_c_index], visual, device
+    route_a = build_route_cache(
+        "route_A", config.ROUTE_ROOTS[0], visual, device
+    )
+    c_index = config.ROUTE_NAMES.index("route_C")
+    route_c = build_route_cache(
+        "route_C", config.ROUTE_ROOTS[c_index], visual, device
     )
     _, score = train_temporal_route_a(
         visual=visual,
-        route_a_cache=route_a_cache,
-        route_c_cache=route_c_cache,
+        route_a_cache=route_a,
+        route_c_cache=route_c,
         device=device,
         epochs=int(args.temporal_epochs),
         patience_limit=int(args.patience),
@@ -888,6 +961,7 @@ def eval_pipeline(args, device):
         "test": "route_B",
         "results": {},
     }
+
     for route_name in args.eval_routes:
         route_index = config.ROUTE_NAMES.index(route_name)
         cache = build_route_cache(
@@ -903,23 +977,29 @@ def eval_pipeline(args, device):
             measure_latency=bool(args.measure_latency),
         )
         results["results"][route_name] = summary
-        role = "validation" if route_name == "route_C" else (
-            "test" if route_name == "route_B" else "evaluation"
+        role = (
+            "validation"
+            if route_name == "route_C"
+            else ("test" if route_name == "route_B" else "evaluation")
         )
         print(
-            f"{route_name} ({role}): prior={summary['Prior_MLE_m']:.3f}m "
-            f"MS1={summary['MS1_MLE_m']:.3f}m KF={summary['Kalman_MLE_m']:.3f}m "
-            f"MS2/final={summary['MLE_m']:.3f}m P90={summary['P90_m']:.3f}m "
+            f"{route_name} ({role}): "
+            f"prevFinal={summary['PreviousFinalToCurrentRef_MLE_m']:.3f}m "
+            f"prior={summary['Prior_MLE_m']:.3f}m "
+            f"MS1={summary['MS1_MLE_m']:.3f}m "
+            f"KF={summary['Kalman_MLE_m']:.3f}m "
+            f"MS2/final={summary['MLE_m']:.3f}m "
+            f"P90={summary['P90_m']:.3f}m "
             f"LSR@15={summary['LSR@15_pct']:.2f}%",
             flush=True,
         )
 
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    summary_path = config.OUTPUT_DIR / "autonomous_ms1_kf_gru_ms2_summary.json"
-    summary_path.write_text(
+    path = config.OUTPUT_DIR / "autonomous_ms1_kf_gru_ms2_summary.json"
+    path.write_text(
         json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    print(f"summary: {summary_path}", flush=True)
+    print(f"summary: {path}", flush=True)
 
 
 def parse_args():
@@ -927,10 +1007,18 @@ def parse_args():
     parser.add_argument(
         "--mode", choices=["train", "eval", "train_eval"], default="train_eval"
     )
-    parser.add_argument("--visual-epochs", type=int, default=int(config.VISUAL_EPOCHS))
-    parser.add_argument("--temporal-epochs", type=int, default=int(config.TEMPORAL_EPOCHS))
-    parser.add_argument("--jitter-m", type=float, default=float(config.LOCAL_PRIOR_JITTER_M))
-    parser.add_argument("--patience", type=int, default=int(config.EARLY_STOP_PATIENCE))
+    parser.add_argument(
+        "--visual-epochs", type=int, default=int(config.VISUAL_EPOCHS)
+    )
+    parser.add_argument(
+        "--temporal-epochs", type=int, default=int(config.TEMPORAL_EPOCHS)
+    )
+    parser.add_argument(
+        "--jitter-m", type=float, default=float(config.LOCAL_PRIOR_JITTER_M)
+    )
+    parser.add_argument(
+        "--patience", type=int, default=int(config.EARLY_STOP_PATIENCE)
+    )
     parser.add_argument("--reuse-visual", action="store_true")
     parser.add_argument("--resume-visual", action="store_true")
     parser.add_argument("--resume-temporal", action="store_true")
