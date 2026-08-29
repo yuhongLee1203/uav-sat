@@ -10,16 +10,53 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # The train/eval entrypoint may install the controlled reference-assisted MS1
 # coarse prior, but the GRU itself never receives a reference coordinate.
 #
-# GRU input groups:
+# Full GRU input groups:
 #   1) MS1 visual localization XY             2 -> 128
 #   2) temporal visual mean                  512 -> 128
 #   3) first visual difference               512 -> 128
 #   4) previous motion [v,a,sin(theta),cos]   4 -> 128
-# Concatenate: 4 x 128 = 512 input dimensions.
 # Previous hidden state is supplied separately to GRUCell as a 256-d state.
+#
+# Ablation study removes exactly one input branch while keeping every other
+# estimator/search/training setting unchanged.
+GRU_ABLATION = os.environ.get(
+    "UAVSAT_GRU_ABLATION", "full"
+).strip().lower()
+GRU_ABLATION_CHOICES = {
+    "full",
+    "no_ms_xy",
+    "no_temporal_mean",
+    "no_first_difference",
+    "no_previous_motion",
+}
+if GRU_ABLATION not in GRU_ABLATION_CHOICES:
+    raise ValueError(
+        "UAVSAT_GRU_ABLATION must be one of %s; got %r"
+        % (sorted(GRU_ABLATION_CHOICES), GRU_ABLATION)
+    )
+
+_GRU_GROUPS = (
+    "ms_xy",
+    "temporal_mean",
+    "first_difference",
+    "previous_motion",
+)
+_GRU_REMOVE_BY_ABLATION = {
+    "full": None,
+    "no_ms_xy": "ms_xy",
+    "no_temporal_mean": "temporal_mean",
+    "no_first_difference": "first_difference",
+    "no_previous_motion": "previous_motion",
+}
+GRU_ACTIVE_GROUPS = tuple(
+    group
+    for group in _GRU_GROUPS
+    if group != _GRU_REMOVE_BY_ABLATION[GRU_ABLATION]
+)
+
 ARCHITECTURE_NAME = (
     "V36_byTeacher_CompactMotionGRU_MSXY_TemporalMean_FirstDiff_"
-    "PrevMotionInfo_H256_v8_nativeA"
+    "PrevMotionInfo_H256_v8_nativeA_" + GRU_ABLATION
 )
 
 BACKBONE_KEY = os.environ.get(
@@ -44,7 +81,7 @@ OUTPUT_DIR = (
     BACKBONE_OUTPUT_DIR / "experiments" / RUN_TAG
     if RUN_TAG
     else BACKBONE_OUTPUT_DIR
-    / "compact_motion_gru_v8_nativeA"
+    / ("compact_motion_gru_v8_%s_nativeA" % GRU_ABLATION)
 )
 CHECKPOINT_DIR = (
     BACKBONE_OUTPUT_DIR / "checkpoints"
@@ -55,11 +92,11 @@ VISUAL_CHECKPOINT = (
 )
 TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / f"compact_motion_gru_A_native_v8_{BACKBONE_KEY}.pt"
+    / f"compact_motion_gru_A_native_v8_{GRU_ABLATION}_{BACKBONE_KEY}.pt"
 )
 LATEST_TEMPORAL_CHECKPOINT = (
     CHECKPOINT_DIR
-    / f"compact_motion_gru_A_native_v8_{BACKBONE_KEY}_latest.pt"
+    / f"compact_motion_gru_A_native_v8_{GRU_ABLATION}_{BACKBONE_KEY}_latest.pt"
 )
 FEATURE_CACHE_DIR = (
     BACKBONE_OUTPUT_DIR / "feature_cache"
@@ -140,7 +177,7 @@ RNN_MS_XY_DIM = 2
 RNN_TEMPORAL_MEAN_DIM = EMBED_DIM
 RNN_FIRST_DIFFERENCE_DIM = EMBED_DIM
 RNN_PREVIOUS_MOTION_DIM = 4
-RNN_PROJECTED_GROUPS = 4
+RNN_PROJECTED_GROUPS = len(GRU_ACTIVE_GROUPS)
 RNN_COMBINED_INPUT_DIM = RNN_FEATURE_DIM * RNN_PROJECTED_GROUPS
 
 POSITION_INPUT_SCALE_M = float(
