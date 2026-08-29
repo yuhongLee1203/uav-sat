@@ -229,11 +229,14 @@ class AutonomousMotionGRU(nn.Module):
     Previous hidden state remains a separate GRUCell state and is not concatenated
     with the projected input.
 
-    The output heads predict changes/corrections to the previous motion state:
-      * motion head -> speed change (in softplus latent space) + acceleration change
-      * heading head -> heading change
-    The updated speed, acceleration and heading are then passed to the downstream
-    second-order polynomial to form Delta_xy. The GRU never predicts absolute XY.
+    Output semantics:
+      * motion head channel 0 -> speed correction relative to previous speed;
+        when no valid previous speed exists, it bootstraps the current speed.
+      * motion head channel 1 -> current acceleration (acceleration is already
+        the first-order speed-change quantity, so it is not accumulated as jerk).
+      * heading head -> heading change relative to previous heading.
+    The downstream second-order polynomial converts the updated motion state to
+    Delta_xy. The GRU itself never predicts an absolute localization position.
     """
 
     def __init__(self):
@@ -373,17 +376,21 @@ class AutonomousMotionGRU(nn.Module):
         new_hidden = self.gru(recurrent_input, hidden)
         h = self.dropout(new_hidden)
 
-        # Predict changes relative to the previous motion state.
-        raw_change = self.motion_head(h)
-        speed_change_latent = raw_change[:, 0:1]
-        acceleration_change = raw_change[:, 1:2]
+        raw_motion = self.motion_head(h)
+        speed_correction = raw_motion[:, 0:1]
+        acceleration = raw_motion[:, 1:2]
 
-        previous_speed_safe = previous_speed.float().clamp_min(1e-4)
-        speed = F.softplus(
-            _inverse_softplus(previous_speed_safe) + speed_change_latent
+        previous_speed_float = previous_speed.float()
+        has_previous_speed = previous_speed_float > 1e-3
+        corrected_speed = F.softplus(
+            _inverse_softplus(previous_speed_float.clamp_min(1e-4))
+            + speed_correction
         )
-        acceleration = (
-            previous_acceleration.float() + acceleration_change
+        bootstrap_speed = F.softplus(speed_correction)
+        speed = torch.where(
+            has_previous_speed,
+            corrected_speed,
+            bootstrap_speed,
         )
 
         heading_delta = _wrap_angle_tensor(self.heading_head(h))
