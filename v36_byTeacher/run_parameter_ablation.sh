@@ -235,6 +235,17 @@ def _lsr15(values):
 
 
 def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
+    """Select exactly forward N x 6 from an axis-aligned regular lattice.
+
+    Heading is used only to choose the dominant map axis and its sign, matching
+    the original strict forward 3x6 selector.  This is important: grouping by
+    arbitrary heading projection would split one real lattice row into many
+    one-point pseudo-rows whenever heading is not cardinal.
+
+    The temporary source lattice is 2N x 2N, so it contains exactly N positive
+    forward levels.  Lateral width is always the six columns nearest the
+    geometric centre.  Therefore N changes forward depth only.
+    """
     batch = int(full_centers.shape[0])
     headings = torch.as_tensor(
         heading_rad,
@@ -246,13 +257,14 @@ def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
     if headings.numel() != batch:
         raise ValueError("heading count must match center batch size")
 
-    selected_rows = []
+    selected_batches = []
     for b in range(batch):
         centers = full_centers[b]
         relative = centers - centers.mean(dim=0, keepdim=True)
         cos_h = torch.cos(headings[b])
         sin_h = torch.sin(headings[b])
         use_x = bool((cos_h.abs() >= sin_h.abs()).item())
+
         if use_x:
             sign = 1.0 if float(cos_h.item()) >= 0.0 else -1.0
             longitudinal = relative[:, 0] * sign
@@ -262,43 +274,51 @@ def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
             longitudinal = relative[:, 1] * sign
             lateral = relative[:, 0]
 
-        positive_idx = torch.nonzero(longitudinal > 0.0, as_tuple=False).flatten()
-        if positive_idx.numel() < rows * lateral_cols:
-            raise RuntimeError(
-                f"not enough forward candidates: need {rows*lateral_cols}, "
-                f"have {positive_idx.numel()}"
-            )
-
+        # Quantize only to make equal regular-grid levels numerically stable.
         qlong = torch.round(longitudinal * 1000.0) / 1000.0
-        levels = torch.sort(torch.unique(qlong[positive_idx])).values
-        if levels.numel() < rows:
+        qlat = torch.round(lateral * 1000.0) / 1000.0
+
+        forward_levels = torch.sort(torch.unique(qlong[qlong > 0.0])).values
+        if forward_levels.numel() < rows:
             raise RuntimeError(
-                f"regular-grid grouping found only {levels.numel()} forward rows; need {rows}"
+                f"regular lattice has only {forward_levels.numel()} forward levels; need {rows}"
             )
+        forward_levels = forward_levels[:rows]
+
+        lateral_levels = torch.unique(qlat)
+        if lateral_levels.numel() < lateral_cols:
+            raise RuntimeError(
+                f"regular lattice has only {lateral_levels.numel()} lateral levels; "
+                f"need {lateral_cols}"
+            )
+        lateral_order = torch.argsort(lateral_levels.abs())[:lateral_cols]
+        lateral_levels = torch.sort(lateral_levels[lateral_order]).values
 
         chosen = []
-        for level in levels[:rows]:
-            row_idx = torch.nonzero(
-                (qlong - level).abs() <= 0.0005,
-                as_tuple=False,
-            ).flatten()
-            if row_idx.numel() < lateral_cols:
-                raise RuntimeError(
-                    f"forward row has only {row_idx.numel()} lateral candidates; need {lateral_cols}"
-                )
-            nearest_lat = torch.topk(
-                lateral[row_idx].abs(),
-                k=lateral_cols,
-                largest=False,
-                sorted=False,
-            ).indices
-            row_idx = row_idx[nearest_lat]
-            row_idx = row_idx[torch.argsort(lateral[row_idx])]
-            chosen.append(row_idx)
+        for forward_level in forward_levels:
+            for lateral_level in lateral_levels:
+                match = torch.nonzero(
+                    ((qlong - forward_level).abs() <= 0.0005)
+                    & ((qlat - lateral_level).abs() <= 0.0005),
+                    as_tuple=False,
+                ).flatten()
+                if match.numel() != 1:
+                    raise RuntimeError(
+                        "forward Nx6 lattice lookup is not unique: "
+                        f"forward={float(forward_level):.3f}, "
+                        f"lateral={float(lateral_level):.3f}, matches={match.numel()}"
+                    )
+                chosen.append(match[0])
 
-        selected_rows.append(torch.cat(chosen, dim=0))
+        selected = torch.stack(chosen)
+        expected = int(rows) * int(lateral_cols)
+        if selected.numel() != expected:
+            raise RuntimeError(
+                f"forward support size mismatch: got {selected.numel()}, expected {expected}"
+            )
+        selected_batches.append(selected)
 
-    return torch.stack(selected_rows, dim=0)
+    return torch.stack(selected_batches, dim=0)
 
 
 def _raw_candidate_batch(visual, uav_clip, center_xy, grid_size):
