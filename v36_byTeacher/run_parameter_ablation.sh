@@ -1,32 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# v36_byTeacher v8r1 one-variable-at-a-time spatial sensitivity study.
+# v36_byTeacher v8r1 one-variable-at-a-time spatial sensitivity + latency study.
 #
 # Fixed baseline for every case unless the case explicitly changes one item:
 #   MS1 = strict forward 3x6
 #   MS2 = centered 6x6
 #   MeanShift bandwidth = 8 m
 #   MeanShift mode-merge radius = 2 m (FIXED; not part of this study)
-#   MeanShift iterations = 3 (FIXED)
+#   MeanShift iterations = 3 (FIXED; not part of this study)
 #   GRU / Kalman / visual weights = fixed FULL v8r1
 #
-# Experiments:
-#   ms1:
-#     forward 3x6 [baseline], 4x6, 5x6, 6x6, 7x6
-#     Only MS1 forward depth changes. Lateral width stays exactly 6 candidates.
+# Experiments kept for the paper:
+#   ms1       : forward 3x6 [baseline], 4x6, 5x6, 6x6, 7x6
+#   ms2       : centered 5x5, 6x6 [baseline], 7x7
+#   meanshift : bandwidth 4, 8 [baseline], 12, 16 m
 #
-#   ms2:
-#     5x5, 6x6 [baseline], 7x7
-#     MS1 stays forward 3x6; only the second-stage centered grid changes.
+# Latency is measured on exactly the same B/C evaluation frames used for
+# accuracy. We report synchronized wall-clock latency for the major stages and
+# separate reduction latency for:
+#   (a) MeanShift final averaging over converged active modes; and
+#   (b) direct weighted averaging over every MS2 candidate.
+# This makes the accuracy/latency trade-off explicit without assuming in
+# advance that one aggregation strategy is faster.
 #
-#   meanshift:
-#     bandwidth 4, 8 [baseline], 12, 16 m
-#     MS1 stays 3x6 and MS2 stays 6x6; only MeanShift bandwidth changes.
+# Deliberately NOT tested here:
+#   - MeanShift merge-radius sensitivity
+#   - MeanShift iteration-count sensitivity
+#   - old mixed multi-variable parameter table
 #
 # All cases are EVAL ONLY and reuse the same FULL v8r1 checkpoint.
-# Outputs are isolated under:
-#   output/<backbone>/method_ablation/<case>/...
 
 GROUP="${1:-all}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -57,7 +60,7 @@ fi
   config.py data.py visual_model.py visual_localizer.py \
   robust_tracker_base.py robust_tracker.py train_multirate_a.py
 
-echo "METHOD sensitivity: EVAL ONLY; CPU threads=${CPU_THREADS}" >&2
+echo "METHOD sensitivity + latency: EVAL ONLY; CPU threads=${CPU_THREADS}" >&2
 
 run_case() {
   local tag="$1"
@@ -74,6 +77,7 @@ run_case() {
   echo "  MeanShift bandwidth     = ${bandwidth} m"
   echo "  MeanShift merge radius  = 2.0 m (fixed)"
   echo "  MeanShift iterations    = 3 (fixed)"
+  echo "  latency                 = synchronized per-frame B/C averages"
   echo "================================================================================================"
 
   UAVSAT_GRU_ABLATION=full \
@@ -85,11 +89,15 @@ run_case() {
   UAVSAT_MS_ITERATIONS="3" \
   UAVSAT_CPU_THREADS="${CPU_THREADS}" \
   "${PYTHON_BIN}" - <<'PY'
+import csv
 import os
 import shutil
 import sys
+import time
+from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import torch
 
 import config
@@ -120,7 +128,6 @@ if ms2_grid not in {5, 6, 7}:
 if merge_radius <= 0.0:
     raise SystemExit("ERROR: MeanShift merge radius must be positive")
 
-# Reuse one fixed FULL v8r1 checkpoint for all sensitivity cases.
 shared_backbone_root = Path(config.BACKBONE_OUTPUT_DIR)
 shared_checkpoint_dir = Path(config.CHECKPOINT_DIR)
 shared_visual_checkpoint = Path(config.VISUAL_CHECKPOINT)
@@ -146,7 +153,6 @@ else:
         % (best_checkpoint, latest_checkpoint)
     )
 
-# Change only the requested spatial variable. Everything learned stays fixed.
 config.MS1_FORWARD_ROWS = ms1_rows
 config.MS1_FORWARD_COLS = 6
 config.MS1_CANDIDATE_COUNT = ms1_rows * 6
@@ -174,17 +180,61 @@ if (
 ):
     shutil.copy2(source_checkpoint, destination_checkpoint)
 
-# Import after runtime config and isolated output paths are ready.
 import train_multirate_a as train
 
 
-def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
-    """Select exactly rows x lateral_cols nearest forward lattice positions.
+def _sync():
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
 
-    For 3x6 this reproduces the original strict forward half of a 6x6 grid.
-    For deeper supports, the temporary square source grid is expanded only so
-    enough forward rows exist; the returned support is still exactly Nx6.
-    """
+
+def _wall_start():
+    _sync()
+    return time.perf_counter()
+
+
+def _wall_elapsed_ms(start):
+    _sync()
+    return (time.perf_counter() - start) * 1000.0
+
+
+def _reduction_time_ms(fn):
+    if torch.cuda.is_available():
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        value = fn()
+        end_event.record()
+        end_event.synchronize()
+        return value, float(start_event.elapsed_time(end_event))
+    start = time.perf_counter()
+    value = fn()
+    return value, float((time.perf_counter() - start) * 1000.0)
+
+
+ROUTE_STATS = defaultdict(lambda: defaultdict(list))
+
+
+def _append(route_name, key, value):
+    ROUTE_STATS[str(route_name)][str(key)].append(float(value))
+
+
+def _mean(values):
+    values = np.asarray(values, dtype=np.float64)
+    return float(np.mean(values)) if values.size else float("nan")
+
+
+def _p90(values):
+    values = np.asarray(values, dtype=np.float64)
+    return float(np.percentile(values, 90.0)) if values.size else float("nan")
+
+
+def _lsr15(values):
+    values = np.asarray(values, dtype=np.float64)
+    return float(np.mean(values <= 15.0) * 100.0) if values.size else float("nan")
+
+
+def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
     batch = int(full_centers.shape[0])
     headings = torch.as_tensor(
         heading_rad,
@@ -219,14 +269,11 @@ def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
                 f"have {positive_idx.numel()}"
             )
 
-        # Group equal regular-grid longitudinal levels at 1 mm precision.
         qlong = torch.round(longitudinal * 1000.0) / 1000.0
-        levels = torch.unique(qlong[positive_idx])
-        levels = torch.sort(levels).values
+        levels = torch.sort(torch.unique(qlong[positive_idx])).values
         if levels.numel() < rows:
             raise RuntimeError(
-                f"regular-grid grouping found only {levels.numel()} forward rows; "
-                f"need {rows}"
+                f"regular-grid grouping found only {levels.numel()} forward rows; need {rows}"
             )
 
         chosen = []
@@ -237,8 +284,7 @@ def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
             ).flatten()
             if row_idx.numel() < lateral_cols:
                 raise RuntimeError(
-                    f"forward row has only {row_idx.numel()} lateral candidates; "
-                    f"need {lateral_cols}"
+                    f"forward row has only {row_idx.numel()} lateral candidates; need {lateral_cols}"
                 )
             nearest_lat = torch.topk(
                 lateral[row_idx].abs(),
@@ -255,33 +301,124 @@ def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
     return torch.stack(selected_rows, dim=0)
 
 
-@torch.no_grad()
-def _method_ms1_search(visual, uav_clip, prior_xy, heading_rad, device):
-    """GPU6-only exact forward Nx6 MS1 support; default/GPU5 code untouched."""
-    center = train.rt._tensor_xy(prior_xy, device)
-
-    # An even GxG regular grid contains G/2 forward rows around its geometric
-    # centre. Therefore G=2*N is the smallest source grid that can supply Nx6.
-    source_grid = max(6, 2 * int(ms1_rows))
-    full = visual.candidate_batch(
-        uav_clip=uav_clip,
-        center_xy=center,
-        grid_size=source_grid,
+def _raw_candidate_batch(visual, uav_clip, center_xy, grid_size):
+    indices = train.rt.regular_grid_indices(
+        visual.gallery["xy"],
+        visual.gallery["pixel"],
+        visual.pixel_index,
+        center_xy,
+        int(grid_size),
+        config.SAT_STRIDE,
+        visual.device,
+    )
+    centers = visual.gallery["xy"][indices]
+    satellite_clip = visual.gallery["clip_feat"][indices]
+    z_uav = visual.model.encode_uav_from_clip(uav_clip)
+    z_sat = visual.model.encode_sat_from_clip(
+        satellite_clip.reshape(-1, satellite_clip.shape[-1]),
+        centers.reshape(-1, 2),
+    ).reshape(centers.shape[0], centers.shape[1], -1)
+    raw_logits = visual.model.logit_scale.exp().clamp(max=100.0) * (
+        z_uav[:, None] * z_sat
+    ).sum(dim=2)
+    raw_prob = torch.softmax(
+        raw_logits / float(config.MEANSHIFT_SCORE_TAU), dim=1
+    )
+    raw_index = raw_logits.argmax(dim=1)
+    raw_top1_xy = centers[
+        torch.arange(centers.shape[0], device=visual.device), raw_index
+    ]
+    zeros_xy = torch.zeros(centers.shape[0], 2, device=centers.device)
+    zeros_scalar = torch.zeros(centers.shape[0], device=centers.device)
+    zeros_count = torch.zeros(
+        centers.shape[0], dtype=torch.long, device=centers.device
+    )
+    return train.rt.CandidateBatch(
+        indices=indices,
+        centers=centers,
+        z_uav=z_uav,
+        z_sat=z_sat,
+        raw_logits=raw_logits,
+        raw_prob=raw_prob,
+        raw_top1_xy=raw_top1_xy,
+        softms_xy=zeros_xy,
+        softms_support=zeros_scalar,
+        softms_mode_count=zeros_count,
     )
 
+
+def _run_meanshift_with_timing(logits, centers):
+    start = _wall_start()
+    soft_xy, soft_support, modes, density, mode_weights, compact = train.rt.soft_mean_shift(
+        logits,
+        centers,
+        config.MEANSHIFT_SCORE_TAU,
+        config.MEANSHIFT_BANDWIDTH_M,
+        config.MEANSHIFT_ITERATIONS,
+        config.MEANSHIFT_MODE_BETA,
+    )
+    total_ms = _wall_elapsed_ms(start)
+
+    final_ms = []
+    active_counts = []
+    for b in range(int(mode_weights.shape[0])):
+        mask = mode_weights[b] > 0
+        active_weights = mode_weights[b, mask]
+        active_modes = modes[b, mask]
+        active_counts.append(float(active_weights.numel()))
+        _, reduction_ms = _reduction_time_ms(
+            lambda aw=active_weights, am=active_modes: (aw[:, None] * am).sum(dim=0)
+        )
+        final_ms.append(float(reduction_ms))
+
+    return (
+        soft_xy,
+        soft_support,
+        mode_weights,
+        {
+            "total_ms": float(total_ms),
+            "final_active_average_ms": float(np.mean(final_ms)),
+            "active_modes": float(np.mean(active_counts)),
+        },
+    )
+
+
+@torch.no_grad()
+def _method_ms1_search(visual, uav_clip, prior_xy, heading_rad, device):
+    total_start = _wall_start()
+    center = train.rt._tensor_xy(prior_xy, device)
+    source_grid = max(6, 2 * int(ms1_rows))
+
+    full_indices = train.rt.regular_grid_indices(
+        visual.gallery["xy"],
+        visual.gallery["pixel"],
+        visual.pixel_index,
+        center,
+        source_grid,
+        config.SAT_STRIDE,
+        visual.device,
+    )
+    full_centers = visual.gallery["xy"][full_indices]
     selected = _select_forward_rectangle(
-        full.centers,
+        full_centers,
         heading_rad,
         ms1_rows,
         lateral_cols=6,
     )
     batch_idx = torch.arange(
-        full.centers.shape[0], device=full.centers.device
+        full_centers.shape[0], device=full_centers.device
     )[:, None]
-    indices = full.indices[batch_idx, selected]
-    centers = full.centers[batch_idx, selected]
-    z_sat = full.z_sat[batch_idx, selected]
-    raw_logits = full.raw_logits[batch_idx, selected]
+    indices = full_indices[batch_idx, selected]
+    centers = visual.gallery["xy"][indices]
+    satellite_clip = visual.gallery["clip_feat"][indices]
+    z_uav = visual.model.encode_uav_from_clip(uav_clip)
+    z_sat = visual.model.encode_sat_from_clip(
+        satellite_clip.reshape(-1, satellite_clip.shape[-1]),
+        centers.reshape(-1, 2),
+    ).reshape(centers.shape[0], centers.shape[1], -1)
+    raw_logits = visual.model.logit_scale.exp().clamp(max=100.0) * (
+        z_uav[:, None] * z_sat
+    ).sum(dim=2)
     raw_prob = torch.softmax(
         raw_logits / float(config.MEANSHIFT_SCORE_TAU), dim=1
     )
@@ -290,18 +427,13 @@ def _method_ms1_search(visual, uav_clip, prior_xy, heading_rad, device):
         torch.arange(centers.shape[0], device=centers.device), top1_idx
     ]
 
-    softms_xy, softms_support, _, _, mode_weights, _ = train.rt.soft_mean_shift(
-        raw_logits,
-        centers,
-        config.MEANSHIFT_SCORE_TAU,
-        config.MEANSHIFT_BANDWIDTH_M,
-        config.MEANSHIFT_ITERATIONS,
-        config.MEANSHIFT_MODE_BETA,
+    softms_xy, softms_support, mode_weights, ms_timing = _run_meanshift_with_timing(
+        raw_logits, centers
     )
-    return train.rt.CandidateBatch(
+    batch = train.rt.CandidateBatch(
         indices=indices,
         centers=centers,
-        z_uav=full.z_uav,
+        z_uav=z_uav,
         z_sat=z_sat,
         raw_logits=raw_logits,
         raw_prob=raw_prob,
@@ -310,9 +442,131 @@ def _method_ms1_search(visual, uav_clip, prior_xy, heading_rad, device):
         softms_support=softms_support,
         softms_mode_count=(mode_weights > 0).sum(dim=1),
     )
+    batch.method_total_latency_ms = _wall_elapsed_ms(total_start)
+    batch.meanshift_total_latency_ms = ms_timing["total_ms"]
+    batch.final_active_average_latency_ms = ms_timing["final_active_average_ms"]
+    batch.active_mode_count = ms_timing["active_modes"]
+    return batch
+
+
+@torch.no_grad()
+def _timed_ms2_center_search(visual, uav_clip, kalman_xy, device):
+    start = _wall_start()
+    batch = _raw_candidate_batch(
+        visual=visual,
+        uav_clip=uav_clip,
+        center_xy=train.rt._tensor_xy(kalman_xy, device),
+        grid_size=int(config.MS2_GRID_SIZE),
+    )
+    batch.center_search_latency_ms = _wall_elapsed_ms(start)
+    return batch
+
+
+@torch.no_grad()
+def _timed_kalman_conditioned_ms2(visual, uav_clip, kalman_xy, device):
+    batch = _timed_ms2_center_search(
+        visual=visual,
+        uav_clip=uav_clip,
+        kalman_xy=kalman_xy,
+        device=device,
+    )
+    kalman_center = train.rt._tensor_xy(kalman_xy, device)
+    sigma = max(float(config.MS2_KALMAN_PRIOR_SIGMA_M), 1e-6)
+    prior_weight = float(config.MS2_KALMAN_PRIOR_WEIGHT)
+
+    displacement = batch.centers - kalman_center[:, None, :]
+    distance_squared = displacement.square().sum(dim=2)
+    spatial_log_prior = (
+        -0.5 * prior_weight * distance_squared / (sigma * sigma)
+    )
+    posterior_logits = batch.raw_logits + spatial_log_prior
+    posterior_prob = torch.softmax(
+        posterior_logits / float(config.MEANSHIFT_SCORE_TAU), dim=1
+    )
+    posterior_index = posterior_logits.argmax(dim=1)
+    posterior_top1_xy = batch.centers[
+        torch.arange(batch.centers.shape[0], device=device), posterior_index
+    ]
+
+    weighted_all_xy, weighted_all_ms = _reduction_time_ms(
+        lambda: (posterior_prob[:, :, None] * batch.centers).sum(dim=1)
+    )
+
+    softms_xy, softms_support, mode_weights, ms_timing = _run_meanshift_with_timing(
+        posterior_logits, batch.centers
+    )
+
+    result = train.rt.CandidateBatch(
+        indices=batch.indices,
+        centers=batch.centers,
+        z_uav=batch.z_uav,
+        z_sat=batch.z_sat,
+        raw_logits=posterior_logits,
+        raw_prob=posterior_prob,
+        raw_top1_xy=posterior_top1_xy,
+        softms_xy=softms_xy,
+        softms_support=softms_support,
+        softms_mode_count=(mode_weights > 0).sum(dim=1),
+    )
+    result.center_search_latency_ms = float(batch.center_search_latency_ms)
+    result.meanshift_total_latency_ms = float(ms_timing["total_ms"])
+    result.final_active_average_latency_ms = float(
+        ms_timing["final_active_average_ms"]
+    )
+    result.all_candidate_average_latency_ms = float(weighted_all_ms)
+    result.active_mode_count = float(ms_timing["active_modes"])
+    result.weighted_all_xy = weighted_all_xy
+    return result
 
 
 train.rt.ms1_forward_search = _method_ms1_search
+train._kalman_conditioned_ms2 = _timed_kalman_conditioned_ms2
+_original_forward_frame = train.rt._forward_frame
+
+
+@torch.no_grad()
+def _timed_forward_frame(model, visual, uav_clip, state, device):
+    route_name = str(state.get("reference_route_name", "unknown"))
+    reference_index = int(state.get("reference_index", 0))
+    reference_xy = None
+    if route_name in train._REFERENCE_PRIORS:
+        sequence = train._REFERENCE_PRIORS[route_name]
+        if 0 <= reference_index < len(sequence):
+            reference_xy = np.asarray(sequence[reference_index], dtype=np.float64)
+
+    frame_start = _wall_start()
+    frame = _original_forward_frame(model, visual, uav_clip, state, device)
+    frame_latency_ms = _wall_elapsed_ms(frame_start)
+
+    ms1 = frame["ms1"]
+    ms2 = frame["ms2"]
+    _append(route_name, "e2e_latency_ms", frame_latency_ms)
+    _append(route_name, "ms1_latency_ms", ms1.method_total_latency_ms)
+    _append(route_name, "ms1_meanshift_latency_ms", ms1.meanshift_total_latency_ms)
+    _append(route_name, "ms2_center_search_latency_ms", ms2.center_search_latency_ms)
+    _append(route_name, "ms2_meanshift_latency_ms", ms2.meanshift_total_latency_ms)
+    _append(
+        route_name,
+        "ms2_final_active_average_latency_ms",
+        ms2.final_active_average_latency_ms,
+    )
+    _append(
+        route_name,
+        "ms2_all_candidate_average_latency_ms",
+        ms2.all_candidate_average_latency_ms,
+    )
+    _append(route_name, "ms2_active_modes", ms2.active_mode_count)
+
+    if reference_xy is not None:
+        ms_xy = ms2.softms_xy[0].detach().cpu().numpy().astype(np.float64)
+        all_xy = ms2.weighted_all_xy[0].detach().cpu().numpy().astype(np.float64)
+        _append(route_name, "meanshift_error_m", np.linalg.norm(ms_xy - reference_xy))
+        _append(route_name, "weighted_all_error_m", np.linalg.norm(all_xy - reference_xy))
+
+    return frame
+
+
+train.rt._forward_frame = _timed_forward_frame
 
 print("CPU THREAD LIMIT:", threads, flush=True)
 print("SOURCE CHECKPOINT KIND:", source_kind, flush=True)
@@ -325,15 +579,104 @@ print("MS2 GRID:", f"{config.MS2_GRID_SIZE}x{config.MS2_GRID_SIZE}", flush=True)
 print("MS BANDWIDTH:", config.MEANSHIFT_BANDWIDTH_M, flush=True)
 print("MS MERGE RADIUS:", config.MEANSHIFT_MODE_MERGE_RADIUS_M, "(fixed)", flush=True)
 print("MS ITERATIONS:", config.MEANSHIFT_ITERATIONS, "(fixed)", flush=True)
-print("MODE: eval only", flush=True)
+print("MODE: eval only + synchronized latency", flush=True)
 
 sys.argv = ["train_multirate_a.py", "--mode", "eval"]
 train.main()
+
+summary_rows = []
+for route_name in ("route_C", "route_B"):
+    stats = ROUTE_STATS.get(route_name, {})
+    if not stats:
+        continue
+    ms_errors = stats.get("meanshift_error_m", [])
+    all_errors = stats.get("weighted_all_error_m", [])
+    row = {
+        "Case": tag,
+        "Route": route_name,
+        "MS1_Support": f"{ms1_rows}x6",
+        "MS2_Grid": f"{ms2_grid}x{ms2_grid}",
+        "MeanShift_Bandwidth_m": float(config.MEANSHIFT_BANDWIDTH_M),
+        "MeanShift_MLE_m": _mean(ms_errors),
+        "MeanShift_P90_m": _p90(ms_errors),
+        "MeanShift_LSR15_pct": _lsr15(ms_errors),
+        "WeightedAll_MLE_m": _mean(all_errors),
+        "WeightedAll_P90_m": _p90(all_errors),
+        "WeightedAll_LSR15_pct": _lsr15(all_errors),
+        "E2E_Latency_ms": _mean(stats.get("e2e_latency_ms", [])),
+        "MS1_Latency_ms": _mean(stats.get("ms1_latency_ms", [])),
+        "MS1_MeanShift_Latency_ms": _mean(
+            stats.get("ms1_meanshift_latency_ms", [])
+        ),
+        "MS2_CenterSearch_Latency_ms": _mean(
+            stats.get("ms2_center_search_latency_ms", [])
+        ),
+        "MS2_MeanShift_Total_Latency_ms": _mean(
+            stats.get("ms2_meanshift_latency_ms", [])
+        ),
+        "MS2_FinalActiveAverage_Latency_ms": _mean(
+            stats.get("ms2_final_active_average_latency_ms", [])
+        ),
+        "MS2_AllCandidateAverage_Latency_ms": _mean(
+            stats.get("ms2_all_candidate_average_latency_ms", [])
+        ),
+        "MS2_ActiveModes_Avg": _mean(stats.get("ms2_active_modes", [])),
+    }
+    summary_rows.append(row)
+
+if len(summary_rows) == 2:
+    avg_row = {"Case": tag, "Route": "B+C average"}
+    text_keys = {"Case", "Route", "MS1_Support", "MS2_Grid"}
+    for key in summary_rows[0].keys():
+        if key in text_keys:
+            continue
+        avg_row[key] = float(
+            (float(summary_rows[0][key]) + float(summary_rows[1][key])) / 2.0
+        )
+    avg_row["MS1_Support"] = f"{ms1_rows}x6"
+    avg_row["MS2_Grid"] = f"{ms2_grid}x{ms2_grid}"
+    summary_rows.append(avg_row)
+
+summary_path = case_root / "accuracy_latency_summary.csv"
+if summary_rows:
+    fieldnames = list(summary_rows[0].keys())
+    with summary_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(summary_rows)
+
+    print("\n" + "=" * 96)
+    print("ACCURACY + LATENCY SUMMARY")
+    for row in summary_rows:
+        print(
+            "%s: MS MLE=%.3fm P90=%.3fm LSR15=%.2f%% | "
+            "WeightedAll MLE=%.3fm P90=%.3fm LSR15=%.2f%% | "
+            "E2E=%.3fms MS1=%.3fms CenterMS=%.3fms "
+            "MS2MeanShift=%.3fms FinalActiveAvg=%.6fms "
+            "AllCandidateAvg=%.6fms ActiveModes=%.2f"
+            % (
+                row["Route"],
+                row["MeanShift_MLE_m"],
+                row["MeanShift_P90_m"],
+                row["MeanShift_LSR15_pct"],
+                row["WeightedAll_MLE_m"],
+                row["WeightedAll_P90_m"],
+                row["WeightedAll_LSR15_pct"],
+                row["E2E_Latency_ms"],
+                row["MS1_Latency_ms"],
+                row["MS2_CenterSearch_Latency_ms"],
+                row["MS2_MeanShift_Total_Latency_ms"],
+                row["MS2_FinalActiveAverage_Latency_ms"],
+                row["MS2_AllCandidateAverage_Latency_ms"],
+                row["MS2_ActiveModes_Avg"],
+            )
+        )
+    print("CSV:", summary_path)
+    print("=" * 96)
 PY
 }
 
 run_ms1_group() {
-  # ONE variable changes: MS1 forward depth. Everything else is baseline.
   run_case "ms1_forward_3x6_baseline" 3 6 8.0
   run_case "ms1_forward_4x6"          4 6 8.0
   run_case "ms1_forward_5x6"          5 6 8.0
@@ -342,14 +685,12 @@ run_ms1_group() {
 }
 
 run_ms2_group() {
-  # ONE variable changes: MS2 centered search-window size. MS1 remains 3x6.
   run_case "ms2_grid_5x5"             3 5 8.0
   run_case "ms2_grid_6x6_baseline"    3 6 8.0
   run_case "ms2_grid_7x7"             3 7 8.0
 }
 
 run_meanshift_group() {
-  # ONE variable changes: MeanShift spatial bandwidth. MS1=3x6, MS2=6x6.
   run_case "ms_bandwidth_4m"           3 6 4.0
   run_case "ms_bandwidth_8m_baseline"  3 6 8.0
   run_case "ms_bandwidth_12m"          3 6 12.0
@@ -372,4 +713,4 @@ case "${GROUP}" in
 esac
 
 echo
-echo "All requested one-variable-at-a-time sensitivity cases completed."
+echo "All requested one-variable-at-a-time accuracy/latency cases completed."
