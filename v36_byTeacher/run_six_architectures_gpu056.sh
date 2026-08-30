@@ -38,9 +38,33 @@ if not torch.cuda.is_available():
     raise SystemExit("ERROR: CUDA is not available to the selected Python/PyTorch environment.")
 PY
 
-"$PYTHON_BIN" -m py_compile six_architecture_model.py six_architecture_experiment.py
+"$PYTHON_BIN" -m py_compile \
+  six_architecture_model.py \
+  six_architecture_experiment.py \
+  robust_tracker_base.py
 
 echo "[preflight] six-architecture Python files compile successfully."
+
+# Catch cross-file API mismatches before starting three long-running workers.
+"$PYTHON_BIN" - <<'PY'
+import torch
+import robust_tracker as rt
+from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_only
+
+cpu = rt.resolve_device("cpu")
+if cpu.type != "cpu":
+    raise SystemExit("ERROR: resolve_device('cpu') returned %r" % (cpu,))
+
+if torch.cuda.is_available():
+    gpu = rt.resolve_device("cuda:0")
+    if gpu.type != "cuda":
+        raise SystemExit("ERROR: resolve_device('cuda:0') returned %r" % (gpu,))
+
+if not callable(FrozenVisualLocalizer) or not callable(train_visual_retrieval_a_only):
+    raise SystemExit("ERROR: visual-localizer API import failed")
+
+print("[preflight] runtime API compatibility check passed.")
+PY
 
 run_pair () {
   local gpu="$1"; shift
