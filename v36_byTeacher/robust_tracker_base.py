@@ -37,8 +37,33 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(int(seed))
 
 
-def resolve_device():
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def resolve_device(requested=None):
+    """Resolve the execution device while preserving legacy no-argument use.
+
+    Old v36 code calls ``resolve_device()``.  The six-architecture runner passes
+    an explicit logical device such as ``cuda:0`` after setting
+    ``CUDA_VISIBLE_DEVICES`` to choose the physical GPU.  Supporting both forms
+    keeps the original pipeline backward-compatible and lets each worker bind
+    deterministically to its assigned GPU.
+    """
+    if requested is None:
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    requested = str(requested).strip()
+    device = torch.device(requested)
+    if device.type == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "CUDA device %s was requested but CUDA is not available" % requested
+            )
+        logical_index = 0 if device.index is None else int(device.index)
+        visible_count = int(torch.cuda.device_count())
+        if logical_index < 0 or logical_index >= visible_count:
+            raise RuntimeError(
+                "CUDA device %s is invalid after CUDA_VISIBLE_DEVICES mapping; "
+                "visible logical device count=%d" % (requested, visible_count)
+            )
+    return device
 
 
 def cache_dtype():
