@@ -1,0 +1,51 @@
+{
+  "architecture": "V36_byTeacher_Autonomous_MS1Forward3x6_Kalman_GRU_Polynomial_MS2Center6x6_v1",
+  "train": [
+    "route_A",
+    "route_A_stride2"
+  ],
+  "validation": "route_C",
+  "test": "route_B",
+  "results": {
+    "route_C": {
+      "MLE_m": 447.54638716993543,
+      "MedLE_m": 436.3122303998117,
+      "P90_m": 639.2056441721669,
+      "P95_m": 663.745588149839,
+      "P99_m": 710.7908628799394,
+      "CVaR90_m": 672.0114934245901,
+      "LSR@5_pct": 0.0794912559618442,
+      "LSR@10_pct": 0.1589825119236884,
+      "LSR@15_pct": 0.47694753577106513,
+      "LSR@20_pct": 0.6359300476947536,
+      "Architecture": "V36_byTeacher_Autonomous_MS1Forward3x6_Kalman_GRU_Polynomial_MS2Center6x6_v1",
+      "Route": "route_C",
+      "MS1": "forward 3x6 centered at predicted prior",
+      "Kalman": "standard XY linear Kalman; no GT/gating/clipping",
+      "GRU": "predicts v,a,theta; no MS uncertainty input",
+      "MS2": "full centered 6x6 around Kalman X_prime",
+      "ReferenceUsage": "metrics only after final prediction",
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/autonomous_ms1_kf_gru_ms2/route_C_autonomous_ms1_kf_gru_ms2_frames.csv"
+    },
+    "route_B": {
+      "MLE_m": 833.1521718780874,
+      "MedLE_m": 838.9193440670472,
+      "P90_m": 1234.5967131503853,
+      "P95_m": 1287.5265820909915,
+      "P99_m": 1388.7066247073578,
+      "CVaR90_m": 1303.4451241872214,
+      "LSR@5_pct": 0.04393673110720562,
+      "LSR@10_pct": 0.08787346221441124,
+      "LSR@15_pct": 0.13181019332161686,
+      "LSR@20_pct": 0.13181019332161686,
+      "Architecture": "V36_byTeacher_Autonomous_MS1Forward3x6_Kalman_GRU_Polynomial_MS2Center6x6_v1",
+      "Route": "route_B",
+      "MS1": "forward 3x6 centered at predicted prior",
+      "Kalman": "standard XY linear Kalman; no GT/gating/clipping",
+      "GRU": "predicts v,a,theta; no MS uncertainty input",
+      "MS2": "full centered 6x6 around Kalman X_prime",
+      "ReferenceUsage": "metrics only after final prediction",
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/autonomous_ms1_kf_gru_ms2/route_B_autonomous_ms1_kf_gru_ms2_frames.csv"
+    }
+  }
+}
