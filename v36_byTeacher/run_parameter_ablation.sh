@@ -1,28 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Fast inference-only estimator/decoder sensitivity sweep for v8r1.
-# These parameters do NOT require retraining the GRU.
-# Every case reuses the FULL v8r1 temporal checkpoint and only evaluates
-# Route-C / Route-B with different inference-time parameters.
+# v36_byTeacher v8r1 MODEL hyperparameter sensitivity study.
+# This is intentionally different from the GPU5 component ablation:
+#   GPU5 removes one GRU input branch at a time.
+#   GPU6 keeps the full four-branch GRU and changes model-capacity/
+#   regularization hyperparameters that are NOT learned automatically.
 #
-# Checkpoint policy:
-#   1) prefer the completed/best FULL v8r1 checkpoint;
-#   2) if it does not exist yet, reuse the in-progress FULL v8r1 _latest.pt;
-#   3) never silently fall back to an old v8 checkpoint or a GRU ablation.
+# Normal full baseline (do not rerun here):
+#   hidden_dim=256, feature_dim=128, dropout=0.0
 #
-# Outputs stay isolated under output/<backbone>/parameter_ablation/<case>/.
+# GPU6 cases:
+#   hidden: 128 / [256 baseline] / 512
+#   feature projection: 64 / [128 baseline] / 256
+#   dropout: [0.0 baseline] / 0.1 / 0.2
+#
+# Every case MUST retrain because changing hidden/feature/dropout changes the
+# trainable model or its optimization behavior. Frozen visual checkpoint and
+# UAV feature cache are shared; temporal outputs/checkpoints are isolated under:
+#   output/<backbone>/model_hparam_ablation/<case>/...
 
 GROUP="${1:-all}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 CPU_THREADS="${UAVSAT_CPU_THREADS:-2}"
+EPOCHS="${UAVSAT_TEMPORAL_EPOCHS:-60}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
 case "${GROUP}" in
-  all|ms2|kf|meanshift) ;;
+  all|hidden|feature|dropout) ;;
   *)
-    echo "usage: bash run_parameter_ablation.sh {all|ms2|kf|meanshift}" >&2
+    echo "usage: bash run_parameter_ablation.sh {all|hidden|feature|dropout}" >&2
     exit 2
     ;;
 esac
@@ -42,36 +50,37 @@ fi
   config.py data.py visual_model.py visual_localizer.py \
   robust_tracker_base.py robust_tracker.py train_multirate_a.py
 
-echo "FAST parameter ablation: eval-only, CPU threads=${CPU_THREADS}" >&2
+echo "MODEL hyperparameter ablation: CPU threads=${CPU_THREADS}; epochs=${EPOCHS}" >&2
 
 run_case() {
   local tag="$1"
-  local sigma="$2"
-  local weight="$3"
-  local kf_r="$4"
-  local bandwidth="$5"
+  local hidden="$2"
+  local feature="$3"
+  local dropout="$4"
 
   echo
   echo "================================================================================================"
-  echo "FAST PARAMETER CASE: ${tag}"
-  echo "  mode                = EVAL ONLY (reuse full v8r1 checkpoint)"
-  echo "  MS2 KF prior sigma  = ${sigma} m"
-  echo "  MS2 KF prior weight = ${weight}"
-  echo "  Kalman R position   = ${kf_r} m^2"
-  echo "  MeanShift bandwidth = ${bandwidth} m"
+  echo "MODEL HYPERPARAM CASE: ${tag}"
+  echo "  GRU input branches   = FULL (all four branches)"
+  echo "  GRU hidden dim       = ${hidden}"
+  echo "  branch feature dim   = ${feature}"
+  echo "  GRU/head dropout     = ${dropout}"
+  echo "  TBPTT                = 32 (fixed)"
+  echo "  temporal LR          = 3e-4 (fixed)"
   echo "================================================================================================"
 
   UAVSAT_GRU_ABLATION=full \
-  UAVSAT_PARAMETER_TAG="${tag}" \
-  UAVSAT_MS2_KF_PRIOR_SIGMA_M="${sigma}" \
-  UAVSAT_MS2_KF_PRIOR_WEIGHT="${weight}" \
-  UAVSAT_KF_R_POS="${kf_r}" \
-  UAVSAT_MS_BANDWIDTH_M="${bandwidth}" \
+  UAVSAT_MODEL_HPARAM_TAG="${tag}" \
+  UAVSAT_RNN_HIDDEN="${hidden}" \
+  UAVSAT_RNN_FEATURE="${feature}" \
+  UAVSAT_RNN_DROPOUT="${dropout}" \
+  UAVSAT_TBPTT_STEPS=32 \
+  UAVSAT_TEMPORAL_LR=3e-4 \
+  UAVSAT_TEMPORAL_EPOCHS="${EPOCHS}" \
   UAVSAT_CPU_THREADS="${CPU_THREADS}" \
   "${PYTHON_BIN}" - <<'PY'
 import os
 import runpy
-import shutil
 import sys
 from pathlib import Path
 
@@ -85,113 +94,77 @@ try:
 except RuntimeError:
     pass
 
-tag = os.environ["UAVSAT_PARAMETER_TAG"].strip()
+tag = os.environ["UAVSAT_MODEL_HPARAM_TAG"].strip()
 if not tag or any(
     ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
     for ch in tag
 ):
-    raise SystemExit("ERROR: invalid UAVSAT_PARAMETER_TAG=%r" % tag)
+    raise SystemExit("ERROR: invalid UAVSAT_MODEL_HPARAM_TAG=%r" % tag)
 if config.GRU_ABLATION != "full":
-    raise SystemExit("ERROR: parameter sweep must use full GRU")
+    raise SystemExit("ERROR: GPU6 model-hparam study must keep the full GRU")
 
-# Shared trained model/cache from the normal FULL v8r1 experiment.
+# Keep the expensive frozen visual model and UAV feature cache shared.
 shared_backbone_root = Path(config.BACKBONE_OUTPUT_DIR)
 shared_visual_checkpoint = Path(config.VISUAL_CHECKPOINT)
 shared_feature_cache = Path(config.FEATURE_CACHE_DIR)
-shared_checkpoint_dir = Path(config.CHECKPOINT_DIR)
 
-best_full_checkpoint = (
-    shared_checkpoint_dir
-    / f"reference_prior_compact_gru_A_native_v8r1_full_{config.BACKBONE_KEY}.pt"
-)
-latest_full_checkpoint = (
-    shared_checkpoint_dir
-    / f"reference_prior_compact_gru_A_native_v8r1_full_{config.BACKBONE_KEY}_latest.pt"
-)
-
-if best_full_checkpoint.exists():
-    source_full_checkpoint = best_full_checkpoint
-    checkpoint_kind = "best"
-elif latest_full_checkpoint.exists():
-    source_full_checkpoint = latest_full_checkpoint
-    checkpoint_kind = "latest/in-progress"
-else:
-    raise SystemExit(
-        "ERROR: no FULL v8r1 checkpoint exists yet. Checked:\n"
-        "  %s\n"
-        "  %s\n"
-        "GPU6 needs a 512-d FULL-GRU v8r1 checkpoint; a 384-d GPU5 ablation "
-        "checkpoint cannot be substituted. Start/continue the full v8r1 run, "
-        "then rerun GPU6."
-        % (best_full_checkpoint, latest_full_checkpoint)
-    )
-
-# Isolate outputs per parameter case, while keeping the frozen visual/cache shared.
-parameter_root = shared_backbone_root / "parameter_ablation" / tag
-parameter_checkpoint_dir = parameter_root / "checkpoints"
-parameter_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
-config.BACKBONE_OUTPUT_DIR = parameter_root
-config.CHECKPOINT_DIR = parameter_checkpoint_dir
+# Isolate ALL temporal outputs/checkpoints from GPU0/GPU5 and other GPU6 cases.
+case_root = shared_backbone_root / "model_hparam_ablation" / tag
+config.BACKBONE_OUTPUT_DIR = case_root
+config.CHECKPOINT_DIR = case_root / "checkpoints"
 config.VISUAL_CHECKPOINT = shared_visual_checkpoint
 config.FEATURE_CACHE_DIR = shared_feature_cache
 
-# train_multirate_a.py/load_temporal_model expects the normal BEST filename.
-# If the source is _latest.pt, copy it under that expected destination name.
-destination_checkpoint = (
-    parameter_checkpoint_dir
-    / f"reference_prior_compact_gru_A_native_v8r1_full_{config.BACKBONE_KEY}.pt"
-)
-if (
-    not destination_checkpoint.exists()
-    or destination_checkpoint.stat().st_size != source_full_checkpoint.stat().st_size
-    or destination_checkpoint.stat().st_mtime_ns < source_full_checkpoint.stat().st_mtime_ns
-):
-    shutil.copy2(source_full_checkpoint, destination_checkpoint)
-
+expected_input = int(config.RNN_FEATURE_DIM) * len(config.GRU_ACTIVE_GROUPS)
 print("CPU THREAD LIMIT:", threads, flush=True)
-print("SOURCE CHECKPOINT KIND:", checkpoint_kind, flush=True)
-print("SOURCE FULL CHECKPOINT:", source_full_checkpoint, flush=True)
-print("ISOLATED OUTPUT ROOT:", parameter_root, flush=True)
-print("MODE: eval only", flush=True)
-print("MS2 SIGMA:", config.MS2_KALMAN_PRIOR_SIGMA_M, flush=True)
-print("MS2 WEIGHT:", config.MS2_KALMAN_PRIOR_WEIGHT, flush=True)
-print("KF R POSITION:", config.KALMAN_R_POSITION, flush=True)
-print("MEANSHIFT BANDWIDTH:", config.MEANSHIFT_BANDWIDTH_M, flush=True)
+print("MODEL HPARAM TAG:", tag, flush=True)
+print("FULL GRU ACTIVE GROUPS:", ",".join(config.GRU_ACTIVE_GROUPS), flush=True)
+print("RNN HIDDEN DIM:", int(config.RNN_HIDDEN_DIM), flush=True)
+print("RNN FEATURE DIM:", int(config.RNN_FEATURE_DIM), flush=True)
+print("RNN COMBINED INPUT DIM:", expected_input, flush=True)
+print("RNN DROPOUT:", float(config.RNN_DROPOUT), flush=True)
+print("ISOLATED CASE ROOT:", case_root, flush=True)
+print("SHARED VISUAL CHECKPOINT:", shared_visual_checkpoint, flush=True)
+print("SHARED FEATURE CACHE:", shared_feature_cache, flush=True)
 
-sys.argv = ["train_multirate_a.py", "--mode", "eval"]
+sys.argv = [
+    "train_multirate_a.py",
+    "--mode", "all",
+    "--temporal-epochs", os.environ.get("UAVSAT_TEMPORAL_EPOCHS", "60"),
+    "--train-visual-if-missing",
+]
 runpy.run_path("train_multirate_a.py", run_name="__main__")
 PY
 }
 
-run_ms2_group() {
-  run_case "ms2_no_kf_prior" 12.0 0.0 9.0 8.0
-  run_case "ms2_sigma_6m" 6.0 1.0 9.0 8.0
-  run_case "ms2_sigma_24m" 24.0 1.0 9.0 8.0
-  run_case "ms2_weight_0p5" 12.0 0.5 9.0 8.0
-  run_case "ms2_weight_2p0" 12.0 2.0 9.0 8.0
+run_hidden_group() {
+  # Baseline hidden=256 is provided by the normal full v8r1 experiment.
+  run_case "hidden_128" 128 128 0.0
+  run_case "hidden_512" 512 128 0.0
 }
 
-run_kf_group() {
-  run_case "kf_r_4" 12.0 1.0 4.0 8.0
-  run_case "kf_r_25" 12.0 1.0 25.0 8.0
+run_feature_group() {
+  # Baseline projected branch feature=128 is provided by the normal full run.
+  run_case "feature_64" 256 64 0.0
+  run_case "feature_256" 256 256 0.0
 }
 
-run_meanshift_group() {
-  run_case "meanshift_bw_4m" 12.0 1.0 9.0 4.0
-  run_case "meanshift_bw_12m" 12.0 1.0 9.0 12.0
+run_dropout_group() {
+  # Baseline dropout=0.0 is provided by the normal full run.
+  run_case "dropout_0p1" 256 128 0.1
+  run_case "dropout_0p2" 256 128 0.2
 }
 
 case "${GROUP}" in
-  ms2) run_ms2_group ;;
-  kf) run_kf_group ;;
-  meanshift) run_meanshift_group ;;
+  hidden) run_hidden_group ;;
+  feature) run_feature_group ;;
+  dropout) run_dropout_group ;;
   all)
-    run_ms2_group
-    run_kf_group
-    run_meanshift_group
+    run_hidden_group
+    run_feature_group
+    run_dropout_group
     ;;
 esac
 
 echo
-echo "All requested FAST parameter ablations completed."
+echo "All requested MODEL hyperparameter ablations completed."
