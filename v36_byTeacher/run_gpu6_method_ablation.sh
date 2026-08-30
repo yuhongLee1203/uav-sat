@@ -1,19 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GPU6 wrapper for the one-variable-at-a-time spatial sensitivity study.
+# GPU6 wrapper for the retained one-variable-at-a-time accuracy/latency study.
 #
-# Groups:
+# Paper tables kept after the GRU component-ablation table:
 #   ms1       : forward 3x6 baseline / 4x6 / 5x6 / 6x6 / 7x6
 #   ms2       : centered 5x5 / 6x6 baseline / 7x7
 #   meanshift : bandwidth 4 / 8 baseline / 12 / 16 m
 #   search    : ms1 + ms2
 #   all       : ms1 + ms2 + meanshift
 #
+# NOT tested anymore:
+#   - MeanShift merge-radius sensitivity
+#   - MeanShift iteration-count sensitivity
+#   - old mixed multi-variable parameter table
+#
 # IMPORTANT:
 #   This wrapper is STRICTLY EVAL ONLY. Spatial support, MS2 grid size, and
 #   MeanShift bandwidth are inference-time method parameters and do NOT require
 #   retraining the GRU. The same FULL v8r1 checkpoint is reused for every case.
+#
+# Each case writes accuracy_latency_summary.csv containing Route-C, Route-B,
+# and a simple B+C average. It includes localization accuracy, end-to-end
+# latency, MS1 latency, centered-MS2 search latency, total MS2 MeanShift latency,
+# post-convergence active-mode averaging latency, all-candidate weighted-average
+# latency, and the average number of active modes.
 #
 # If the normal FULL checkpoint path is empty, this wrapper attempts to recover
 # an architecture-compatible FULL v8r1 checkpoint already present elsewhere
@@ -112,16 +123,18 @@ PY
   else
     echo "ERROR: no compatible FULL v8r1 checkpoint exists." >&2
     echo "GPU6 sensitivity is eval-only and will not train automatically." >&2
-    echo "Provide/train one FULL v8r1 checkpoint first, then rerun GPU6." >&2
+    echo "Provide one existing FULL v8r1 checkpoint, then rerun GPU6." >&2
     exit 3
   fi
 fi
 
 echo
-echo "FULL checkpoint ready. Starting STRICTLY EVAL-ONLY sensitivity sweep..."
+echo "FULL checkpoint ready. Starting STRICTLY EVAL-ONLY accuracy/latency sweep..."
 echo "  MS1       : 3x6 baseline, 4x6, 5x6, 6x6, 7x6"
 echo "  MS2       : 5x5, 6x6 baseline, 7x7"
 echo "  MeanShift : 4m, 8m baseline, 12m, 16m"
+echo "  latency   : E2E + MS1 + centered MS2 + total MeanShift + final active-mode average"
+echo "  comparator: direct weighted average over all MS2 candidates"
 echo "  fixed     : same FULL weights, same KF, merge radius=2m, iterations=3"
 echo
 
