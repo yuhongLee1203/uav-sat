@@ -1,42 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# v36_byTeacher v8r1 METHOD-LEVEL spatial / MeanShift sensitivity study.
+# v36_byTeacher v8r1 one-variable-at-a-time spatial sensitivity study.
 #
-# This is intentionally different from GPU5:
-#   GPU5 = learned GRU-input component ablation (retrain each removed branch).
-#   GPU6 = fixed algorithmic design choices around local search / MeanShift.
-#
-# These GPU6 knobs are NOT learned by the network. They define which satellite
-# candidates are exposed to the visual matcher and how MeanShift aggregates
-# nearby visual modes. Therefore the already-trained FULL v8r1 checkpoint can
-# be reused and each case is EVAL ONLY.
-#
-# Normal full baseline (do not rerun here):
-#   MS1 = strict forward 3x6 selected from 6x6
+# Fixed baseline for every case unless the case explicitly changes one item:
+#   MS1 = strict forward 3x6
 #   MS2 = centered 6x6
 #   MeanShift bandwidth = 8 m
-#   MeanShift mode-merge radius = 2 m
-#   MeanShift iterations = 3
+#   MeanShift mode-merge radius = 2 m (FIXED; not part of this study)
+#   MeanShift iterations = 3 (FIXED)
+#   GRU / Kalman / visual weights = fixed FULL v8r1
 #
-# Default GPU6 cases (GROUP=all):
-#   Search geometry:
-#     - MS1 full 6x6 (remove hard forward restriction)
-#     - MS1 forward 1x6
-#     - MS1 forward 2x6
-#       [baseline = forward 3x6]
-#     - MS2 4x4 / 8x8
-#       [baseline = 6x6]
-#   MeanShift spatial scale:
-#     - bandwidth 4 m / 12 m
-#       [baseline = 8 m]
-#     - mode-merge radius 1 m / 4 m
-#       [baseline = 2 m]
+# Experiments:
+#   ms1:
+#     forward 3x6 [baseline], 4x6, 5x6, 7x6
+#     Only MS1 forward depth changes. Lateral width stays exactly 6 candidates.
 #
-# Optional lower-priority convergence sensitivity:
-#   bash run_parameter_ablation.sh iterations
-#     - MeanShift iterations 1 / 5 [baseline = 3]
+#   ms2:
+#     5x5, 6x6 [baseline], 7x7
+#     MS1 stays forward 3x6; only the second-stage centered grid changes.
 #
+#   meanshift:
+#     bandwidth 4, 8 [baseline], 12, 16 m
+#     MS1 stays 3x6 and MS2 stays 6x6; only MeanShift bandwidth changes.
+#
+# All cases are EVAL ONLY and reuse the same FULL v8r1 checkpoint.
 # Outputs are isolated under:
 #   output/<backbone>/method_ablation/<case>/...
 
@@ -47,9 +35,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
 case "${GROUP}" in
-  all|search|meanshift|iterations) ;;
+  all|ms1|ms2|meanshift|search) ;;
   *)
-    echo "usage: bash run_parameter_ablation.sh {all|search|meanshift|iterations}" >&2
+    echo "usage: bash run_parameter_ablation.sh {all|ms1|ms2|meanshift|search}" >&2
     exit 2
     ;;
 esac
@@ -69,37 +57,32 @@ fi
   config.py data.py visual_model.py visual_localizer.py \
   robust_tracker_base.py robust_tracker.py train_multirate_a.py
 
-echo "METHOD ablation: EVAL ONLY; CPU threads=${CPU_THREADS}" >&2
+echo "METHOD sensitivity: EVAL ONLY; CPU threads=${CPU_THREADS}" >&2
 
 run_case() {
   local tag="$1"
-  local ms1_mode="$2"
-  local ms1_rows="$3"
-  local ms2_grid="$4"
-  local bandwidth="$5"
-  local merge_radius="$6"
-  local iterations="$7"
+  local ms1_rows="$2"
+  local ms2_grid="$3"
+  local bandwidth="$4"
 
   echo
   echo "================================================================================================"
-  echo "METHOD ABLATION CASE: ${tag}"
-  echo "  mode                    = EVAL ONLY (reuse FULL v8r1 checkpoint)"
-  echo "  MS1 search mode         = ${ms1_mode}"
-  echo "  MS1 forward rows        = ${ms1_rows} (6 candidates per row when forward)"
-  echo "  MS2 grid                = ${ms2_grid}x${ms2_grid}"
+  echo "METHOD SENSITIVITY CASE: ${tag}"
+  echo "  mode                    = EVAL ONLY (same FULL v8r1 weights)"
+  echo "  MS1 forward support     = ${ms1_rows}x6"
+  echo "  MS2 centered grid       = ${ms2_grid}x${ms2_grid}"
   echo "  MeanShift bandwidth     = ${bandwidth} m"
-  echo "  MeanShift merge radius  = ${merge_radius} m"
-  echo "  MeanShift iterations    = ${iterations}"
+  echo "  MeanShift merge radius  = 2.0 m (fixed)"
+  echo "  MeanShift iterations    = 3 (fixed)"
   echo "================================================================================================"
 
   UAVSAT_GRU_ABLATION=full \
   UAVSAT_METHOD_ABLATION_TAG="${tag}" \
-  UAVSAT_METHOD_MS1_MODE="${ms1_mode}" \
   UAVSAT_METHOD_MS1_ROWS="${ms1_rows}" \
   UAVSAT_METHOD_MS2_GRID="${ms2_grid}" \
   UAVSAT_MS_BANDWIDTH_M="${bandwidth}" \
-  UAVSAT_METHOD_MS_MERGE_RADIUS_M="${merge_radius}" \
-  UAVSAT_MS_ITERATIONS="${iterations}" \
+  UAVSAT_METHOD_MS_MERGE_RADIUS_M="2.0" \
+  UAVSAT_MS_ITERATIONS="3" \
   UAVSAT_CPU_THREADS="${CPU_THREADS}" \
   "${PYTHON_BIN}" - <<'PY'
 import os
@@ -119,7 +102,6 @@ except RuntimeError:
     pass
 
 tag = os.environ["UAVSAT_METHOD_ABLATION_TAG"].strip()
-ms1_mode = os.environ["UAVSAT_METHOD_MS1_MODE"].strip().lower()
 ms1_rows = int(os.environ["UAVSAT_METHOD_MS1_ROWS"])
 ms2_grid = int(os.environ["UAVSAT_METHOD_MS2_GRID"])
 merge_radius = float(os.environ["UAVSAT_METHOD_MS_MERGE_RADIUS_M"])
@@ -128,23 +110,17 @@ if not tag or any(
     ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
     for ch in tag
 ):
-    raise SystemExit("ERROR: invalid method-ablation tag=%r" % tag)
+    raise SystemExit("ERROR: invalid method-sensitivity tag=%r" % tag)
 if config.GRU_ABLATION != "full":
-    raise SystemExit("ERROR: GPU6 method study must keep the FULL GRU")
-if ms1_mode not in {"forward", "full"}:
-    raise SystemExit("ERROR: MS1 mode must be forward or full")
-if ms1_rows not in {1, 2, 3}:
-    raise SystemExit("ERROR: MS1 forward rows must be 1, 2, or 3")
-if ms2_grid not in {4, 6, 8}:
-    raise SystemExit("ERROR: MS2 grid must be 4, 6, or 8")
+    raise SystemExit("ERROR: method sensitivity must keep the FULL GRU")
+if ms1_rows not in {3, 4, 5, 7}:
+    raise SystemExit("ERROR: MS1 forward rows must be one of 3, 4, 5, 7")
+if ms2_grid not in {5, 6, 7}:
+    raise SystemExit("ERROR: MS2 grid must be one of 5, 6, 7")
 if merge_radius <= 0.0:
     raise SystemExit("ERROR: MeanShift merge radius must be positive")
 
-# -------------------------------------------------------------------------
-# Reuse FULL v8r1 weights. Prefer the validation-selected checkpoint; if the
-# full run is still in progress, use its latest checkpoint for preliminary
-# sensitivity results.
-# -------------------------------------------------------------------------
+# Reuse one fixed FULL v8r1 checkpoint for all sensitivity cases.
 shared_backbone_root = Path(config.BACKBONE_OUTPUT_DIR)
 shared_checkpoint_dir = Path(config.CHECKPOINT_DIR)
 shared_visual_checkpoint = Path(config.VISUAL_CHECKPOINT)
@@ -170,21 +146,15 @@ else:
         % (best_checkpoint, latest_checkpoint)
     )
 
-# -------------------------------------------------------------------------
-# Set ONLY method-level inference geometry / MeanShift knobs.
-# Keep network architecture, learned weights, Kalman parameters, MS2 Gaussian
-# prior, visual model, and all training hyperparameters at the full baseline.
-# -------------------------------------------------------------------------
-config.MS1_BASE_GRID_SIZE = 6
+# Change only the requested spatial variable. Everything learned stays fixed.
 config.MS1_FORWARD_ROWS = ms1_rows
 config.MS1_FORWARD_COLS = 6
-config.MS1_CANDIDATE_COUNT = ms1_rows * 6 if ms1_mode == "forward" else 36
+config.MS1_CANDIDATE_COUNT = ms1_rows * 6
 config.MS2_GRID_SIZE = ms2_grid
 config.MEANSHIFT_BANDWIDTH_M = float(os.environ["UAVSAT_MS_BANDWIDTH_M"])
 config.MEANSHIFT_MODE_MERGE_RADIUS_M = merge_radius
 config.MEANSHIFT_ITERATIONS = int(os.environ["UAVSAT_MS_ITERATIONS"])
 
-# Isolate outputs/checkpoints from GPU0/GPU5 and from every other GPU6 case.
 case_root = shared_backbone_root / "method_ablation" / tag
 case_checkpoint_dir = case_root / "checkpoints"
 case_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -193,9 +163,6 @@ config.CHECKPOINT_DIR = case_checkpoint_dir
 config.VISUAL_CHECKPOINT = shared_visual_checkpoint
 config.FEATURE_CACHE_DIR = shared_feature_cache
 
-# train_multirate_a.py expects the full-v8r1 best checkpoint name in its current
-# checkpoint directory when --mode eval is used. Copy the selected shared source
-# to that isolated expected location; no training is performed.
 destination_checkpoint = (
     case_checkpoint_dir
     / f"reference_prior_compact_gru_A_native_v8r1_full_{config.BACKBONE_KEY}.pt"
@@ -207,17 +174,18 @@ if (
 ):
     shutil.copy2(source_checkpoint, destination_checkpoint)
 
-# Import only after all runtime config values and isolated paths are ready.
+# Import after runtime config and isolated output paths are ready.
 import train_multirate_a as train
 
 
-def _select_nearest_forward_rows(full_centers, heading_rad, rows):
-    """Return nearest positive forward rows from a regular 6x6 lattice."""
-    batch = int(full_centers.shape[0])
-    keep = int(rows) * 6
-    geometric_center = full_centers.mean(dim=1, keepdim=True)
-    relative = full_centers - geometric_center
+def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
+    """Select exactly rows x lateral_cols nearest forward lattice positions.
 
+    For 3x6 this reproduces the original strict forward half of a 6x6 grid.
+    For 4x6 / 5x6 / 7x6, the temporary square source grid is expanded only so
+    enough forward rows exist; the returned support is still exactly Nx6.
+    """
+    batch = int(full_centers.shape[0])
     headings = torch.as_tensor(
         heading_rad,
         dtype=full_centers.dtype,
@@ -228,58 +196,86 @@ def _select_nearest_forward_rows(full_centers, heading_rad, rows):
     if headings.numel() != batch:
         raise ValueError("heading count must match center batch size")
 
-    cos_h = torch.cos(headings)
-    sin_h = torch.sin(headings)
-    use_x = cos_h.abs() >= sin_h.abs()
-    sign = torch.where(
-        use_x,
-        torch.where(cos_h >= 0, torch.ones_like(cos_h), -torch.ones_like(cos_h)),
-        torch.where(sin_h >= 0, torch.ones_like(sin_h), -torch.ones_like(sin_h)),
-    )
-    longitudinal = torch.where(
-        use_x[:, None], relative[:, :, 0], relative[:, :, 1]
-    ) * sign[:, None]
-    lateral = torch.where(
-        use_x[:, None], relative[:, :, 1], relative[:, :, 0]
-    )
+    selected_rows = []
+    for b in range(batch):
+        centers = full_centers[b]
+        relative = centers - centers.mean(dim=0, keepdim=True)
+        cos_h = torch.cos(headings[b])
+        sin_h = torch.sin(headings[b])
+        use_x = bool((cos_h.abs() >= sin_h.abs()).item())
+        if use_x:
+            sign = 1.0 if float(cos_h.item()) >= 0.0 else -1.0
+            longitudinal = relative[:, 0] * sign
+            lateral = relative[:, 1]
+        else:
+            sign = 1.0 if float(sin_h.item()) >= 0.0 else -1.0
+            longitudinal = relative[:, 1] * sign
+            lateral = relative[:, 0]
 
-    forward_mask = longitudinal > 0.0
-    if not bool(torch.all(forward_mask.sum(dim=1) >= keep)):
-        raise RuntimeError("not enough positive forward candidates")
+        positive_idx = torch.nonzero(longitudinal > 0.0, as_tuple=False).flatten()
+        if positive_idx.numel() < rows * lateral_cols:
+            raise RuntimeError(
+                f"not enough forward candidates: need {rows*lateral_cols}, "
+                f"have {positive_idx.numel()}"
+            )
 
-    huge = torch.full_like(longitudinal, 1e9)
-    nearest_cost = torch.where(forward_mask, longitudinal, huge)
-    selected = torch.topk(
-        nearest_cost,
-        k=keep,
-        dim=1,
-        largest=False,
-        sorted=False,
-    ).indices
+        # Quantize only for grouping equal regular-grid longitudinal levels.
+        # Candidate spacing is several metres, so 1 mm grouping is far below
+        # the physical lattice resolution and does not alter the geometry.
+        qlong = torch.round(longitudinal * 1000.0) / 1000.0
+        levels = torch.unique(qlong[positive_idx])
+        levels = torch.sort(levels).values
+        if levels.numel() < rows:
+            raise RuntimeError(
+                f"regular-grid grouping found only {levels.numel()} forward rows; "
+                f"need {rows}"
+            )
 
-    selected_long = torch.gather(longitudinal, 1, selected)
-    selected_lat = torch.gather(lateral, 1, selected)
-    order = torch.argsort(selected_long * 1000.0 + selected_lat, dim=1)
-    return torch.gather(selected, 1, order)
+        chosen = []
+        for level in levels[:rows]:
+            row_idx = torch.nonzero(
+                (qlong - level).abs() <= 0.0005,
+                as_tuple=False,
+            ).flatten()
+            if row_idx.numel() < lateral_cols:
+                raise RuntimeError(
+                    f"forward row has only {row_idx.numel()} lateral candidates; "
+                    f"need {lateral_cols}"
+                )
+            nearest_lat = torch.topk(
+                lateral[row_idx].abs(),
+                k=lateral_cols,
+                largest=False,
+                sorted=False,
+            ).indices
+            row_idx = row_idx[nearest_lat]
+            row_idx = row_idx[torch.argsort(lateral[row_idx])]
+            chosen.append(row_idx)
+
+        selected_rows.append(torch.cat(chosen, dim=0))
+
+    return torch.stack(selected_rows, dim=0)
 
 
 @torch.no_grad()
 def _method_ms1_search(visual, uav_clip, prior_xy, heading_rad, device):
-    """GPU6-only MS1 geometry variant; GPU5/default code is untouched."""
+    """GPU6-only exact forward Nx6 MS1 support; default/GPU5 code untouched."""
     center = train.rt._tensor_xy(prior_xy, device)
+
+    # An even GxG regular grid contains G/2 forward rows around its geometric
+    # centre. Therefore G=2*N is the smallest source grid that can supply Nx6.
+    source_grid = max(6, 2 * int(ms1_rows))
     full = visual.candidate_batch(
         uav_clip=uav_clip,
         center_xy=center,
-        grid_size=6,
+        grid_size=source_grid,
     )
 
-    if ms1_mode == "full":
-        return full
-
-    selected = _select_nearest_forward_rows(
+    selected = _select_forward_rectangle(
         full.centers,
         heading_rad,
         ms1_rows,
+        lateral_cols=6,
     )
     batch_idx = torch.arange(
         full.centers.shape[0], device=full.centers.device
@@ -318,7 +314,6 @@ def _method_ms1_search(visual, uav_clip, prior_xy, heading_rad, device):
     )
 
 
-# Override only inside this GPU6 Python process.
 train.rt.ms1_forward_search = _method_ms1_search
 
 print("CPU THREAD LIMIT:", threads, flush=True)
@@ -326,12 +321,12 @@ print("SOURCE CHECKPOINT KIND:", source_kind, flush=True)
 print("SOURCE FULL CHECKPOINT:", source_checkpoint, flush=True)
 print("ISOLATED CASE ROOT:", case_root, flush=True)
 print("GRU: FULL, weights unchanged", flush=True)
-print("MS1 MODE:", ms1_mode, flush=True)
+print("MS1 SUPPORT:", f"{ms1_rows}x6", flush=True)
 print("MS1 CANDIDATES:", config.MS1_CANDIDATE_COUNT, flush=True)
 print("MS2 GRID:", f"{config.MS2_GRID_SIZE}x{config.MS2_GRID_SIZE}", flush=True)
 print("MS BANDWIDTH:", config.MEANSHIFT_BANDWIDTH_M, flush=True)
-print("MS MERGE RADIUS:", config.MEANSHIFT_MODE_MERGE_RADIUS_M, flush=True)
-print("MS ITERATIONS:", config.MEANSHIFT_ITERATIONS, flush=True)
+print("MS MERGE RADIUS:", config.MEANSHIFT_MODE_MERGE_RADIUS_M, "(fixed)", flush=True)
+print("MS ITERATIONS:", config.MEANSHIFT_ITERATIONS, "(fixed)", flush=True)
 print("MODE: eval only", flush=True)
 
 sys.argv = ["train_multirate_a.py", "--mode", "eval"]
@@ -339,44 +334,43 @@ train.main()
 PY
 }
 
-run_search_group() {
-  # Structural check: is the hard forward restriction itself useful?
-  run_case "ms1_full_6x6"       full    3 6 8.0 2.0 3
+run_ms1_group() {
+  # ONE variable changes: MS1 forward depth. Everything else is baseline.
+  run_case "ms1_forward_3x6_baseline" 3 6 8.0
+  run_case "ms1_forward_4x6"          4 6 8.0
+  run_case "ms1_forward_5x6"          5 6 8.0
+  run_case "ms1_forward_7x6"          7 6 8.0
+}
 
-  # Forward-depth sensitivity. Baseline is forward 3x6.
-  run_case "ms1_forward_1x6"    forward 1 6 8.0 2.0 3
-  run_case "ms1_forward_2x6"    forward 2 6 8.0 2.0 3
-
-  # Second-stage local refinement area. Baseline is 6x6.
-  run_case "ms2_grid_4x4"       forward 3 4 8.0 2.0 3
-  run_case "ms2_grid_8x8"       forward 3 8 8.0 2.0 3
+run_ms2_group() {
+  # ONE variable changes: MS2 centered search-window size. MS1 remains 3x6.
+  run_case "ms2_grid_5x5"             3 5 8.0
+  run_case "ms2_grid_6x6_baseline"    3 6 8.0
+  run_case "ms2_grid_7x7"             3 7 8.0
 }
 
 run_meanshift_group() {
-  # Spatial kernel scale. Baseline bandwidth is 8 m.
-  run_case "ms_bandwidth_4m"     forward 3 6 4.0 2.0 3
-  run_case "ms_bandwidth_12m"    forward 3 6 12.0 2.0 3
-
-  # Basin-consolidation distance. Baseline merge radius is 2 m.
-  run_case "ms_merge_radius_1m"  forward 3 6 8.0 1.0 3
-  run_case "ms_merge_radius_4m"  forward 3 6 8.0 4.0 3
-}
-
-run_iterations_group() {
-  # Lower-priority convergence sensitivity. Baseline is 3 iterations.
-  run_case "ms_iterations_1"     forward 3 6 8.0 2.0 1
-  run_case "ms_iterations_5"     forward 3 6 8.0 2.0 5
+  # ONE variable changes: MeanShift spatial bandwidth. MS1=3x6, MS2=6x6.
+  run_case "ms_bandwidth_4m"           3 6 4.0
+  run_case "ms_bandwidth_8m_baseline"  3 6 8.0
+  run_case "ms_bandwidth_12m"          3 6 12.0
+  run_case "ms_bandwidth_16m"          3 6 16.0
 }
 
 case "${GROUP}" in
-  search) run_search_group ;;
+  ms1) run_ms1_group ;;
+  ms2) run_ms2_group ;;
   meanshift) run_meanshift_group ;;
-  iterations) run_iterations_group ;;
+  search)
+    run_ms1_group
+    run_ms2_group
+    ;;
   all)
-    run_search_group
+    run_ms1_group
+    run_ms2_group
     run_meanshift_group
     ;;
 esac
 
 echo
-echo "All requested METHOD-level ablations completed."
+echo "All requested one-variable-at-a-time sensitivity cases completed."
