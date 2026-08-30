@@ -13,7 +13,7 @@ set -euo pipefail
 #
 # Experiments:
 #   ms1:
-#     forward 3x6 [baseline], 4x6, 5x6, 7x6
+#     forward 3x6 [baseline], 4x6, 5x6, 6x6, 7x6
 #     Only MS1 forward depth changes. Lateral width stays exactly 6 candidates.
 #
 #   ms2:
@@ -113,8 +113,8 @@ if not tag or any(
     raise SystemExit("ERROR: invalid method-sensitivity tag=%r" % tag)
 if config.GRU_ABLATION != "full":
     raise SystemExit("ERROR: method sensitivity must keep the FULL GRU")
-if ms1_rows not in {3, 4, 5, 7}:
-    raise SystemExit("ERROR: MS1 forward rows must be one of 3, 4, 5, 7")
+if ms1_rows not in {3, 4, 5, 6, 7}:
+    raise SystemExit("ERROR: MS1 forward rows must be one of 3, 4, 5, 6, 7")
 if ms2_grid not in {5, 6, 7}:
     raise SystemExit("ERROR: MS2 grid must be one of 5, 6, 7")
 if merge_radius <= 0.0:
@@ -182,7 +182,7 @@ def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
     """Select exactly rows x lateral_cols nearest forward lattice positions.
 
     For 3x6 this reproduces the original strict forward half of a 6x6 grid.
-    For 4x6 / 5x6 / 7x6, the temporary square source grid is expanded only so
+    For deeper supports, the temporary square source grid is expanded only so
     enough forward rows exist; the returned support is still exactly Nx6.
     """
     batch = int(full_centers.shape[0])
@@ -219,9 +219,7 @@ def _select_forward_rectangle(full_centers, heading_rad, rows, lateral_cols=6):
                 f"have {positive_idx.numel()}"
             )
 
-        # Quantize only for grouping equal regular-grid longitudinal levels.
-        # Candidate spacing is several metres, so 1 mm grouping is far below
-        # the physical lattice resolution and does not alter the geometry.
+        # Group equal regular-grid longitudinal levels at 1 mm precision.
         qlong = torch.round(longitudinal * 1000.0) / 1000.0
         levels = torch.unique(qlong[positive_idx])
         levels = torch.sort(levels).values
@@ -339,6 +337,7 @@ run_ms1_group() {
   run_case "ms1_forward_3x6_baseline" 3 6 8.0
   run_case "ms1_forward_4x6"          4 6 8.0
   run_case "ms1_forward_5x6"          5 6 8.0
+  run_case "ms1_forward_6x6"          6 6 8.0
   run_case "ms1_forward_7x6"          7 6 8.0
 }
 
