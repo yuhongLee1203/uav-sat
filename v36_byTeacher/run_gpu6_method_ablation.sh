@@ -10,18 +10,18 @@ set -euo pipefail
 #   search    : ms1 + ms2
 #   all       : ms1 + ms2 + meanshift
 #
-# GPU6 is evaluation-only once one clean FULL v8r1 checkpoint exists.
-# It never substitutes a 384-d GPU5 branch-removal checkpoint.
+# IMPORTANT:
+#   This wrapper is STRICTLY EVAL ONLY. Spatial support, MS2 grid size, and
+#   MeanShift bandwidth are inference-time method parameters and do NOT require
+#   retraining the GRU. The same FULL v8r1 checkpoint is reused for every case.
 #
-# Optional final-paper safeguard:
-#   UAVSAT_FORCE_FULL_RETRAIN=1
-# removes the normal FULL best/latest checkpoint and trains one fresh FULL
-# v8r1 baseline before running the requested sensitivity group.
+# If the normal FULL checkpoint path is empty, this wrapper attempts to recover
+# an architecture-compatible FULL v8r1 checkpoint already present elsewhere
+# under v36_byTeacher. It NEVER starts training automatically.
 
 GROUP="${1:-all}"
 CPU_THREADS="${UAVSAT_CPU_THREADS:-1}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-FORCE_FULL_RETRAIN="${UAVSAT_FORCE_FULL_RETRAIN:-0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
@@ -48,34 +48,77 @@ LATEST="${CHECKPOINT_DIR}/reference_prior_compact_gru_A_native_v8r1_full_${BACKB
 
 mkdir -p "${CHECKPOINT_DIR}"
 
-if [[ "${FORCE_FULL_RETRAIN}" == "1" ]]; then
-  echo "FORCE FULL RETRAIN enabled: removing normal FULL best/latest checkpoints."
-  rm -f "${BEST}" "${LATEST}"
-fi
-
 if [[ -f "${BEST}" ]]; then
   echo "FULL v8r1 checkpoint: BEST -> ${BEST}"
 elif [[ -f "${LATEST}" ]]; then
   echo "FULL v8r1 checkpoint: LATEST -> ${LATEST}"
-  echo "WARNING: latest/in-progress checkpoint is being used for sensitivity evaluation."
   cp -f "${LATEST}" "${BEST}"
+  echo "Recovered eval checkpoint from normal latest -> ${BEST}"
 else
-  echo "No normal FULL v8r1 checkpoint exists."
-  echo "Training ONE fresh FULL v8r1 baseline; sensitivity cases remain eval-only."
-  UAVSAT_GRU_ABLATION=full UAVSAT_CPU_THREADS="${CPU_THREADS}" \
-    bash run_train_eval.sh train full 2>&1 | tee full_v8r1_baseline_gpu6.log
+  echo "Normal FULL v8r1 checkpoint path is empty; searching existing v36_byTeacher outputs..."
 
-  if [[ ! -f "${BEST}" && -f "${LATEST}" ]]; then
-    cp -f "${LATEST}" "${BEST}"
-  fi
-  if [[ ! -f "${BEST}" ]]; then
-    echo "ERROR: FULL v8r1 training finished without a usable checkpoint: ${BEST}" >&2
+  RECOVERED="$(${PYTHON_BIN} - <<'PY'
+from pathlib import Path
+import os
+import torch
+
+root = Path('.').resolve()
+backbone = os.environ.get('UAVSAT_BACKBONE', 'mobilenet_v3_small').strip().lower()
+expected_arch = (
+    'V36_byTeacher_ReferencePrior_MS1StrictForwardHalf3x6_KalmanPrevFinal_'
+    'CompactGRUChange_MSXY_TemporalMean_FirstDiff_PrevMotion_'
+    'MS2KalmanPosterior6x6_v8r1_nativeA_full'
+)
+patterns = [
+    f'reference_prior_compact_gru_A_native_v8r1_full_{backbone}.pt',
+    f'reference_prior_compact_gru_A_native_v8r1_full_{backbone}_latest.pt',
+]
+seen = set()
+candidates = []
+for pattern in patterns:
+    for path in root.rglob(pattern):
+        path = path.resolve()
+        if path in seen:
+            continue
+        seen.add(path)
+        candidates.append(path)
+
+for path in sorted(candidates, key=lambda p: p.stat().st_mtime_ns, reverse=True):
+    try:
+        payload = torch.load(path, map_location='cpu')
+    except Exception:
+        continue
+    if payload.get('architecture') != expected_arch:
+        continue
+    state = payload.get('model')
+    if not isinstance(state, dict):
+        continue
+    weight = state.get('gru.weight_ih')
+    if weight is None:
+        matches = [v for k, v in state.items() if k.endswith('gru.weight_ih')]
+        weight = matches[0] if len(matches) == 1 else None
+    if weight is not None and tuple(weight.shape) != (768, 512):
+        continue
+    print(path)
+    break
+PY
+)"
+
+  if [[ -n "${RECOVERED}" && -f "${RECOVERED}" ]]; then
+    cp -f "${RECOVERED}" "${BEST}"
+    echo "Recovered compatible FULL v8r1 checkpoint:"
+    echo "  source: ${RECOVERED}"
+    echo "  target: ${BEST}"
+  else
+    echo "ERROR: no compatible FULL v8r1 checkpoint exists." >&2
+    echo "GPU6 sensitivity is eval-only and will not train automatically." >&2
+    echo "Provide/train one FULL v8r1 checkpoint first, then rerun GPU6." >&2
     exit 3
   fi
 fi
 
 echo
-echo "FULL checkpoint ready. Starting one-variable-at-a-time GPU6 sweep..."
+echo "FULL checkpoint ready. Starting STRICTLY EVAL-ONLY sensitivity sweep..."
 echo "  MS1       : 3x6 baseline, 4x6, 5x6, 6x6, 7x6"
 echo "  MS2       : 5x5, 6x6 baseline, 7x7"
 echo "  MeanShift : 4m, 8m baseline, 12m, 16m"
