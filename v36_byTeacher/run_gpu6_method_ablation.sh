@@ -4,7 +4,7 @@ set -euo pipefail
 # GPU6 wrapper for the one-variable-at-a-time spatial sensitivity study.
 #
 # Groups:
-#   ms1       : forward 3x6 baseline / 4x6 / 5x6 / 7x6
+#   ms1       : forward 3x6 baseline / 4x6 / 5x6 / 6x6 / 7x6
 #   ms2       : centered 5x5 / 6x6 baseline / 7x7
 #   meanshift : bandwidth 4 / 8 baseline / 12 / 16 m
 #   search    : ms1 + ms2
@@ -76,7 +76,7 @@ fi
 
 echo
 echo "FULL checkpoint ready. Starting one-variable-at-a-time GPU6 sweep..."
-echo "  MS1       : 3x6 baseline, 4x6, 5x6, 7x6"
+echo "  MS1       : 3x6 baseline, 4x6, 5x6, 6x6, 7x6"
 echo "  MS2       : 5x5, 6x6 baseline, 7x7"
 echo "  MeanShift : 4m, 8m baseline, 12m, 16m"
 echo "  fixed     : same FULL weights, same KF, merge radius=2m, iterations=3"
