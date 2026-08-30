@@ -9,7 +9,7 @@ EPOCHS="${EPOCHS:-60}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 # The six-architecture implementation uses Python-3-only syntax/features
-# (matrix @ operator, dataclasses, annotations, f-strings).  Do not silently
+# (matrix @ operator, dataclasses, annotations, f-strings). Do not silently
 # fall back to a system `python` that may still point to Python 2.x.
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   echo "ERROR: '$PYTHON_BIN' was not found. Set PYTHON_BIN to the Python 3 executable used by this project." >&2
@@ -23,7 +23,19 @@ if sys.version_info < (3, 7):
         "ERROR: six-architecture experiments require Python >= 3.7; got %s" %
         (sys.version.replace("\n", " "),)
     )
+
+try:
+    import torch
+except Exception as exc:
+    raise SystemExit("ERROR: failed to import PyTorch with this Python: %r" % (exc,))
+
 print("[preflight] Python:", sys.executable, sys.version.replace("\n", " "))
+print("[preflight] PyTorch:", torch.__version__)
+print("[preflight] CUDA available:", torch.cuda.is_available())
+print("[preflight] visible CUDA device count:", torch.cuda.device_count())
+
+if not torch.cuda.is_available():
+    raise SystemExit("ERROR: CUDA is not available to the selected Python/PyTorch environment.")
 PY
 
 "$PYTHON_BIN" -m py_compile six_architecture_model.py six_architecture_experiment.py
