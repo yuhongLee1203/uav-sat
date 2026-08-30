@@ -2,9 +2,15 @@
 set -euo pipefail
 
 # Fast inference-only estimator/decoder sensitivity sweep for v8r1.
-# IMPORTANT: these parameters do not require retraining the GRU.
-# Every case reuses the already-trained FULL v8r1 temporal checkpoint and only
-# evaluates Route-C / Route-B with different inference-time parameters.
+# These parameters do NOT require retraining the GRU.
+# Every case reuses the FULL v8r1 temporal checkpoint and only evaluates
+# Route-C / Route-B with different inference-time parameters.
+#
+# Checkpoint policy:
+#   1) prefer the completed/best FULL v8r1 checkpoint;
+#   2) if it does not exist yet, reuse the in-progress FULL v8r1 _latest.pt;
+#   3) never silently fall back to an old v8 checkpoint or a GRU ablation.
+#
 # Outputs stay isolated under output/<backbone>/parameter_ablation/<case>/.
 
 GROUP="${1:-all}"
@@ -32,7 +38,9 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   exit 2
 fi
 
-"${PYTHON_BIN}" -m py_compile config.py data.py visual_model.py visual_localizer.py robust_tracker_base.py robust_tracker.py train_multirate_a.py
+"${PYTHON_BIN}" -m py_compile \
+  config.py data.py visual_model.py visual_localizer.py \
+  robust_tracker_base.py robust_tracker.py train_multirate_a.py
 
 echo "FAST parameter ablation: eval-only, CPU threads=${CPU_THREADS}" >&2
 
@@ -78,7 +86,10 @@ except RuntimeError:
     pass
 
 tag = os.environ["UAVSAT_PARAMETER_TAG"].strip()
-if not tag or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for ch in tag):
+if not tag or any(
+    ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+    for ch in tag
+):
     raise SystemExit("ERROR: invalid UAVSAT_PARAMETER_TAG=%r" % tag)
 if config.GRU_ABLATION != "full":
     raise SystemExit("ERROR: parameter sweep must use full GRU")
@@ -87,14 +98,32 @@ if config.GRU_ABLATION != "full":
 shared_backbone_root = Path(config.BACKBONE_OUTPUT_DIR)
 shared_visual_checkpoint = Path(config.VISUAL_CHECKPOINT)
 shared_feature_cache = Path(config.FEATURE_CACHE_DIR)
-source_full_checkpoint = (
-    Path(config.CHECKPOINT_DIR)
+shared_checkpoint_dir = Path(config.CHECKPOINT_DIR)
+
+best_full_checkpoint = (
+    shared_checkpoint_dir
     / f"reference_prior_compact_gru_A_native_v8r1_full_{config.BACKBONE_KEY}.pt"
 )
-if not source_full_checkpoint.exists():
+latest_full_checkpoint = (
+    shared_checkpoint_dir
+    / f"reference_prior_compact_gru_A_native_v8r1_full_{config.BACKBONE_KEY}_latest.pt"
+)
+
+if best_full_checkpoint.exists():
+    source_full_checkpoint = best_full_checkpoint
+    checkpoint_kind = "best"
+elif latest_full_checkpoint.exists():
+    source_full_checkpoint = latest_full_checkpoint
+    checkpoint_kind = "latest/in-progress"
+else:
     raise SystemExit(
-        "ERROR: FULL v8r1 checkpoint not found: %s\n"
-        "Finish the GPU0/full run first, then rerun GPU6." % source_full_checkpoint
+        "ERROR: no FULL v8r1 checkpoint exists yet. Checked:\n"
+        "  %s\n"
+        "  %s\n"
+        "GPU6 needs a 512-d FULL-GRU v8r1 checkpoint; a 384-d GPU5 ablation "
+        "checkpoint cannot be substituted. Start/continue the full v8r1 run, "
+        "then rerun GPU6."
+        % (best_full_checkpoint, latest_full_checkpoint)
     )
 
 # Isolate outputs per parameter case, while keeping the frozen visual/cache shared.
@@ -107,16 +136,21 @@ config.CHECKPOINT_DIR = parameter_checkpoint_dir
 config.VISUAL_CHECKPOINT = shared_visual_checkpoint
 config.FEATURE_CACHE_DIR = shared_feature_cache
 
+# train_multirate_a.py/load_temporal_model expects the normal BEST filename.
+# If the source is _latest.pt, copy it under that expected destination name.
 destination_checkpoint = (
     parameter_checkpoint_dir
     / f"reference_prior_compact_gru_A_native_v8r1_full_{config.BACKBONE_KEY}.pt"
 )
-if (not destination_checkpoint.exists()
-        or destination_checkpoint.stat().st_size != source_full_checkpoint.stat().st_size
-        or destination_checkpoint.stat().st_mtime_ns < source_full_checkpoint.stat().st_mtime_ns):
+if (
+    not destination_checkpoint.exists()
+    or destination_checkpoint.stat().st_size != source_full_checkpoint.stat().st_size
+    or destination_checkpoint.stat().st_mtime_ns < source_full_checkpoint.stat().st_mtime_ns
+):
     shutil.copy2(source_full_checkpoint, destination_checkpoint)
 
 print("CPU THREAD LIMIT:", threads, flush=True)
+print("SOURCE CHECKPOINT KIND:", checkpoint_kind, flush=True)
 print("SOURCE FULL CHECKPOINT:", source_full_checkpoint, flush=True)
 print("ISOLATED OUTPUT ROOT:", parameter_root, flush=True)
 print("MODE: eval only", flush=True)
