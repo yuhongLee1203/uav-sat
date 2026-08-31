@@ -1,33 +1,34 @@
-"""One-frame-delayed autonomous six-architecture experiment.
+"""Autonomous reference-bank six-architecture experiment.
 
-Teacher-required temporal alignment
------------------------------------
-A target frame t is NOT finalized when frame t arrives.
+This version removes frame-aligned reference leakage and uses the same
+full centered 6x6 satellite search for every MeanShift stage.
 
-1. Frame t arrives -> autonomous reference selection -> full centered 6x6 M_t.
-   M_t is stored as a pending visual observation.
-2. Frame t+1 arrives -> autonomous reference selection from the previous
-   visual localization (no frame-aligned label) -> full centered 6x6 M_{t+1}.
-3. Only after M_{t+1} exists is frame t finalized.  The GRU temporal pair is
-   [z_t, z_{t+1}], while the coordinate being refined is the target-frame
-   coordinate from M_t.
-4. The final block order for target t follows the requested architecture.
-   Examples:
-       MKG: M_t -> K_t -> G([z_t,z_{t+1}]) -> Final(t)
-       MGK: M_t -> G([z_t,z_{t+1}]) -> K_t -> Final(t)
-5. Frame t+1 then becomes the next pending target.
-6. The final dataset frame is not scored because no t+1 look-ahead exists.
+Runtime rules
+-------------
+1. The current frame index is NEVER used to choose the SAT search center.
+2. A dense ordered reference bank is built only from the predefined route
+   waypoint polyline. No per-frame route label is used by the selector.
+3. The Kalman prior predicts the current search query from its previous
+   posterior. The selector chooses the nearest non-backtracking reference point
+   in the static route bank to that predicted query.
+4. Every architecture first performs a visual MeanShift (base MS):
+      selected reference -> full centered 6x6 (36 patches) -> similarity -> MS
+   All 36 satellite patches participate; there is no forward-only selection.
+   This always produces visual_position and visual_variance.
+5. If architecture symbol M is first, that symbol is exactly the base MS.
+   If M appears later, M means an additional correction MeanShift:
+      incoming stage XY -> full centered 6x6 (36 patches) -> MS correction.
+6. GRU is current-frame residual refinement only. Kalman is standard CV.
+7. Route-A labels are used only after inference for GRU supervision. B/C labels
+   are used only for metrics.
 
-Autonomous reference rule
--------------------------
-No current/future frame reference coordinate is used to open the SAT window.
-The first query is the planned-route start.  Thereafter the previous pending
-base MeanShift position is used to select the nearest non-backtracking point
-from the predefined ordered waypoint-polyline reference bank.  This avoids a
-circular dependency on Final(t), which by definition is unavailable until
-M_{t+1} has already been computed.
-
-Every MeanShift uses the full centered 6x6 = 36 satellite patches.
+Architectures after the common visual MS definition:
+  MKG: base centered 6x6 MS -> K -> G
+  MGK: base centered 6x6 MS -> G -> K
+  GMK: base centered 6x6 MS -> G -> centered 6x6 MS -> K
+  GKM: base centered 6x6 MS -> G -> K -> centered 6x6 MS (final correction)
+  KGM: base centered 6x6 MS -> K -> G -> centered 6x6 MS (final correction)
+  KMG: base centered 6x6 MS -> K -> centered 6x6 MS -> G
 """
 
 import argparse
@@ -46,8 +47,6 @@ from six_architecture_model import PositionRefinementGRU
 from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_only
 
 ARCH_CHOICES = ("MKG", "MGK", "GMK", "GKM", "KGM", "KMG")
-TEMPORAL_ALIGNMENT = "target_t_finalized_after_base_M_t_plus_1"
-LOOKAHEAD_FRAMES = 1
 
 
 def _xy_tensor(xy, device):
@@ -78,7 +77,7 @@ def _densify_polyline(points, spacing_m):
 
 
 class RouteReferenceBank:
-    """Ordered non-frame-aligned bank built only from planned route waypoints."""
+    """Ordered, non-frame-aligned reference bank from the waypoint polyline."""
 
     def __init__(self, route_name, visual, spacing_m):
         waypoint_xy = rt.load_waypoint_xy(
@@ -96,11 +95,12 @@ class RouteReferenceBank:
         local_index = int(np.linalg.norm(tail - query[None, :], axis=1).argmin())
         index = self.last_index + local_index
         self.last_index = max(self.last_index, index)
-        return self.xy[self.last_index].copy(), int(self.last_index)
+        ref_xy = self.xy[self.last_index].copy()
+        return ref_xy, int(self.last_index)
 
 
 class StandardXYKalman:
-    """Standard CV Kalman used only when the architecture contains K."""
+    """Standard CV Kalman: prior comes only from its own previous posterior."""
 
     def __init__(self, initial_xy):
         p = np.asarray(initial_xy, dtype=np.float64).reshape(2)
@@ -128,6 +128,9 @@ class StandardXYKalman:
             float(config.KALMAN_Q_VELOCITY),
         ])
 
+    def predicted_position(self):
+        return (self.F @ self.x)[:2].copy()
+
     def step(self, measurement_xy, variance_xy):
         self.x = self.F @ self.x
         self.P = self.F @ self.P @ self.F.T + self.Q
@@ -137,17 +140,17 @@ class StandardXYKalman:
         R = np.diag(np.maximum(var, base_r))
         innovation = z - self.H @ self.x
         S = self.H @ self.P @ self.H.T + R
-        gain = self.P @ self.H.T @ np.linalg.pinv(S)
-        self.x = self.x + gain @ innovation
-        eye = np.eye(4, dtype=np.float64)
-        ikh = eye - gain @ self.H
-        self.P = ikh @ self.P @ ikh.T + gain @ R @ gain.T
+        K = self.P @ self.H.T @ np.linalg.pinv(S)
+        self.x = self.x + K @ innovation
+        I = np.eye(4, dtype=np.float64)
+        IKH = I - K @ self.H
+        self.P = IKH @ self.P @ IKH.T + K @ R @ K.T
         return self.x[:2].copy()
 
 
 @torch.no_grad()
 def centered_visual_meanshift(visual, uav_clip, center_xy):
-    """Full centered 6x6 search; all 36 candidates participate in MeanShift."""
+    """Full centered 6x6 visual search; all 36 patches participate in MS."""
     batch = visual.candidate_batch(
         uav_clip=uav_clip,
         center_xy=_xy_tensor(center_xy, visual.device),
@@ -161,12 +164,17 @@ def centered_visual_meanshift(visual, uav_clip, center_xy):
         batch.raw_logits / float(config.MEANSHIFT_SCORE_TAU), dim=1
     )
     diff = batch.centers - batch.softms_xy[:, None, :]
-    variance = (prob[:, :, None] * diff.square()).sum(dim=1).clamp_min(1e-3)
+    variance = (
+        prob[:, :, None] * diff.square()
+    ).sum(dim=1).clamp_min(1e-3)
     return {
         "xy": batch.softms_xy,
         "variance": variance,
         "support": batch.softms_support,
         "z_uav": batch.z_uav,
+        "centers": batch.centers,
+        "logits": batch.raw_logits,
+        "mode_count": batch.softms_mode_count,
         "candidate_count": int(batch.centers.shape[1]),
     }
 
@@ -179,17 +187,16 @@ def _make_state(route_name, visual, spacing_m):
         "kalman": StandardXYKalman(start_xy),
         "reference_bank": RouteReferenceBank(route_name, visual, spacing_m),
         "hidden": None,
-        "route_start_xy": np.asarray(start_xy, dtype=np.float64).reshape(2),
+        "previous_z": None,
     }
 
 
-def _apply_g_pair(model, xy, variance, target_z, lookahead_z, state):
-    """Refine target t using the visual pair [z_t, z_{t+1}]."""
+def _apply_g(model, xy, variance, z_uav, state):
     out = model.forward_step(
         stage_xy=xy,
         variance_xy=variance,
-        z_uav=lookahead_z,
-        previous_z_uav=target_z,
+        z_uav=z_uav,
+        previous_z_uav=state["previous_z"],
         hidden=state["hidden"],
     )
     state["hidden"] = out.hidden
@@ -204,69 +211,41 @@ def _apply_k(state, xy, variance, device):
     return _xy_tensor(filtered, device)
 
 
-def _prepare_autonomous_visual(visual, uav_clip, state, query_xy):
-    """Select a route-bank reference without any frame-aligned label, then run M."""
-    selected_ref_xy, selected_ref_index = state["reference_bank"].select(query_xy)
-    base = centered_visual_meanshift(visual, uav_clip, selected_ref_xy)
-    return {
-        "uav_clip": uav_clip,
-        "base": base,
-        "selection_query_xy": np.asarray(query_xy, dtype=np.float64).reshape(2).copy(),
-        "selected_ref_xy": np.asarray(selected_ref_xy, dtype=np.float64).reshape(2).copy(),
-        "selected_ref_index": int(selected_ref_index),
-    }
-
-
-def _next_autonomous_query(pending):
-    """Causal query for frame t+1 from model-derived M_t only."""
-    return (
-        pending["base"]["xy"][0]
-        .detach()
-        .cpu()
-        .numpy()
-        .astype(np.float64)
+def forward_frame(arch, model, visual, uav_clip, state, device):
+    """No frame label is accepted by this function; search is autonomous."""
+    predicted_query = state["kalman"].predicted_position()
+    selected_ref_xy, selected_ref_index = state["reference_bank"].select(
+        predicted_query
     )
 
-
-def finalize_pending(arch, model, visual, pending, lookahead, state, device):
-    """Finalize target frame t only after base M for frame t+1 exists."""
-    stage_xy = pending["base"]["xy"]
-    variance = pending["base"]["variance"]
-    target_z = pending["base"]["z_uav"]
-    lookahead_z = lookahead["base"]["z_uav"]
-
+    # Every architecture starts from the same visual observation:
+    # selected reference point -> full centered 6x6 -> all 36 scored -> MeanShift.
+    base = centered_visual_meanshift(visual, uav_clip, selected_ref_xy)
+    stage_xy = base["xy"]
+    variance = base["variance"]
+    z_uav = base["z_uav"]
     trace = {
-        "selection_query_xy": pending["selection_query_xy"],
-        "selected_ref_xy": pending["selected_ref_xy"],
-        "selected_ref_index": pending["selected_ref_index"],
+        "predicted_query_xy": predicted_query,
+        "selected_ref_xy": selected_ref_xy,
+        "selected_ref_index": selected_ref_index,
         "base_ms_xy": stage_xy,
-        "base_ms_support": pending["base"]["support"],
-        "base_ms_candidate_count": pending["base"]["candidate_count"],
-        "lookahead_base_ms_xy": lookahead["base"]["xy"],
-        "lookahead_selected_ref_xy": lookahead["selected_ref_xy"],
-        "lookahead_selected_ref_index": lookahead["selected_ref_index"],
+        "base_ms_support": base["support"],
+        "base_ms_candidate_count": base["candidate_count"],
     }
     gru_out = None
 
     symbols = arch[1:] if arch[0] == "M" else arch
     for symbol in symbols:
         if symbol == "M":
-            correction = centered_visual_meanshift(
-                visual, pending["uav_clip"], stage_xy
-            )
+            correction = centered_visual_meanshift(visual, uav_clip, stage_xy)
             stage_xy = correction["xy"]
             variance = correction["variance"]
             trace["center_ms_xy"] = stage_xy
             trace["center_ms_support"] = correction["support"]
             trace["center_ms_candidate_count"] = correction["candidate_count"]
         elif symbol == "G":
-            stage_xy, gru_out = _apply_g_pair(
-                model,
-                stage_xy,
-                variance,
-                target_z,
-                lookahead_z,
-                state,
+            stage_xy, gru_out = _apply_g(
+                model, stage_xy, variance, z_uav, state
             )
             trace["gru_xy"] = stage_xy
         elif symbol == "K":
@@ -275,31 +254,26 @@ def finalize_pending(arch, model, visual, pending, lookahead, state, device):
         else:
             raise ValueError("unknown architecture symbol: %s" % symbol)
 
+    state["previous_z"] = z_uav.detach()
     return stage_xy, variance, gru_out, trace
 
 
 def _checkpoint_path(arch):
     return (
         Path(config.CHECKPOINT_DIR)
-        / (
-            "six_autoref_delay1_center6x6_%s_%s.pt"
-            % (arch.lower(), config.BACKBONE_KEY)
-        )
+        / ("six_autoref_center6x6_%s_%s.pt" % (arch.lower(), config.BACKBONE_KEY))
     )
 
 
 def _output_dir(arch):
     return (
         Path(config.BACKBONE_OUTPUT_DIR)
-        / "six_architecture_autonomous_reference_delay1_center6x6"
+        / "six_architecture_autonomous_reference_center6x6"
         / arch.lower()
     )
 
 
 def train_architecture(arch, visual, route_a, device, epochs, lr, tbptt, spacing_m):
-    if len(route_a) < 2:
-        raise RuntimeError("one-frame delayed training requires at least 2 frames")
-
     model = PositionRefinementGRU(
         feature_dim=int(getattr(config, "RNN_FEATURE_DIM", 128)),
         hidden_dim=int(getattr(config, "RNN_HIDDEN_DIM", 256)),
@@ -321,42 +295,19 @@ def train_architecture(arch, visual, route_a, device, epochs, lr, tbptt, spacing
         chunk_count = 0
         epoch_losses = []
 
-        first_uav = route_a.uav_clip[0:1].to(device).float()
-        pending = _prepare_autonomous_visual(
-            visual, first_uav, state, state["route_start_xy"]
-        )
-
-        for lookahead_index in range(1, len(route_a)):
-            lookahead_uav = (
-                route_a.uav_clip[lookahead_index:lookahead_index + 1]
-                .to(device)
-                .float()
-            )
-            lookahead = _prepare_autonomous_visual(
-                visual,
-                lookahead_uav,
-                state,
-                _next_autonomous_query(pending),
-            )
-
-            target_index = lookahead_index - 1
-            _, _, gru_out, _ = finalize_pending(
-                arch, model, visual, pending, lookahead, state, device
+        for index in range(len(route_a)):
+            uav_clip = route_a.uav_clip[index:index+1].to(device).float()
+            _, _, gru_out, _ = forward_frame(
+                arch, model, visual, uav_clip, state, device
             )
             if gru_out is None:
                 raise RuntimeError("architecture %s did not execute GRU" % arch)
-
-            target_xy = (
-                route_a.gt_xy[target_index:target_index + 1]
-                .to(device)
-                .float()
-            )
+            target_xy = route_a.gt_xy[index:index+1].to(device).float()
             loss = F.smooth_l1_loss(gru_out.corrected_xy, target_xy)
             chunk_loss = loss if chunk_loss is None else chunk_loss + loss
             chunk_count += 1
 
-            is_last = lookahead_index == len(route_a) - 1
-            if chunk_count >= int(tbptt) or is_last:
+            if chunk_count >= int(tbptt) or index == len(route_a) - 1:
                 normalized = chunk_loss / float(chunk_count)
                 normalized.backward()
                 torch.nn.utils.clip_grad_norm_(
@@ -367,45 +318,33 @@ def train_architecture(arch, visual, route_a, device, epochs, lr, tbptt, spacing
                 epoch_losses.append(float(normalized.detach().cpu()))
                 if state["hidden"] is not None:
                     state["hidden"] = state["hidden"].detach()
+                if state["previous_z"] is not None:
+                    state["previous_z"] = state["previous_z"].detach()
                 chunk_loss = None
                 chunk_count = 0
-
-            pending = lookahead
 
         mean_loss = float(np.mean(epoch_losses)) if epoch_losses else float("inf")
         if mean_loss < best_loss:
             best_loss = mean_loss
             best_state = {
-                key: value.detach().cpu().clone()
-                for key, value in model.state_dict().items()
+                k: v.detach().cpu().clone() for k, v in model.state_dict().items()
             }
             _checkpoint_path(arch).parent.mkdir(parents=True, exist_ok=True)
-            torch.save(
-                {
-                    "architecture": arch,
-                    "model": best_state,
-                    "epoch": epoch,
-                    "train_loss": best_loss,
-                    "reference_mode": (
-                        "autonomous ordered route bank; next query from previous "
-                        "base visual MeanShift"
-                    ),
-                    "reference_bank_spacing_m": float(spacing_m),
-                    "frame_aligned_reference_prior": False,
-                    "temporal_alignment": TEMPORAL_ALIGNMENT,
-                    "lookahead_frames": LOOKAHEAD_FRAMES,
-                    "target_finalized_on_next_frame": True,
-                    "gru_visual_pair": "[z_t, z_t_plus_1]",
-                    "meanshift_candidate_count": 36,
-                    "forward_search": False,
-                    "train_routes": ["route_A"],
-                },
-                _checkpoint_path(arch),
-            )
-
+            torch.save({
+                "architecture": arch,
+                "model": best_state,
+                "epoch": epoch,
+                "train_loss": best_loss,
+                "reference_mode": "autonomous waypoint-polyline reference bank",
+                "reference_bank_spacing_m": float(spacing_m),
+                "frame_aligned_reference_prior": False,
+                "visual_position": "always full centered 6x6 MeanShift",
+                "meanshift_candidate_count": 36,
+                "forward_search": False,
+                "train_routes": ["route_A"],
+            }, _checkpoint_path(arch))
         print(
-            "[%s-autoref-delay1-center6x6] epoch=%03d/%d "
-            "train_position_loss=%.6f best=%.6f"
+            "[%s-autoref-center6x6] epoch=%03d/%d train_position_loss=%.6f best=%.6f"
             % (arch, epoch, epochs, mean_loss, best_loss),
             flush=True,
         )
@@ -421,13 +360,8 @@ def load_architecture(arch, device):
     if not path.exists():
         raise FileNotFoundError(path)
     payload = torch.load(path, map_location="cpu")
-    if payload.get("meanshift_candidate_count") != 36:
-        raise RuntimeError("checkpoint is not full centered 6x6")
-    if payload.get("temporal_alignment") != TEMPORAL_ALIGNMENT:
-        raise RuntimeError("checkpoint is not the one-frame delayed experiment")
-    if payload.get("frame_aligned_reference_prior") is not False:
-        raise RuntimeError("checkpoint is not autonomous")
-
+    if payload.get("meanshift_candidate_count") != 36 or payload.get("forward_search") is not False:
+        raise RuntimeError("checkpoint is not from the full centered 6x6 MeanShift experiment")
     model = PositionRefinementGRU(
         feature_dim=int(getattr(config, "RNN_FEATURE_DIM", 128)),
         hidden_dim=int(getattr(config, "RNN_HIDDEN_DIM", 256)),
@@ -440,9 +374,6 @@ def load_architecture(arch, device):
 
 @torch.no_grad()
 def evaluate_architecture(arch, visual, model, route_name, cache, device, spacing_m):
-    if len(cache) < 2:
-        raise RuntimeError("one-frame delayed evaluation requires at least 2 frames")
-
     model.eval()
     state = _make_state(route_name, visual, spacing_m)
     rows = []
@@ -450,44 +381,16 @@ def evaluate_architecture(arch, visual, model, route_name, cache, device, spacin
     search_errors = []
     base_ms_errors = []
 
-    first_uav = cache.uav_clip[0:1].to(device).float()
-    pending = _prepare_autonomous_visual(
-        visual, first_uav, state, state["route_start_xy"]
-    )
-
-    for lookahead_index in range(1, len(cache)):
-        lookahead_uav = (
-            cache.uav_clip[lookahead_index:lookahead_index + 1]
-            .to(device)
-            .float()
+    for index in range(len(cache)):
+        uav_clip = cache.uav_clip[index:index+1].to(device).float()
+        final_xy_t, variance, _, trace = forward_frame(
+            arch, model, visual, uav_clip, state, device
         )
-        lookahead = _prepare_autonomous_visual(
-            visual,
-            lookahead_uav,
-            state,
-            _next_autonomous_query(pending),
-        )
-
-        target_index = lookahead_index - 1
-        final_xy_t, variance, _, trace = finalize_pending(
-            arch, model, visual, pending, lookahead, state, device
-        )
-
-        reference_xy = (
-            cache.gt_xy[target_index].cpu().numpy().astype(np.float64)
-        )
-        final_xy = (
-            final_xy_t[0].detach().cpu().numpy().astype(np.float64)
-        )
-        base_ms_xy = (
-            trace["base_ms_xy"][0].detach().cpu().numpy().astype(np.float64)
-        )
-        selected_ref_xy = np.asarray(
-            trace["selected_ref_xy"], dtype=np.float64
-        )
-        selection_query = np.asarray(
-            trace["selection_query_xy"], dtype=np.float64
-        )
+        reference_xy = cache.gt_xy[index].cpu().numpy().astype(np.float64)
+        final_xy = final_xy_t[0].detach().cpu().numpy().astype(np.float64)
+        base_ms_xy = trace["base_ms_xy"][0].detach().cpu().numpy().astype(np.float64)
+        selected_ref_xy = np.asarray(trace["selected_ref_xy"], dtype=np.float64)
+        predicted_query = np.asarray(trace["predicted_query_xy"], dtype=np.float64)
 
         final_error = float(np.linalg.norm(final_xy - reference_xy))
         search_error = float(np.linalg.norm(selected_ref_xy - reference_xy))
@@ -497,14 +400,12 @@ def evaluate_architecture(arch, visual, model, route_name, cache, device, spacin
         base_ms_errors.append(base_error)
 
         row = {
-            "target_frame_id": int(cache.frame_ids[target_index]),
-            "lookahead_frame_id": int(cache.frame_ids[lookahead_index]),
-            "target_image_path": cache.image_paths[target_index],
-            "lookahead_image_path": cache.image_paths[lookahead_index],
+            "frame_id": int(cache.frame_ids[index]),
+            "image_path": cache.image_paths[index],
             "reference_x": float(reference_xy[0]),
             "reference_y": float(reference_xy[1]),
-            "selection_query_x": float(selection_query[0]),
-            "selection_query_y": float(selection_query[1]),
+            "predicted_query_x": float(predicted_query[0]),
+            "predicted_query_y": float(predicted_query[1]),
             "selected_ref_index": int(trace["selected_ref_index"]),
             "selected_ref_x": float(selected_ref_xy[0]),
             "selected_ref_y": float(selected_ref_xy[1]),
@@ -523,95 +424,62 @@ def evaluate_architecture(arch, visual, model, route_name, cache, device, spacin
             if name in trace:
                 row[name + "_x"] = float(trace[name][0, 0])
                 row[name + "_y"] = float(trace[name][0, 1])
+        if "center_ms_candidate_count" in trace:
+            row["center_ms_candidate_count"] = int(trace["center_ms_candidate_count"])
         rows.append(row)
-
         if state["hidden"] is not None:
             state["hidden"] = state["hidden"].detach()
-        pending = lookahead
 
     outdir = _output_dir(arch)
     outdir.mkdir(parents=True, exist_ok=True)
-    csv_path = outdir / (
-        "%s_%s_autoref_delay1_center6x6_frames.csv"
-        % (route_name, arch.lower())
-    )
+    csv_path = outdir / ("%s_%s_autoref_center6x6_frames.csv" % (route_name, arch.lower()))
     fields = []
     for row in rows:
         for key in row:
             if key not in fields:
                 fields.append(key)
-    with csv_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
 
     summary = rt.metric_summary(final_errors)
-    summary.update(
-        {
-            "Architecture": arch,
-            "Route": route_name,
-            "SearchReferenceMLE_m": float(np.mean(search_errors)),
-            "BaseVisualMS_MLE_m": float(np.mean(base_ms_errors)),
-            "EvaluatedTargetFrames": len(rows),
-            "DroppedLastFrameWithoutLookahead": True,
-            "TemporalAlignment": TEMPORAL_ALIGNMENT,
-            "LookaheadFrames": LOOKAHEAD_FRAMES,
-            "GRUVisualPair": "[z_t, z_t_plus_1]",
-            "CSV": str(csv_path),
-            "ReferenceUsage": (
-                "no frame-aligned lookup; first query is route start, then "
-                "previous base visual MS selects the ordered route-bank reference"
-            ),
-            "FrameAlignedReferencePrior": False,
-            "ReferenceBankSpacing_m": float(spacing_m),
-            "MeanShiftCandidateCount": 36,
-            "ForwardSearch": False,
-        }
-    )
+    summary.update({
+        "Architecture": arch,
+        "Route": route_name,
+        "SearchReferenceMLE_m": float(np.mean(search_errors)),
+        "BaseVisualMS_MLE_m": float(np.mean(base_ms_errors)),
+        "CSV": str(csv_path),
+        "ReferenceUsage": (
+            "waypoint-polyline static bank selected from causal Kalman prediction; "
+            "no current-frame reference lookup"
+        ),
+        "FrameAlignedReferencePrior": False,
+        "ReferenceBankSpacing_m": float(spacing_m),
+        "VisualPosition": "always full centered 6x6 MeanShift; variance centered on MS observation",
+        "BaseMS": "selected reference center -> full centered 6x6 (36 patches) -> MeanShift",
+        "CorrectionMS": "every later M: full centered 6x6 (36 patches) around incoming stage -> MeanShift",
+        "MeanShiftCandidateCount": 36,
+        "ForwardSearch": False,
+    })
     return summary
 
 
 def build_cache(route_name, visual, device):
     idx = config.ROUTE_NAMES.index(route_name)
-    return rt.build_route_cache(
-        route_name, config.ROUTE_ROOTS[idx], visual, device
-    )
+    return rt.build_route_cache(route_name, config.ROUTE_ROOTS[idx], visual, device)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--mode",
-        choices=("prepare-visual", "train", "eval", "train-eval"),
-        default="train-eval",
-    )
+    parser.add_argument("--mode", choices=("prepare-visual", "train", "eval", "train-eval"), default="train-eval")
     parser.add_argument("--arch", choices=ARCH_CHOICES)
     parser.add_argument("--device", default="cuda:0")
-    parser.add_argument(
-        "--epochs",
-        type=int,
-        default=int(getattr(config, "TEMPORAL_EPOCHS", 60)),
-    )
-    parser.add_argument(
-        "--lr",
-        type=float,
-        default=float(getattr(config, "TEMPORAL_LR", 3e-4)),
-    )
-    parser.add_argument(
-        "--tbptt",
-        type=int,
-        default=int(getattr(config, "TBPTT_STEPS", 32)),
-    )
-    parser.add_argument(
-        "--visual-epochs",
-        type=int,
-        default=int(getattr(config, "VISUAL_EPOCHS", 20)),
-    )
-    parser.add_argument(
-        "--jitter-m",
-        type=float,
-        default=float(getattr(config, "LOCAL_PRIOR_JITTER_M", 12.0)),
-    )
+    parser.add_argument("--epochs", type=int, default=int(getattr(config, "TEMPORAL_EPOCHS", 60)))
+    parser.add_argument("--lr", type=float, default=float(getattr(config, "TEMPORAL_LR", 3e-4)))
+    parser.add_argument("--tbptt", type=int, default=int(getattr(config, "TBPTT_STEPS", 32)))
+    parser.add_argument("--visual-epochs", type=int, default=int(getattr(config, "VISUAL_EPOCHS", 20)))
+    parser.add_argument("--jitter-m", type=float, default=float(getattr(config, "LOCAL_PRIOR_JITTER_M", 12.0)))
     parser.add_argument("--reference-spacing-m", type=float, default=5.0)
     args = parser.parse_args()
 
@@ -626,7 +494,6 @@ def main():
             resume=False,
         )
         return
-
     if args.arch is None:
         raise SystemExit("--arch is required")
     if not config.VISUAL_CHECKPOINT.exists():
@@ -634,61 +501,38 @@ def main():
 
     visual = FrozenVisualLocalizer(device)
     model = None
-
     if args.mode in ("train", "train-eval"):
         route_a = build_cache("route_A", visual, device)
         model = train_architecture(
-            args.arch,
-            visual,
-            route_a,
-            device,
-            args.epochs,
-            args.lr,
-            args.tbptt,
-            args.reference_spacing_m,
+            args.arch, visual, route_a, device,
+            args.epochs, args.lr, args.tbptt, args.reference_spacing_m,
         )
-
     if args.mode in ("eval", "train-eval"):
         if model is None:
             model = load_architecture(args.arch, device)
-
         results = {
             "architecture": args.arch,
             "train_route": "route_A",
             "test_routes": ["route_B", "route_C"],
-            "reference_mode": (
-                "autonomous ordered route bank; previous base MS selects next "
-                "reference"
-            ),
+            "reference_mode": "autonomous waypoint-polyline reference bank",
             "frame_aligned_reference_prior": False,
-            "temporal_alignment": TEMPORAL_ALIGNMENT,
-            "lookahead_frames": LOOKAHEAD_FRAMES,
-            "target_finalized_on_next_frame": True,
-            "gru_visual_pair": "[z_t, z_t_plus_1]",
             "meanshift_search": "full centered 6x6 for every MS stage",
             "meanshift_candidate_count": 36,
             "forward_search": False,
             "results": {},
         }
-
         for route_name in ("route_B", "route_C"):
             cache = build_cache(route_name, visual, device)
             summary = evaluate_architecture(
-                args.arch,
-                visual,
-                model,
-                route_name,
-                cache,
-                device,
+                args.arch, visual, model, route_name, cache, device,
                 args.reference_spacing_m,
             )
             results["results"][route_name] = summary
             print(json.dumps(summary, ensure_ascii=False), flush=True)
-
         outdir = _output_dir(args.arch)
         outdir.mkdir(parents=True, exist_ok=True)
-        with (outdir / "summary.json").open("w", encoding="utf-8") as handle:
-            json.dump(results, handle, indent=2, ensure_ascii=False)
+        with (outdir / "summary.json").open("w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
 
 
 if __name__ == "__main__":
