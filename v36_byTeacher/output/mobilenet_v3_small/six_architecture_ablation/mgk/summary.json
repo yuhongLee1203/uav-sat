@@ -1,0 +1,46 @@
+{
+  "architecture": "MGK",
+  "train_route": "route_A",
+  "test_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "results": {
+    "route_B": {
+      "MLE_m": 4.87283953043912,
+      "MedLE_m": 4.073270607973858,
+      "P90_m": 9.665903267616489,
+      "P95_m": 11.875185376754827,
+      "P99_m": 14.89668262462035,
+      "CVaR90_m": 12.24127050538145,
+      "LSR@5_pct": 60.41300527240774,
+      "LSR@10_pct": 90.81722319859402,
+      "LSR@15_pct": 99.07732864674868,
+      "LSR@20_pct": 100.0,
+      "Architecture": "MGK",
+      "Route": "route_B",
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/six_architecture_ablation/mgk/route_B_mgk_frames.csv",
+      "ReferenceUsage": "opens initial local support and provides offline supervision/metrics only",
+      "GRU": "current-frame position refinement; no previous-final input; no polynomial motion feedback",
+      "Kalman": "standard CV KF; prior from its own previous posterior"
+    },
+    "route_C": {
+      "MLE_m": 3.930100938500625,
+      "MedLE_m": 3.187118930262181,
+      "P90_m": 7.886118667772219,
+      "P95_m": 9.94542942614087,
+      "P99_m": 12.724164348293304,
+      "CVaR90_m": 10.343563589238435,
+      "LSR@5_pct": 73.52941176470588,
+      "LSR@10_pct": 95.1510333863275,
+      "LSR@15_pct": 99.76152623211448,
+      "LSR@20_pct": 100.0,
+      "Architecture": "MGK",
+      "Route": "route_C",
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/six_architecture_ablation/mgk/route_C_mgk_frames.csv",
+      "ReferenceUsage": "opens initial local support and provides offline supervision/metrics only",
+      "GRU": "current-frame position refinement; no previous-final input; no polynomial motion feedback",
+      "Kalman": "standard CV KF; prior from its own previous posterior"
+    }
+  }
+}
