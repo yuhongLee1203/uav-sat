@@ -1,0 +1,62 @@
+{
+  "architecture": "GKM",
+  "train_route": "route_A",
+  "test_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "reference_mode": "frame-aligned reference XY direct search center",
+  "frame_aligned_reference_prior": true,
+  "reference_bank_used_for_search": false,
+  "meanshift_search": "full centered 6x6 for every MS stage",
+  "meanshift_candidate_count": 36,
+  "forward_search": false,
+  "results": {
+    "route_B": {
+      "MLE_m": 10.926029655969502,
+      "MedLE_m": 9.95043470481498,
+      "P90_m": 19.622284224400737,
+      "P95_m": 22.282108556326737,
+      "P99_m": 26.130854990013958,
+      "CVaR90_m": 22.67105611138169,
+      "LSR@5_pct": 16.95957820738137,
+      "LSR@10_pct": 50.26362038664324,
+      "LSR@15_pct": 75.52724077328647,
+      "LSR@20_pct": 90.99297012302284,
+      "Architecture": "GKM",
+      "Route": "route_B",
+      "SearchCenterMLE_m": 0.0,
+      "BaseVisualMS_MLE_m": 6.550177711806255,
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/six_architecture_gt_center_center6x6/gkm/route_B_gkm_gtcenter_center6x6_frames.csv",
+      "ReferenceUsage": "current-frame reference XY directly centers local SAT search",
+      "FrameAlignedReferencePrior": true,
+      "ReferenceBankUsedForSearch": false,
+      "VisualPosition": "always full centered 6x6 MeanShift; variance centered on MS observation",
+      "MeanShiftCandidateCount": 36,
+      "ForwardSearch": false
+    },
+    "route_C": {
+      "MLE_m": 10.23320489165494,
+      "MedLE_m": 8.735009816750724,
+      "P90_m": 20.193000963274642,
+      "P95_m": 21.687660972962103,
+      "P99_m": 25.53496740188756,
+      "CVaR90_m": 22.399784509692395,
+      "LSR@5_pct": 19.71383147853736,
+      "LSR@10_pct": 60.651828298887125,
+      "LSR@15_pct": 77.50397456279809,
+      "LSR@20_pct": 89.0302066772655,
+      "Architecture": "GKM",
+      "Route": "route_C",
+      "SearchCenterMLE_m": 0.0,
+      "BaseVisualMS_MLE_m": 6.0345389904671265,
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/six_architecture_gt_center_center6x6/gkm/route_C_gkm_gtcenter_center6x6_frames.csv",
+      "ReferenceUsage": "current-frame reference XY directly centers local SAT search",
+      "FrameAlignedReferencePrior": true,
+      "ReferenceBankUsedForSearch": false,
+      "VisualPosition": "always full centered 6x6 MeanShift; variance centered on MS observation",
+      "MeanShiftCandidateCount": 36,
+      "ForwardSearch": false
+    }
+  }
+}
