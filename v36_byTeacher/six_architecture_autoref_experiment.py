@@ -1,6 +1,7 @@
 """Autonomous reference-bank six-architecture experiment.
 
-This version removes frame-aligned reference leakage.
+This version removes frame-aligned reference leakage and uses the same
+full centered 6x6 satellite search for every MeanShift stage.
 
 Runtime rules
 -------------
@@ -10,23 +11,24 @@ Runtime rules
 3. The Kalman prior predicts the current search query from its previous
    posterior. The selector chooses the nearest non-backtracking reference point
    in the static route bank to that predicted query.
-4. Every architecture first performs a visual MeanShift (base MS1):
-      selected reference -> centered 6x6 lattice -> nearest forward 3x6 -> MS
+4. Every architecture first performs a visual MeanShift (base MS):
+      selected reference -> full centered 6x6 (36 patches) -> similarity -> MS
+   All 36 satellite patches participate; there is no forward-only selection.
    This always produces visual_position and visual_variance.
-5. If architecture symbol M is first, that symbol is exactly the base MS1.
+5. If architecture symbol M is first, that symbol is exactly the base MS.
    If M appears later, M means an additional correction MeanShift:
-      incoming stage XY -> full centered 6x6 -> MS2 corrected XY + variance.
+      incoming stage XY -> full centered 6x6 (36 patches) -> MS correction.
 6. GRU is current-frame residual refinement only. Kalman is standard CV.
 7. Route-A labels are used only after inference for GRU supervision. B/C labels
    are used only for metrics.
 
 Architectures after the common visual MS definition:
-  MKG: base MS -> K -> G
-  MGK: base MS -> G -> K
-  GMK: base MS -> G -> centered MS -> K
-  GKM: base MS -> G -> K -> centered MS (final MS correction)
-  KGM: base MS -> K -> G -> centered MS (final MS correction)
-  KMG: base MS -> K -> centered MS -> G
+  MKG: base centered 6x6 MS -> K -> G
+  MGK: base centered 6x6 MS -> G -> K
+  GMK: base centered 6x6 MS -> G -> centered 6x6 MS -> K
+  GKM: base centered 6x6 MS -> G -> K -> centered 6x6 MS (final correction)
+  KGM: base centered 6x6 MS -> K -> G -> centered 6x6 MS (final correction)
+  KMG: base centered 6x6 MS -> K -> centered 6x6 MS -> G
 """
 
 import argparse
@@ -94,16 +96,7 @@ class RouteReferenceBank:
         index = self.last_index + local_index
         self.last_index = max(self.last_index, index)
         ref_xy = self.xy[self.last_index].copy()
-
-        if self.last_index + 1 < len(self.xy):
-            tangent = self.xy[self.last_index + 1] - self.xy[self.last_index]
-        else:
-            tangent = self.xy[self.last_index] - self.xy[self.last_index - 1]
-        if float(np.linalg.norm(tangent)) < 1e-9:
-            heading = 0.0
-        else:
-            heading = float(math.atan2(tangent[1], tangent[0]))
-        return ref_xy, int(self.last_index), heading
+        return ref_xy, int(self.last_index)
 
 
 class StandardXYKalman:
@@ -155,111 +148,35 @@ class StandardXYKalman:
         return self.x[:2].copy()
 
 
-def _nearest_forward_3x6(full_centers, center_xy, heading_rad):
-    """Center-adjacent forward 3x6: 0,+1,+2 or 0,-1,-2 along heading axis."""
-    relative = full_centers - center_xy[:, None, :]
-    headings = torch.as_tensor(
-        heading_rad, dtype=relative.dtype, device=relative.device
-    ).reshape(-1)
-    if headings.numel() == 1 and relative.shape[0] > 1:
-        headings = headings.expand(relative.shape[0])
-    if headings.numel() != relative.shape[0]:
-        raise ValueError("heading count must match batch size")
-
-    c = torch.cos(headings)
-    s = torch.sin(headings)
-    use_x = c.abs() >= s.abs()
-    sign_x = torch.where(c >= 0, torch.ones_like(c), -torch.ones_like(c))
-    sign_y = torch.where(s >= 0, torch.ones_like(s), -torch.ones_like(s))
-    primary = torch.where(
-        use_x[:, None],
-        relative[:, :, 0] * sign_x[:, None],
-        relative[:, :, 1] * sign_y[:, None],
-    )
-    secondary = torch.where(
-        use_x[:, None], relative[:, :, 1], relative[:, :, 0]
-    )
-    forward_mask = primary >= -1e-4
-    keep = int(getattr(config, "MS1_CANDIDATE_COUNT", 18))
-    if not bool(torch.all(forward_mask.sum(dim=1) >= keep)):
-        raise RuntimeError("6x6 grid does not contain enough forward candidates")
-
-    huge = torch.full_like(primary, 1e9)
-    cost = torch.where(forward_mask, primary.abs(), huge)
-    local = torch.topk(cost, k=keep, dim=1, largest=False, sorted=False).indices
-    p = torch.gather(primary, 1, local)
-    q = torch.gather(secondary, 1, local)
-    order = torch.argsort(p * 1000.0 + q, dim=1)
-    return torch.gather(local, 1, order)
-
-
 @torch.no_grad()
-def base_visual_meanshift(visual, uav_clip, center_xy, heading_rad):
-    """Base visual localization: 6x6 geometry -> nearest forward 3x6 -> MS."""
-    center_xy = _xy_tensor(center_xy, visual.device)
-    full_indices = rt.regular_grid_indices(
-        visual.gallery["xy"],
-        visual.gallery["pixel"],
-        visual.pixel_index,
-        center_xy,
-        6,
-        config.SAT_STRIDE,
-        visual.device,
-    )
-    full_centers = visual.gallery["xy"][full_indices]
-    local = _nearest_forward_3x6(
-        full_centers,
-        center_xy,
-        torch.tensor([heading_rad], dtype=torch.float32, device=visual.device),
-    )
-    indices = torch.gather(full_indices, 1, local)
-    centers = visual.gallery["xy"][indices]
-    sat_clip = visual.gallery["clip_feat"][indices]
-
-    z_uav = visual.model.encode_uav_from_clip(uav_clip)
-    z_sat = visual.model.encode_sat_from_clip(
-        sat_clip.reshape(-1, sat_clip.shape[-1]),
-        centers.reshape(-1, 2),
-    ).reshape(centers.shape[0], centers.shape[1], -1)
-    logits = visual.model.logit_scale.exp().clamp(max=100.0) * (
-        z_uav[:, None] * z_sat
-    ).sum(dim=2)
-    prob = torch.softmax(logits / float(config.MEANSHIFT_SCORE_TAU), dim=1)
-    ms_xy, support, _, _, mode_weights, _ = rt.soft_mean_shift(
-        logits,
-        centers,
-        config.MEANSHIFT_SCORE_TAU,
-        config.MEANSHIFT_BANDWIDTH_M,
-        config.MEANSHIFT_ITERATIONS,
-        config.MEANSHIFT_MODE_BETA,
-    )
-    diff = centers - ms_xy[:, None, :]
-    variance = (prob[:, :, None] * diff.square()).sum(dim=1).clamp_min(1e-3)
-    return {
-        "xy": ms_xy,
-        "variance": variance,
-        "support": support,
-        "z_uav": z_uav,
-        "centers": centers,
-        "logits": logits,
-        "mode_count": (mode_weights > 0).sum(dim=1),
-    }
-
-
-@torch.no_grad()
-def centered_correction_meanshift(visual, uav_clip, center_xy):
-    """Correction MS: full centered 6x6 around incoming stage XY."""
+def centered_visual_meanshift(visual, uav_clip, center_xy):
+    """Full centered 6x6 visual search; all 36 patches participate in MS."""
     batch = visual.candidate_batch(
         uav_clip=uav_clip,
-        center_xy=center_xy,
+        center_xy=_xy_tensor(center_xy, visual.device),
         grid_size=6,
     )
+    if int(batch.centers.shape[1]) != 36:
+        raise RuntimeError(
+            "MeanShift must use the full centered 6x6 candidate set (36 patches)"
+        )
     prob = torch.softmax(
         batch.raw_logits / float(config.MEANSHIFT_SCORE_TAU), dim=1
     )
     diff = batch.centers - batch.softms_xy[:, None, :]
-    variance = (prob[:, :, None] * diff.square()).sum(dim=1).clamp_min(1e-3)
-    return batch.softms_xy, variance, batch.softms_support
+    variance = (
+        prob[:, :, None] * diff.square()
+    ).sum(dim=1).clamp_min(1e-3)
+    return {
+        "xy": batch.softms_xy,
+        "variance": variance,
+        "support": batch.softms_support,
+        "z_uav": batch.z_uav,
+        "centers": batch.centers,
+        "logits": batch.raw_logits,
+        "mode_count": batch.softms_mode_count,
+        "candidate_count": int(batch.centers.shape[1]),
+    }
 
 
 def _make_state(route_name, visual, spacing_m):
@@ -297,12 +214,13 @@ def _apply_k(state, xy, variance, device):
 def forward_frame(arch, model, visual, uav_clip, state, device):
     """No frame label is accepted by this function; search is autonomous."""
     predicted_query = state["kalman"].predicted_position()
-    selected_ref_xy, selected_ref_index, heading = state["reference_bank"].select(
+    selected_ref_xy, selected_ref_index = state["reference_bank"].select(
         predicted_query
     )
-    base = base_visual_meanshift(
-        visual, uav_clip, selected_ref_xy, heading
-    )
+
+    # Every architecture starts from the same visual observation:
+    # selected reference point -> full centered 6x6 -> all 36 scored -> MeanShift.
+    base = centered_visual_meanshift(visual, uav_clip, selected_ref_xy)
     stage_xy = base["xy"]
     variance = base["variance"]
     z_uav = base["z_uav"]
@@ -312,17 +230,19 @@ def forward_frame(arch, model, visual, uav_clip, state, device):
         "selected_ref_index": selected_ref_index,
         "base_ms_xy": stage_xy,
         "base_ms_support": base["support"],
+        "base_ms_candidate_count": base["candidate_count"],
     }
     gru_out = None
 
     symbols = arch[1:] if arch[0] == "M" else arch
     for symbol in symbols:
         if symbol == "M":
-            stage_xy, variance, support = centered_correction_meanshift(
-                visual, uav_clip, stage_xy
-            )
+            correction = centered_visual_meanshift(visual, uav_clip, stage_xy)
+            stage_xy = correction["xy"]
+            variance = correction["variance"]
             trace["center_ms_xy"] = stage_xy
-            trace["center_ms_support"] = support
+            trace["center_ms_support"] = correction["support"]
+            trace["center_ms_candidate_count"] = correction["candidate_count"]
         elif symbol == "G":
             stage_xy, gru_out = _apply_g(
                 model, stage_xy, variance, z_uav, state
@@ -341,14 +261,14 @@ def forward_frame(arch, model, visual, uav_clip, state, device):
 def _checkpoint_path(arch):
     return (
         Path(config.CHECKPOINT_DIR)
-        / ("six_autoref_%s_%s.pt" % (arch.lower(), config.BACKBONE_KEY))
+        / ("six_autoref_center6x6_%s_%s.pt" % (arch.lower(), config.BACKBONE_KEY))
     )
 
 
 def _output_dir(arch):
     return (
         Path(config.BACKBONE_OUTPUT_DIR)
-        / "six_architecture_autonomous_reference"
+        / "six_architecture_autonomous_reference_center6x6"
         / arch.lower()
     )
 
@@ -418,11 +338,13 @@ def train_architecture(arch, visual, route_a, device, epochs, lr, tbptt, spacing
                 "reference_mode": "autonomous waypoint-polyline reference bank",
                 "reference_bank_spacing_m": float(spacing_m),
                 "frame_aligned_reference_prior": False,
-                "visual_position": "always MeanShift",
+                "visual_position": "always full centered 6x6 MeanShift",
+                "meanshift_candidate_count": 36,
+                "forward_search": False,
                 "train_routes": ["route_A"],
             }, _checkpoint_path(arch))
         print(
-            "[%s-autoref] epoch=%03d/%d train_position_loss=%.6f best=%.6f"
+            "[%s-autoref-center6x6] epoch=%03d/%d train_position_loss=%.6f best=%.6f"
             % (arch, epoch, epochs, mean_loss, best_loss),
             flush=True,
         )
@@ -438,6 +360,8 @@ def load_architecture(arch, device):
     if not path.exists():
         raise FileNotFoundError(path)
     payload = torch.load(path, map_location="cpu")
+    if payload.get("meanshift_candidate_count") != 36 or payload.get("forward_search") is not False:
+        raise RuntimeError("checkpoint is not from the full centered 6x6 MeanShift experiment")
     model = PositionRefinementGRU(
         feature_dim=int(getattr(config, "RNN_FEATURE_DIM", 128)),
         hidden_dim=int(getattr(config, "RNN_HIDDEN_DIM", 256)),
@@ -489,6 +413,7 @@ def evaluate_architecture(arch, visual, model, route_name, cache, device, spacin
             "base_ms_x": float(base_ms_xy[0]),
             "base_ms_y": float(base_ms_xy[1]),
             "base_ms_error_m": base_error,
+            "base_ms_candidate_count": int(trace["base_ms_candidate_count"]),
             "variance_x": float(variance[0, 0]),
             "variance_y": float(variance[0, 1]),
             "final_x": float(final_xy[0]),
@@ -499,13 +424,15 @@ def evaluate_architecture(arch, visual, model, route_name, cache, device, spacin
             if name in trace:
                 row[name + "_x"] = float(trace[name][0, 0])
                 row[name + "_y"] = float(trace[name][0, 1])
+        if "center_ms_candidate_count" in trace:
+            row["center_ms_candidate_count"] = int(trace["center_ms_candidate_count"])
         rows.append(row)
         if state["hidden"] is not None:
             state["hidden"] = state["hidden"].detach()
 
     outdir = _output_dir(arch)
     outdir.mkdir(parents=True, exist_ok=True)
-    csv_path = outdir / ("%s_%s_autoref_frames.csv" % (route_name, arch.lower()))
+    csv_path = outdir / ("%s_%s_autoref_center6x6_frames.csv" % (route_name, arch.lower()))
     fields = []
     for row in rows:
         for key in row:
@@ -529,9 +456,11 @@ def evaluate_architecture(arch, visual, model, route_name, cache, device, spacin
         ),
         "FrameAlignedReferencePrior": False,
         "ReferenceBankSpacing_m": float(spacing_m),
-        "VisualPosition": "always MeanShift; variance centered on MS observation",
-        "BaseMS": "selected reference center -> 6x6 geometry -> nearest forward 3x6 -> MeanShift",
-        "CorrectionMS": "when M is not first: full centered 6x6 around incoming stage -> MeanShift",
+        "VisualPosition": "always full centered 6x6 MeanShift; variance centered on MS observation",
+        "BaseMS": "selected reference center -> full centered 6x6 (36 patches) -> MeanShift",
+        "CorrectionMS": "every later M: full centered 6x6 (36 patches) around incoming stage -> MeanShift",
+        "MeanShiftCandidateCount": 36,
+        "ForwardSearch": False,
     })
     return summary
 
@@ -587,6 +516,9 @@ def main():
             "test_routes": ["route_B", "route_C"],
             "reference_mode": "autonomous waypoint-polyline reference bank",
             "frame_aligned_reference_prior": False,
+            "meanshift_search": "full centered 6x6 for every MS stage",
+            "meanshift_candidate_count": 36,
+            "forward_search": False,
             "results": {},
         }
         for route_name in ("route_B", "route_C"):
