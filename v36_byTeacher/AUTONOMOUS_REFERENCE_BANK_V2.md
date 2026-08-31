@@ -1,14 +1,8 @@
-# Autonomous Reference-Bank V2
+# Autonomous Reference-Bank V2 — Full Centered 6x6 MeanShift
 
-This experiment is the no-frame-aligned-reference version of the six M/G/K architecture ablation.
+This experiment removes frame-aligned reference lookup and now uses **full centered 6x6 satellite search for every MeanShift stage**.
 
-## What was wrong in the previous controlled six-architecture experiment
-
-The previous experiment passed `cache.gt_xy[index]` into `forward_frame(...)` as `reference_prior_xy`. Therefore the current frame's corresponding reference coordinate directly opened the local satellite window. That experiment is useful as a controlled upper-bound/local-refinement comparison, but it is not the autonomous reference-selection test.
-
-The previous implementation also used a posterior weighted centroid as the initial visual coordinate when M was not the first symbol. This conflicts with the clarified definition that a visual position is always obtained from satellite-patch scoring followed by MeanShift.
-
-## Runtime reference selection in V2
+## Runtime reference selection
 
 The current frame index is never used to select a route reference point.
 
@@ -16,65 +10,71 @@ The current frame index is never used to select a route reference point.
 2. Densify the polyline into a static reference bank (default spacing 5 m).
 3. The Kalman filter predicts the current location from its own previous posterior.
 4. Search the ordered static bank from the last selected progress onward and choose the nearest reference point to the Kalman predicted location.
-5. Use the selected reference point and its local route tangent to open the satellite search.
-6. Current-frame labels are read only after the prediction exists: Route A for GRU supervision; Routes B/C for metrics.
+5. Use that selected reference point only as the center for the base visual search.
+6. Current-frame labels are read only after prediction: Route A for GRU supervision; Routes B/C for metrics.
 
-This removes direct frame-to-reference correspondence from runtime localization.
+## Visual position and visual variance
 
-## Visual position and uncertainty
+Every architecture begins with the same base visual localization:
 
-Every architecture begins with the same base visual localization step:
+`selected reference center -> full centered 6x6 = 36 SAT patches -> similarity -> MeanShift -> visual position + visual variance`
 
-`selected route reference -> 6x6 lattice geometry -> nearest center-adjacent forward 3x6 -> similarity -> MeanShift -> visual position + visual variance`
+There is **no forward 3x6 selection**. All 36 patches are scored and all 36 participate in MeanShift.
 
-The base forward 3x6 is the nearest forward half of the 6x6 lattice. It includes the center plane and the next two rows/columns in the route direction (`0,+1,+2` or `0,-1,-2`), rather than selecting the farthest 18 candidates.
+Visual position is the MeanShift output coordinate.
 
-Visual variance is computed around the MeanShift output coordinate, not around a weighted-centroid coordinate.
+Visual variance is computed from the candidate posterior around the MeanShift coordinate:
+
+- `variance_x = sum p_j (x_j - x_MS)^2`
+- `variance_y = sum p_j (y_j - y_MS)^2`
+
+The code checks that every MeanShift receives exactly 36 candidates and raises an error otherwise.
 
 ## Meaning of M in the six architectures
 
-All architectures have a base MeanShift because visual position must always be an MS result.
+All architectures have the common base visual MeanShift because visual position is always an MS result.
 
-- If M is the first symbol, M is the base forward 3x6 MeanShift itself.
-- If M appears after G and/or K, the incoming stage position becomes the center of a second full centered 6x6 search. All 36 satellite candidates are scored and MeanShift produces the correction position and new visual variance.
+- If M is the first symbol, M is the common base centered 6x6 MeanShift.
+- If M appears later, the incoming G/K coordinate becomes the center of another full centered 6x6 search; all 36 patches are scored and MeanShift performs the correction.
 
-Therefore:
-
-| Architecture | Corrected runtime flow |
+| Architecture | Runtime flow |
 |---|---|
-| MKG | Base forward MS -> K -> G -> Final |
-| MGK | Base forward MS -> G -> K -> Final |
-| GMK | Base forward MS -> G -> centered 6x6 MS -> K -> Final |
-| GKM | Base forward MS -> G -> K -> centered 6x6 MS -> Final |
-| KGM | Base forward MS -> K -> G -> centered 6x6 MS -> Final |
-| KMG | Base forward MS -> K -> centered 6x6 MS -> G -> Final |
+| MKG | Base centered 6x6 MS -> K -> G -> Final |
+| MGK | Base centered 6x6 MS -> G -> K -> Final |
+| GMK | Base centered 6x6 MS -> G -> centered 6x6 MS -> K -> Final |
+| GKM | Base centered 6x6 MS -> G -> K -> centered 6x6 MS -> Final |
+| KGM | Base centered 6x6 MS -> K -> G -> centered 6x6 MS -> Final |
+| KMG | Base centered 6x6 MS -> K -> centered 6x6 MS -> G -> Final |
 
-GKM and KGM are the two permutations in which MeanShift is literally the final correction stage.
+GKM and KGM are the two orderings whose final output is directly produced by the final MeanShift correction.
 
-## Search direction rule
+## GRU definition
 
-The base visual acquisition uses forward 3x6 because it is opening the local satellite evidence from a route reference and should remain causal in the planned route direction.
+The six-architecture GRU remains a direct current-frame position refiner. It has no external heading head, speed head, acceleration head, motion head, or polynomial motion output.
 
-A later correction MeanShift uses a full centered 6x6 because the incoming G/K coordinate is already a current-frame estimate. At that stage the goal is local spatial correction, not forward acquisition. Applying forward-only support again would introduce a directional bias into the final correction.
+GRU inputs are current incoming XY, visual variance, temporal UAV visual features, and the recurrent hidden state. GRU outputs a learned XY correction and corrected current-frame XY.
 
-## Output diagnostics
+## Separate outputs
 
-Each Route B/C CSV includes:
+To avoid mixing these results with the previous forward-3x6 experiment:
 
-- Kalman predicted query used for autonomous reference selection
-- selected static reference-bank index and XY
-- selected-reference error (metrics only)
-- base visual MeanShift XY/error
-- GRU/Kalman/centered-MS intermediate coordinates when present
-- final localization error
+- checkpoints: `six_autoref_center6x6_*`
+- results: `output/<backbone>/six_architecture_autonomous_reference_center6x6/`
+- logs: `logs/six_architecture_autonomous_reference_center6x6/`
 
-Each summary additionally reports `SearchReferenceMLE_m` and `BaseVisualMS_MLE_m`, allowing failures to be separated into reference-selection drift versus visual/localization-stage error.
-
-## Run
+## Run all six on GPU 0 / 5 / 6
 
 ```bash
+git fetch origin
 git checkout six-mgk-autonomous-reference-bank-v2
 git pull origin six-mgk-autonomous-reference-bank-v2
-cd v36_byTeacher
+cd /yh/study/uav-sat/v36_byTeacher
+python3 -m py_compile six_architecture_model.py six_architecture_autoref_experiment.py
 EPOCHS=60 REF_SPACING_M=5.0 bash run_six_architectures_autoref_gpu056.sh
 ```
+
+GPU allocation:
+
+- GPU 0: MKG -> MGK
+- GPU 5: GMK -> GKM
+- GPU 6: KGM -> KMG
