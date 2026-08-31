@@ -1,0 +1,24 @@
+[cpu-fix] GPU satellite grid lookup enabled; CPU threads/process=2
+[KG-routetube] epoch=001/60 seg=4 loss=3.513342 raw_next=6.278m protected_next=5.400m search=5.359m final_ms=7.282m route_dist=3.369m recover=21.07% within20=100.00% stable=1/2 best_stage=4
+[KG-routetube] epoch=002/60 seg=4 loss=3.430693 raw_next=6.156m protected_next=5.319m search=5.278m final_ms=7.145m route_dist=3.340m recover=20.22% within20=100.00% stable=0/2 best_stage=4 -> advance_to_6
+[KG-routetube] epoch=003/60 seg=6 loss=4.978703 raw_next=8.618m protected_next=7.629m search=7.421m final_ms=8.784m route_dist=4.208m recover=22.78% within20=97.88% stable=1/2 best_stage=6
+[KG-routetube] epoch=004/60 seg=6 loss=4.856337 raw_next=8.414m protected_next=7.446m search=7.206m final_ms=8.759m route_dist=4.237m recover=21.85% within20=98.44% stable=0/2 best_stage=6 -> advance_to_8
+[KG-routetube] epoch=005/60 seg=8 loss=5.975043 raw_next=10.305m protected_next=9.203m search=9.054m final_ms=10.282m route_dist=4.449m recover=23.95% within20=94.29% stable=1/2 best_stage=8
+[KG-routetube] epoch=006/60 seg=8 loss=6.265584 raw_next=10.820m protected_next=9.642m search=9.342m final_ms=10.528m route_dist=4.330m recover=27.22% within20=94.14% stable=0/2 best_stage=8 -> advance_to_10
+[KG-routetube] epoch=007/60 seg=10 loss=7.801135 raw_next=13.442m protected_next=12.149m search=11.849m final_ms=12.696m route_dist=4.527m recover=29.35% within20=83.05% stable=0/2 best_stage=10
+[KG-routetube] epoch=008/60 seg=10 loss=7.546371 raw_next=13.093m protected_next=11.797m search=11.528m final_ms=12.426m route_dist=4.396m recover=31.18% within20=83.70% stable=0/2 best_stage=10
+[KG-routetube] epoch=009/60 seg=10 loss=7.371141 raw_next=12.743m protected_next=11.500m search=11.363m final_ms=12.338m route_dist=4.661m recover=28.20% within20=85.07% stable=1/2 best_stage=10
+[KG-routetube] epoch=010/60 seg=10 loss=7.202787 raw_next=12.504m protected_next=11.348m search=11.155m final_ms=12.053m route_dist=4.492m recover=26.91% within20=85.79% stable=0/2 best_stage=10 -> advance_to_12
+[KG-routetube] epoch=011/60 seg=12 loss=7.975010 raw_next=13.834m protected_next=12.615m search=12.383m final_ms=13.292m route_dist=4.497m recover=29.03% within20=80.45% stable=0/2 best_stage=12
+[KG-routetube] epoch=012/60 seg=12 loss=7.772371 raw_next=13.590m protected_next=12.401m search=12.245m final_ms=13.161m route_dist=4.392m recover=28.93% within20=81.70% stable=0/2 best_stage=12
+[KG-routetube] epoch=013/60 seg=12 loss=7.179495 raw_next=12.499m protected_next=11.420m search=11.337m final_ms=12.436m route_dist=4.233m recover=25.79% within20=84.26% stable=0/2 best_stage=12
+[KG-routetube] epoch=014/60 seg=12 loss=6.979913 raw_next=12.159m protected_next=11.173m search=11.177m final_ms=12.222m route_dist=4.341m recover=24.94% within20=85.40% stable=1/2 best_stage=12
+[KG-routetube] epoch=015/60 seg=12 loss=6.566236 raw_next=11.400m protected_next=10.535m search=10.703m final_ms=11.733m route_dist=4.575m recover=21.89% within20=87.99% stable=0/2 best_stage=12 -> advance_to_14
+[KG-routetube] epoch=016/60 seg=14 loss=6.868601 raw_next=12.030m protected_next=11.190m search=11.398m final_ms=12.489m route_dist=4.357m recover=21.69% within20=85.50% stable=1/2 best_stage=14
+[KG-routetube] epoch=017/60 seg=14 loss=6.710135 raw_next=11.708m protected_next=10.947m search=11.219m final_ms=12.341m route_dist=4.540m recover=19.49% within20=85.27% stable=0/2 best_stage=14 -> advance_to_16
+[KG-routetube] epoch=018/60 seg=16 loss=7.093025 raw_next=12.425m protected_next=11.668m search=11.883m final_ms=12.991m route_dist=4.477m recover=20.13% within20=83.07% stable=0/2 best_stage=16
+[KG-routetube] epoch=019/60 seg=16 loss=6.818521 raw_next=11.909m protected_next=11.295m search=11.512m final_ms=12.585m route_dist=4.483m recover=17.92% within20=83.79% stable=0/2 best_stage=16
+[KG-routetube] epoch=020/60 seg=16 loss=6.460216 raw_next=11.372m protected_next=10.726m search=11.073m final_ms=12.195m route_dist=4.189m recover=18.47% within20=86.20% stable=1/2 best_stage=16
+[KG-routetube] epoch=021/60 seg=16 loss=6.137602 raw_next=10.843m protected_next=10.186m search=10.582m final_ms=11.822m route_dist=4.539m recover=16.81% within20=87.29% stable=0/2 best_stage=16 -> advance_to_18
+[KG-routetube] epoch=022/60 seg=18 loss=6.654049 raw_next=11.556m protected_next=10.977m search=11.280m final_ms=12.344m route_dist=4.473m recover=16.83% within20=85.32% stable=1/2 best_stage=18
+[KG-routetube] epoch=023/60 seg=18 loss=6.350075 raw_next=11.243m protected_next=10.726m search=11.088m final_ms=12.171m route_dist=4.253m recover=16.41% within20=86.06% stable=0/2 best_stage=18 -> advance_to_20
