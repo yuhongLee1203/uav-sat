@@ -4,7 +4,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
-mkdir -p logs/six_architecture_autonomous_reference
+mkdir -p logs/six_architecture_autonomous_reference_center6x6
 EPOCHS="${EPOCHS:-60}"
 REF_SPACING_M="${REF_SPACING_M:-5.0}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -17,16 +17,16 @@ print('[preflight] device:', rt.resolve_device('cuda:0'))
 print('[preflight] visual checkpoint:', config.VISUAL_CHECKPOINT)
 PY
 
-echo "[preflight] autonomous reference-bank experiment ready"
+echo "[preflight] autonomous reference-bank + full centered 6x6 MeanShift ready"
 
 run_pair () {
   local gpu="$1"; shift
   for arch in "$@"; do
-    echo "[GPU ${gpu}] starting ${arch} autonomous-reference"
+    echo "[GPU ${gpu}] starting ${arch} autonomous-reference centered-6x6"
     CUDA_VISIBLE_DEVICES="${gpu}" "$PYTHON_BIN" six_architecture_autoref_experiment.py \
       --mode train-eval --arch "${arch}" --device cuda:0 --epochs "${EPOCHS}" \
       --reference-spacing-m "${REF_SPACING_M}" \
-      2>&1 | tee "logs/six_architecture_autonomous_reference/${arch}_gpu${gpu}.log"
+      2>&1 | tee "logs/six_architecture_autonomous_reference_center6x6/${arch}_gpu${gpu}.log"
   done
 }
 
@@ -38,4 +38,4 @@ run_pair 6 KGM KMG &
 P6=$!
 
 wait "$P0" "$P5" "$P6"
-echo "All six autonomous-reference architectures finished."
+echo "All six autonomous-reference centered-6x6 architectures finished."
