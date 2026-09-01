@@ -1,9 +1,0 @@
-====================================================================================================
-V36_byTeacher_ImageAlignedSingleMS_1Frame_mobilenet_v3_small_GRUMeasurementVariance_MotionHeading_Polynomial_Kalman_MultiRateAstride2_v7
-Flow: previous final KF state -> ONE forward local MeanShift -> GRU; previous GRU motion/heading -> polynomial -> KF predict; GRU measurement/R -> KF update -> final state
-search=3x6 (18 candidates); second MeanShift branch=OFF; Kalman MeanShift-confidence input=OFF
-output=/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/1frame
-====================================================================================================
-route_A: reuse UAV backbone cache
-image-flow 3x6 epoch=001/60 loss=4.47306 val_mle=336.670m val_p90=542.353m score=789.709 best=789.709 patience=0/15
-image-flow 3x6 epoch=002/60 loss=3.29300 val_mle=340.217m val_p90=545.314m score=792.522 best=789.709 patience=1/15
