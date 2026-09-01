@@ -20,7 +20,7 @@ printf '%s\n' "$SUITE_TAG" > logs/mkg_final_ablation_suite/LATEST_SUITE_TAG.txt
 "$PYTHON_BIN" -m py_compile \
   mkg_final_ablation_experiment.py \
   collect_mkg_final_ablation.py \
-  gpu_grid_runner.py \
+  mkg_ablation_gpu_runner.py \
   six_architecture_model.py \
   six_architecture_autoref_experiment.py
 
@@ -30,6 +30,7 @@ echo "[MKG suite] Route A train; Route B/C eval; frame-aligned reference center"
 echo "[MKG suite] Existing checkpoints/results are NOT removed or overwritten"
 echo "[MKG suite] baseline = MKG, 6x6, SoftMS, bandwidth=8m, tau=0.30"
 echo "[MKG suite] baseline also evaluates reference-center jitter 0/5/10/15/20m"
+echo "[MKG suite] Top-1/Weighted latency excludes unused SoftMS computation"
 
 cat > "${LOG_ROOT}/manifest.txt" <<EOF
 MKG final-method thesis ablation suite
@@ -84,7 +85,7 @@ run_job () {
   NUMEXPR_NUM_THREADS="$CPU_THREADS" \
   UAVSAT_CPU_THREADS="$CPU_THREADS" \
   CUDA_VISIBLE_DEVICES="$gpu" \
-  "$PYTHON_BIN" gpu_grid_runner.py mkg_final_ablation_experiment.py \
+  "$PYTHON_BIN" mkg_ablation_gpu_runner.py mkg_final_ablation_experiment.py \
     --run-id "$run_id" \
     --suite-tag "$SUITE_TAG" \
     --pipeline "$pipeline" \
