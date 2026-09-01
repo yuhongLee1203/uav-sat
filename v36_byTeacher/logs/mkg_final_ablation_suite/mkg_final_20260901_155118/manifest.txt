@@ -1,0 +1,31 @@
+MKG final-method thesis ablation suite
+suite_tag=mkg_final_20260901_155118
+epochs=60
+
+Component ablation:
+  component_m        : M
+  component_mk       : M -> K
+  component_mg       : M -> G
+  baseline_mkg_6x6   : M -> K -> G
+
+Window-size sensitivity:
+  4x4, 5x5, 6x6(baseline), 7x7, 8x8
+
+GRU-input ablation:
+  full(baseline), no_xy, no_variance, no_temporal_mean, no_first_difference
+
+MeanShift sensitivity:
+  bandwidth 4m, 8m(baseline), 12m
+  tau 0.20, 0.30(baseline), 0.50
+
+Decoder ablation:
+  top1, weighted centroid, SoftMS(baseline)
+
+Seed stability:
+  seed 2026(baseline), 123, 456
+
+Robustness:
+  baseline evaluation at deterministic center jitter 0,5,10,15,20m
+
+Efficiency automatically reported for every run:
+  latency ms/frame, FPS, peak CUDA allocated MB, candidate count

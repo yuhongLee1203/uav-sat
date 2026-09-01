@@ -1,0 +1,70 @@
+{
+  "run_id": "component_m",
+  "suite_tag": "mkg_final_20260901_155118",
+  "protocol": "controlled frame-aligned reference-centered MKG ablation",
+  "training_from_scratch": false,
+  "visual_backbone_frozen": true,
+  "train_route": "route_A",
+  "test_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "pipeline": "M",
+  "grid_size": 6,
+  "candidate_count": 36,
+  "decoder": "softms",
+  "gru_ablation": "full",
+  "meanshift_bandwidth_m": 8.0,
+  "meanshift_score_tau": 0.3,
+  "seed": 2026,
+  "best_train_loss": null,
+  "frame_aligned_reference_center": true,
+  "forward_search": false,
+  "eval_jitters_m": [
+    0.0
+  ],
+  "results": {
+    "0": {
+      "route_B": {
+        "MLE_m": 6.550177711806255,
+        "MedLE_m": 5.926681814412833,
+        "P90_m": 11.61514468243844,
+        "P95_m": 12.740446702547192,
+        "P99_m": 14.753879680117759,
+        "CVaR90_m": 13.132112560557198,
+        "LSR@5_pct": 39.49912126537786,
+        "LSR@10_pct": 80.57996485061511,
+        "LSR@15_pct": 99.12126537785588,
+        "LSR@20_pct": 100.0,
+        "Route": "route_B",
+        "VisualMLE_m": 6.550177711806255,
+        "Latency_ms_per_frame": 7.905344041736129,
+        "FPS": 126.49670839377984,
+        "PeakCUDAAllocated_MB": 115.52294921875,
+        "Jitter_m": 0.0,
+        "CandidateCount": 36,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/mkg_final_ablation_suite/mkg_final_20260901_155118/component_m/jitter_0m/route_B_frames.csv"
+      },
+      "route_C": {
+        "MLE_m": 6.0345389904671265,
+        "MedLE_m": 5.314230134052372,
+        "P90_m": 11.640791770644801,
+        "P95_m": 12.14528019760808,
+        "P99_m": 14.280274990583653,
+        "CVaR90_m": 12.642010834052925,
+        "LSR@5_pct": 45.78696343402226,
+        "LSR@10_pct": 83.06836248012719,
+        "LSR@15_pct": 99.52305246422894,
+        "LSR@20_pct": 100.0,
+        "Route": "route_C",
+        "VisualMLE_m": 6.0345389904671265,
+        "Latency_ms_per_frame": 7.546843674867369,
+        "FPS": 132.505725980547,
+        "PeakCUDAAllocated_MB": 115.52294921875,
+        "Jitter_m": 0.0,
+        "CandidateCount": 36,
+        "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/mkg_final_ablation_suite/mkg_final_20260901_155118/component_m/jitter_0m/route_C_frames.csv"
+      }
+    }
+  }
+}
