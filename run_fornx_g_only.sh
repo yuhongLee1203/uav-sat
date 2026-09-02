@@ -28,9 +28,9 @@ echo "Kalman mode  : none"
 echo "final state  : SoftMS + GRU measurement (original V36 built-in no-Kalman branch)"
 echo "================================================================================================"
 
-# This is the original V36 controlled ablation switch, not a rewritten model:
-# RouteKalman.update(kalman_mode='none') makes output.measurement_se the state.
-# All other settings remain pinned exactly like the full V36 run.
+# This uses the original V36 controlled ablation switch.  The experiment variant,
+# anchor, frame count, polynomial motion, GRU, search geometry and all training
+# settings stay identical to the full run.  The sole switched factor is Kalman.
 CUDA_VISIBLE_DEVICES="$GPU" \
 PYTHONUNBUFFERED=1 \
 OMP_NUM_THREADS="${CPU_THREADS:-4}" \
@@ -39,7 +39,7 @@ OPENBLAS_NUM_THREADS="${CPU_THREADS:-4}" \
 NUMEXPR_NUM_THREADS="${CPU_THREADS:-4}" \
 UAVSAT_OUTPUT_DIR="$OUT" \
 UAVSAT_REFERENCE_PROTOCOL="controlled_gt_jitter" \
-UAVSAT_EXPERIMENT_VARIANT="G_only_no_kalman" \
+UAVSAT_EXPERIMENT_VARIANT="full_v36" \
 UAVSAT_EXPERIMENT_ANCHOR="softms" \
 UAVSAT_EXPERIMENT_FRAME_COUNT="3" \
 UAVSAT_EXPERIMENT_MOTION="quadratic" \
