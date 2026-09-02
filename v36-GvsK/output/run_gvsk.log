@@ -1,0 +1,90 @@
+[GvsK] GPU=0
+[GvsK] original snapshot=e732045cacc6d2bff152663e8b5966ee1b49b98b
+[GvsK] visual_epochs=30 temporal_epochs=60 jitter_m=8
+====================================================================================================
+V36_byTeacher_MeanShiftFeedback_GRU_Polynomial_Kalman
+Teacher flow: X_t(output)=Kalman(GRU(MS_t)); next image -> MS(X_t) replaces previous position -> GRU/Kalman -> X_t+1
+output=/yh/study/uav-sat/v36-GvsK/output
+====================================================================================================
+satellite backbone cache: 256/95480
+satellite backbone cache: 5376/95480
+satellite backbone cache: 10496/95480
+satellite backbone cache: 15616/95480
+satellite backbone cache: 20736/95480
+satellite backbone cache: 25856/95480
+satellite backbone cache: 30976/95480
+satellite backbone cache: 36096/95480
+satellite backbone cache: 41216/95480
+satellite backbone cache: 46336/95480
+satellite backbone cache: 51456/95480
+satellite backbone cache: 56576/95480
+satellite backbone cache: 61696/95480
+satellite backbone cache: 66816/95480
+satellite backbone cache: 71936/95480
+satellite backbone cache: 77056/95480
+satellite backbone cache: 82176/95480
+satellite backbone cache: 87296/95480
+satellite backbone cache: 92416/95480
+satellite backbone cache: 95480/95480
+satellite gallery size=95480
+Route A backbone cache: 256/1732
+Route A backbone cache: 1732/1732
+Route A visual candidate capture=100.00%
+visual epoch=001/30 loss=4.44750 val_softms_mle=6.650m val_p90=10.782m val_lsr10=84.65%
+visual epoch=002/30 loss=4.29097 val_softms_mle=6.777m val_p90=11.208m val_lsr10=84.21%
+visual epoch=003/30 loss=4.23272 val_softms_mle=6.777m val_p90=11.548m val_lsr10=83.33%
+visual epoch=004/30 loss=4.15835 val_softms_mle=7.657m val_p90=12.796m val_lsr10=72.37%
+visual epoch=005/30 loss=4.08984 val_softms_mle=7.963m val_p90=13.472m val_lsr10=70.61%
+visual epoch=006/30 loss=3.99199 val_softms_mle=8.425m val_p90=13.800m val_lsr10=68.42%
+visual epoch=007/30 loss=3.93220 val_softms_mle=8.935m val_p90=14.430m val_lsr10=59.21%
+visual epoch=008/30 loss=3.84879 val_softms_mle=9.517m val_p90=14.959m val_lsr10=57.89%
+visual epoch=009/30 loss=3.81026 val_softms_mle=10.333m val_p90=16.503m val_lsr10=50.88%
+visual early stopping: Route A validation stopped improving
+best Route A visual validation SoftMS MLE=6.650m
+route_A backbone cache: 256/1732
+route_A backbone cache: 1732/1732
+teacher epoch=001/60 loss=6.90374 val_mle=337.539m val_p90=542.184m score=784.102 best=784.102 patience=0/10
+teacher epoch=002/60 loss=5.56299 val_mle=337.440m val_p90=542.183m score=783.849 best=783.849 patience=0/10
+teacher epoch=003/60 loss=5.41971 val_mle=337.431m val_p90=542.174m score=783.724 best=783.724 patience=0/10
+teacher epoch=004/60 loss=5.36448 val_mle=337.428m val_p90=542.169m score=783.612 best=783.612 patience=0/10
+teacher epoch=005/60 loss=5.33106 val_mle=337.431m val_p90=542.172m score=783.523 best=783.523 patience=0/10
+teacher epoch=006/60 loss=5.33410 val_mle=337.438m val_p90=542.183m score=783.486 best=783.523 patience=1/10
+teacher epoch=007/60 loss=5.34243 val_mle=337.430m val_p90=542.174m score=783.475 best=783.523 patience=2/10
+teacher epoch=008/60 loss=5.33576 val_mle=337.433m val_p90=542.177m score=783.404 best=783.404 patience=0/10
+teacher epoch=009/60 loss=5.29111 val_mle=337.434m val_p90=542.178m score=783.330 best=783.330 patience=0/10
+teacher epoch=010/60 loss=5.23695 val_mle=337.435m val_p90=542.178m score=783.236 best=783.236 patience=0/10
+teacher epoch=011/60 loss=5.17887 val_mle=337.538m val_p90=542.197m score=783.167 best=783.167 patience=0/10
+teacher epoch=012/60 loss=5.13039 val_mle=337.547m val_p90=542.209m score=782.973 best=782.973 patience=0/10
+teacher epoch=013/60 loss=5.04245 val_mle=337.539m val_p90=542.198m score=782.735 best=782.735 patience=0/10
+teacher epoch=014/60 loss=5.08421 val_mle=337.531m val_p90=542.182m score=782.620 best=782.620 patience=0/10
+teacher epoch=015/60 loss=4.91074 val_mle=337.432m val_p90=542.173m score=782.162 best=782.162 patience=0/10
+teacher epoch=016/60 loss=4.83965 val_mle=337.438m val_p90=542.174m score=781.941 best=781.941 patience=0/10
+teacher epoch=017/60 loss=4.72909 val_mle=337.544m val_p90=542.195m score=781.598 best=781.598 patience=0/10
+teacher epoch=018/60 loss=4.62480 val_mle=337.547m val_p90=542.201m score=781.471 best=781.471 patience=0/10
+teacher epoch=019/60 loss=4.50836 val_mle=337.425m val_p90=542.167m score=781.051 best=781.051 patience=0/10
+teacher epoch=020/60 loss=4.43671 val_mle=337.376m val_p90=541.991m score=780.920 best=780.920 patience=0/10
+teacher epoch=021/60 loss=4.42292 val_mle=337.514m val_p90=542.168m score=781.051 best=780.920 patience=1/10
+teacher epoch=022/60 loss=4.24823 val_mle=337.406m val_p90=542.119m score=780.951 best=780.920 patience=2/10
+teacher epoch=023/60 loss=4.24647 val_mle=337.532m val_p90=542.195m score=781.083 best=780.920 patience=3/10
+teacher epoch=024/60 loss=4.15534 val_mle=337.406m val_p90=542.122m score=780.975 best=780.920 patience=4/10
+teacher epoch=025/60 loss=4.13797 val_mle=337.579m val_p90=542.208m score=781.288 best=780.920 patience=5/10
+teacher epoch=026/60 loss=4.09795 val_mle=337.326m val_p90=542.132m score=781.090 best=780.920 patience=6/10
+teacher epoch=027/60 loss=4.03502 val_mle=337.579m val_p90=542.226m score=781.131 best=780.920 patience=7/10
+teacher epoch=028/60 loss=3.93031 val_mle=337.523m val_p90=542.163m score=781.164 best=780.920 patience=8/10
+teacher epoch=029/60 loss=3.86524 val_mle=337.435m val_p90=542.180m score=781.153 best=780.920 patience=9/10
+teacher epoch=030/60 loss=3.85092 val_mle=337.330m val_p90=542.137m score=780.879 best=780.920 patience=10/10
+best teacher-feedback validation score=780.920
+route_B backbone cache: 256/2276
+route_B backbone cache: 2276/2276
+route_C backbone cache: 256/1258
+route_C backbone cache: 1258/1258
+================================================================================================
+Original V36 G vs K, Routes B+C
+G  (MS+GRU measurement): MLE=10.026  Median=9.970  P90=15.130
+Kraw (Kalman only)     : MLE=360.043  Median=374.134  P90=619.909
+Korig (historical final): MLE=360.043  Median=374.134  P90=619.909
+Kalman-only MLE gain vs G = -350.017 m (-3491.12%)
+Historical-final gain vs G = -350.017 m (-3491.12%)
+summary=/yh/study/uav-sat/v36-GvsK/output/GvsK_summary.json
+table=/yh/study/uav-sat/v36-GvsK/output/GvsK_comparison_table.csv
+================================================================================================

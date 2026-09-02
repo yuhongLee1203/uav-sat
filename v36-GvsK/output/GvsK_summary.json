@@ -1,0 +1,186 @@
+{
+  "Provenance": {
+    "restored_from_commit": "e732045cacc6d2bff152663e8b5966ee1b49b98b",
+    "original_architecture_parent": "fe3ff2329fad0d43bfbe0a8650bbb675fd19d339",
+    "architecture": "V36_byTeacher_MeanShiftFeedback_GRU_Polynomial_Kalman",
+    "jitter_m": 8.0,
+    "note": "All G/K outputs come from the same trained full V36 model and same frame forward pass."
+  },
+  "route_B": {
+    "G_MS_plus_GRU_measurement": {
+      "N": 2276,
+      "MLE_m": 10.31832335110214,
+      "MedLE_m": 10.284203139844088,
+      "P90_m": 15.349007529872722,
+      "P95_m": 16.810853142220353,
+      "P99_m": 18.77314414672309,
+      "CVaR90_m": 17.06324005006833,
+      "LSR@3_pct": 2.5483304042179262,
+      "LSR@5_pct": 8.743409490333919,
+      "LSR@10_pct": 47.58347978910369,
+      "LSR@15_pct": 87.69771528998243,
+      "LSR@20_pct": 99.64850615114236
+    },
+    "K_raw_after_kf_update_before_final_cap": {
+      "N": 2276,
+      "MLE_m": 359.52934406281827,
+      "MedLE_m": 364.1991352613834,
+      "P90_m": 633.1806686488751,
+      "P95_m": 714.2596105087973,
+      "P99_m": 776.245815229533,
+      "CVaR90_m": 713.7495260297634,
+      "LSR@3_pct": 0.08787346221441124,
+      "LSR@5_pct": 2.328646748681898,
+      "LSR@10_pct": 9.885764499121265,
+      "LSR@15_pct": 10.369068541300527,
+      "LSR@20_pct": 10.63268892794376
+    },
+    "K_original_reported_after_final_cap": {
+      "N": 2276,
+      "MLE_m": 359.52934406281827,
+      "MedLE_m": 364.1991352613834,
+      "P90_m": 633.1806686488751,
+      "P95_m": 714.2596105087973,
+      "P99_m": 776.245815229533,
+      "CVaR90_m": 713.7495260297634,
+      "LSR@3_pct": 0.08787346221441124,
+      "LSR@5_pct": 2.328646748681898,
+      "LSR@10_pct": 9.885764499121265,
+      "LSR@15_pct": 10.369068541300527,
+      "LSR@20_pct": 10.63268892794376
+    },
+    "paired_effect": {
+      "KalmanRaw_MLE_gain_over_G_m": -349.2110207117161,
+      "KalmanRaw_relative_MLE_improvement_pct": -3384.3775662876033,
+      "KalmanRaw_frame_improvement_rate_pct": 5.6678383128295255,
+      "KalmanRaw_frame_equal_rate_pct": 0.0,
+      "KalmanOriginal_MLE_gain_over_G_m": -349.2110207117161,
+      "KalmanOriginal_relative_MLE_improvement_pct": -3384.3775662876033,
+      "KalmanOriginal_frame_improvement_rate_pct": 5.6678383128295255,
+      "FinalCap_incremental_MLE_gain_over_KalmanRaw_m": 0.0
+    },
+    "Route": "route_B",
+    "CSV": "/yh/study/uav-sat/v36-GvsK/output/route_B_GvsK_frames.csv",
+    "ComparisonDefinition": {
+      "G": "output.measurement_se = SoftMS visual anchor + GRU correction head",
+      "K_raw": "kf.update() posterior before cap_kalman_to_current_gt()",
+      "K_original": "historical V36 final after cap_kalman_to_current_gt()"
+    }
+  },
+  "route_C": {
+    "G_MS_plus_GRU_measurement": {
+      "N": 1258,
+      "MLE_m": 9.496937903844636,
+      "MedLE_m": 9.379743041586433,
+      "P90_m": 14.552785138961159,
+      "P95_m": 15.863279463170167,
+      "P99_m": 17.603031180392986,
+      "CVaR90_m": 16.1585877652241,
+      "LSR@3_pct": 2.6232114467408585,
+      "LSR@5_pct": 10.731319554848968,
+      "LSR@10_pct": 55.246422893481714,
+      "LSR@15_pct": 92.05087440381558,
+      "LSR@20_pct": 99.76152623211448
+    },
+    "K_raw_after_kf_update_before_final_cap": {
+      "N": 1258,
+      "MLE_m": 360.97322478196156,
+      "MedLE_m": 397.06338191310954,
+      "P90_m": 603.1379554139751,
+      "P95_m": 710.4353314297784,
+      "P99_m": 755.4049119723371,
+      "CVaR90_m": 692.6684047489539,
+      "LSR@3_pct": 1.0333863275039745,
+      "LSR@5_pct": 3.4976152623211445,
+      "LSR@10_pct": 17.8060413354531,
+      "LSR@15_pct": 18.60095389507154,
+      "LSR@20_pct": 18.75993640699523
+    },
+    "K_original_reported_after_final_cap": {
+      "N": 1258,
+      "MLE_m": 360.97322478196156,
+      "MedLE_m": 397.06338191310954,
+      "P90_m": 603.1379554139751,
+      "P95_m": 710.4353314297784,
+      "P99_m": 755.4049119723371,
+      "CVaR90_m": 692.6684047489539,
+      "LSR@3_pct": 1.0333863275039745,
+      "LSR@5_pct": 3.4976152623211445,
+      "LSR@10_pct": 17.8060413354531,
+      "LSR@15_pct": 18.60095389507154,
+      "LSR@20_pct": 18.75993640699523
+    },
+    "paired_effect": {
+      "KalmanRaw_MLE_gain_over_G_m": -351.4762868781169,
+      "KalmanRaw_relative_MLE_improvement_pct": -3700.9432981111645,
+      "KalmanRaw_frame_improvement_rate_pct": 9.141494435612083,
+      "KalmanRaw_frame_equal_rate_pct": 0.0794912559618442,
+      "KalmanOriginal_MLE_gain_over_G_m": -351.4762868781169,
+      "KalmanOriginal_relative_MLE_improvement_pct": -3700.9432981111645,
+      "KalmanOriginal_frame_improvement_rate_pct": 9.141494435612083,
+      "FinalCap_incremental_MLE_gain_over_KalmanRaw_m": 0.0
+    },
+    "Route": "route_C",
+    "CSV": "/yh/study/uav-sat/v36-GvsK/output/route_C_GvsK_frames.csv",
+    "ComparisonDefinition": {
+      "G": "output.measurement_se = SoftMS visual anchor + GRU correction head",
+      "K_raw": "kf.update() posterior before cap_kalman_to_current_gt()",
+      "K_original": "historical V36 final after cap_kalman_to_current_gt()"
+    }
+  },
+  "B+C": {
+    "G_MS_plus_GRU_measurement": {
+      "N": 3534,
+      "MLE_m": 10.025934303945961,
+      "MedLE_m": 9.97021523394477,
+      "P90_m": 15.129594028820714,
+      "P95_m": 16.488679234472105,
+      "P99_m": 18.482259128560468,
+      "CVaR90_m": 16.778932064513008,
+      "LSR@3_pct": 2.5749858517260895,
+      "LSR@5_pct": 9.451046972269383,
+      "LSR@10_pct": 50.31126202603282,
+      "LSR@15_pct": 89.24731182795699,
+      "LSR@20_pct": 99.68873797396718
+    },
+    "K_raw_after_kf_update_before_final_cap": {
+      "N": 3534,
+      "MLE_m": 360.04332310771986,
+      "MedLE_m": 374.1342553347465,
+      "P90_m": 619.9086844210349,
+      "P95_m": 713.5380197291523,
+      "P99_m": 775.9980109468719,
+      "CVaR90_m": 708.1432649720501,
+      "LSR@3_pct": 0.4244482173174873,
+      "LSR@5_pct": 2.7447651386530842,
+      "LSR@10_pct": 12.705149971703452,
+      "LSR@15_pct": 13.299377475947935,
+      "LSR@20_pct": 13.52574985851726
+    },
+    "K_original_reported_after_final_cap": {
+      "N": 3534,
+      "MLE_m": 360.04332310771986,
+      "MedLE_m": 374.1342553347465,
+      "P90_m": 619.9086844210349,
+      "P95_m": 713.5380197291523,
+      "P99_m": 775.9980109468719,
+      "CVaR90_m": 708.1432649720501,
+      "LSR@3_pct": 0.4244482173174873,
+      "LSR@5_pct": 2.7447651386530842,
+      "LSR@10_pct": 12.705149971703452,
+      "LSR@15_pct": 13.299377475947935,
+      "LSR@20_pct": 13.52574985851726
+    },
+    "paired_effect": {
+      "KalmanRaw_MLE_gain_over_G_m": -350.0173888037739,
+      "KalmanRaw_relative_MLE_improvement_pct": -3491.1199115479503,
+      "KalmanRaw_frame_improvement_rate_pct": 6.90435766836446,
+      "KalmanRaw_frame_equal_rate_pct": 0.028296547821165818,
+      "KalmanOriginal_MLE_gain_over_G_m": -350.0173888037739,
+      "KalmanOriginal_relative_MLE_improvement_pct": -3491.1199115479503,
+      "KalmanOriginal_frame_improvement_rate_pct": 6.90435766836446,
+      "FinalCap_incremental_MLE_gain_over_KalmanRaw_m": 0.0
+    }
+  },
+  "compact_table_csv": "/yh/study/uav-sat/v36-GvsK/output/GvsK_comparison_table.csv"
+}
