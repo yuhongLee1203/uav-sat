@@ -101,7 +101,6 @@ fi
 DST="$ROOT/v36_GvsK"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 
-# Only archive after a valid source is found.
 if [[ -e "$DST" ]]; then
   mv "$DST" "$ROOT/v36_GvsK_previous_${STAMP}"
 fi
@@ -114,17 +113,18 @@ GONLY="$DST/G_only"
 OUT="$DST/output"
 mkdir -p "$ORIG" "$GONLY" "$OUT/original_full" "$OUT/G_only"
 
-# Copy EVERYTHING in the actual code directory. No hand-picked source list.
 cp -a "$SOURCE_ROOT/." "$ORIG/"
 cp -a "$SOURCE_ROOT/." "$GONLY/"
 
-# Original V36 commonly expects route_waypoints beside/in project root. If the
-# uploaded forNX copy omitted them, use the repository's canonical waypoint files.
+[[ -d "$ROOT/route_waypoints" ]] || { echo "ERROR: repository route_waypoints missing" >&2; exit 5; }
+# Support both historical layouts:
+#   PROJECT_ROOT / route_waypoints
+#   PROJECT_ROOT.parent / route_waypoints
+mkdir -p "$DST/route_waypoints"
+cp -a "$ROOT/route_waypoints/." "$DST/route_waypoints/"
 for tree in "$ORIG" "$GONLY"; do
-  if [[ ! -d "$tree/route_waypoints" ]]; then
-    [[ -d "$ROOT/route_waypoints" ]] || { echo "ERROR: route_waypoints missing in both forNX and repo" >&2; exit 5; }
-    cp -a "$ROOT/route_waypoints" "$tree/route_waypoints"
-  fi
+  mkdir -p "$tree/route_waypoints"
+  cp -a "$ROOT/route_waypoints/." "$tree/route_waypoints/"
   for f in "${CORE[@]}"; do
     [[ -f "$tree/$f" ]] || { echo "ERROR: copied tree missing $tree/$f" >&2; exit 6; }
   done
@@ -133,14 +133,11 @@ for tree in "$ORIG" "$GONLY"; do
   done
 done
 
-# G-only must use the original V36 built-in Kalman ablation switch. It can be
-# declared in config.py or config_base.py. Do not rewrite model/tracker code.
 if ! grep -R -q 'UAVSAT_EXPERIMENT_KALMAN' "$GONLY/config.py" "$GONLY/config_base.py" 2>/dev/null; then
   echo "ERROR: this forNX source has no UAVSAT_EXPERIMENT_KALMAN switch; refusing to invent a new architecture." >&2
   exit 8
 fi
 
-# Verify copied core source is identical before runtime override.
 for f in "${CORE[@]}"; do
   cmp -s "$ORIG/$f" "$GONLY/$f" || { echo "ERROR: copies differ unexpectedly: $f" >&2; exit 9; }
 done
@@ -153,7 +150,7 @@ G_only_copy=$GONLY
 copy_method=cp -a entire source directory
 core_files=${CORE[*]}
 run_robust_tracker_sh_required=no
-route_waypoints=source copy or repository fallback
+route_waypoints=installed in project and parent layouts
 teacher_meanshift_feedback=absent
 G_only_core_code_difference=none
 G_only_runtime_change=UAVSAT_EXPERIMENT_KALMAN=none
