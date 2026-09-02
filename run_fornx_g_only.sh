@@ -2,68 +2,53 @@
 set -Eeuo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
-bash "$ROOT/prepare_fornx_gvsk.sh"
+
+# Reuse an already prepared exact copy when available; otherwise prepare it.
+if [[ ! -d "$ROOT/v36_GvsK/G_only" ]]; then
+  bash "$ROOT/prepare_fornx_gvsk.sh"
+fi
 
 SRC="$ROOT/v36_GvsK/G_only"
-CENTRAL="$ROOT/v36_GvsK/output/G_only"
+OUT="$ROOT/v36_GvsK/output/G_only"
 GPU="${GPU:-5}"
 VISUAL_EPOCHS="${VISUAL_EPOCHS:-30}"
 TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-60}"
 PATIENCE="${PATIENCE:-10}"
 
-for f in config.py robust_tracker.py visual_model.py visual_localizer.py data.py run_robust_tracker.sh; do
+for f in config.py robust_tracker.py visual_model.py visual_localizer.py data.py; do
   [[ -f "$SRC/$f" ]] || { echo "ERROR: missing $SRC/$f" >&2; exit 20; }
 done
 
-python3 - "$SRC/config.py" <<'PY'
-from pathlib import Path
-import re, sys
-s = Path(sys.argv[1]).read_text(encoding="utf-8")
-m = re.search(r'EXPERIMENT_KALMAN\s*=\s*os\.environ\.get\(\s*["\']UAVSAT_EXPERIMENT_KALMAN["\']\s*,\s*["\']([^"\']+)', s, re.S)
-if not m or m.group(1) != "none":
-    raise SystemExit("ERROR: G_only config is not pinned to original V36 Kalman mode 'none'")
-print("G-only preflight: EXPERIMENT_KALMAN default = none")
-PY
-
-# Preserve any pretrained/checkpoint content that already exists in the correct
-# forNX copy, while making the original relative `outputs/...` path land inside
-# v36_GvsK/output/G_only.
-rm -rf "$CENTRAL"
-mkdir -p "$CENTRAL"
-if [[ -L "$SRC/outputs" ]]; then
-  rm "$SRC/outputs"
-elif [[ -d "$SRC/outputs" ]]; then
-  cp -a "$SRC/outputs/." "$CENTRAL/"
-  rm -rf "$SRC/outputs"
-fi
-ln -s "$CENTRAL" "$SRC/outputs"
-cp "$ROOT/v36_GvsK/output/source_audit.txt" "$CENTRAL/source_audit.txt" 2>/dev/null || true
-cp "$ROOT/v36_GvsK/output/original_vs_Gonly_code_diff.txt" "$CENTRAL/original_vs_Gonly_code_diff.txt" 2>/dev/null || true
+rm -rf "$OUT"
+mkdir -p "$OUT"
+cp "$ROOT/v36_GvsK/output/source_audit.txt" "$OUT/source_audit.txt" 2>/dev/null || true
 
 cd "$SRC"
-chmod +x run_robust_tracker.sh
+export CUDA_VISIBLE_DEVICES="$GPU"
+export UAVSAT_OUTPUT_DIR="$OUT"
+export UAVSAT_EXPERIMENT_KALMAN="none"
 
-echo "================================================================================================"
-echo "forNX COPY / G-ONLY"
-echo "project root : $SRC"
-echo "config.py    : $SRC/config.py"
-echo "runner       : copied ORIGINAL forNX/run_robust_tracker.sh"
-echo "output       : $CENTRAL"
-echo "GPU          : $GPU"
-echo "ONLY CHANGE  : config.py EXPERIMENT_KALMAN default learned -> none"
-echo "================================================================================================"
+ARGS=(--mode train_eval --gpu 0 --visual-epochs "$VISUAL_EPOCHS" --epochs "$TEMPORAL_EPOCHS" --patience "$PATIENCE" --no-render)
 
-# No architecture-related environment variable is injected. This executes the
-# exact copied forNX runner; the sole architecture difference is the one config
-# default changed above.
-bash ./run_robust_tracker.sh \
-  --mode train_eval \
-  --gpu "$GPU" \
-  --visual-epochs "$VISUAL_EPOCHS" \
-  --epochs "$TEMPORAL_EPOCHS" \
-  --patience "$PATIENCE" \
-  --reuse-visual 1 \
-  --no-render \
-  2>&1 | tee "$CENTRAL/wrapper_run.log"
+echo "=== forNX V36 / G ONLY ==="
+echo "source : $SRC"
+echo "output : $OUT"
+echo "GPU    : physical $GPU -> cuda:0"
+echo "ONLY architecture change: UAVSAT_EXPERIMENT_KALMAN=none"
 
-echo "[G-only] all generated outputs are under: $CENTRAL"
+echo "Preflight Kalman mode:"
+python - <<'PY'
+import config
+print("EXPERIMENT_KALMAN =", getattr(config, "EXPERIMENT_KALMAN", "<missing>"))
+if getattr(config, "EXPERIMENT_KALMAN", None) != "none":
+    raise SystemExit("ERROR: config did not resolve EXPERIMENT_KALMAN=none")
+PY
+
+if [[ -f ./run_robust_tracker.sh ]]; then
+  chmod +x ./run_robust_tracker.sh
+  bash ./run_robust_tracker.sh "${ARGS[@]}" 2>&1 | tee "$OUT/run.log"
+else
+  python -u ./robust_tracker.py "${ARGS[@]}" 2>&1 | tee "$OUT/run.log"
+fi
+
+echo "[DONE] G-only result: $OUT"
