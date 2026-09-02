@@ -4,53 +4,57 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 bash "$ROOT/prepare_fornx_gvsk.sh"
 
-SRC="$ROOT/v36-GvsK/original_forNX"
-OUT="$ROOT/v36-GvsK/output/original_full"
+SRC="$ROOT/v36_GvsK/original_forNX"
+CENTRAL="$ROOT/v36_GvsK/output/original_full"
 GPU="${GPU:-0}"
 VISUAL_EPOCHS="${VISUAL_EPOCHS:-30}"
 TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-60}"
 PATIENCE="${PATIENCE:-10}"
-JITTER_M="${JITTER_M:-8}"
 
-rm -rf "$OUT"
-mkdir -p "$OUT"
-cp "$ROOT/v36-GvsK/output/source_audit.txt" "$OUT/source_audit.txt" 2>/dev/null || true
-cp "$ROOT/v36-GvsK/output/forNX_copy_diff.txt" "$OUT/forNX_copy_diff.txt" 2>/dev/null || true
+for f in config.py robust_tracker.py visual_model.py visual_localizer.py data.py run_robust_tracker.sh; do
+  [[ -f "$SRC/$f" ]] || { echo "ERROR: missing $SRC/$f" >&2; exit 20; }
+done
+
+# Keep the ORIGINAL forNX run_robust_tracker.sh and its relative `outputs/...`
+# semantics. We only redirect that directory with a symlink so every generated
+# artifact ends under v36_GvsK/output/original_full as requested.
+rm -rf "$CENTRAL"
+mkdir -p "$CENTRAL"
+if [[ -L "$SRC/outputs" ]]; then
+  rm "$SRC/outputs"
+elif [[ -d "$SRC/outputs" ]]; then
+  cp -a "$SRC/outputs/." "$CENTRAL/"
+  rm -rf "$SRC/outputs"
+fi
+ln -s "$CENTRAL" "$SRC/outputs"
+cp "$ROOT/v36_GvsK/output/source_audit.txt" "$CENTRAL/source_audit.txt" 2>/dev/null || true
+cp "$ROOT/v36_GvsK/output/forNX_copy_diff.txt" "$CENTRAL/forNX_copy_diff.txt" 2>/dev/null || true
 
 cd "$SRC"
+chmod +x run_robust_tracker.sh
+
 echo "================================================================================================"
 echo "CORRECT forNX / ORIGINAL FULL V36"
-echo "source       : $SRC"
-echo "output       : $OUT"
+echo "project root : $SRC"
+echo "config.py    : $SRC/config.py"
+echo "runner       : ORIGINAL forNX/run_robust_tracker.sh"
+echo "output       : $CENTRAL"
 echo "GPU          : $GPU"
-echo "jitter       : $JITTER_M m"
-echo "Kalman mode  : learned (original full V36)"
+echo "IMPORTANT    : no architecture env override is injected"
 echo "================================================================================================"
 
-# Explicitly pin every V36 ablation switch so shell leftovers from another
-# experiment cannot silently change the architecture.
-CUDA_VISIBLE_DEVICES="$GPU" \
-PYTHONUNBUFFERED=1 \
-OMP_NUM_THREADS="${CPU_THREADS:-4}" \
-MKL_NUM_THREADS="${CPU_THREADS:-4}" \
-OPENBLAS_NUM_THREADS="${CPU_THREADS:-4}" \
-NUMEXPR_NUM_THREADS="${CPU_THREADS:-4}" \
-UAVSAT_OUTPUT_DIR="$OUT" \
-UAVSAT_REFERENCE_PROTOCOL="controlled_gt_jitter" \
-UAVSAT_EXPERIMENT_VARIANT="full_v36" \
-UAVSAT_EXPERIMENT_ANCHOR="softms" \
-UAVSAT_EXPERIMENT_FRAME_COUNT="3" \
-UAVSAT_EXPERIMENT_MOTION="quadratic" \
-UAVSAT_EXPERIMENT_KALMAN="learned" \
-UAVSAT_EXPERIMENT_DISABLE_GRU="0" \
-UAVSAT_EXPERIMENT_FORWARD_ONLY="1" \
-UAVSAT_FORWARD_ORIGIN_BACKSHIFT_M="0.0" \
-python3 -u robust_tracker.py \
+# Critical reproducibility rule: execute the original forNX runner itself.
+# Do NOT inject UAVSAT_REFERENCE_PROTOCOL / EXPERIMENT_* / OUTPUT_DIR here.
+# The only supplied arguments are ordinary run controls; architecture defaults
+# come from the user's correct forNX source exactly as they did originally.
+bash ./run_robust_tracker.sh \
   --mode train_eval \
+  --gpu "$GPU" \
   --visual-epochs "$VISUAL_EPOCHS" \
-  --temporal-epochs "$TEMPORAL_EPOCHS" \
+  --epochs "$TEMPORAL_EPOCHS" \
   --patience "$PATIENCE" \
-  --jitter-m "$JITTER_M" \
-  2>&1 | tee "$OUT/run.log"
+  --reuse-visual 1 \
+  --no-render \
+  2>&1 | tee "$CENTRAL/wrapper_run.log"
 
-echo "[forNX full] summary should be under: $OUT"
+echo "[correct forNX] all generated outputs are under: $CENTRAL"
