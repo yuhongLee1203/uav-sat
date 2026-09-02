@@ -9,6 +9,7 @@ fi
 
 SRC="$ROOT/v36_GvsK/G_only"
 OUT="$ROOT/v36_GvsK/output/G_only"
+SHARED_CACHE="$ROOT/v36_GvsK/shared_feature_cache"
 GPU="${GPU:-5}"
 VISUAL_EPOCHS="${VISUAL_EPOCHS:-30}"
 TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-60}"
@@ -19,6 +20,26 @@ for f in config.py robust_tracker.py visual_model.py visual_localizer.py data.py
 done
 command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 not found" >&2; exit 21; }
 
+# Use exactly the same persistent feature cache as the original-full run.
+# If an older cache already exists elsewhere, migrate it once.
+mkdir -p "$SHARED_CACHE"
+if ! find "$SHARED_CACHE" -type f -print -quit 2>/dev/null | grep -q .; then
+  while IFS= read -r OLD_CACHE; do
+    [[ "$OLD_CACHE" == "$SHARED_CACHE" ]] && continue
+    if find "$OLD_CACHE" -type f -print -quit 2>/dev/null | grep -q .; then
+      echo "[cache] reusing existing cache from: $OLD_CACHE"
+      cp -a "$OLD_CACHE/." "$SHARED_CACHE/"
+      break
+    fi
+  done < <(find "$ROOT/v36_GvsK" -type d -name feature_cache 2>/dev/null | sort)
+fi
+
+if find "$SHARED_CACHE" -type f -print -quit 2>/dev/null | grep -q .; then
+  echo "[cache] shared cache already exists: $SHARED_CACHE"
+else
+  echo "[cache] no existing cache found; it will be created ONCE at: $SHARED_CACHE"
+fi
+
 rm -rf "$OUT"
 mkdir -p "$OUT"
 cp "$ROOT/v36_GvsK/output/source_audit.txt" "$OUT/source_audit.txt" 2>/dev/null || true
@@ -26,10 +47,10 @@ cp "$ROOT/v36_GvsK/output/source_audit.txt" "$OUT/source_audit.txt" 2>/dev/null 
 cd "$SRC"
 export CUDA_VISIBLE_DEVICES="$GPU"
 export UAVSAT_OUTPUT_DIR="$OUT"
+export UAVSAT_FEATURE_CACHE_DIR="$SHARED_CACHE"
 export UAVSAT_EXPERIMENT_KALMAN="none"
 
-# Some old forNX shell scripts call `python`, while this container maps that to
-# Python 2. Force every nested `python` invocation to the same Python 3 runtime.
+# Some old forNX shell scripts call `python`; force them to Python 3.
 PY3="$(command -v python3)"
 PYSHIM="$OUT/python3_shim"
 mkdir -p "$PYSHIM"
@@ -43,6 +64,7 @@ ARGS=(--mode train_eval --gpu 0 --visual-epochs "$VISUAL_EPOCHS" --epochs "$TEMP
 echo "=== forNX V36 / G ONLY ==="
 echo "source : $SRC"
 echo "output : $OUT"
+echo "cache  : $SHARED_CACHE"
 echo "GPU    : physical $GPU -> cuda:0"
 echo "Python : $PY3"
 echo "ONLY architecture change: UAVSAT_EXPERIMENT_KALMAN=none"
@@ -63,3 +85,4 @@ else
 fi
 
 echo "[DONE] G-only result: $OUT"
+echo "[CACHE] persistent shared cache: $SHARED_CACHE"
