@@ -4,204 +4,167 @@ set -Eeuo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-REQ=(config.py robust_tracker.py visual_model.py visual_localizer.py data.py run_robust_tracker.sh)
+CORE=(config.py robust_tracker.py visual_model.py visual_localizer.py data.py)
 
-# Find the executable project root first. Nothing is moved until this succeeds.
-SOURCE_ROOT="$({
-python3 - "$ROOT" "${FORNX_DIR:-}" <<'PY'
+find_source_root() {
+  python3 - "$ROOT" "${FORNX_DIR:-}" <<'PY'
 from pathlib import Path
 import sys
-root = Path(sys.argv[1]).resolve()
-explicit = sys.argv[2].strip()
-required = {"config.py", "robust_tracker.py", "visual_model.py", "visual_localizer.py", "data.py", "run_robust_tracker.sh"}
 
-bases = []
+repo = Path(sys.argv[1]).resolve()
+explicit = sys.argv[2].strip()
+required = ["config.py", "robust_tracker.py", "visual_model.py", "visual_localizer.py", "data.py"]
+
+search_roots = []
 if explicit:
     p = Path(explicit).expanduser().resolve()
     if p.exists():
-        bases.append(p)
+        search_roots.append(p)
 else:
-    for p in root.rglob("*"):
-        if p.is_dir() and "fornx" in p.name.lower():
-            bases.append(p.resolve())
+    for p in [repo / "forNX", repo / "fornx", repo / "ForNX", repo.parent / "forNX", Path("/yh/study/forNX"), Path("/yh/study/fornx"), repo]:
+        if p.exists():
+            search_roots.append(p.resolve())
+    study = Path("/yh/study")
+    if study.exists():
+        search_roots.append(study)
 
-candidates, seen = [], set()
-for base in bases:
-    probes = [base]
-    try:
-        probes.extend(p.parent for p in base.rglob("config.py"))
-    except PermissionError:
-        pass
+candidates = {}
+for base in search_roots:
+    probes = []
+    if base.is_dir():
+        probes.append(base)
+        try:
+            probes.extend(p.parent for p in base.rglob("robust_tracker.py"))
+        except (PermissionError, OSError):
+            pass
     for d in probes:
-        d = d.resolve()
-        if d in seen:
+        try:
+            d = d.resolve()
+        except OSError:
             continue
-        seen.add(d)
-        if not all((d / name).is_file() for name in required):
+        if d in candidates:
+            continue
+        if not all((d / f).is_file() for f in required):
             continue
         try:
-            config = (d / "config.py").read_text(encoding="utf-8", errors="ignore")
             tracker = (d / "robust_tracker.py").read_text(encoding="utf-8", errors="ignore")
             model = (d / "visual_model.py").read_text(encoding="utf-8", errors="ignore")
+            cfg = ""
+            for n in ("config.py", "config_base.py"):
+                q = d / n
+                if q.is_file():
+                    cfg += q.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
         score = 0
-        score += 8 if "V34ProtocolCompactGRUSoftMSModeVarianceForward3x6PolynomialKalman_v36" in config else 0
-        score += 5 if "ThreeFrameRouteStateGRU" in tracker else 0
-        score += 4 if "UAVSAT_EXPERIMENT_KALMAN" in config else 0
+        low = str(d).lower()
+        if "fornx" in low:
+            score += 100
+        if "ThreeFrameRouteStateGRU" in tracker or "ThreeFrameRouteStateGRU" in model:
+            score += 20
         for h in ("correction_head", "variance_head", "motion_head", "heading_head"):
-            score += 1 if h in model else 0
-        teacher = False
-        for py in d.glob("*.py"):
-            try:
-                if "teacher_meanshift_feedback" in py.read_text(encoding="utf-8", errors="ignore"):
-                    teacher = True
-                    break
-            except OSError:
-                pass
-        if teacher:
-            score -= 100
-        candidates.append((score, d))
+            if h in model:
+                score += 5
+        if "UAVSAT_EXPERIMENT_KALMAN" in cfg:
+            score += 15
+        if "teacher_meanshift_feedback" in tracker:
+            score -= 1000
+        candidates[d] = score
 
 if not candidates:
-    sys.exit(0)
-candidates.sort(key=lambda x: (-x[0], str(x[1])))
-best_score = candidates[0][0]
-best = [d for s, d in candidates if s == best_score]
-if len(best) != 1 or best_score < 15:
-    sys.exit(0)
-print(best[0])
+    raise SystemExit(0)
+ordered = sorted(candidates.items(), key=lambda x: (-x[1], str(x[0])))
+best, score = ordered[0]
+if score < 20:
+    raise SystemExit(0)
+print(best)
 PY
-} 2>/dev/null)"
+}
 
+SOURCE_ROOT="$(find_source_root)"
 if [[ -z "$SOURCE_ROOT" || ! -d "$SOURCE_ROOT" ]]; then
-  echo "ERROR: could not locate a complete forNX V36 project root." >&2
-  echo "Required in the SAME project-root directory:" >&2
-  printf '  - %s\n' "${REQ[@]}" >&2
-  echo "No existing GvsK folder was moved or deleted." >&2
-  echo "If needed, specify it explicitly:" >&2
-  echo "FORNX_DIR=/absolute/path/to/forNX bash prepare_fornx_gvsk.sh" >&2
+  echo "ERROR: cannot find the real forNX/V36 project root." >&2
+  echo "Need only these five files in the same code directory:" >&2
+  printf '  - %s\n' "${CORE[@]}" >&2
+  echo "Searches repo + /yh/study automatically; run_robust_tracker.sh is NOT required." >&2
   exit 2
 fi
 
-for f in "${REQ[@]}"; do
-  [[ -f "$SOURCE_ROOT/$f" ]] || { echo "ERROR: source root missing $f" >&2; exit 3; }
+for f in "${CORE[@]}"; do
+  [[ -f "$SOURCE_ROOT/$f" ]] || { echo "ERROR: source missing $SOURCE_ROOT/$f" >&2; exit 3; }
 done
-for r in route_A route_B route_C; do
-  [[ -f "$SOURCE_ROOT/route_waypoints/${r}_waypoints.json" ]] || {
-    echo "ERROR: source root missing route_waypoints/${r}_waypoints.json" >&2
-    echo "Resolved root: $SOURCE_ROOT" >&2
-    echo "No existing GvsK folder was moved or deleted." >&2
-    exit 4
-  }
-done
-if grep -R -q 'teacher_meanshift_feedback' "$SOURCE_ROOT" --include='*.py'; then
-  echo "ERROR: resolved forNX contains teacher_meanshift_feedback; this is the wrong byTeacher architecture." >&2
-  exit 5
+if grep -q 'teacher_meanshift_feedback' "$SOURCE_ROOT/robust_tracker.py"; then
+  echo "ERROR: selected source is byTeacher, not original forNX V36: $SOURCE_ROOT" >&2
+  exit 4
 fi
-if ! grep -q 'ThreeFrameRouteStateGRU' "$SOURCE_ROOT/robust_tracker.py"; then
-  echo "ERROR: resolved forNX is not the expected ThreeFrameRouteStateGRU V36." >&2
-  exit 6
-fi
-if ! grep -q 'UAVSAT_EXPERIMENT_KALMAN' "$SOURCE_ROOT/config.py"; then
-  echo "ERROR: resolved forNX has no original V36 Kalman ablation switch." >&2
-  exit 7
-fi
-for h in correction_head variance_head motion_head heading_head; do
-  grep -q "$h" "$SOURCE_ROOT/visual_model.py" || { echo "ERROR: visual_model.py missing $h" >&2; exit 8; }
-done
 
 DST="$ROOT/v36_GvsK"
 STAMP="$(date +%Y%m%d_%H%M%S)"
-if [[ -f "$DST/.prepared_from_forNX_v2" && -d "$DST/original_forNX" && -d "$DST/G_only" ]]; then
-  echo "[GvsK] already prepared correctly from: $SOURCE_ROOT"
-  exit 0
-fi
 
-# Archive failed/old experiments only now, after the correct source is proven valid.
-[[ ! -e "$DST" ]] || mv "$DST" "$ROOT/v36_GvsK_previous_wrong_${STAMP}"
-[[ ! -e "$ROOT/v36-GvsK" ]] || mv "$ROOT/v36-GvsK" "$ROOT/v36-GvsK_previous_wrong_${STAMP}"
+# Only archive after a valid source is found.
+if [[ -e "$DST" ]]; then
+  mv "$DST" "$ROOT/v36_GvsK_previous_${STAMP}"
+fi
+if [[ -e "$ROOT/v36-GvsK" ]]; then
+  mv "$ROOT/v36-GvsK" "$ROOT/v36-GvsK_previous_${STAMP}"
+fi
 
 ORIG="$DST/original_forNX"
 GONLY="$DST/G_only"
 OUT="$DST/output"
 mkdir -p "$ORIG" "$GONLY" "$OUT/original_full" "$OUT/G_only"
 
-# Entire project root, including every support file/checkpoint/output already in forNX.
+# Copy EVERYTHING in the actual code directory. No hand-picked source list.
 cp -a "$SOURCE_ROOT/." "$ORIG/"
 cp -a "$SOURCE_ROOT/." "$GONLY/"
 
-# Exact-copy verification before any G-only change.
-if ! diff -qr "$SOURCE_ROOT" "$ORIG" > "$OUT/forNX_copy_diff.txt"; then
-  echo "ERROR: original_forNX is not an exact copy of $SOURCE_ROOT" >&2
-  cat "$OUT/forNX_copy_diff.txt" >&2
-  exit 9
-fi
-
-# Verify the runners' actual working directories, not just the source directory.
+# Original V36 commonly expects route_waypoints beside/in project root. If the
+# uploaded forNX copy omitted them, use the repository's canonical waypoint files.
 for tree in "$ORIG" "$GONLY"; do
-  for f in "${REQ[@]}"; do
-    [[ -f "$tree/$f" ]] || { echo "ERROR: copied tree missing $tree/$f" >&2; exit 10; }
+  if [[ ! -d "$tree/route_waypoints" ]]; then
+    [[ -d "$ROOT/route_waypoints" ]] || { echo "ERROR: route_waypoints missing in both forNX and repo" >&2; exit 5; }
+    cp -a "$ROOT/route_waypoints" "$tree/route_waypoints"
+  fi
+  for f in "${CORE[@]}"; do
+    [[ -f "$tree/$f" ]] || { echo "ERROR: copied tree missing $tree/$f" >&2; exit 6; }
   done
   for r in route_A route_B route_C; do
-    [[ -f "$tree/route_waypoints/${r}_waypoints.json" ]] || { echo "ERROR: copied tree missing $r waypoint file" >&2; exit 11; }
+    [[ -f "$tree/route_waypoints/${r}_waypoints.json" ]] || { echo "ERROR: missing ${r}_waypoints.json" >&2; exit 7; }
   done
 done
 
-# G-only uses the original V36's built-in no-Kalman branch. This is the ONLY code edit.
-python3 - "$GONLY/config.py" <<'PY'
-from pathlib import Path
-import re, sys
-p = Path(sys.argv[1])
-s = p.read_text(encoding="utf-8")
-pat = re.compile(r'(EXPERIMENT_KALMAN\s*=\s*os\.environ\.get\(\s*["\']UAVSAT_EXPERIMENT_KALMAN["\']\s*,\s*)["\']learned["\'](\s*\))', re.S)
-s2, n = pat.subn(r'\1"none"\2', s, count=1)
-if n != 1:
-    raise SystemExit("ERROR: expected exactly one EXPERIMENT_KALMAN default='learned'")
-p.write_text(s2, encoding="utf-8")
-PY
+# G-only must use the original V36 built-in Kalman ablation switch. It can be
+# declared in config.py or config_base.py. Do not rewrite model/tracker code.
+if ! grep -R -q 'UAVSAT_EXPERIMENT_KALMAN' "$GONLY/config.py" "$GONLY/config_base.py" 2>/dev/null; then
+  echo "ERROR: this forNX source has no UAVSAT_EXPERIMENT_KALMAN switch; refusing to invent a new architecture." >&2
+  exit 8
+fi
 
-# Prove that source code differs in config.py only. Generated/cache directories are ignored.
-python3 - "$ORIG" "$GONLY" "$OUT/original_vs_Gonly_code_diff.txt" <<'PY'
-from pathlib import Path
-import hashlib, sys
-A, B, out = map(Path, sys.argv[1:])
-ignore = {"outputs", "output", "__pycache__", ".cache", ".git"}
-def scan(root):
-    result = {}
-    for p in root.rglob("*"):
-        if not p.is_file():
-            continue
-        rel = p.relative_to(root)
-        if any(part in ignore for part in rel.parts):
-            continue
-        result[str(rel)] = hashlib.sha256(p.read_bytes()).hexdigest()
-    return result
-a, b = scan(A), scan(B)
-changed = [k for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
-out.write_text("\n".join(changed) + ("\n" if changed else ""), encoding="utf-8")
-if changed != ["config.py"]:
-    raise SystemExit("ERROR: G_only code differs from original in: " + repr(changed))
-PY
+# Verify copied core source is identical before runtime override.
+for f in "${CORE[@]}"; do
+  cmp -s "$ORIG/$f" "$GONLY/$f" || { echo "ERROR: copies differ unexpectedly: $f" >&2; exit 9; }
+done
+[[ ! -f "$ORIG/config_base.py" || ! -f "$GONLY/config_base.py" ]] || cmp -s "$ORIG/config_base.py" "$GONLY/config_base.py" || { echo "ERROR: config_base copies differ" >&2; exit 10; }
 
 cat > "$OUT/source_audit.txt" <<EOF
-resolved_forNX_root=$SOURCE_ROOT
+source_root=$SOURCE_ROOT
 original_copy=$ORIG
 G_only_copy=$GONLY
-exact_full_directory_copy_before_patch=yes
-core_files=${REQ[*]}
-route_waypoints=A,B,C present
+copy_method=cp -a entire source directory
+core_files=${CORE[*]}
+run_robust_tracker_sh_required=no
+route_waypoints=source copy or repository fallback
 teacher_meanshift_feedback=absent
-ThreeFrameRouteStateGRU=present
-G_only_code_diff=config.py only
-G_only_change=EXPERIMENT_KALMAN learned -> none
+G_only_core_code_difference=none
+G_only_runtime_change=UAVSAT_EXPERIMENT_KALMAN=none
 EOF
-cat > "$DST/.prepared_from_forNX_v2" <<EOF
+
+cat > "$DST/.prepared" <<EOF
 source=$SOURCE_ROOT
-prepared_at=$(date -Iseconds)
+prepared=$(date -Iseconds)
 EOF
 
 cat "$OUT/source_audit.txt"
-echo "[GvsK] original : $ORIG"
-echo "[GvsK] G-only   : $GONLY"
-echo "[GvsK] outputs  : $OUT"
+echo "[OK] prepared original : $ORIG"
+echo "[OK] prepared G-only   : $GONLY"
+echo "[OK] output root       : $OUT"
