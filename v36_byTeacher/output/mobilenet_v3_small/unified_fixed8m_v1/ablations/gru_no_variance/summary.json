@@ -1,0 +1,81 @@
+{
+  "run_id": "gru_no_variance",
+  "protocol": {
+    "protocol_name": "unified_fixed_radial_8m_v1",
+    "main_jitter_m": 8.0,
+    "jitter_definition": "fixed radial magnitude; deterministic changing direction",
+    "main_grid_size": 6,
+    "main_candidate_count": 36,
+    "decoder": "softms",
+    "meanshift_bandwidth_m": 8.0,
+    "score_temperature_tau": 0.3,
+    "seed": 2026,
+    "minimum_candidate_capture_rate_pct": 95.0,
+    "formal_oracle_zero_m": false,
+    "train_route": "route_A",
+    "test_routes": [
+      "route_B",
+      "route_C"
+    ]
+  },
+  "changed_factor": {
+    "pipeline": "MKG",
+    "grid_size": 6,
+    "decoder": "softms",
+    "gru_ablation": "no_variance",
+    "bandwidth_m": 8.0,
+    "tau": 0.3,
+    "model_seed": 2026
+  },
+  "formal_jitter_m": 8.0,
+  "train_capture": {
+    "Route": "route_A",
+    "Jitter_m": 8.0,
+    "GridSize": 6,
+    "CandidateCount": 36,
+    "CaptureRadius_m": 7.5,
+    "CandidateCaptureRate_pct": 100.0,
+    "NearestCandidateMean_m": 1.8169225454330444,
+    "NearestCandidateP95_m": 2.873246431350708,
+    "NearestCandidateMax_m": 3.304666519165039
+  },
+  "training_from_scratch": true,
+  "results": {
+    "route_B": {
+      "MLE_m": 9.038012649524974,
+      "MedLE_m": 8.377384013825255,
+      "P90_m": 16.288174511201703,
+      "P95_m": 18.30186014851885,
+      "P99_m": 22.414470254815235,
+      "CVaR90_m": 19.015503218644607,
+      "LSR@5_pct": 25.57117750439367,
+      "LSR@10_pct": 60.89630931458699,
+      "LSR@15_pct": 85.45694200351494,
+      "LSR@20_pct": 97.36379613356766,
+      "Route": "route_B",
+      "VisualMLE_m": 10.619199672479489,
+      "Jitter_m": 8.0,
+      "CandidateCaptureRate_pct": 100.0,
+      "CandidateNearestP95_m": 2.831418514251709,
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/unified_fixed8m_v1/ablations/gru_no_variance/jitter_8m/route_B_frames.csv"
+    },
+    "route_C": {
+      "MLE_m": 8.129285863347818,
+      "MedLE_m": 7.307886591816648,
+      "P90_m": 15.040244923315077,
+      "P95_m": 16.412494460254678,
+      "P99_m": 19.85549534199033,
+      "CVaR90_m": 17.345280521239392,
+      "LSR@5_pct": 31.717011128775834,
+      "LSR@10_pct": 66.05723370429253,
+      "LSR@15_pct": 89.7456279809221,
+      "LSR@20_pct": 99.20508744038156,
+      "Route": "route_C",
+      "VisualMLE_m": 10.242033426259052,
+      "Jitter_m": 8.0,
+      "CandidateCaptureRate_pct": 100.0,
+      "CandidateNearestP95_m": 2.772047758102417,
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/unified_fixed8m_v1/ablations/gru_no_variance/jitter_8m/route_C_frames.csv"
+    }
+  }
+}
