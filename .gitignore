@@ -18,6 +18,13 @@ __pycache__/
 *.webm
 *.gif
 
+# forNX contains packaged runtime assets that must stay local.
+# Keep source/config/scripts under forNX versionable, but never commit the
+# large datasets, pretrained-model caches, or packaged model weights.
+forNX/data/
+forNX/pretrained_cache/
+forNX/weights/
+
 # Generated experiment artifacts are ignored by default. Keep only compact,
 # human-readable training logs and evaluation summaries in any future output
 # directory so experiment metrics can still be reviewed in Git.
