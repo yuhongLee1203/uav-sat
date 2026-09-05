@@ -138,3 +138,8 @@ echo "preserved         : forward 3x6, controlled 8m smooth jitter, constrained 
 ) 2>&1 | tee "${OUT}/eval.log"
 
 echo "[DONE] SoftMS + Kalman-only result: ${OUT}/robust_tracker_summary.json"
+
+echo "=== PLOT TRAJECTORY / JITTER ==="
+MPLBACKEND=Agg python3 "${ROOT}/plot_ms_kalman_only_trajectory.py" --output-dir "${OUT}"
+echo "[DONE] trajectory plots: ${OUT}/route_B_trajectory.png, ${OUT}/route_C_trajectory.png"
+echo "[DONE] stability plots : ${OUT}/route_B_motion_stability.png, ${OUT}/route_C_motion_stability.png"
