@@ -20,7 +20,6 @@ VISUAL_CKPT="${BASE_OUT}/checkpoints/visual_retrieval_A_only.pt"
 TEMPORAL_CKPT="${BASE_OUT}/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
 BASE_SUMMARY="${BASE_OUT}/robust_tracker_summary.json"
 
-# END_MS must reuse the exact Weighted-Centroid MobileNetV3 temporal checkpoint.
 NEED_BASE=0
 [[ -s "${VISUAL_CKPT}" ]] || NEED_BASE=1
 [[ -s "${TEMPORAL_CKPT}" ]] || NEED_BASE=1
@@ -48,17 +47,13 @@ fi
 [[ -s "${VISUAL_CKPT}" ]] || { echo "ERROR: missing ${VISUAL_CKPT}" >&2; exit 2; }
 [[ -s "${TEMPORAL_CKPT}" ]] || { echo "ERROR: missing ${TEMPORAL_CKPT}" >&2; exit 2; }
 
-# New isolated END_MS output; old post-Kalman experiment is untouched.
 rm -rf "${SRC}" "${OUT}"
 mkdir -p "${SRC}" "${OUT}/checkpoints"
 cp -a "${BASE_SRC}/." "${SRC}/"
+python3 "${EXP_ROOT}/patch_weighted_front.py" "${SRC}/robust_tracker.py"
 ln -sfn "${VISUAL_CKPT}" "${OUT}/checkpoints/visual_retrieval_A_only.pt"
 ln -sfn "${TEMPORAL_CKPT}" "${OUT}/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
 
-# Patch only final output logic. Front-stage decoder is selected at runtime by
-# UAVSAT_EXPERIMENT_ANCHOR=weighted_centroid. The second stage deliberately
-# remains Soft MeanShift and is centered from the current controlled reference
-# point, NOT from the Kalman posterior.
 python3 - "${SRC}/robust_tracker.py" <<'PY'
 from pathlib import Path
 import sys
@@ -74,7 +69,7 @@ s = s.replace(old_init, new_init, 1)
 
 old_block = '''        if bool(getattr(config, "NO_GT_INFERENCE", False)):\n            progress_capped_to_gt = False\n        else:\n            final_se, progress_capped_to_gt = cap_kalman_to_current_gt(\n                kf, final_se, gt_state["se"][index]\n            )\n        final_xy = route.xy_from_se(final_se[0], final_se[1])'''
 
-new_block = '''        if bool(getattr(config, "NO_GT_INFERENCE", False)):\n            progress_capped_to_gt = False\n        else:\n            final_se, progress_capped_to_gt = cap_kalman_to_current_gt(\n                kf, final_se, gt_state["se"][index]\n            )\n\n        # --------------------------------------------------------------\n        # END_MS: controlled reference-point-centered FULL 6x6 SoftMS.\n        #\n        # 1) Keep the normal Kalman posterior for state propagation.\n        # 2) Take the current controlled reference-point XY.\n        # 3) Find its nearest permanent satellite lattice anchor.\n        # 4) Open the complete centered 6x6 = 36 patch gallery there.\n        # 5) Match the CURRENT UAV feature against all 36 patches.\n        # 6) Decode this second stage with Soft MeanShift (NOT weighted centroid).\n        # 7) Use END_MS only as this frame's reported final XY. It is NOT fed\n        #    back into Kalman or GRU state.\n        # --------------------------------------------------------------\n        kalman_pre_end_ms_se = np.asarray(final_se, dtype=np.float64).copy()\n        kalman_pre_end_ms_xy = route.xy_from_se(\n            kalman_pre_end_ms_se[0], kalman_pre_end_ms_se[1]\n        )\n\n        reference_xy_t = cache.gt_xy[index : index + 1].to(device).float()\n        reference_distance2 = (\n            visual.gallery["xy"] - reference_xy_t\n        ).square().sum(dim=1)\n        reference_anchor_index = int(reference_distance2.argmin().item())\n        reference_anchor_xy_t = visual.gallery["xy"][\n            reference_anchor_index : reference_anchor_index + 1\n        ]\n\n        end_ms_candidate = visual.candidate_batch(\n            uav_clip=uav_clip,\n            center_xy=reference_anchor_xy_t,\n            grid_size=6,\n        )\n        end_ms_xy = (\n            end_ms_candidate.softms_xy[0]\n            .detach().cpu().numpy().astype(np.float64)\n        )\n\n        preferred_leg = int(gt_state["legs"][index])\n        end_ms_s, end_ms_e, _ = route.project_xy_local(\n            end_ms_xy, preferred_leg\n        )\n        final_se = np.asarray([end_ms_s, end_ms_e], dtype=np.float64)\n        # Report the actual MeanShift XY rather than re-projecting it onto the\n        # route. final_se is metadata only; Kalman internal state remains intact.\n        final_xy = end_ms_xy.copy()\n        end_ms_shift_m = float(np.linalg.norm(final_xy - kalman_pre_end_ms_xy))\n        end_ms_shifts_from_kalman.append(end_ms_shift_m)'''
+new_block = '''        if bool(getattr(config, "NO_GT_INFERENCE", False)):\n            progress_capped_to_gt = False\n        else:\n            final_se, progress_capped_to_gt = cap_kalman_to_current_gt(\n                kf, final_se, gt_state["se"][index]\n            )\n\n        # END_MS: current controlled reference point -> nearest permanent SAT\n        # lattice anchor -> full centered 6x6 -> Soft MeanShift.\n        # The Kalman posterior is preserved for state propagation.\n        kalman_pre_end_ms_se = np.asarray(final_se, dtype=np.float64).copy()\n        kalman_pre_end_ms_xy = route.xy_from_se(\n            kalman_pre_end_ms_se[0], kalman_pre_end_ms_se[1]\n        )\n\n        reference_xy_t = cache.gt_xy[index : index + 1].to(device).float()\n        reference_distance2 = (\n            visual.gallery["xy"] - reference_xy_t\n        ).square().sum(dim=1)\n        reference_anchor_index = int(reference_distance2.argmin().item())\n        reference_anchor_xy_t = visual.gallery["xy"][\n            reference_anchor_index : reference_anchor_index + 1\n        ]\n\n        end_ms_candidate = visual.candidate_batch(\n            uav_clip=uav_clip,\n            center_xy=reference_anchor_xy_t,\n            grid_size=6,\n        )\n        end_ms_xy = (\n            end_ms_candidate.softms_xy[0]\n            .detach().cpu().numpy().astype(np.float64)\n        )\n\n        preferred_leg = int(gt_state["legs"][index])\n        end_ms_s, end_ms_e, _ = route.project_xy_local(\n            end_ms_xy, preferred_leg\n        )\n        final_se = np.asarray([end_ms_s, end_ms_e], dtype=np.float64)\n        final_xy = end_ms_xy.copy()\n        end_ms_shift_m = float(np.linalg.norm(final_xy - kalman_pre_end_ms_xy))\n        end_ms_shifts_from_kalman.append(end_ms_shift_m)'''
 
 if s.count(old_block) != 1:
     raise SystemExit(f"ERROR: Kalman final block pattern count={s.count(old_block)}")
@@ -101,7 +96,7 @@ export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false
 
 echo "============================================================================================================"
 echo "MobileNetV3 + END_MS"
-echo "front: forward 3x6 Weighted Centroid -> GRU -> Polynomial -> Kalman"
+echo "front: forward 3x6 Weighted Centroid (no MeanShift iterations) -> GRU -> Polynomial -> Kalman"
 echo "end: current reference point -> nearest SAT lattice anchor -> full centered 6x6 -> Soft MeanShift -> FINAL XY"
 echo "output: ${OUT}"
 echo "============================================================================================================"
@@ -131,7 +126,7 @@ from pathlib import Path
 p = Path(sys.argv[1])
 d = json.loads(p.read_text(encoding="utf-8"))
 d["architecture"] = sys.argv[2]
-d["front_visual_decoder"] = "forward 3x6 posterior-weighted centroid"
+d["front_visual_decoder"] = "forward 3x6 posterior-weighted centroid; no front MeanShift iterations"
 d["end_refinement"] = "reference-point-aligned full 6x6 Soft MeanShift"
 p.write_text(json.dumps(d, indent=2, ensure_ascii=False), encoding="utf-8")
 PY
