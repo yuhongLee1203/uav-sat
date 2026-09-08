@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_RUNNER="${ROOT}/run_mobilenetv3_kf2_regularized_ms2_eval.sh"
-TMP_RUNNER="$(mktemp /tmp/uavsat_kf2tmp_ms2_XXXXXX.sh)"
+TMP_RUNNER="$(mktemp "${ROOT}/.kf2tmp_ms2_XXXXXX.sh")"
 trap 'rm -f "${TMP_RUNNER}"' EXIT
 
 [[ -f "${BASE_RUNNER}" ]] || { echo "ERROR: missing ${BASE_RUNNER}" >&2; exit 2; }
@@ -58,8 +58,7 @@ for old, new in replacements:
         raise SystemExit(f"ERROR: expected template pattern not found: {old[:100]!r}")
     s = s.replace(old, new)
 
-# Add an explicit summary flag so uploaded results prove that the new run did not
-# feed KF#2 into the next frame.
+# Add explicit summary flags proving that KF#2 does not feed the next frame.
 needle = 'd["second_kalman_update"] = "temporary current-frame predefined reference update; persistent KF1 state is unchanged"\n'
 if needle not in s:
     raise SystemExit("ERROR: summary insertion anchor missing")
@@ -82,4 +81,4 @@ echo "persistent next-frame state: KF#1 only"
 echo "current-frame final chain: MS1 -> GRU -> KF1 -> temporary KF2 -> MS2 -> FINAL"
 echo "============================================================================================================"
 
-exec bash "${TMP_RUNNER}"
+bash "${TMP_RUNNER}"
