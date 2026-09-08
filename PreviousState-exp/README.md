@@ -7,37 +7,59 @@ All variants use the current **Previous-State-Only** temporal architecture:
 - Main GRU current input = temporal mean + first difference + second difference + Previous State.
 - Previous State raw = `[previous v_s, previous v_e, previous heading residual, previous turn rate]`.
 - Main GRU does **not** receive satellite context, response variance, visual innovation, or the previous Kalman final localization position.
-- Previous GRU hidden state remains the GRU recurrent hidden input and is not concatenated into the 512-D current input.
-- Forward local search, quadratic motion and learned route-coordinate Kalman remain enabled unless noted below.
+- Previous GRU hidden state remains the GRU recurrent hidden input and is not concatenated into the current input.
+- Quadratic motion and learned route-coordinate Kalman remain unchanged.
 
-## Variants
+The older experiment outputs are intentionally kept. The new requested experiment uses two new isolated outputs so previous SoftMS-based runs are not overwritten.
 
-### 1. `mobileclip_current`
-Preserves the already-trained ~3.9 m Previous-State-Only MobileCLIP2-S2 model. The runner copies the current source snapshot out of `v36_GvsK/previous_state_only/` into this folder and reuses the existing Previous-State-Only visual + temporal checkpoints for evaluation only.
+## New requested variants
 
-### 2. `mobilenetv3_prevstate`
-Same Previous-State-Only architecture, but changes the visual backbone to `mobilenet_v3_small`.
+### 1. `mobilenetv3_weighted`
 
-For this experiment, the **first-stage forward 3x6 visual decoder is Weighted Centroid instead of Soft MeanShift**. The 18 forward candidates are scored exactly as before; their softmax-normalized similarity weights are used to compute the weighted center coordinate. That weighted center is then used by the recurrent/Kalman pipeline as the current visual observation.
+Flow:
 
-This variant reuses the packaged forNX Route-A-only MobileNetV3 visual checkpoint and retrains only the temporal Previous-State-Only GRU on Route A, then evaluates Routes B/C. The normal Kalman posterior is the reported final localization.
+`reference-centered local search -> forward 3x6 candidates -> Weighted Centroid -> Previous-State-Only GRU -> quadratic polynomial -> learned Kalman -> final`
 
-### 3. `mobilenetv3_postkalman6x6`
-Uses the **same front-stage Weighted Centroid decoder** as variant 2 and reuses the exact MobileNetV3 temporal checkpoint from variant 2.
+The first-stage visual anchor is **Weighted Centroid**, not MeanShift. It uses the existing `EXPERIMENT_ANCHOR=weighted_centroid` implementation: the same 18 forward candidates and local posterior are retained, and their posterior-weighted coordinates are reduced to one visual anchor.
 
-After the normal forward-3x6 Weighted-Centroid -> GRU -> Kalman posterior is produced for frame `t`, the second-stage local gallery is **not centered on the Kalman posterior**. Instead, the controlled current-frame reference point that defines the local search location is converted to the corresponding satellite search center. A **full centered 6x6 = 36** satellite patch window is opened around that reference-point-aligned center, and the current UAV feature is matched against those 36 patches.
+Runner:
 
-The second-stage decoder is **Soft MeanShift**, not Weighted Centroid. Its MeanShift coordinate becomes the reported `END_MS` final localization for that frame. This second-stage result is output-only and is not fed back into the Kalman state or GRU state.
+`run_mobilenetv3_weighted_train_eval.sh`
 
-Thus the two MobileNetV3 variants are:
+Output:
 
-- `mobilenetv3_prevstate`: forward 3x6 **Weighted Centroid** -> GRU -> Kalman -> final.
-- `mobilenetv3_postkalman6x6`: forward 3x6 **Weighted Centroid** -> GRU -> Kalman -> reference-point-centered full 6x6 -> **Soft MeanShift** -> END_MS final.
+`output/mobilenetv3_weighted/`
 
-## Outputs
+The packaged Route-A-only MobileNetV3 visual checkpoint is reused; the temporal Previous-State-Only GRU is retrained on Route A and evaluated on Routes B/C.
 
-- `output/mobileclip_current/`
-- `output/mobilenetv3_prevstate/`
-- `output/mobilenetv3_postkalman6x6/`
+### 2. `mobilenetv3_END_MS`
 
-Each result directory contains `robust_tracker_summary.json` and route CSVs.
+Flow:
+
+`reference-centered local search -> forward 3x6 candidates -> Weighted Centroid -> Previous-State-Only GRU -> quadratic polynomial -> learned Kalman -> current reference point -> nearest permanent SAT lattice anchor -> centered full 6x6 (36 patches) -> Soft MeanShift -> END_MS final`
+
+This variant reuses the **exact visual and temporal checkpoints from `mobilenetv3_weighted`**. The second stage does not use Weighted Centroid.
+
+For each frame, the current controlled reference-point XY is mapped to its nearest permanent satellite lattice anchor. A complete centered `6x6 = 36` patch window is opened around that anchor, the current UAV feature is matched against all 36 patches, and **Soft MeanShift** produces the reported END_MS XY.
+
+The END_MS coordinate is output-only: it does not overwrite the Kalman internal state or GRU recurrent state.
+
+Runner:
+
+`run_mobilenetv3_end_ms_eval.sh`
+
+Output:
+
+`output/mobilenetv3_END_MS/`
+
+## Run both requested variants
+
+Use:
+
+`run_weighted_end_ms.sh`
+
+It first trains/evaluates `mobilenetv3_weighted`, then evaluates `mobilenetv3_END_MS` with the exact checkpoint generated by the first run.
+
+## Older retained outputs
+
+The previous folders such as `output/mobilenetv3_prevstate/` and `output/mobilenetv3_postkalman6x6/` are left untouched for comparison.
