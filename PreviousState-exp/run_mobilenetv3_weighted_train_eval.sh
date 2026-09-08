@@ -30,6 +30,7 @@ VISUAL_CKPT="${FORNX}/weights/v36_${BACKBONE}/checkpoints/visual_retrieval_A_onl
 rm -rf "${SRC}" "${OUT}"
 mkdir -p "${SRC}" "${OUT}/checkpoints" "${CACHE_DIR}"
 cp -a "${BASE_SRC}/." "${SRC}/"
+python3 "${EXP_ROOT}/patch_weighted_front.py" "${SRC}/robust_tracker.py"
 ln -sfn "${VISUAL_CKPT}" "${OUT}/checkpoints/visual_retrieval_A_only.pt"
 
 export TORCH_HOME="${FORNX}/pretrained_cache/torch"
@@ -42,7 +43,7 @@ echo "source: ${SRC}"
 echo "output: ${OUT}"
 echo "visual checkpoint: ${VISUAL_CKPT}"
 echo "temporal GRU: retrained on Route A"
-echo "front decoder: Weighted Centroid (NOT MeanShift)"
+echo "front decoder: Weighted Centroid; MeanShift iterations disabled"
 echo "============================================================================================================"
 
 (
@@ -74,7 +75,7 @@ import json, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 d = json.loads(p.read_text(encoding="utf-8"))
-d["front_visual_decoder"] = "forward 3x6 posterior-weighted centroid"
+d["front_visual_decoder"] = "forward 3x6 posterior-weighted centroid; no front MeanShift iterations"
 d["end_refinement"] = "none; external Kalman posterior is final output"
 p.write_text(json.dumps(d, indent=2, ensure_ascii=False), encoding="utf-8")
 PY
