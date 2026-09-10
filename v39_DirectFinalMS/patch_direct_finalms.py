@@ -142,6 +142,38 @@ direct_block = '''        # ====================================================
         )
         ms2_shifts_from_kalman.append(ms2_shift_from_kalman_m)
 '''
+
+# Optional experiment-only perturbation of the MS2 reference prior. The default
+# is exactly 0, so the selected v39 main method is unchanged. A fixed per-frame
+# RNG seed makes robustness experiments deterministic and reproducible.
+old_reference = '''        frame_reference_xy_t = cache.gt_xy[index : index + 1].to(device).float()
+        frame_reference_xy = (
+            frame_reference_xy_t[0].detach().cpu().numpy().astype(np.float64)
+        )
+'''
+new_reference = '''        frame_reference_xy_t = cache.gt_xy[index : index + 1].to(device).float().clone()
+        ms2_reference_perturb_sigma_m = max(
+            float(__import__("os").environ.get("MS2_REFERENCE_PERTURB_M", "0.0")),
+            0.0,
+        )
+        if ms2_reference_perturb_sigma_m > 0.0:
+            rng = np.random.default_rng(390000 + int(index))
+            noise_xy = rng.normal(
+                loc=0.0,
+                scale=ms2_reference_perturb_sigma_m,
+                size=2,
+            ).astype(np.float32)
+            frame_reference_xy_t = frame_reference_xy_t + torch.tensor(
+                noise_xy[None, :], dtype=torch.float32, device=device
+            )
+        frame_reference_xy = (
+            frame_reference_xy_t[0].detach().cpu().numpy().astype(np.float64)
+        )
+'''
+if direct_block.count(old_reference) != 1:
+    raise SystemExit("ERROR: could not locate MS2 reference block")
+direct_block = direct_block.replace(old_reference, new_reference, 1)
+
 s = s[:start] + direct_block + s[end:]
 
 # 3) CSV fields: remove KF2-specific logging.
@@ -159,6 +191,7 @@ csv_block = '''                "direct_kalman_ms2_enabled": 1,
                 "kalman_y": float(kalman_xy[1]),
                 "frame_reference_x": float(frame_reference_xy[0]),
                 "frame_reference_y": float(frame_reference_xy[1]),
+                "ms2_reference_perturb_sigma_m": float(ms2_reference_perturb_sigma_m),
                 "ms2_lattice_index": int(ms2_lattice_index),
                 "ms2_lattice_x": float(ms2_lattice_xy_t[0, 0].item()),
                 "ms2_lattice_y": float(ms2_lattice_xy_t[0, 1].item()),
@@ -181,6 +214,7 @@ old_summary = '''    summary["KF1_MAE_m"] = float(np.mean(kf1_errors)) if kf1_er
 new_summary = '''    summary["Kalman_MAE_m"] = float(np.mean(kalman_errors)) if kalman_errors else 0.0
     summary["MS2_MeanShiftFromKalman_m"] = float(np.mean(ms2_shifts_from_kalman)) if ms2_shifts_from_kalman else 0.0
     summary["MS2_MaxShiftFromKalman_m"] = float(np.max(ms2_shifts_from_kalman)) if ms2_shifts_from_kalman else 0.0
+    summary["MS2_ReferencePerturbSigma_m"] = float(__import__("os").environ.get("MS2_REFERENCE_PERTURB_M", "0.0"))
     summary["MS2_Definition"] = "full 6x6 Soft MeanShift after the single Kalman update; score = visual likelihood + Kalman spatial prior + predefined-reference spatial prior; MS2 output is final"
 '''
 if s.count(old_summary) != 1:
