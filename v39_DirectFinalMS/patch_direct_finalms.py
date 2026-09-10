@@ -15,6 +15,7 @@ old_metrics = '''    kf1_errors = []
 '''
 new_metrics = '''    kalman_errors = []
     ms_shifts_from_kalman = []
+    ms_latency_rows_ms = []
 '''
 if s.count(old_metrics) != 1:
     raise SystemExit(f"ERROR: metric block count={s.count(old_metrics)}")
@@ -65,11 +66,12 @@ direct_block = '''        # ====================================================
         )
 
         if ms_enabled:
-            # ---------------- Final MS ----------------
-            # Open a local SAT window around the single Kalman posterior.
-            # MeanShift is the final decoder. The selected v39 score remains:
-            # visual likelihood + Kalman spatial prior
-            # + predefined-route-reference spatial prior.
+            # Measure only the final MS refinement stage. Synchronization makes
+            # GPU timings comparable across 4x4/6x6/8x8 candidate windows.
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            ms_timer_start = time.perf_counter()
+
             lattice_distance2 = (
                 visual.gallery["xy"] - kalman_xy_t
             ).square().sum(dim=1)
@@ -120,7 +122,7 @@ direct_block = '''        # ====================================================
                 regularized_ms_logits,
                 ms_candidate.centers,
                 tau,
-                float(__import__("os").environ.get("MS_BANDWIDTH_M", "5.0")),
+                float(__import__("os").environ.get("MS_BANDWIDTH_M", "7.0")),
                 config.MEANSHIFT_ITERATIONS,
                 config.MEANSHIFT_MODE_BETA,
             )
@@ -131,13 +133,18 @@ direct_block = '''        # ====================================================
             ms_s, ms_e, _ = route.project_xy_local(ms_xy, preferred_leg)
             final_se = np.asarray([ms_s, ms_e], dtype=np.float64)
             final_xy = ms_xy.copy()
+
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            ms_latency_ms = (time.perf_counter() - ms_timer_start) * 1000.0
+            ms_latency_rows_ms.append(float(ms_latency_ms))
         else:
-            # Architecture ablation: no final MeanShift module.
             ms_lattice_index = -1
             ms_lattice_xy_t = kalman_xy_t
             ms_xy = kalman_xy.copy()
             ms_support = 0.0
             ms_mode_count = 0
+            ms_latency_ms = 0.0
             final_se = kalman_se.copy()
             final_xy = kalman_xy.copy()
 
@@ -178,10 +185,11 @@ csv_block = '''                "direct_kalman_ms_enabled": int(ms_enabled),
                 "ms_support": float(ms_support),
                 "ms_mode_count": int(ms_mode_count),
                 "ms_shift_from_kalman_m": float(ms_shift_from_kalman_m),
+                "ms_latency_ms": float(ms_latency_ms),
 '''
 s = s[:csv_start_i] + csv_block + s[csv_end_i:]
 
-# 4) Summary fields.
+# 4) Summary fields, including warm-up-excluded MS latency.
 old_summary = '''    summary["KF1_MAE_m"] = float(np.mean(kf1_errors)) if kf1_errors else 0.0
     summary["KF2_MAE_m"] = float(np.mean(kf2_errors)) if kf2_errors else 0.0
     summary["MS2_MeanShiftFromKF2_m"] = float(np.mean(ms2_shifts_from_kf2)) if ms2_shifts_from_kf2 else 0.0
@@ -194,7 +202,13 @@ new_summary = '''    summary["Kalman_MAE_m"] = float(np.mean(kalman_errors)) if 
     summary["MS_MaxShiftFromKalman_m"] = float(np.max(ms_shifts_from_kalman)) if ms_shifts_from_kalman else 0.0
     summary["MS_Enabled"] = bool(str(__import__("os").environ.get("MS_ENABLED", "1")).strip().lower() not in {"0", "false", "no", "off"})
     summary["MS_GridSize"] = int(__import__("os").environ.get("MS_GRID_SIZE", "6"))
-    summary["MS_Definition"] = "local Soft MeanShift after the single Kalman estimator; selected v39 uses 6x6 and MeanShift output is final"
+    _ms_warmup = int(__import__("os").environ.get("MS_LATENCY_WARMUP", "30"))
+    _ms_latency_eval = ms_latency_rows_ms[_ms_warmup:] if len(ms_latency_rows_ms) > _ms_warmup else ms_latency_rows_ms
+    summary["MS_LatencyMean_ms"] = float(np.mean(_ms_latency_eval)) if _ms_latency_eval else 0.0
+    summary["MS_LatencyP90_ms"] = float(np.quantile(_ms_latency_eval, 0.90)) if _ms_latency_eval else 0.0
+    summary["MS_ThroughputFPS"] = (1000.0 / summary["MS_LatencyMean_ms"]) if summary["MS_LatencyMean_ms"] > 0 else 0.0
+    summary["MS_LatencyWarmupFrames"] = int(_ms_warmup)
+    summary["MS_Definition"] = "local Soft MeanShift after the single Kalman estimator; MeanShift output is final"
 '''
 if s.count(old_summary) != 1:
     raise SystemExit(f"ERROR: summary block count={s.count(old_summary)}")
@@ -210,7 +224,6 @@ new_console = (
 if old_console in s:
     s = s.replace(old_console, new_console, 1)
 
-# Sanity checks.
 for forbidden in [
     "kf2_errors",
     "ms2_shifts_from_kf2",
@@ -224,4 +237,4 @@ for forbidden in [
 
 compile(s, str(p), "exec")
 p.write_text(s, encoding="utf-8")
-print("[OK] patched v39 with GRU -> Kalman -> MS naming")
+print("[OK] patched v39 with GRU -> Kalman -> MS and MS latency timing")
