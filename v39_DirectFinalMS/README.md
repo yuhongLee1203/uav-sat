@@ -1,99 +1,111 @@
-# v39_DirectFinalMS — GRU / Kalman / MS Paper Experiments
+# v39_DirectFinalMS — Final Paper Experiment Suite
 
-論文與架構圖統一只把下列三個模組視為主要 architecture：
+論文架構固定為：
 
 `GRU -> Kalman Filter -> MS -> Final Position`
 
-實際程式在 GRU 前仍然需要固定的 UAV-SAT 視覺候選與視覺量測生成流程，但這一段視為 **fixed visual front-end**，不列入主要 architecture block，也不放進 module ablation table。
+GRU 前面的 UAV-SAT visual localizer / local visual observation generation 視為固定 front-end，不列入主要 architecture block。
 
-因此後續論文實驗不再出現 MS1，也不再使用 MS2 這個名稱。最終 MeanShift 模組一律直接稱為 **MS**。
+## Selected default configuration
 
-## 1. Main module ablation
+根據前一輪 pilot experiment，正式實驗預設改為：
 
-主表只看 GRU、Kalman、MS：
+- GRU motion: quadratic
+- Kalman measurement variance: **fixed**
+- MS window: **6x6**
+- MeanShift bandwidth: **7 m**
 
-| Experiment | GRU | Kalman | MS |
+注意：前一輪 B/C 結果已被看過，因此這次設定屬於 exploratory model refinement。若投稿時要宣稱完全 unbiased test performance，應在設定鎖定後使用未參與選擇的 held-out test data 做最終一次評估。
+
+## Table 1 — Progressive architecture ablation
+
+主消融不再使用 leave-one-out 的 `Kalman + MS without GRU` 當正文主表，而是按照實際架構順序逐步加入 proposed modules：
+
+| Setting | GRU | Kalman | MS |
 |---|:---:|:---:|:---:|
-| `abl_gru_only` | ✓ |  |  |
-| `abl_gru_kalman` | ✓ | ✓ |  |
-| `abl_gru_ms` | ✓ |  | ✓ |
-| `abl_kalman_ms` |  | ✓ | ✓ |
-| `full_model` | ✓ | ✓ | ✓ |
+| Baseline visual front-end |  |  |  |
+| + GRU | ✓ |  |  |
+| + GRU + Kalman | ✓ | ✓ |  |
+| Full: + GRU + Kalman + MS | ✓ | ✓ | ✓ |
 
-這樣可以同時做 progressive ablation 與 leave-one-module-out：
+這張表的目的就是回答：固定 visual front-end 後，GRU、Kalman、MS 依序加入是否改善 localization accuracy / stability。
 
-- `abl_gru_only`：只保留 GRU estimator。
-- `abl_gru_kalman`：加入 Kalman，測 temporal prediction + filtering。
-- `abl_gru_ms`：拿掉 Kalman，測 GRU + MS。
-- `abl_kalman_ms`：拿掉 GRU，測 Kalman + MS。
-- `full_model`：完整 GRU + Kalman + MS。
+對應實驗：
 
-## 2. GRU motion-model design
+- `baseline_visual`
+- `abl_gru_only`
+- `abl_gru_kalman`
+- `full_model`
 
-固定完整架構，比較：
+## Table 2 — GRU motion design
 
-- `design_motion_none`: no learned inertial polynomial
-- `design_motion_velocity`: velocity motion
-- `full_model`: quadratic motion
+固定 Kalman + MS，比較 GRU motion prediction：
 
-用途：驗證 GRU 後面的 second-order motion prediction 是否優於較簡單設計。
+- `design_motion_none`
+- `design_motion_velocity`
+- `full_model`: quadratic
 
-## 3. Kalman uncertainty design
+報告 MLE 與 speed MAE。
 
-固定完整架構，比較：
+## Table 3 — Kalman measurement design
 
-- `design_kalman_fixed_var`: fixed measurement variance
-- `full_model`: learned measurement variance
+正式預設採用 pilot 中較好的 fixed variance，因此比較：
 
-用途：驗證 learned measurement uncertainty 是否能改善 Kalman fusion。
+- `design_kalman_none`: no Kalman
+- `design_kalman_learned`: learned measurement variance
+- `full_model`: fixed measurement variance (selected)
 
-## 4. MS local-window size
+這張表不再把 learned variance 當成必須勝出的 contribution；實驗直接比較哪種 Kalman measurement design 更適合目前資料與 MS refinement。
 
-固定 GRU + Kalman + MS，比較：
+## Table 4 — MS window accuracy-efficiency trade-off
 
-- `sens_ms_grid4x4`: 4x4
-- `full_model`: 6x6
-- `sens_ms_grid8x8`: 8x8
+比較：
 
-用途：分析最後 MeanShift refinement 的局部搜尋範圍大小。
+- `sens_ms_grid4x4`: 16 candidates
+- `full_model`: 6x6 = 36 candidates
+- `sens_ms_grid8x8`: 64 candidates
 
-## 5. MeanShift bandwidth sensitivity
+除了 B/C MLE，也會實際量測：
 
-固定完整架構與 6x6 MS window，比較：
+- `MS_LatencyMean_ms`
+- `MS_LatencyP90_ms`
+- `MS_ThroughputFPS`
+
+計時範圍只包含：
+
+`Kalman position -> candidate construction/scoring -> MeanShift -> final MS coordinate`
+
+GPU 每幀同步，前 30 幀 warm-up 不納入統計。
+
+如果 8x8 只帶來極小精度增益但 latency 明顯上升，即可合理選擇 6x6 作為 accuracy-efficiency balance。
+
+## Table 5 — MeanShift bandwidth accuracy-efficiency trade-off
+
+比較：
 
 - `sens_ms_bandwidth3`: 3 m
-- `full_model`: 5 m
-- `sens_ms_bandwidth7`: 7 m
+- `sens_ms_bandwidth5`: 5 m
+- `full_model`: **7 m**
 
-用途：分析 MeanShift bandwidth 對最終定位結果的影響。
+同時列 MLE 與 MS latency/FPS。
 
-## 6. 固定、不列入 architecture ablation 的東西
+Bandwidth 在固定 candidate count 與固定 iteration 下通常不會像 window size 那樣大幅改變計算量。因此如果 7 m 維持近似 latency 且 accuracy 最佳，論文應直接說選擇 7 m 是因為它提供較低定位誤差而幾乎沒有額外 runtime cost，而不是硬說 5 m 是中間值。
 
-以下內容在所有主要實驗中固定，不作為 architecture module：
+## GPU parallelization
 
-- UAV-SAT visual localizer
-- 前方 local candidate construction
-- GRU 前的 visual observation generation
-- predefined route reference-point protocol
-- MS 內部固定 scoring formulation
+執行 `RUN_ALL_EXPERIMENTS=1` 時：
 
-也就是論文 overview 與主消融只討論：
+1. GPU 0 先執行 `full_model`，安全建立 shared feature cache。
+2. cache 完成後 GPU 0 / 5 / 6 同時執行各自 queue。
+3. 每張 GPU 內部串行，三張 GPU 彼此平行，避免同卡 contention。
 
-`GRU -> Kalman Filter -> MS`
+分配：
 
-## 7. 已移除的實驗
+- GPU 0：progressive architecture + learned variance
+- GPU 5：GRU motion + no-Kalman + 4x4
+- GPU 6：8x8 + bandwidth 3/5
 
-不再執行：
-
-- MS1 only / MS1 + GRU 等表格
-- MS1 decoder 實驗
-- 前端 3x6 vs 6x6 搜尋實驗
-- visual + reference / visual + Kalman 等 score 拆解
-- reference-point robustness
-- reference prior weight sweep
-- Kalman prior weight sweep
-
-## 8. 一次跑完全部論文實驗
+## One-command execution
 
 ```bash
 cd /yh/study/uav-sat && \
@@ -104,41 +116,19 @@ RUN_ALL_EXPERIMENTS=1 \
 bash v39_DirectFinalMS/run.sh
 ```
 
-GPU 配置採最大化且避免共用 cache 競爭的方式：
-
-- GPU 0 先跑一次 `full_model`，安全建立 shared feature cache。
-- cache 建立後，GPU 0 / 5 / 6 三張卡同時進入各自的實驗 queue。
-- GPU 0：主要 architecture ablation。
-- GPU 5：leave-one-out + GRU/Kalman design。
-- GPU 6：MS window / MeanShift bandwidth。
-- 每張 GPU 內 jobs 串行，三張 GPU 彼此平行。
-
 輸出：
 
 `v39_DirectFinalMS/experiments_YYYYMMDD_HHMMSS/`
 
-主要總表：
+會自動產生：
 
 - `experiment_summary.csv`
+- `paper_tables.md`
 - `experiment_summary.md`
 
-總表只會以 `GRU | Kalman | MS` 作為主要 module 欄位。
+`paper_tables.md` 會直接整理 Table 1–5，包括 accuracy、jump rate、MS latency 與 MS FPS。
 
-## 9. 論文主表建議
-
-正文主消融表直接使用：
-
-`GRU | Kalman | MS | MLE | P90 | LSR@5 | Jump Rate`
-
-其中最核心比較為：
-
-1. GRU
-2. GRU + Kalman
-3. GRU + Kalman + MS
-
-另外 `GRU + MS` 與 `Kalman + MS` 可作為 leave-one-module-out rows，用來證明完整三模組組合的必要性。
-
-## 10. 單獨跑完整主方法
+## Single full-model run
 
 ```bash
 cd /yh/study/uav-sat && \
@@ -148,6 +138,4 @@ JITTER_M=8 \
 bash v39_DirectFinalMS/run.sh
 ```
 
-單次結果：
-
-`v39_DirectFinalMS/output/robust_tracker_summary.json`
+預設即為：quadratic GRU + fixed-variance Kalman + 6x6 MS + bandwidth 7 m。
