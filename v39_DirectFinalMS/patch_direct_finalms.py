@@ -33,8 +33,10 @@ if start < 0 or end < 0 or end <= start:
     raise SystemExit("ERROR: could not locate v38 final-refinement block")
 
 direct_block = '''        # =============================================================
-        # Direct final architecture:
-        # MS1 -> GRU -> KF predict/update -> MS2 -> Final
+        # Paper architecture:
+        # GRU -> KF predict/update -> MS2 -> Final
+        # Visual observation generation before GRU is fixed front-end
+        # infrastructure and is not counted as a paper architecture module.
         #
         # Experiment switches:
         #   MS2_ENABLED=0 : stop at the pre-MS2 estimator output.
@@ -217,7 +219,7 @@ old_console = (
     '"causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.",'
 )
 new_console = (
-    '"causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> optional final MS2 -> final XY.",'
+    '"fixed visual front-end -> GRU -> robust constrained route-coordinate Kalman -> optional final MS2 -> final XY.",'
 )
 if old_console in s:
     s = s.replace(old_console, new_console, 1)
@@ -236,4 +238,4 @@ for forbidden in [
 
 compile(s, str(p), "exec")
 p.write_text(s, encoding="utf-8")
-print("[OK] patched v39 with architecture-ablation switches")
+print("[OK] patched v39 for GRU -> Kalman -> MS2 paper architecture")
