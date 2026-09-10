@@ -22,12 +22,6 @@ MS2 的搜尋中心由單一 Kalman posterior 決定：先找到最接近 Kalman
 
 最後執行 Soft MeanShift #2，`MS2 XY` 本身就是 Final Position；MS2 後面沒有 Kalman、clipping 或額外濾波。
 
-## 為什麼採用這個版本
-
-如果 MS2 只看影像相似度，農田等重複紋理場景容易把 MeanShift 吸到錯誤 local mode。
-
-把 Kalman posterior 與 predefined route reference point 都只作為 MS2 內部的空間先驗，可以保留老師要求的 `Kalman -> MS2 -> Output`，同時避免增加 KF2 或把 MeanShift 變成形式上的最後一層。
-
 ## 預設 MS2 設定
 
 - Kalman prior sigma: 4.0 m
@@ -35,6 +29,7 @@ MS2 的搜尋中心由單一 Kalman posterior 決定：先找到最接近 Kalman
 - Kalman prior weight: 1.5
 - Reference prior weight: 2.5
 - MeanShift bandwidth: 5.0 m
+- MS2 reference perturbation: 0.0 m（只供 robustness experiment 使用；主方法為 0）
 
 ## 已有主結果
 
@@ -45,70 +40,80 @@ MS2 的搜尋中心由單一 Kalman posterior 決定：先找到最接近 Kalman
 
 相較原始 MobileNetV3 Kalman-final baseline，v39 的 B+C weighted MLE 約下降 54.2%。
 
-Route B 其他結果：P90 4.1256 m，LSR@5 96.97%，LSR@10/15/20 100%，JumpRate 0%。
+Route B：P90 4.1256 m，LSR@5 96.97%，LSR@10/15/20 100%，JumpRate 0%。
+Route C：P90 3.8423 m，LSR@5 95.15%，LSR@10/15/20 100%，JumpRate 0%。
 
-Route C 其他結果：P90 3.8423 m，LSR@5 95.15%，LSR@10/15/20 100%，JumpRate 0%。
+# 論文完整實驗套件
 
-## 論文完整實驗設計
+完整實驗已整合進既有 `run.sh`，不新增另一套方法。它會先執行主方法並預熱共用 feature cache，之後使用 GPU 0、5、6 平行處理。
 
-完整實驗套件已整合進既有的 `run.sh`，不需要另外建立實驗腳本。它會先重跑一次主方法並預熱共用 feature cache，之後使用 GPU 0、5、6 平行執行。
+## A. Main comparison
 
-### A. Main comparison / final contribution
+- `baseline_kalman_no_ms2`：原始 Previous-State + Kalman final。直接讀既有 summary，不浪費 GPU 重跑。
+- `main_full_j8`：完整 v39 = Visual + Kalman prior + Reference prior + SoftMS2。
 
-- `baseline_kalman_no_ms2`: 原始 Previous-State + Kalman final，作為沒有 MS2 的基線；直接讀取既有 baseline summary，不浪費 GPU 重跑。
-- `main_full_j8`: 完整 v39，Visual + Kalman prior + Reference prior + SoftMS2。
+用途：證明 `Kalman -> MS2 -> Final` 相較原始 `Kalman -> Final` 的改善。
 
-這一組回答：最後加入 MS2 是否真的優於原本的 Kalman final。
+## B. MS2 component ablation
 
-### B. MS2 component ablation
+固定 `JITTER_M=8`、bandwidth=5 m、MS2 reference perturbation=0：
 
-固定 jitter=8 m、bandwidth=5 m：
+- `abl_visual_only`：Visual only；KF prior=0、Reference prior=0。
+- `abl_visual_kf`：Visual + Kalman prior；Reference prior=0。
+- `abl_visual_reference`：Visual + Reference prior；KF prior=0。
+- `main_full_j8`：Visual + Kalman prior + Reference prior。
 
-- `abl_visual_only`: Visual only，KF prior=0，Reference prior=0。
-- `abl_visual_kf`: Visual + Kalman prior，Reference prior=0。
-- `abl_visual_reference`: Visual + Reference prior，KF prior=0。
-- `main_full_j8`: Visual + Kalman prior + Reference prior。
+用途：分離兩個 spatial prior 的貢獻，證明完整 MS2 為什麼有效。
 
-這一組是最重要的消融，可以直接證明兩種 spatial prior 各自的作用，以及完整 MS2 為什麼有效。
+## C. MS2 reference robustness
 
-### C. Reference-point robustness
+為避免把 MS1/local-search 的 jitter 和 MS2 本身混在一起，此實驗固定整個前段設定不變：
 
-完整 v39，其餘參數固定，只改 reference-point perturbation：
+- `JITTER_M=8` 固定。
+- MS1、GRU、Kalman 完全固定。
+- 只在 MS2 的 predefined-reference prior 加入 deterministic zero-mean Gaussian perturbation。
 
-- 0 m
-- 4 m
-- 8 m（main）
-- 12 m
-- 16 m
+測試 sigma：
 
-這一組回答：方法是否只在很準的參考點下有效，以及參考點誤差增加後定位性能如何退化。
+- 0 m：`main_full_j8`
+- 4 m：`robust_ms2ref_noise_4`
+- 8 m：`robust_ms2ref_noise_8`
+- 12 m：`robust_ms2ref_noise_12`
+- 16 m：`robust_ms2ref_noise_16`
 
-### D. Hyperparameter sensitivity
+固定 seed 由 frame index 決定，因此每次重跑完全可重現。
 
-只做 compact one-factor-at-a-time，不進行沒有必要的大型 grid search：
+用途：回答「MS2 的 reference spatial prior 不準時，定位性能如何退化」。
 
-- Reference prior weight: 1.5 / **2.5** / 3.5
-- Kalman prior weight: 0.75 / **1.5** / 2.25
-- MeanShift bandwidth: 4 / **5** / 6 m
+## D. Hyperparameter sensitivity
 
-粗體是主方法設定。這一組回答主結果是否依賴單一極端超參數。
+採 compact one-factor-at-a-time，而不是大型 grid search：
 
-### E. 自動輸出指標
+- Reference prior weight：1.5 / **2.5** / 3.5
+- Kalman prior weight：0.75 / **1.5** / 2.25
+- MeanShift bandwidth：4 / **5** / 6 m
 
-總表會整理：
+粗體是主方法設定。
+
+用途：證明結果不是只靠單一極端參數才能成立。
+
+## E. 自動整理的論文指標
+
+最後總表包含：
 
 - Route B / C MLE
 - B+C weighted MLE
+- relative change vs main
 - P90
 - LSR@5
 - LSR@15
 - Jump Rate
 - MS2 mean shift from Kalman
-- 各實驗相對 main 的 MLE 變化百分比
+- Jitter / MS2 reference-noise sigma / prior weights / bandwidth
 
-完整 per-route summary 仍保留 MedLE、P95、P99、LSR@10/20 等原始欄位。
+每個子實驗自己的 JSON 仍保留 MedLE、P95、P99、LSR@10/20 等完整指標。
 
-## 一次跑完所有論文實驗
+# 一次跑完所有實驗
 
 ```bash
 cd /yh/study/uav-sat && \
@@ -119,31 +124,27 @@ RUN_ALL_EXPERIMENTS=1 \
 bash v39_DirectFinalMS/run.sh
 ```
 
-執行順序：
+執行策略：
 
-1. GPU 0 先執行 `main_full_j8`，並預熱共用 feature cache。
-2. 預熱完成後，GPU 0 / 5 / 6 各自執行獨立 runtime directory，因此不會互相覆寫程式。
-3. 三張 GPU 各自串行處理自己的 queue、GPU 間平行處理，以避免同一張 GPU 同時塞多個模型造成反而變慢。
-4. 全部完成後自動產生總表。
+1. GPU 0 先跑 `main_full_j8` 並預熱共用 feature cache。
+2. 接著 GPU 0 / 5 / 6 同時工作。
+3. 每張 GPU 內的 jobs 串行執行，避免同一 GPU 同時塞多個模型造成 contention。
+4. 每個實驗使用獨立 runtime directory，不會互相覆寫程式。
+5. 每次完整實驗建立新的 timestamp output folder，不覆蓋之前結果。
+6. 全部完成後自動產生總表。
 
-每次完整實驗會建立新的 timestamp 資料夾，例如：
+輸出資料夾：
 
 `v39_DirectFinalMS/experiments_YYYYMMDD_HHMMSS/`
 
-最後最重要的兩個檔案：
+最重要的總表：
 
 - `experiment_summary.csv`
 - `experiment_summary.md`
 
-每個子實驗也各自保留：
-
-- `robust_tracker_summary.json`
-- per-frame CSV
-- eval log
+每個子實驗另外保留自己的 `robust_tracker_summary.json`、per-frame CSV、eval log。
 
 ## 單獨執行主方法
-
-原本單次執行方式仍然保留：
 
 ```bash
 cd /yh/study/uav-sat && \
@@ -153,9 +154,7 @@ JITTER_M=8 \
 bash v39_DirectFinalMS/run.sh
 ```
 
-單次結果位置：
-
-`v39_DirectFinalMS/output/robust_tracker_summary.json`
+單次結果：`v39_DirectFinalMS/output/robust_tracker_summary.json`
 
 ## 論文描述注意
 
