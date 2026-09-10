@@ -1,0 +1,13 @@
+============================================================================================================
+V36_PreviousStateOnly_MobileNetV3_Forward3x6_PolynomialKalman
+device=cuda:0
+Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> fixed visual observation -> GRU -> robust constrained route-coordinate Kalman -> optional final MS -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+route_B: reuse UAV backbone cache
+route_B final MLE=2.075m P90=3.848m LSR@15=100.00% selected_capture=89.59% bank_capture=89.59% acq_acc=100.00% speed_mae=0.649m/frame progress_mae=4.986m heading_mae=12.0deg jump_rate=0.00% max_step=8.82m final_leg=14 gt_leg=14
+route_C: reuse UAV backbone cache
+route_C final MLE=1.691m P90=3.662m LSR@15=100.00% selected_capture=91.73% bank_capture=91.73% acq_acc=100.00% speed_mae=1.188m/frame progress_mae=8.857m heading_mae=35.3deg jump_rate=0.00% max_step=8.83m final_leg=10 gt_leg=10
+summary: /yh/study/uav-sat/v39_DirectFinalMS/experiments_20260910_223941/sens_ms_bandwidth8/robust_tracker_summary.json

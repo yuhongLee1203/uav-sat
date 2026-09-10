@@ -1,0 +1,9 @@
+{
+  "grid_selection_rule": "lowest MS latency among grids within 0.5% of the best B+C MLE",
+  "selected_grid": 5,
+  "best_grid_mle_m": 1.9433997331185353,
+  "bandwidth_selection_rule": "lowest B+C MLE; latency is not used because bandwidth does not change the MeanShift operation count",
+  "selected_bandwidth_m": 14.0,
+  "selected_bandwidth_mle_m": 1.9260952564120644,
+  "candidate_spacing_note": "SAT stride 32 px; at 0.14 m/px adjacent candidate centers are approximately 4.48 m apart"
+}
