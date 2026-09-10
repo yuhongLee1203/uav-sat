@@ -1,111 +1,137 @@
-# v39_DirectFinalMS — Final Paper Experiment Suite
+# v39_DirectFinalMS — GRU / Kalman / MS Paper Experiments
 
-論文架構固定為：
+論文與架構圖統一：
 
 `GRU -> Kalman Filter -> MS -> Final Position`
 
-GRU 前面的 UAV-SAT visual localizer / local visual observation generation 視為固定 front-end，不列入主要 architecture block。
+GRU 前方的 UAV-SAT 視覺量測流程視為固定 front-end，不列入主要 architecture block。
 
-## Selected default configuration
+## 1. 先釐清：Table 2 不是 1/2/3 張圖片實驗
 
-根據前一輪 pilot experiment，正式實驗預設改為：
+目前所有正式 GRU 實驗都固定使用 **3 張連續 UAV 影像**。
 
-- GRU motion: quadratic
-- Kalman measurement variance: **fixed**
-- MS window: **6x6**
-- MeanShift bandwidth: **7 m**
+程式中的 `velocity` 與 `quadratic` 並不是影像張數：
 
-注意：前一輪 B/C 結果已被看過，因此這次設定屬於 exploratory model refinement。若投稿時要宣稱完全 unbiased test performance，應在設定鎖定後使用未參與選擇的 held-out test data 做最終一次評估。
+- `velocity` = **Constant Velocity**：GRU 仍然使用 3 幀，但 Kalman motion prediction 只使用 GRU 預測的速度，不加入 acceleration。
+- `quadratic` = **Velocity + Acceleration**：GRU 同樣使用 3 幀，motion prediction 使用速度與 acceleration。
+- `none` = **No learned motion**：不使用 GRU 所提供的 learned motion step，Kalman 只保留自己的 previous velocity。
 
-## Table 1 — Progressive architecture ablation
+因為先前實驗中 Constant Velocity 與 Velocity + Acceleration 表現非常接近，而且 Constant Velocity 略佳、也更容易說明，所以目前正式預設改為：
 
-主消融不再使用 leave-one-out 的 `Kalman + MS without GRU` 當正文主表，而是按照實際架構順序逐步加入 proposed modules：
+`3-frame GRU + Constant Velocity`
+
+不要在論文中把 Constant Velocity 寫成「兩張圖片」。如果真的要比較 1/2/3 張圖片，應該分別重新訓練對應的 temporal model，不能直接拿目前以 3-frame feature 訓練的 checkpoint 做公平比較。
+
+## 2. Table 1 — Progressive architecture ablation
+
+正文只從論文架構的第一個主要 block 開始：
 
 | Setting | GRU | Kalman | MS |
 |---|:---:|:---:|:---:|
-| Baseline visual front-end |  |  |  |
-| + GRU | ✓ |  |  |
-| + GRU + Kalman | ✓ | ✓ |  |
-| Full: + GRU + Kalman + MS | ✓ | ✓ | ✓ |
+| GRU | ✓ |  |  |
+| + Kalman | ✓ | ✓ |  |
+| + MS | ✓ | ✓ | ✓ |
 
-這張表的目的就是回答：固定 visual front-end 後，GRU、Kalman、MS 依序加入是否改善 localization accuracy / stability。
+固定 visual front-end 不列入 Table 1。
 
-對應實驗：
+## 3. Table 2 — Motion prediction model
 
-- `baseline_visual`
-- `abl_gru_only`
-- `abl_gru_kalman`
-- `full_model`
+所有 row 都固定使用 3-frame GRU：
 
-## Table 2 — GRU motion design
+- No learned motion
+- Constant Velocity — current selected setting
+- Velocity + Acceleration
 
-固定 Kalman + MS，比較 GRU motion prediction：
+這張表比較的是 **motion equation**，不是影像數量。
 
-- `design_motion_none`
-- `design_motion_velocity`
-- `full_model`: quadratic
-
-報告 MLE 與 speed MAE。
-
-## Table 3 — Kalman measurement design
-
-正式預設採用 pilot 中較好的 fixed variance，因此比較：
-
-- `design_kalman_none`: no Kalman
-- `design_kalman_learned`: learned measurement variance
-- `full_model`: fixed measurement variance (selected)
-
-這張表不再把 learned variance 當成必須勝出的 contribution；實驗直接比較哪種 Kalman measurement design 更適合目前資料與 MS refinement。
-
-## Table 4 — MS window accuracy-efficiency trade-off
+## 4. Table 3 — Kalman measurement design
 
 比較：
 
-- `sens_ms_grid4x4`: 16 candidates
-- `full_model`: 6x6 = 36 candidates
-- `sens_ms_grid8x8`: 64 candidates
+- No Kalman
+- Learned measurement variance
+- Fixed measurement variance — current selected setting
 
-除了 B/C MLE，也會實際量測：
+## 5. Table 4 — MS local-window accuracy / efficiency
 
-- `MS_LatencyMean_ms`
-- `MS_LatencyP90_ms`
-- `MS_ThroughputFPS`
+現在完整測試：
 
-計時範圍只包含：
+- 4x4 = 16 candidates
+- 5x5 = 25 candidates
+- 6x6 = 36 candidates
+- 7x7 = 49 candidates
+- 8x8 = 64 candidates
 
-`Kalman position -> candidate construction/scoring -> MeanShift -> final MS coordinate`
+全部在 **同一張 GPU 5** 依序執行，避免先前不同 GPU 負載造成 latency 不公平。
 
-GPU 每幀同步，前 30 幀 warm-up 不納入統計。
+每個設定同時記錄：
 
-如果 8x8 只帶來極小精度增益但 latency 明顯上升，即可合理選擇 6x6 作為 accuracy-efficiency balance。
+- Route B / C MLE
+- weighted B+C MLE
+- MS latency
+- MS FPS
 
-## Table 5 — MeanShift bandwidth accuracy-efficiency trade-off
+自動 selection rule：
 
-比較：
+> 在 B+C MLE 距離最佳結果 **0.5% 以內** 的 window 中，選擇 MS latency 最低者。
 
-- `sens_ms_bandwidth3`: 3 m
-- `sens_ms_bandwidth5`: 5 m
-- `full_model`: **7 m**
+因此如果 6x6 已經與 7x7/8x8 幾乎一樣準，但運算明顯較快，就可以正式使用「accuracy-efficiency balance」解釋為什麼選 6x6。
 
-同時列 MLE 與 MS latency/FPS。
+## 6. Table 5 — MeanShift bandwidth sensitivity
 
-Bandwidth 在固定 candidate count 與固定 iteration 下通常不會像 window size 那樣大幅改變計算量。因此如果 7 m 維持近似 latency 且 accuracy 最佳，論文應直接說選擇 7 m 是因為它提供較低定位誤差而幾乎沒有額外 runtime cost，而不是硬說 5 m 是中間值。
+Bandwidth 不直接改變 MeanShift 的 tensor size 或 iteration 數，因此不應使用 latency 作為選擇 bandwidth 的主要理由。
 
-## GPU parallelization
+目前 SAT lattice stride = 32 px；資料解析度為 0.14 m/px，因此相鄰 SAT candidate center 約相距：
 
-執行 `RUN_ALL_EXPERIMENTS=1` 時：
+`32 x 0.14 = 4.48 m`
 
-1. GPU 0 先執行 `full_model`，安全建立 shared feature cache。
-2. cache 完成後 GPU 0 / 5 / 6 同時執行各自 queue。
-3. 每張 GPU 內部串行，三張 GPU 彼此平行，避免同卡 contention。
+Bandwidth 控制 Gaussian kernel 的空間平滑尺度：
 
-分配：
+- bandwidth 遠小於 4.48 m：各候選較接近獨立 mode，精修較接近離散候選。
+- bandwidth 約一到兩個 candidate spacing：會融合附近一致的 mode。
+- bandwidth 很大：越來越接近對整個 local window 做廣域平滑，可能造成 over-smoothing。
 
-- GPU 0：progressive architecture + learned variance
-- GPU 5：GRU motion + no-Kalman + 4x4
-- GPU 6：8x8 + bandwidth 3/5
+因此不再只測 3 / 5 / 7 m，而是完整測試：
 
-## One-command execution
+`1, 2, 3, ..., 14 m`
+
+全部在 **同一張 GPU 6** 依序執行。
+
+1 m 明顯小於一個 candidate spacing；14 m 已接近 6x6 window 中心到外圍的空間尺度，因此這個範圍足以看出 bandwidth 從窄 kernel 到強 smoothing 的完整趨勢。
+
+Table 5 主要呈現：
+
+- B MLE
+- C MLE
+- B+C MLE
+- B+C P90
+- B+C LSR@5
+
+不再把 bandwidth latency 當主要比較項目。
+
+## 7. GPU 配置
+
+為確保同類型實驗在相同 GPU 上比較：
+
+- **GPU 0**：architecture ablation + motion model + Kalman design
+- **GPU 5**：MS window 4x4 / 5x5 / 6x6 / 7x7 / 8x8
+- **GPU 6**：MeanShift bandwidth 1–14 m
+
+三張 GPU 同時工作，但每一類 sweep 都固定在同一張 GPU 內串行執行。
+
+## 8. Current selected defaults
+
+目前根據前一輪 pilot：
+
+- GRU input: 3 frames
+- Motion: Constant Velocity
+- Kalman: Fixed measurement variance
+- MS window: 6x6
+- MeanShift bandwidth: 7 m
+
+本次完整 4–8 window sweep 與 1–14 m bandwidth sweep 是用來確認這些選擇，而不是假設它們一定是最佳值。
+
+## 9. 一次跑完全部實驗
 
 ```bash
 cd /yh/study/uav-sat && \
@@ -120,15 +146,14 @@ bash v39_DirectFinalMS/run.sh
 
 `v39_DirectFinalMS/experiments_YYYYMMDD_HHMMSS/`
 
-會自動產生：
+其中：
 
-- `experiment_summary.csv`
-- `paper_tables.md`
-- `experiment_summary.md`
+- `experiment_summary.csv`：所有 raw experiment metrics
+- `paper_tables.md`：Table 1–5
+- `experiment_summary.md`：同 paper tables
+- `selection_summary.json`：自動整理 window balance point 與 bandwidth 最佳測試值
 
-`paper_tables.md` 會直接整理 Table 1–5，包括 accuracy、jump rate、MS latency 與 MS FPS。
-
-## Single full-model run
+## 10. 單獨跑目前完整方法
 
 ```bash
 cd /yh/study/uav-sat && \
@@ -138,4 +163,6 @@ JITTER_M=8 \
 bash v39_DirectFinalMS/run.sh
 ```
 
-預設即為：quadratic GRU + fixed-variance Kalman + 6x6 MS + bandwidth 7 m。
+目前預設單次架構：
+
+`3-frame GRU (Constant Velocity) -> Kalman (Fixed Variance) -> MS (6x6, BW 7 m)`
