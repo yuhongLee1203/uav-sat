@@ -17,8 +17,10 @@ BACKBONE="mobilenet_v3_small"
 BASE_ARCH="V36_PreviousStateOnly_MobileNetV3_Forward3x6_PolynomialKalman"
 FINAL_ARCH="V39_GRU_Kalman_MS"
 
-# Selected method after the pilot study:
-# GRU -> Kalman(fixed measurement variance) -> MS(6x6, bandwidth 7m)
+# Current selected operating point after the pilot runs.
+# IMPORTANT: velocity means constant-velocity motion prediction. It does NOT
+# mean a two-frame GRU. The GRU input remains three frames in every experiment.
+DEFAULT_MOTION="${DEFAULT_MOTION:-velocity}"
 DEFAULT_KALMAN="${DEFAULT_KALMAN:-fixed}"
 DEFAULT_MS_GRID="${DEFAULT_MS_GRID:-6}"
 DEFAULT_MS_BANDWIDTH="${DEFAULT_MS_BANDWIDTH:-7.0}"
@@ -68,36 +70,59 @@ if [[ "${RUN_ALL_EXPERIMENTS:-0}" == "1" ]]; then
 
   echo "============================================================================================================"
   echo "v39 paper suite: GRU -> Kalman -> MS"
-  echo "Selected default: Kalman=${DEFAULT_KALMAN}, MS=${DEFAULT_MS_GRID}x${DEFAULT_MS_GRID}, bandwidth=${DEFAULT_MS_BANDWIDTH}m"
-  echo "MS latency = Kalman output -> final MS coordinate; first 30 frames excluded."
-  echo "GPU plan: 0 / 5 / 6"
+  echo "ALL GRU experiments use 3 input frames."
+  echo "Selected motion: constant velocity (${DEFAULT_MOTION})"
+  echo "Selected Kalman: ${DEFAULT_KALMAN} variance"
+  echo "Current operating point: MS ${DEFAULT_MS_GRID}x${DEFAULT_MS_GRID}, bandwidth ${DEFAULT_MS_BANDWIDTH} m"
+  echo "Fair timing rule: every grid-size point is run sequentially on GPU 5."
+  echo "Bandwidth 1..14 m is run sequentially on GPU 6; bandwidth is treated as an accuracy/smoothing parameter, not a runtime parameter."
+  echo "GPU plan: 0=architecture/motion/Kalman, 5=MS grid, 6=MS bandwidth"
   echo "output root: ${SUITE_ROOT}"
   echo "============================================================================================================"
 
-  # Run selected full model first to populate shared feature cache safely.
-  run_one 0 "full_model" quadratic "${DEFAULT_KALMAN}" 0 1 "${DEFAULT_MS_GRID}" "${DEFAULT_MS_BANDWIDTH}" "module_ablation"
+  # Full selected model first; safely warms the shared feature cache.
+  run_one 0 "full_model" "${DEFAULT_MOTION}" "${DEFAULT_KALMAN}" 0 1 "${DEFAULT_MS_GRID}" "${DEFAULT_MS_BANDWIDTH}" "module_ablation"
 
-  # GPU 0: progressive architecture ablation + learned-variance comparison.
+  # --------------------------------------------------------------------------
+  # GPU 0: architecture + motion + Kalman. Same GPU for all related variants.
+  # Table 1 intentionally starts at GRU because the paper architecture is
+  # GRU -> Kalman -> MS; the fixed visual front-end is not an architecture row.
+  # --------------------------------------------------------------------------
   (
-    run_one 0 "baseline_visual"          none      none    1 0 6 "${DEFAULT_MS_BANDWIDTH}" "module_ablation"
-    run_one 0 "abl_gru_only"             quadratic none    0 0 6 "${DEFAULT_MS_BANDWIDTH}" "module_ablation"
-    run_one 0 "abl_gru_kalman"           quadratic fixed   0 0 6 "${DEFAULT_MS_BANDWIDTH}" "module_ablation"
-    run_one 0 "design_kalman_learned"    quadratic learned 0 1 6 "${DEFAULT_MS_BANDWIDTH}" "kalman_design"
+    run_one 0 "abl_gru_only"             "${DEFAULT_MOTION}" none    0 0 6 "${DEFAULT_MS_BANDWIDTH}" "module_ablation"
+    run_one 0 "abl_gru_kalman"           "${DEFAULT_MOTION}" "${DEFAULT_KALMAN}" 0 0 6 "${DEFAULT_MS_BANDWIDTH}" "module_ablation"
+
+    # Table 2: all use THREE image frames. Only the downstream motion equation changes.
+    run_one 0 "design_motion_none"        none      "${DEFAULT_KALMAN}" 0 1 6 "${DEFAULT_MS_BANDWIDTH}" "motion_model"
+    run_one 0 "design_motion_acceleration" quadratic "${DEFAULT_KALMAN}" 0 1 6 "${DEFAULT_MS_BANDWIDTH}" "motion_model"
+
+    # Table 3: Kalman measurement design; selected fixed variance is full_model.
+    run_one 0 "design_kalman_none"        "${DEFAULT_MOTION}" none    0 1 6 "${DEFAULT_MS_BANDWIDTH}" "kalman_design"
+    run_one 0 "design_kalman_learned"     "${DEFAULT_MOTION}" learned 0 1 6 "${DEFAULT_MS_BANDWIDTH}" "kalman_design"
   ) & pid0=$!
 
-  # GPU 5: GRU motion design + no-Kalman comparison + 4x4 efficiency point.
+  # --------------------------------------------------------------------------
+  # GPU 5: complete local-window sweep on ONE GPU for fair accuracy/latency.
+  # Include 5x5 and 7x7; do not infer the 6x6 balance point from only 4/6/8.
+  # --------------------------------------------------------------------------
   (
-    run_one 5 "design_motion_none"        none      fixed 0 1 6 "${DEFAULT_MS_BANDWIDTH}" "gru_motion"
-    run_one 5 "design_motion_velocity"    velocity  fixed 0 1 6 "${DEFAULT_MS_BANDWIDTH}" "gru_motion"
-    run_one 5 "design_kalman_none"        quadratic none  0 1 6 "${DEFAULT_MS_BANDWIDTH}" "kalman_design"
-    run_one 5 "sens_ms_grid4x4"           quadratic fixed 0 1 4 "${DEFAULT_MS_BANDWIDTH}" "ms_window"
+    run_one 5 "sens_ms_grid4x4" "${DEFAULT_MOTION}" "${DEFAULT_KALMAN}" 0 1 4 "${DEFAULT_MS_BANDWIDTH}" "ms_window"
+    run_one 5 "sens_ms_grid5x5" "${DEFAULT_MOTION}" "${DEFAULT_KALMAN}" 0 1 5 "${DEFAULT_MS_BANDWIDTH}" "ms_window"
+    run_one 5 "sens_ms_grid6x6" "${DEFAULT_MOTION}" "${DEFAULT_KALMAN}" 0 1 6 "${DEFAULT_MS_BANDWIDTH}" "ms_window"
+    run_one 5 "sens_ms_grid7x7" "${DEFAULT_MOTION}" "${DEFAULT_KALMAN}" 0 1 7 "${DEFAULT_MS_BANDWIDTH}" "ms_window"
+    run_one 5 "sens_ms_grid8x8" "${DEFAULT_MOTION}" "${DEFAULT_KALMAN}" 0 1 8 "${DEFAULT_MS_BANDWIDTH}" "ms_window"
   ) & pid5=$!
 
-  # GPU 6: 8x8 efficiency point + bandwidth alternatives.
+  # --------------------------------------------------------------------------
+  # GPU 6: dense bandwidth sweep on ONE GPU.
+  # SAT lattice stride is 32 px; at 0.14 m/px this is ~4.48 m between adjacent
+  # candidate centers. 1..14 m covers <<1 lattice spacing through roughly the
+  # center-to-edge scale of the 6x6 window, so the complete smoothing trend is visible.
+  # --------------------------------------------------------------------------
   (
-    run_one 6 "sens_ms_grid8x8"           quadratic fixed 0 1 8 "${DEFAULT_MS_BANDWIDTH}" "ms_window"
-    run_one 6 "sens_ms_bandwidth3"        quadratic fixed 0 1 6 3.0 "meanshift_bandwidth"
-    run_one 6 "sens_ms_bandwidth5"        quadratic fixed 0 1 6 5.0 "meanshift_bandwidth"
+    for bw in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
+      run_one 6 "sens_ms_bandwidth${bw}" "${DEFAULT_MOTION}" "${DEFAULT_KALMAN}" 0 1 6 "${bw}.0" "meanshift_bandwidth"
+    done
   ) & pid6=$!
 
   status=0
@@ -146,7 +171,7 @@ def metric_row(p):
         "Kalman": "no" if str(d.get("experiment_kalman", "fixed")) == "none" else "yes",
         "Kalman_mode": str(d.get("experiment_kalman", "fixed")),
         "MS": "yes" if ms_enabled else "no",
-        "Motion": d.get("experiment_motion", "quadratic"),
+        "Motion": d.get("experiment_motion", "velocity"),
         "MS_grid": d.get("MS_GridSize", d.get("ms_grid_size", "-")) if ms_enabled else "-",
         "MS_bandwidth_m": d.get("ms_hyperparameters", {}).get("bandwidth_m", "-") if ms_enabled else "-",
         "B_MLE_m": bm,
@@ -154,8 +179,10 @@ def metric_row(p):
         "BC_weighted_MLE_m": weighted(bm, cm),
         "B_P90_m": b.get("P90_m", math.nan),
         "C_P90_m": c.get("P90_m", math.nan),
+        "BC_weighted_P90_m": weighted(b.get("P90_m", math.nan), c.get("P90_m", math.nan)),
         "B_LSR5_pct": b.get("LSR@5_pct", math.nan),
         "C_LSR5_pct": c.get("LSR@5_pct", math.nan),
+        "BC_weighted_LSR5_pct": weighted(b.get("LSR@5_pct", math.nan), c.get("LSR@5_pct", math.nan)),
         "B_LSR15_pct": b.get("LSR@15_pct", math.nan),
         "C_LSR15_pct": c.get("LSR@15_pct", math.nan),
         "B_JumpRate_pct": b.get("JumpRate_pct", math.nan),
@@ -164,8 +191,6 @@ def metric_row(p):
         "C_MS_Latency_ms": c_lat,
         "BC_MS_Latency_ms": bc_lat,
         "MS_FPS": (1000.0 / bc_lat) if bc_lat > 0 else 0.0,
-        "B_SpeedError": b.get("MeanSpeedError_m_per_frame", math.nan),
-        "C_SpeedError": c.get("MeanSpeedError_m_per_frame", math.nan),
     }
 
 for p in sorted(suite.glob("*/robust_tracker_summary.json")):
@@ -179,22 +204,21 @@ for r in rows:
         r["Delta_vs_Full_pct"] = math.nan
 
 order = [
-    "baseline_visual", "abl_gru_only", "abl_gru_kalman", "full_model",
-    "design_motion_none", "design_motion_velocity",
+    "abl_gru_only", "abl_gru_kalman", "full_model",
+    "design_motion_none", "design_motion_acceleration",
     "design_kalman_none", "design_kalman_learned",
-    "sens_ms_grid4x4", "sens_ms_grid8x8",
-    "sens_ms_bandwidth3", "sens_ms_bandwidth5",
-]
+    "sens_ms_grid4x4", "sens_ms_grid5x5", "sens_ms_grid6x6", "sens_ms_grid7x7", "sens_ms_grid8x8",
+] + [f"sens_ms_bandwidth{i}" for i in range(1, 15)]
 rank = {name: i for i, name in enumerate(order)}
 rows.sort(key=lambda r: rank.get(r["Experiment"], 999))
 
 columns = [
     "Experiment", "Category", "GRU", "Kalman", "Kalman_mode", "MS", "Motion",
     "MS_grid", "MS_bandwidth_m", "B_MLE_m", "C_MLE_m", "BC_weighted_MLE_m",
-    "Delta_vs_Full_pct", "B_P90_m", "C_P90_m", "B_LSR5_pct", "C_LSR5_pct",
+    "Delta_vs_Full_pct", "B_P90_m", "C_P90_m", "BC_weighted_P90_m",
+    "B_LSR5_pct", "C_LSR5_pct", "BC_weighted_LSR5_pct",
     "B_LSR15_pct", "C_LSR15_pct", "B_JumpRate_pct", "C_JumpRate_pct",
     "B_MS_Latency_ms", "C_MS_Latency_ms", "BC_MS_Latency_ms", "MS_FPS",
-    "B_SpeedError", "C_SpeedError",
 ]
 
 csv_path = suite / "experiment_summary.csv"
@@ -215,40 +239,84 @@ def fmt(v, n=3):
 def row(name):
     return by_name[name]
 
+# Transparent balance rule for Table 4:
+# choose the LOWEST-LATENCY window among settings within 0.5% of the best B+C MLE.
+grid_names = [f"sens_ms_grid{i}x{i}" for i in range(4, 9)]
+grid_rows = [row(name) for name in grid_names]
+best_grid_mle = min(float(r["BC_weighted_MLE_m"]) for r in grid_rows)
+eligible_grids = [r for r in grid_rows if float(r["BC_weighted_MLE_m"]) <= best_grid_mle * 1.005]
+selected_grid_row = min(eligible_grids, key=lambda r: float(r["BC_MS_Latency_ms"]))
+selected_grid = int(selected_grid_row["MS_grid"])
+
+# Bandwidth is not selected by latency because the operation count is unchanged.
+bw_names = [f"sens_ms_bandwidth{i}" for i in range(1, 15)]
+bw_rows = [row(name) for name in bw_names]
+selected_bw_row = min(bw_rows, key=lambda r: float(r["BC_weighted_MLE_m"]))
+selected_bw = float(selected_bw_row["MS_bandwidth_m"])
+
+selection_path = suite / "selection_summary.json"
+selection_path.write_text(json.dumps({
+    "grid_selection_rule": "lowest MS latency among grids within 0.5% of the best B+C MLE",
+    "selected_grid": selected_grid,
+    "best_grid_mle_m": best_grid_mle,
+    "bandwidth_selection_rule": "lowest B+C MLE; latency is not used because bandwidth does not change the MeanShift operation count",
+    "selected_bandwidth_m": selected_bw,
+    "selected_bandwidth_mle_m": float(selected_bw_row["BC_weighted_MLE_m"]),
+    "candidate_spacing_note": "SAT stride 32 px; at 0.14 m/px adjacent candidate centers are approximately 4.48 m apart",
+}, indent=2), encoding="utf-8")
+
 md_path = suite / "paper_tables.md"
 with md_path.open("w", encoding="utf-8") as f:
     f.write("# v39 Paper Tables\n\n")
+    f.write("All GRU variants use three UAV image frames. 'Constant Velocity' and 'Velocity + Acceleration' refer to the downstream motion equation, not the number of input images.\n\n")
+
     f.write("## Table 1. Progressive architecture ablation\n\n")
     f.write("| Setting | GRU | Kalman | MS | B MLE | C MLE | B+C MLE | B LSR@5 | C LSR@5 | B/C Jump |\n")
     f.write("|---|:---:|:---:|:---:|---:|---:|---:|---:|---:|---:|\n")
-    for name, label in [("baseline_visual","Baseline"),("abl_gru_only","+ GRU"),("abl_gru_kalman","+ GRU + Kalman"),("full_model","+ GRU + Kalman + MS")]:
+    for name, label in [("abl_gru_only","GRU"),("abl_gru_kalman","+ Kalman"),("full_model","+ MS")]:
         r=row(name)
         f.write(f"| {label} | {r['GRU']} | {r['Kalman']} | {r['MS']} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_weighted_MLE_m'])} | {fmt(r['B_LSR5_pct'],2)}% | {fmt(r['C_LSR5_pct'],2)}% | {fmt(r['B_JumpRate_pct'],3)}/{fmt(r['C_JumpRate_pct'],3)}% |\n")
 
-    f.write("\n## Table 2. GRU motion-model design\n\n")
-    f.write("| Motion | B MLE | C MLE | B+C MLE | B Speed MAE | C Speed MAE |\n|---|---:|---:|---:|---:|---:|\n")
-    for name,label in [("design_motion_none","None"),("design_motion_velocity","Velocity"),("full_model","Quadratic")]:
-        r=row(name); f.write(f"| {label} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_weighted_MLE_m'])} | {fmt(r['B_SpeedError'])} | {fmt(r['C_SpeedError'])} |\n")
+    f.write("\n## Table 2. Motion prediction model (all use 3-frame GRU input)\n\n")
+    f.write("| Motion prediction | Meaning | B MLE | C MLE | B+C MLE |\n|---|---|---:|---:|---:|\n")
+    for name,label,meaning in [
+        ("design_motion_none","No learned motion","Kalman keeps its own previous velocity"),
+        ("full_model","Constant Velocity (selected)","GRU velocity; acceleration term is not used"),
+        ("design_motion_acceleration","Velocity + Acceleration","GRU velocity plus acceleration term"),
+    ]:
+        r=row(name); f.write(f"| {label} | {meaning} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_weighted_MLE_m'])} |\n")
 
     f.write("\n## Table 3. Kalman measurement design\n\n")
     f.write("| Kalman | B MLE | C MLE | B+C MLE | B/C Jump |\n|---|---:|---:|---:|---:|\n")
     for name,label in [("design_kalman_none","No Kalman"),("design_kalman_learned","Learned variance"),("full_model","Fixed variance (selected)")]:
         r=row(name); f.write(f"| {label} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_weighted_MLE_m'])} | {fmt(r['B_JumpRate_pct'],3)}/{fmt(r['C_JumpRate_pct'],3)}% |\n")
 
-    f.write("\n## Table 4. MS window accuracy-efficiency trade-off\n\n")
+    f.write("\n## Table 4. MS local-window accuracy-efficiency trade-off\n\n")
+    f.write("All rows are measured sequentially on GPU 5. Selection rule: lowest latency among settings within 0.5% of the best B+C MLE.\n\n")
     f.write("| Window | Candidates | B MLE | C MLE | B+C MLE | MS latency (ms) | MS FPS |\n|---|---:|---:|---:|---:|---:|---:|\n")
-    for name,label,cands in [("sens_ms_grid4x4","4x4",16),("full_model","6x6",36),("sens_ms_grid8x8","8x8",64)]:
-        r=row(name); f.write(f"| {label} | {cands} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_weighted_MLE_m'])} | {fmt(r['BC_MS_Latency_ms'])} | {fmt(r['MS_FPS'],1)} |\n")
+    for size in range(4, 9):
+        name=f"sens_ms_grid{size}x{size}"; r=row(name)
+        label=f"{size}x{size}" + (" (selected)" if size == selected_grid else "")
+        f.write(f"| {label} | {size*size} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_weighted_MLE_m'])} | {fmt(r['BC_MS_Latency_ms'])} | {fmt(r['MS_FPS'],1)} |\n")
 
-    f.write("\n## Table 5. MeanShift bandwidth accuracy-efficiency trade-off\n\n")
-    f.write("| Bandwidth | B MLE | C MLE | B+C MLE | MS latency (ms) | MS FPS |\n|---:|---:|---:|---:|---:|---:|\n")
-    for name,label in [("sens_ms_bandwidth3","3 m"),("sens_ms_bandwidth5","5 m"),("full_model","7 m (selected)")]:
-        r=row(name); f.write(f"| {label} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_weighted_MLE_m'])} | {fmt(r['BC_MS_Latency_ms'])} | {fmt(r['MS_FPS'],1)} |\n")
+    f.write("\n## Table 5. MeanShift bandwidth sensitivity\n\n")
+    f.write("Adjacent SAT candidate centers are approximately 4.48 m apart. Bandwidth changes the spatial smoothing scale, not the number of MeanShift operations, so latency is intentionally omitted.\n\n")
+    f.write("| Bandwidth | B MLE | C MLE | B+C MLE | B+C P90 | B+C LSR@5 |\n|---:|---:|---:|---:|---:|---:|\n")
+    for bw in range(1, 15):
+        r=row(f"sens_ms_bandwidth{bw}")
+        label=f"{bw} m" + (" (best)" if abs(float(r['MS_bandwidth_m']) - selected_bw) < 1e-9 else "")
+        f.write(f"| {label} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_weighted_MLE_m'])} | {fmt(r['BC_weighted_P90_m'])} | {fmt(r['BC_weighted_LSR5_pct'],2)}% |\n")
+
+    f.write("\n## Automatic selection summary\n\n")
+    f.write(f"- MS window selected by the predefined accuracy-efficiency rule: **{selected_grid}x{selected_grid}**.\n")
+    f.write(f"- Best tested MeanShift bandwidth by B+C MLE: **{selected_bw:.0f} m**.\n")
 
 summary_md = suite / "experiment_summary.md"
 summary_md.write_text(md_path.read_text(encoding="utf-8"), encoding="utf-8")
 print(f"[TABLE] {csv_path}")
 print(f"[TABLE] {md_path}")
+print(f"[SELECT] {selection_path}")
+print(f"[SELECT] MS grid={selected_grid}x{selected_grid}, bandwidth={selected_bw:.0f} m")
 PY
 
   echo "============================================================================================================"
@@ -256,6 +324,7 @@ PY
   echo "Results: ${SUITE_ROOT}"
   echo "CSV: ${SUITE_ROOT}/experiment_summary.csv"
   echo "Paper tables: ${SUITE_ROOT}/paper_tables.md"
+  echo "Selection: ${SUITE_ROOT}/selection_summary.json"
   echo "============================================================================================================"
   exit 0
 fi
@@ -307,11 +376,12 @@ export MS_LATENCY_WARMUP="${MS_LATENCY_WARMUP:-30}"
 
 echo "============================================================================================================"
 echo "v39 architecture: GRU -> Kalman Filter -> MS -> Final Position"
+echo "GRU temporal input: 3 UAV frames"
 echo "experiment: ${EXPERIMENT_TAG:-single_default}"
 echo "category: ${EXPERIMENT_CATEGORY:-single}"
 echo "GRU disabled: ${UAVSAT_EXPERIMENT_DISABLE_GRU:-0}"
 echo "Kalman mode: ${UAVSAT_EXPERIMENT_KALMAN:-fixed}"
-echo "motion: ${UAVSAT_EXPERIMENT_MOTION:-quadratic}"
+echo "motion model: ${UAVSAT_EXPERIMENT_MOTION:-velocity}"
 echo "MS enabled/grid/bandwidth: ${MS_ENABLED}/${MS_GRID_SIZE}/${MS_BANDWIDTH_M}"
 echo "output: ${OUT}"
 echo "============================================================================================================"
@@ -332,7 +402,7 @@ UAVSAT_ARCHITECTURE_NAME="${BASE_ARCH}" \
 UAVSAT_REFERENCE_PROTOCOL=controlled_gt_jitter \
 UAVSAT_EXPERIMENT_ANCHOR="${UAVSAT_EXPERIMENT_ANCHOR:-softms}" \
 UAVSAT_EXPERIMENT_FRAME_COUNT="${UAVSAT_EXPERIMENT_FRAME_COUNT:-3}" \
-UAVSAT_EXPERIMENT_MOTION="${UAVSAT_EXPERIMENT_MOTION:-quadratic}" \
+UAVSAT_EXPERIMENT_MOTION="${UAVSAT_EXPERIMENT_MOTION:-velocity}" \
 UAVSAT_EXPERIMENT_KALMAN="${UAVSAT_EXPERIMENT_KALMAN:-fixed}" \
 UAVSAT_EXPERIMENT_DISABLE_GRU="${UAVSAT_EXPERIMENT_DISABLE_GRU:-0}" \
 UAVSAT_EXPERIMENT_FORWARD_ONLY="${UAVSAT_EXPERIMENT_FORWARD_ONLY:-1}" \
@@ -347,12 +417,18 @@ d["architecture"] = sys.argv[2]
 d["experiment_tag"] = os.environ.get("EXPERIMENT_TAG", "single_default")
 d["experiment_category"] = os.environ.get("EXPERIMENT_CATEGORY", "single")
 d["experiment_jitter_m"] = float(os.environ.get("JITTER_M", "8"))
-d["experiment_motion"] = os.environ.get("UAVSAT_EXPERIMENT_MOTION", "quadratic")
+d["experiment_motion"] = os.environ.get("UAVSAT_EXPERIMENT_MOTION", "velocity")
 d["experiment_kalman"] = os.environ.get("UAVSAT_EXPERIMENT_KALMAN", "fixed")
 d["experiment_disable_gru"] = os.environ.get("UAVSAT_EXPERIMENT_DISABLE_GRU", "0") == "1"
+d["experiment_frame_count"] = int(os.environ.get("UAVSAT_EXPERIMENT_FRAME_COUNT", "3"))
 d["ms_enabled"] = os.environ.get("MS_ENABLED", "1").lower() not in {"0", "false", "no", "off"}
 d["ms_grid_size"] = int(os.environ.get("MS_GRID_SIZE", "6"))
 d["final_chain"] = "GRU -> Kalman Filter -> MS -> Final Position"
+d["motion_label"] = {
+    "none": "No learned motion",
+    "velocity": "Constant Velocity",
+    "quadratic": "Velocity + Acceleration",
+}.get(d["experiment_motion"], d["experiment_motion"])
 d["final_decoder"] = "MeanShift when MS is enabled; MS output is the final position"
 d["ms_search_center"] = "nearest permanent SAT lattice point to the single Kalman posterior"
 d["ms_hyperparameters"] = {
