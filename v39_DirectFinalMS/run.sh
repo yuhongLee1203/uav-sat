@@ -15,12 +15,12 @@ TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-60}"
 PATIENCE="${PATIENCE:-10}"
 BACKBONE="mobilenet_v3_small"
 BASE_ARCH="V36_PreviousStateOnly_MobileNetV3_Forward3x6_PolynomialKalman"
-FINAL_ARCH="V39_GRU_Kalman_MS2"
+FINAL_ARCH="V39_GRU_Kalman_MS"
 
 # ============================================================================
 # Paper experiment suite.
-# Paper architecture is intentionally treated as:
-#       GRU -> Kalman Filter -> MS2 -> Final Position
+# Paper architecture is treated as:
+#       GRU -> Kalman Filter -> MS -> Final Position
 # The visual localizer before GRU remains fixed implementation infrastructure
 # and is NOT counted as an architecture module or experiment axis.
 # ============================================================================
@@ -36,14 +36,14 @@ if [[ "${RUN_ALL_EXPERIMENTS:-0}" == "1" ]]; then
     local motion="$3"
     local kalman="$4"
     local disable_gru="$5"
-    local ms2_enabled="$6"
-    local ms2_grid="$7"
+    local ms_enabled="$6"
+    local ms_grid="$7"
     local bandwidth="$8"
     local category="$9"
     local out="${SUITE_ROOT}/${name}"
     local runtime="${SUITE_ROOT}/runtime_${name}"
 
-    echo "[START][GPU ${gpu}] ${name} | category=${category} gru=$((1-disable_gru)) kalman=${kalman} ms2=${ms2_enabled} motion=${motion} grid=${ms2_grid} bw=${bandwidth}"
+    echo "[START][GPU ${gpu}] ${name} | category=${category} gru=$((1-disable_gru)) kalman=${kalman} ms=${ms_enabled} motion=${motion} grid=${ms_grid} bw=${bandwidth}"
     CUDA_VISIBLE_DEVICES="${gpu}" \
     UAVSAT_DEVICE=cuda:0 \
     UAVSAT_OUTPUT_DIR="${out}" \
@@ -56,9 +56,9 @@ if [[ "${RUN_ALL_EXPERIMENTS:-0}" == "1" ]]; then
     UAVSAT_EXPERIMENT_KALMAN="${kalman}" \
     UAVSAT_EXPERIMENT_DISABLE_GRU="${disable_gru}" \
     UAVSAT_EXPERIMENT_FORWARD_ONLY=1 \
-    MS2_ENABLED="${ms2_enabled}" \
-    MS2_GRID_SIZE="${ms2_grid}" \
-    MS2_BANDWIDTH_M="${bandwidth}" \
+    MS_ENABLED="${ms_enabled}" \
+    MS_GRID_SIZE="${ms_grid}" \
+    MS_BANDWIDTH_M="${bandwidth}" \
     EXPERIMENT_TAG="${name}" \
     EXPERIMENT_CATEGORY="${category}" \
     RUN_ALL_EXPERIMENTS=0 \
@@ -67,40 +67,38 @@ if [[ "${RUN_ALL_EXPERIMENTS:-0}" == "1" ]]; then
   }
 
   echo "============================================================================================================"
-  echo "v39 paper experiments: GRU -> Kalman -> MS2"
-  echo "Fixed front-end: visual localizer / forward candidate construction / SoftMS visual observation"
-  echo "These fixed front-end operations are NOT treated as architecture modules in the paper ablation."
+  echo "v39 paper experiments: GRU -> Kalman -> MS"
+  echo "Fixed front-end: visual localizer / forward candidate construction / visual observation"
   echo "Fixed protocol: JITTER_M=8, 3 temporal frames, same trained checkpoints"
   echo "GPU plan: 0 / 5 / 6"
   echo "output root: ${SUITE_ROOT}"
   echo "============================================================================================================"
 
-  # Full selected method first, also warming the shared feature cache.
+  # Run the selected full model first so the shared feature cache is safely ready.
   run_one 0 "full_model" quadratic learned 0 1 6 5.0 "module_ablation"
 
-  # GPU 0: direct module ablation for the paper architecture.
-  # GRU only is the simplest estimator after the fixed visual front-end.
-  # The two leave-one-out rows explicitly test whether Kalman and GRU are needed.
+  # After cache warm-up, all three GPUs run in parallel.
+  # GPU 0: direct architecture ablation.
   (
     run_one 0 "abl_gru_only"       quadratic none    0 0 6 5.0 "module_ablation"
     run_one 0 "abl_gru_kalman"     quadratic learned 0 0 6 5.0 "module_ablation"
-    run_one 0 "abl_gru_ms2"        quadratic none    0 1 6 5.0 "module_ablation"
+    run_one 0 "abl_gru_ms"         quadratic none    0 1 6 5.0 "module_ablation"
   ) & pid0=$!
 
-  # GPU 5: remaining module leave-one-out + GRU/Kalman internal design.
+  # GPU 5: leave-one-out + GRU/Kalman internal design.
   (
-    run_one 5 "abl_kalman_ms2"           quadratic learned 1 1 6 5.0 "module_ablation"
+    run_one 5 "abl_kalman_ms"            quadratic learned 1 1 6 5.0 "module_ablation"
     run_one 5 "design_motion_none"        none      learned 0 1 6 5.0 "gru_motion"
     run_one 5 "design_motion_velocity"    velocity  learned 0 1 6 5.0 "gru_motion"
     run_one 5 "design_kalman_fixed_var"   quadratic fixed   0 1 6 5.0 "kalman_design"
   ) & pid5=$!
 
-  # GPU 6: MS2 size/sensitivity experiments.
+  # GPU 6: MS size / MeanShift bandwidth sensitivity.
   (
-    run_one 6 "sens_ms2_grid4x4"     quadratic learned 0 1 4 5.0 "ms2_window"
-    run_one 6 "sens_ms2_grid8x8"     quadratic learned 0 1 8 5.0 "ms2_window"
-    run_one 6 "sens_ms_bandwidth3"   quadratic learned 0 1 6 3.0 "meanshift_bandwidth"
-    run_one 6 "sens_ms_bandwidth7"   quadratic learned 0 1 6 7.0 "meanshift_bandwidth"
+    run_one 6 "sens_ms_grid4x4"       quadratic learned 0 1 4 5.0 "ms_window"
+    run_one 6 "sens_ms_grid8x8"       quadratic learned 0 1 8 5.0 "ms_window"
+    run_one 6 "sens_ms_bandwidth3"    quadratic learned 0 1 6 3.0 "meanshift_bandwidth"
+    run_one 6 "sens_ms_bandwidth7"    quadratic learned 0 1 6 7.0 "meanshift_bandwidth"
   ) & pid6=$!
 
   status=0
@@ -134,7 +132,7 @@ def metric_row(p):
 
     disable_gru = bool(d.get("experiment_disable_gru", False))
     kalman_mode = str(d.get("experiment_kalman", "learned"))
-    ms2_enabled = bool(d.get("MS2_Enabled", d.get("ms2_enabled", True)))
+    ms_enabled = bool(d.get("MS_Enabled", d.get("ms_enabled", True)))
 
     return {
         "Experiment": d.get("experiment_tag", p.parent.name),
@@ -142,10 +140,10 @@ def metric_row(p):
         "GRU": "no" if disable_gru else "yes",
         "Kalman": "no" if kalman_mode == "none" else "yes",
         "Kalman_mode": kalman_mode,
-        "MS2": "yes" if ms2_enabled else "no",
+        "MS": "yes" if ms_enabled else "no",
         "Motion": d.get("experiment_motion", "quadratic"),
-        "MS2_grid": d.get("MS2_GridSize", d.get("ms2_grid_size", "-")) if ms2_enabled else "-",
-        "MS_bandwidth_m": d.get("ms2_hyperparameters", {}).get("bandwidth_m", "-") if ms2_enabled else "-",
+        "MS_grid": d.get("MS_GridSize", d.get("ms_grid_size", "-")) if ms_enabled else "-",
+        "MS_bandwidth_m": d.get("ms_hyperparameters", {}).get("bandwidth_m", "-") if ms_enabled else "-",
         "B_MLE_m": bm,
         "C_MLE_m": cm,
         "BC_weighted_MLE_m": bc,
@@ -175,14 +173,14 @@ for r in rows:
 order = [
     "abl_gru_only",
     "abl_gru_kalman",
-    "abl_gru_ms2",
-    "abl_kalman_ms2",
+    "abl_gru_ms",
+    "abl_kalman_ms",
     "full_model",
     "design_motion_none",
     "design_motion_velocity",
     "design_kalman_fixed_var",
-    "sens_ms2_grid4x4",
-    "sens_ms2_grid8x8",
+    "sens_ms_grid4x4",
+    "sens_ms_grid8x8",
     "sens_ms_bandwidth3",
     "sens_ms_bandwidth7",
 ]
@@ -190,8 +188,8 @@ rank = {name: i for i, name in enumerate(order)}
 rows.sort(key=lambda r: rank.get(r["Experiment"], 999))
 
 columns = [
-    "Experiment", "Category", "GRU", "Kalman", "Kalman_mode", "MS2",
-    "Motion", "MS2_grid", "MS_bandwidth_m",
+    "Experiment", "Category", "GRU", "Kalman", "Kalman_mode", "MS",
+    "Motion", "MS_grid", "MS_bandwidth_m",
     "B_MLE_m", "C_MLE_m", "BC_weighted_MLE_m", "Delta_vs_Full_pct",
     "B_P90_m", "C_P90_m", "B_LSR5_pct", "C_LSR5_pct",
     "B_LSR15_pct", "C_LSR15_pct", "B_JumpRate_pct", "C_JumpRate_pct",
@@ -205,8 +203,8 @@ with csv_path.open("w", newline="", encoding="utf-8") as f:
 
 md_path = suite / "experiment_summary.md"
 with md_path.open("w", encoding="utf-8") as f:
-    f.write("# v39 GRU-Kalman-MS2 Experiment Summary\n\n")
-    f.write("| Experiment | GRU | Kalman | MS2 | Motion | MS2 Grid | BW | B MLE | C MLE | B+C MLE | Delta vs Full | B LSR@5 | C LSR@5 | B Jump | C Jump |\n")
+    f.write("# v39 GRU-Kalman-MS Experiment Summary\n\n")
+    f.write("| Experiment | GRU | Kalman | MS | Motion | MS Grid | BW | B MLE | C MLE | B+C MLE | Delta vs Full | B LSR@5 | C LSR@5 | B Jump | C Jump |\n")
     f.write("|---|:---:|:---:|:---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
     for r in rows:
         def fmt(v, n=3):
@@ -218,8 +216,8 @@ with md_path.open("w", encoding="utf-8") as f:
             except (TypeError, ValueError):
                 return str(v)
         f.write(
-            f"| {r['Experiment']} | {r['GRU']} | {r['Kalman']} | {r['MS2']} | {r['Motion']} | "
-            f"{r['MS2_grid']} | {fmt(r['MS_bandwidth_m'],1)} | {fmt(r['B_MLE_m'])} | "
+            f"| {r['Experiment']} | {r['GRU']} | {r['Kalman']} | {r['MS']} | {r['Motion']} | "
+            f"{r['MS_grid']} | {fmt(r['MS_bandwidth_m'],1)} | {fmt(r['B_MLE_m'])} | "
             f"{fmt(r['C_MLE_m'])} | {fmt(r['BC_weighted_MLE_m'])} | {fmt(r['Delta_vs_Full_pct'],2)}% | "
             f"{fmt(r['B_LSR5_pct'],2)}% | {fmt(r['C_LSR5_pct'],2)}% | "
             f"{fmt(r['B_JumpRate_pct'],3)}% | {fmt(r['C_JumpRate_pct'],3)}% |\n"
@@ -230,7 +228,7 @@ print(f"[TABLE] {md_path}")
 PY
 
   echo "============================================================================================================"
-  echo "ALL GRU-KALMAN-MS2 EXPERIMENTS COMPLETED"
+  echo "ALL GRU-KALMAN-MS EXPERIMENTS COMPLETED"
   echo "Results: ${SUITE_ROOT}"
   echo "CSV: ${SUITE_ROOT}/experiment_summary.csv"
   echo "Markdown: ${SUITE_ROOT}/experiment_summary.md"
@@ -278,24 +276,23 @@ export HF_HOME="${REPO_ROOT}/forNX/pretrained_cache/huggingface"
 export HF_HUB_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false
 
-# Selected v39 MS2 internals stay fixed except for explicit MS2 size experiments.
-export MS2_KF_SIGMA_M="${MS2_KF_SIGMA_M:-4.0}"
-export MS2_REFERENCE_SIGMA_M="${MS2_REFERENCE_SIGMA_M:-4.0}"
-export MS2_KF_PRIOR_WEIGHT="${MS2_KF_PRIOR_WEIGHT:-1.50}"
-export MS2_REFERENCE_PRIOR_WEIGHT="${MS2_REFERENCE_PRIOR_WEIGHT:-2.50}"
-export MS2_BANDWIDTH_M="${MS2_BANDWIDTH_M:-5.0}"
-export MS2_ENABLED="${MS2_ENABLED:-1}"
-export MS2_GRID_SIZE="${MS2_GRID_SIZE:-6}"
+# Selected v39 MS internals. These stay fixed except for explicit MS size tests.
+export MS_KF_SIGMA_M="${MS_KF_SIGMA_M:-4.0}"
+export MS_REFERENCE_SIGMA_M="${MS_REFERENCE_SIGMA_M:-4.0}"
+export MS_KF_PRIOR_WEIGHT="${MS_KF_PRIOR_WEIGHT:-1.50}"
+export MS_REFERENCE_PRIOR_WEIGHT="${MS_REFERENCE_PRIOR_WEIGHT:-2.50}"
+export MS_BANDWIDTH_M="${MS_BANDWIDTH_M:-5.0}"
+export MS_ENABLED="${MS_ENABLED:-1}"
+export MS_GRID_SIZE="${MS_GRID_SIZE:-6}"
 
 echo "============================================================================================================"
-echo "v39 paper architecture: GRU -> Kalman Filter -> MS2 -> Final Position"
-echo "The visual localizer before GRU is fixed infrastructure and not counted as a paper architecture module."
+echo "v39 architecture: GRU -> Kalman Filter -> MS -> Final Position"
 echo "experiment: ${EXPERIMENT_TAG:-single_default}"
 echo "category: ${EXPERIMENT_CATEGORY:-single}"
 echo "GRU disabled: ${UAVSAT_EXPERIMENT_DISABLE_GRU:-0}"
 echo "Kalman mode: ${UAVSAT_EXPERIMENT_KALMAN:-learned}"
 echo "motion: ${UAVSAT_EXPERIMENT_MOTION:-quadratic}"
-echo "MS2 enabled/grid/bandwidth: ${MS2_ENABLED}/${MS2_GRID_SIZE}/${MS2_BANDWIDTH_M}"
+echo "MS enabled/grid/bandwidth: ${MS_ENABLED}/${MS_GRID_SIZE}/${MS_BANDWIDTH_M}"
 echo "output: ${OUT}"
 echo "============================================================================================================"
 
@@ -313,12 +310,12 @@ UAVSAT_DATA_ROOT="${DATA_ROOT}" \
 UAVSAT_BACKBONE="${BACKBONE}" \
 UAVSAT_ARCHITECTURE_NAME="${BASE_ARCH}" \
 UAVSAT_REFERENCE_PROTOCOL=controlled_gt_jitter \
-UAVSAT_EXPERIMENT_ANCHOR=softms \
-UAVSAT_EXPERIMENT_FRAME_COUNT=3 \
+UAVSAT_EXPERIMENT_ANCHOR="${UAVSAT_EXPERIMENT_ANCHOR:-softms}" \
+UAVSAT_EXPERIMENT_FRAME_COUNT="${UAVSAT_EXPERIMENT_FRAME_COUNT:-3}" \
 UAVSAT_EXPERIMENT_MOTION="${UAVSAT_EXPERIMENT_MOTION:-quadratic}" \
 UAVSAT_EXPERIMENT_KALMAN="${UAVSAT_EXPERIMENT_KALMAN:-learned}" \
 UAVSAT_EXPERIMENT_DISABLE_GRU="${UAVSAT_EXPERIMENT_DISABLE_GRU:-0}" \
-UAVSAT_EXPERIMENT_FORWARD_ONLY=1 \
+UAVSAT_EXPERIMENT_FORWARD_ONLY="${UAVSAT_EXPERIMENT_FORWARD_ONLY:-1}" \
 python3 -u robust_tracker.py "${ARGS[@]}" 2>&1 | tee "${OUT}/${MODE}.log"
 
 python3 - "${OUT}/robust_tracker_summary.json" "${FINAL_ARCH}" <<'PY'
@@ -327,25 +324,24 @@ from pathlib import Path
 p = Path(sys.argv[1])
 d = json.loads(p.read_text(encoding="utf-8"))
 d["architecture"] = sys.argv[2]
-d["paper_architecture"] = "GRU -> Kalman Filter -> MS2 -> Final Position"
-d["fixed_frontend_note"] = "visual localizer before GRU is fixed implementation infrastructure and is not counted as a paper architecture module"
 d["experiment_tag"] = os.environ.get("EXPERIMENT_TAG", "single_default")
 d["experiment_category"] = os.environ.get("EXPERIMENT_CATEGORY", "single")
 d["experiment_jitter_m"] = float(os.environ.get("JITTER_M", "8"))
 d["experiment_motion"] = os.environ.get("UAVSAT_EXPERIMENT_MOTION", "quadratic")
 d["experiment_kalman"] = os.environ.get("UAVSAT_EXPERIMENT_KALMAN", "learned")
 d["experiment_disable_gru"] = os.environ.get("UAVSAT_EXPERIMENT_DISABLE_GRU", "0") == "1"
-d["ms2_enabled"] = os.environ.get("MS2_ENABLED", "1") not in {"0", "false", "False", "no", "off"}
-d["ms2_grid_size"] = int(os.environ.get("MS2_GRID_SIZE", "6"))
+d["ms_enabled"] = os.environ.get("MS_ENABLED", "1").lower() not in {"0", "false", "no", "off"}
+d["ms_grid_size"] = int(os.environ.get("MS_GRID_SIZE", "6"))
+d["final_chain"] = "GRU -> Kalman Filter -> MS -> Final Position"
 d["second_kalman_update"] = "none"
-d["final_decoder"] = "Soft MeanShift when MS2 is enabled; MS2 output is final"
-d["ms2_search_center"] = "nearest permanent SAT lattice point to the single Kalman posterior"
-d["ms2_hyperparameters"] = {
-    "kalman_sigma_m": float(os.environ.get("MS2_KF_SIGMA_M", "4.0")),
-    "reference_sigma_m": float(os.environ.get("MS2_REFERENCE_SIGMA_M", "4.0")),
-    "kalman_prior_weight": float(os.environ.get("MS2_KF_PRIOR_WEIGHT", "1.50")),
-    "reference_prior_weight": float(os.environ.get("MS2_REFERENCE_PRIOR_WEIGHT", "2.50")),
-    "bandwidth_m": float(os.environ.get("MS2_BANDWIDTH_M", "5.0")),
+d["final_decoder"] = "MeanShift when MS is enabled; MS output is the final position"
+d["ms_search_center"] = "nearest permanent SAT lattice point to the single Kalman posterior"
+d["ms_hyperparameters"] = {
+    "kalman_sigma_m": float(os.environ.get("MS_KF_SIGMA_M", "4.0")),
+    "reference_sigma_m": float(os.environ.get("MS_REFERENCE_SIGMA_M", "4.0")),
+    "kalman_prior_weight": float(os.environ.get("MS_KF_PRIOR_WEIGHT", "1.50")),
+    "reference_prior_weight": float(os.environ.get("MS_REFERENCE_PRIOR_WEIGHT", "2.50")),
+    "bandwidth_m": float(os.environ.get("MS_BANDWIDTH_M", "5.0")),
 }
 p.write_text(json.dumps(d, indent=2, ensure_ascii=False), encoding="utf-8")
 PY
