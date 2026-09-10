@@ -1,74 +1,63 @@
-# v39_DirectFinalMS — Architecture-Focused Paper Experiments
+# v39_DirectFinalMS — GRU / Kalman / MS2 Paper Experiments
 
-目前主方法維持：
+論文與架構圖統一只把下列三個模組視為主要 architecture：
 
-`MS1 -> GRU -> Kalman Filter -> MS2 -> Final Position`
+`GRU -> Kalman Filter -> MS2 -> Final Position`
 
-這一版的實驗設計已重新整理成論文常見的 **module ablation + architecture/design sensitivity**。不再把 reference point 當成主要 ablation module，也不再跑 reference noise robustness、reference weight sweep、visual+reference 這類不直接對應 overview block 的實驗。
+實際程式在 GRU 前仍然需要固定的 UAV-SAT 視覺候選與視覺量測生成流程，但這一段視為 **fixed visual front-end**，不列入主要 architecture block，也不放進 module ablation table。
 
-Reference-point protocol 在所有實驗中保持固定，只作為既定資料/定位 protocol，不放進主要 ablation table。
+因此後續論文實驗不再出現 MS1 欄位，也不再跑 MS1 decoder、reference robustness、reference weight 等實驗。
 
 ## 1. Main module ablation
 
-這是最重要的主表，直接對應 overview 的 block：
+主表只看 GRU、Kalman、MS2：
 
-| Experiment | MS1 | GRU | Kalman | MS2 |
-|---|:---:|:---:|:---:|:---:|
-| `abl_ms1_only` | ✓ |  |  |  |
-| `abl_ms1_gru` | ✓ | ✓ |  |  |
-| `abl_ms1_gru_kalman` | ✓ | ✓ | ✓ |  |
-| `full_model` | ✓ | ✓ | ✓ | ✓ |
+| Experiment | GRU | Kalman | MS2 |
+|---|:---:|:---:|:---:|
+| `abl_gru_only` | ✓ |  |  |
+| `abl_gru_kalman` | ✓ | ✓ |  |
+| `abl_gru_ms2` | ✓ |  | ✓ |
+| `abl_kalman_ms2` |  | ✓ | ✓ |
+| `full_model` | ✓ | ✓ | ✓ |
 
-用途：直接回答每加入一個主要模組後，定位誤差與穩定性如何變化。
+這樣可以同時做 progressive ablation 與 leave-one-module-out：
 
-## 2. MS1 decoder design
+- `abl_gru_only`：最簡單 temporal estimator。
+- `abl_gru_kalman`：測加入 Kalman 後的效果。
+- `abl_gru_ms2`：拿掉 Kalman，確認 MS2 本身能否取代 filter。
+- `abl_kalman_ms2`：拿掉 GRU，確認 temporal learned state 是否必要。
+- `full_model`：完整 GRU + Kalman + MS2。
 
-固定其他架構不變，比較：
+## 2. GRU motion-model design
 
-- `full_model`: Soft MeanShift
-- `design_ms1_weighted`: Weighted Centroid
-
-用途：證明 MS1 使用 MeanShift 而不是單純 weighted aggregation 的設計是否合理。
-
-## 3. Candidate-search design
-
-固定其他架構不變，比較：
-
-- `full_model`: forward 3x6
-- `design_search_full6x6`: full 6x6
-
-用途：驗證 hard forward candidate restriction 是否能避免後方候選造成錯誤匹配。
-
-## 4. Motion-model design
-
-固定 GRU 與其他模組，比較：
+固定完整架構，比較：
 
 - `design_motion_none`: no learned inertial polynomial
-- `design_motion_velocity`: velocity model
-- `full_model`: quadratic motion model
+- `design_motion_velocity`: velocity motion
+- `full_model`: quadratic motion
 
-用途：驗證 second-order motion model 是否優於較簡單的運動假設。
+用途：驗證 GRU 後面使用的 second-order motion prediction 是否優於較簡單設計。
 
-## 5. Kalman uncertainty design
+## 3. Kalman uncertainty design
 
-固定其他架構不變，比較：
+固定完整架構，比較：
 
 - `design_kalman_fixed_var`: fixed measurement variance
 - `full_model`: learned measurement variance
 
-用途：驗證 learned measurement uncertainty 是否對 Kalman fusion 有幫助。
+用途：驗證 learned measurement uncertainty 是否能改善 Kalman fusion。
 
-## 6. MS2 local-window size
+## 4. MS2 local-window size
 
-固定完整架構，比較：
+固定 GRU + Kalman + MS2，比較：
 
 - `sens_ms2_grid4x4`: 4x4
 - `full_model`: 6x6
 - `sens_ms2_grid8x8`: 8x8
 
-用途：分析 final refinement 的局部搜尋範圍大小。
+用途：分析 MS2 最後局部 refinement 的搜尋範圍大小。
 
-## 7. MeanShift bandwidth sensitivity
+## 5. MeanShift bandwidth sensitivity
 
 固定完整架構與 6x6 MS2 window，比較：
 
@@ -76,21 +65,35 @@ Reference-point protocol 在所有實驗中保持固定，只作為既定資料/
 - `full_model`: 5 m
 - `sens_ms_bandwidth7`: 7 m
 
-用途：確認 MeanShift bandwidth 的選擇不是只靠單一極端值。
+用途：分析 MeanShift bandwidth 對最終定位結果的影響。
 
-## 8. 不再執行的實驗
+## 6. 固定、不列入 architecture ablation 的東西
 
-以下已從 paper experiment suite 移除：
+以下內容在所有主要實驗中固定，不作為 architecture module：
 
-- visual only / visual + reference / visual + Kalman prior 這種 MS2 score 拆解
-- reference-point noise robustness
+- UAV-SAT visual localizer
+- 前方 local candidate construction
+- GRU 前的 visual observation generation
+- predefined route reference-point protocol
+- MS2 內部固定 scoring formulation
+
+也就是論文 overview 與主消融只討論：
+
+`GRU -> Kalman Filter -> MS2`
+
+## 7. 已移除的實驗
+
+不再執行：
+
+- MS1 only / MS1 + GRU 等表格
+- SoftMS vs Weighted Centroid 的 MS1 decoder 實驗
+- 3x6 vs 6x6 的前端搜尋實驗
+- visual + reference / visual + Kalman 等 MS2 score 拆解
+- reference-point robustness
 - reference prior weight sweep
 - Kalman prior weight sweep
-- reference perturbation 4/8/12/16 m
 
-原因：這些項目不是 overview 中獨立的主要 architecture block，會讓主要 ablation 難以解釋，也偏離常見的 module ablation 呈現方式。
-
-## 9. 一次跑完全部實驗
+## 8. 一次跑完全部論文實驗
 
 ```bash
 cd /yh/study/uav-sat && \
@@ -101,24 +104,38 @@ RUN_ALL_EXPERIMENTS=1 \
 bash v39_DirectFinalMS/run.sh
 ```
 
-執行配置：
+GPU 配置：
 
-- 先在 GPU 0 執行 `full_model`，建立/預熱共用 feature cache。
-- 之後 GPU 0、5、6 平行執行剩餘實驗。
-- 每張 GPU 內 jobs 串行，避免同 GPU contention。
-- 每個實驗有獨立 output 與 runtime directory。
-- 不會覆蓋之前的結果；每次建立新的 timestamp experiment folder。
+- GPU 0：`full_model` + 主要 GRU/Kalman/MS2 ablation
+- GPU 5：leave-one-out + GRU/Kalman design
+- GPU 6：MS2 window / MeanShift bandwidth
+
+每張 GPU 內部串行，三張 GPU 平行，並共用 backbone feature cache。
 
 輸出：
 
 `v39_DirectFinalMS/experiments_YYYYMMDD_HHMMSS/`
 
-最重要的總表：
+主要總表：
 
 - `experiment_summary.csv`
 - `experiment_summary.md`
 
-總表會直接列出：MS1、GRU、Kalman、MS2 是否存在，以及 decoder、search、motion、MS2 grid、bandwidth 和 B/C 的 MLE、P90、LSR、Jump Rate。
+總表只會以 GRU / Kalman / MS2 作為主要 module 欄位。
+
+## 9. 論文主表建議
+
+正文主消融表直接使用：
+
+`GRU | Kalman | MS2 | MLE | P90 | LSR@5 | Jump Rate`
+
+其中最核心比較為：
+
+1. GRU
+2. GRU + Kalman
+3. GRU + Kalman + MS2
+
+另外 `GRU + MS2` 與 `Kalman + MS2` 可作為 leave-one-module-out rows，用來證明完整三模組組合的必要性。
 
 ## 10. 單獨跑完整主方法
 
@@ -133,19 +150,3 @@ bash v39_DirectFinalMS/run.sh
 單次結果：
 
 `v39_DirectFinalMS/output/robust_tracker_summary.json`
-
-## 論文呈現建議
-
-主要 ablation table 建議只放：
-
-`MS1 | GRU | Kalman | MS2 | MLE | P90 | LSR@5 | Jump Rate`
-
-再用 2–3 個小表或 sensitivity figure 分別呈現：
-
-- 3x6 vs 6x6
-- SoftMS vs Weighted Centroid
-- none / velocity / quadratic motion
-- MS2 window 4x4 / 6x6 / 8x8
-- MeanShift bandwidth 3 / 5 / 7 m
-
-這樣會比把 reference-point 設定塞進主 ablation table 更符合 architecture-focused 的論文實驗邏輯。
