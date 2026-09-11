@@ -1243,13 +1243,14 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_s
     raw_top1_xy = centers[
         torch.arange(centers.shape[0], device=visual.device), raw_index
     ]
-    softms_xy, softms_support, _, _, mode_weights, _ = soft_mean_shift(
-        raw_logits,
-        centers,
-        config.MEANSHIFT_SCORE_TAU,
-        config.MEANSHIFT_BANDWIDTH_M,
-        config.MEANSHIFT_ITERATIONS,
-        config.MEANSHIFT_MODE_BETA,
+    # Front-end visual observation: no MeanShift here.
+    # The actual visual anchor below is decoded from the LOCAL POSTERIOR in
+    # visual_observation(). These compatibility fields therefore carry a cheap
+    # posterior centroid/concentration statistic instead of a MeanShift result.
+    weighted_xy = (raw_prob.unsqueeze(-1) * centers).sum(dim=1)
+    posterior_support = raw_prob.max(dim=1).values
+    posterior_mode_count = torch.ones(
+        raw_prob.shape[0], dtype=torch.long, device=raw_prob.device
     )
     return CandidateBatch(
         indices=selected_indices,
@@ -1259,9 +1260,9 @@ def forward_3x6_candidate_batch(visual, uav_clip, center_xy, heading_rad, grid_s
         raw_logits=raw_logits,
         raw_prob=raw_prob,
         raw_top1_xy=raw_top1_xy,
-        softms_xy=softms_xy,
-        softms_support=softms_support,
-        softms_mode_count=(mode_weights > 0).sum(dim=1),
+        softms_xy=weighted_xy,
+        softms_support=posterior_support,
+        softms_mode_count=posterior_mode_count,
     )
 
 
@@ -1351,8 +1352,10 @@ def visual_observation(
         + float(config.ACQ_LOCAL_PRIOR_WEIGHT) * local_prior,
         dim=1,
     )
-    # Anchor ablation: the default is V36 SoftMS; weighted centroid uses the
-    # exact same local posterior and candidates without mean-shift iterations.
+    # Front visual localization decoder. The selected v40 path uses weighted
+    # centroid: mu=sum_i p_i*c_i. Its uncertainty is computed below from the
+    # same posterior as weighted spatial variance, so no front MeanShift is
+    # required to provide either position or uncertainty.
     if str(getattr(config, "EXPERIMENT_ANCHOR", "softms")) == "weighted_centroid":
         anchor_xy_all = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)
     else:
@@ -2402,7 +2405,8 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     motion_prediction_errors = []
     visual_measurement_errors = []
     kalman_errors = []
-    ms2_shifts_from_kalman = []
+    ms_shifts_from_kalman = []
+    ms_latency_rows_ms = []
     heading_errors = []
     acq_confidences = []
     acq_radii = []
@@ -2540,13 +2544,15 @@ def run_route_inference(route_name, visual, model, cache, route, device):
 
         # =============================================================
         # Direct final architecture:
-        # MS1 -> GRU -> KF predict/update -> MS2 -> Final
+        # Weighted Centroid visual observation -> GRU -> Kalman -> MS -> Final
+        #
+        # Experiment switches:
+        #   MS_ENABLED=0 : stop at the Kalman output.
+        #   MS_GRID_SIZE : final local candidate grid size (default 5).
         # =============================================================
         kalman_se = np.asarray(final_se, dtype=np.float64).copy()
         kalman_xy = route.xy_from_se(kalman_se[0], kalman_se[1])
 
-        # The current predefined frame reference is NOT passed through another
-        # Kalman update. It is used only as a spatial prior inside MS2.
         frame_reference_xy_t = cache.gt_xy[index : index + 1].to(device).float()
         frame_reference_xy = (
             frame_reference_xy_t[0].detach().cpu().numpy().astype(np.float64)
@@ -2555,87 +2561,101 @@ def run_route_inference(route_name, visual, model, cache, route, device):
             kalman_se[0], kalman_se[1]
         ).leg_index
 
-        # ---------------- MS2 ----------------
-        # Open a complete 6x6 SAT window around the Kalman posterior.
-        # MeanShift is still the final decoder. Its score combines:
-        #   (1) UAV-SAT visual likelihood,
-        #   (2) distance to the Kalman posterior,
-        #   (3) distance to the predefined frame reference.
-        # No second Kalman update is performed.
+        ms_enabled = str(
+            __import__("os").environ.get("MS_ENABLED", "1")
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        ms_grid_size = int(
+            __import__("os").environ.get("MS_GRID_SIZE", "5")
+        )
+        if ms_grid_size < 2:
+            raise ValueError("MS_GRID_SIZE must be >= 2")
+
         kalman_xy_t = torch.tensor(
             kalman_xy[None, :], dtype=torch.float32, device=device
         )
-        lattice_distance2 = (
-            visual.gallery["xy"] - kalman_xy_t
-        ).square().sum(dim=1)
-        ms2_lattice_index = int(lattice_distance2.argmin().item())
-        ms2_lattice_xy_t = visual.gallery["xy"][
-            ms2_lattice_index : ms2_lattice_index + 1
-        ]
-        ms2_candidate = visual.candidate_batch(
-            uav_clip=uav_clip,
-            center_xy=ms2_lattice_xy_t,
-            grid_size=6,
-        )
 
-        tau2 = float(config.MEANSHIFT_SCORE_TAU)
-        visual_log_probability = F.log_softmax(
-            ms2_candidate.raw_logits / max(tau2, 1e-6), dim=1
-        )
-        d2_kalman = (
-            ms2_candidate.centers - kalman_xy_t[:, None, :]
-        ).square().sum(dim=2)
-        d2_reference = (
-            ms2_candidate.centers - frame_reference_xy_t[:, None, :]
-        ).square().sum(dim=2)
+        if ms_enabled:
+            # Measure only the final MS refinement stage. Synchronization makes
+            # GPU timings comparable across candidate-window settings.
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            ms_timer_start = time.perf_counter()
 
-        sigma_kalman = max(
-            float(__import__("os").environ.get("MS2_KF_SIGMA_M", "4.0")),
-            1e-3,
-        )
-        sigma_reference = max(
-            float(__import__("os").environ.get("MS2_REFERENCE_SIGMA_M", "4.0")),
-            1e-3,
-        )
-        weight_kalman = float(
-            __import__("os").environ.get("MS2_KF_PRIOR_WEIGHT", "1.50")
-        )
-        weight_reference = float(
-            __import__("os").environ.get("MS2_REFERENCE_PRIOR_WEIGHT", "2.50")
-        )
+            lattice_distance2 = (
+                visual.gallery["xy"] - kalman_xy_t
+            ).square().sum(dim=1)
+            ms_lattice_index = int(lattice_distance2.argmin().item())
+            ms_lattice_xy_t = visual.gallery["xy"][
+                ms_lattice_index : ms_lattice_index + 1
+            ]
+            ms_candidate = visual.candidate_batch(
+                uav_clip=uav_clip,
+                center_xy=ms_lattice_xy_t,
+                grid_size=ms_grid_size,
+            )
 
-        combined_log_probability = (
-            visual_log_probability
-            - weight_kalman
-            * d2_kalman
-            / (2.0 * sigma_kalman ** 2)
-            - weight_reference
-            * d2_reference
-            / (2.0 * sigma_reference ** 2)
-        )
-        regularized_ms2_logits = tau2 * combined_log_probability
+            tau = float(config.MEANSHIFT_SCORE_TAU)
+            visual_log_probability = F.log_softmax(
+                ms_candidate.raw_logits / max(tau, 1e-6), dim=1
+            )
+            d2_kalman = (
+                ms_candidate.centers - kalman_xy_t[:, None, :]
+            ).square().sum(dim=2)
+            d2_reference = (
+                ms_candidate.centers - frame_reference_xy_t[:, None, :]
+            ).square().sum(dim=2)
 
-        ms2_xy_t, ms2_support_t, _, _, ms2_mode_weights_t, _ = soft_mean_shift(
-            regularized_ms2_logits,
-            ms2_candidate.centers,
-            tau2,
-            float(__import__("os").environ.get("MS2_BANDWIDTH_M", "5.0")),
-            config.MEANSHIFT_ITERATIONS,
-            config.MEANSHIFT_MODE_BETA,
-        )
-        ms2_xy = (
-            ms2_xy_t[0].detach().cpu().numpy().astype(np.float64)
-        )
-        ms2_support = float(ms2_support_t[0].item())
-        ms2_mode_count = int(
-            (ms2_mode_weights_t[0] > 0).sum().item()
-        )
+            sigma_kalman = max(
+                float(__import__("os").environ.get("MS_KF_SIGMA_M", "4.0")),
+                1e-3,
+            )
+            sigma_reference = max(
+                float(__import__("os").environ.get("MS_REFERENCE_SIGMA_M", "4.0")),
+                1e-3,
+            )
+            weight_kalman = float(
+                __import__("os").environ.get("MS_KF_PRIOR_WEIGHT", "1.50")
+            )
+            weight_reference = float(
+                __import__("os").environ.get("MS_REFERENCE_PRIOR_WEIGHT", "2.50")
+            )
 
-        ms2_s, ms2_e, _ = route.project_xy_local(
-            ms2_xy, preferred_leg
-        )
-        final_se = np.asarray([ms2_s, ms2_e], dtype=np.float64)
-        final_xy = ms2_xy.copy()
+            combined_log_probability = (
+                visual_log_probability
+                - weight_kalman * d2_kalman / (2.0 * sigma_kalman ** 2)
+                - weight_reference * d2_reference / (2.0 * sigma_reference ** 2)
+            )
+            regularized_ms_logits = tau * combined_log_probability
+
+            ms_xy_t, ms_support_t, _, _, ms_mode_weights_t, _ = soft_mean_shift(
+                regularized_ms_logits,
+                ms_candidate.centers,
+                tau,
+                float(__import__("os").environ.get("MS_BANDWIDTH_M", "7.0")),
+                config.MEANSHIFT_ITERATIONS,
+                config.MEANSHIFT_MODE_BETA,
+            )
+            ms_xy = ms_xy_t[0].detach().cpu().numpy().astype(np.float64)
+            ms_support = float(ms_support_t[0].item())
+            ms_mode_count = int((ms_mode_weights_t[0] > 0).sum().item())
+
+            ms_s, ms_e, _ = route.project_xy_local(ms_xy, preferred_leg)
+            final_se = np.asarray([ms_s, ms_e], dtype=np.float64)
+            final_xy = ms_xy.copy()
+
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            ms_latency_ms = (time.perf_counter() - ms_timer_start) * 1000.0
+            ms_latency_rows_ms.append(float(ms_latency_ms))
+        else:
+            ms_lattice_index = -1
+            ms_lattice_xy_t = kalman_xy_t
+            ms_xy = kalman_xy.copy()
+            ms_support = 0.0
+            ms_mode_count = 0
+            ms_latency_ms = 0.0
+            final_se = kalman_se.copy()
+            final_xy = kalman_xy.copy()
 
         reference_metric_xy = (
             cache.gt_xy[index].cpu().numpy().astype(np.float64)
@@ -2643,10 +2663,10 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         kalman_errors.append(
             float(np.linalg.norm(kalman_xy - reference_metric_xy))
         )
-        ms2_shift_from_kalman_m = float(
+        ms_shift_from_kalman_m = float(
             np.linalg.norm(final_xy - kalman_xy)
         )
-        ms2_shifts_from_kalman.append(ms2_shift_from_kalman_m)
+        ms_shifts_from_kalman.append(ms_shift_from_kalman_m)
         if prepared_uav is not None:
             if device.type == "cuda":
                 torch.cuda.synchronize(device)
@@ -2746,19 +2766,21 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "prior_jitter_x": float(controlled_jitter_xy[0]),
                 "prior_jitter_y": float(controlled_jitter_xy[1]),
                 "progress_capped_to_gt": int(progress_capped_to_gt),
-                "direct_kalman_ms2_enabled": 1,
+                "direct_kalman_ms_enabled": int(ms_enabled),
+                "ms_grid_size": int(ms_grid_size),
                 "kalman_x": float(kalman_xy[0]),
                 "kalman_y": float(kalman_xy[1]),
                 "frame_reference_x": float(frame_reference_xy[0]),
                 "frame_reference_y": float(frame_reference_xy[1]),
-                "ms2_lattice_index": int(ms2_lattice_index),
-                "ms2_lattice_x": float(ms2_lattice_xy_t[0, 0].item()),
-                "ms2_lattice_y": float(ms2_lattice_xy_t[0, 1].item()),
-                "ms2_x": float(ms2_xy[0]),
-                "ms2_y": float(ms2_xy[1]),
-                "ms2_support": float(ms2_support),
-                "ms2_mode_count": int(ms2_mode_count),
-                "ms2_shift_from_kalman_m": float(ms2_shift_from_kalman_m),
+                "ms_lattice_index": int(ms_lattice_index),
+                "ms_lattice_x": float(ms_lattice_xy_t[0, 0].item()),
+                "ms_lattice_y": float(ms_lattice_xy_t[0, 1].item()),
+                "ms_x": float(ms_xy[0]),
+                "ms_y": float(ms_xy[1]),
+                "ms_support": float(ms_support),
+                "ms_mode_count": int(ms_mode_count),
+                "ms_shift_from_kalman_m": float(ms_shift_from_kalman_m),
+                "ms_latency_ms": float(ms_latency_ms),
                 "frame_id": int(cache.frame_ids[index].item()),
                 "image_path": cache.image_paths[index],
                 "gt_x": float(gt_xy[0]),
@@ -2942,9 +2964,19 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     summary["VisualMeasurement_MAE_m"] = float(np.mean(visual_measurement_errors))
     summary["VisualMeasurement_P90_m"] = float(np.quantile(visual_measurement_errors, 0.90))
     summary["Kalman_MAE_m"] = float(np.mean(kalman_errors)) if kalman_errors else 0.0
-    summary["MS2_MeanShiftFromKalman_m"] = float(np.mean(ms2_shifts_from_kalman)) if ms2_shifts_from_kalman else 0.0
-    summary["MS2_MaxShiftFromKalman_m"] = float(np.max(ms2_shifts_from_kalman)) if ms2_shifts_from_kalman else 0.0
-    summary["MS2_Definition"] = "full 6x6 Soft MeanShift after the single Kalman update; score = visual likelihood + Kalman spatial prior + predefined-reference spatial prior; MS2 output is final"
+    summary["MS_MeanShiftFromKalman_m"] = float(np.mean(ms_shifts_from_kalman)) if ms_shifts_from_kalman else 0.0
+    summary["MS_MaxShiftFromKalman_m"] = float(np.max(ms_shifts_from_kalman)) if ms_shifts_from_kalman else 0.0
+    summary["VisualObservationDecoder"] = "posterior weighted centroid"
+    summary["VisualObservationUncertainty"] = "posterior-weighted spatial variance projected to route parallel/cross coordinates"
+    summary["MS_Enabled"] = bool(str(__import__("os").environ.get("MS_ENABLED", "1")).strip().lower() not in {"0", "false", "no", "off"})
+    summary["MS_GridSize"] = int(__import__("os").environ.get("MS_GRID_SIZE", "5"))
+    _ms_warmup = int(__import__("os").environ.get("MS_LATENCY_WARMUP", "30"))
+    _ms_latency_eval = ms_latency_rows_ms[_ms_warmup:] if len(ms_latency_rows_ms) > _ms_warmup else ms_latency_rows_ms
+    summary["MS_LatencyMean_ms"] = float(np.mean(_ms_latency_eval)) if _ms_latency_eval else 0.0
+    summary["MS_LatencyP90_ms"] = float(np.quantile(_ms_latency_eval, 0.90)) if _ms_latency_eval else 0.0
+    summary["MS_ThroughputFPS"] = (1000.0 / summary["MS_LatencyMean_ms"]) if summary["MS_LatencyMean_ms"] > 0 else 0.0
+    summary["MS_LatencyWarmupFrames"] = int(_ms_warmup)
+    summary["MS_Definition"] = "single final local Soft MeanShift after the Kalman estimator; MeanShift output is final"
     summary["FinalPredictedWaypointLeg"] = int(rows[-1]["waypoint_leg"])
     summary["FinalGTWaypointLeg"] = int(rows[-1]["gt_waypoint_leg"])
     summary["Waypoints"] = int(len(route.points))
@@ -3181,7 +3213,7 @@ def main():
     print(protocol_message, flush=True)
     print(
         "3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> "
-        "causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> full 6x6 regularized MS2 -> final XY.",
+        "weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> final MeanShift -> final XY.",
         flush=True,
     )
     print(
