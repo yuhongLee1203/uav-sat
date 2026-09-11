@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "method": "front SoftMS/MS1 replaced by posterior Weighted Centroid + posterior spatial variance",
+  "training": "1/2/3-frame variants freshly trained using unchanged original v39 training code/hyperparameters",
+  "fixed_motion": "Constant Velocity; no motion-model ablation",
+  "kalman": "fixed-R external Kalman; no learned-variance ablation; presence/absence tested in architecture table",
+  "ms_latency": "candidate centers + regularized logits ready -> one soft_mean_shift -> metric XY",
+  "gpus": "frame training uses GPU0/5/6 in parallel; timing phases run without concurrent experiment jobs"
+}
