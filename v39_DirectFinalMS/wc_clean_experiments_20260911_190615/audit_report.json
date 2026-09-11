@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "only_method_change": "front SoftMS/MS1 -> posterior Weighted Centroid + posterior spatial variance",
+  "temporal_checkpoint": "fixed original v39 Previous-State checkpoint; no retraining",
+  "reference_protocol": "controlled_gt_jitter",
+  "fixed_motion": "velocity",
+  "fixed_kalman": "fixed",
+  "fixed_ms_grid": 6,
+  "fixed_bandwidth_m": 7.0,
+  "runtime_rule": "no concurrent experiments during MS or E2E timing; final path executes exactly one MeanShift"
+}
