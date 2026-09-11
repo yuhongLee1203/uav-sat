@@ -121,10 +121,9 @@ direct_block = '''        # ====================================================
         )
 
         if ms_enabled:
-            if measure_ms and device.type == "cuda":
-                torch.cuda.synchronize(device)
-            ms_timer_start = time.perf_counter() if measure_ms else None
-
+            # Candidate lookup/scoring is deliberately OUTSIDE the MS timer.
+            # The paper's MS latency means: candidate centers and final logits
+            # are already available -> run ONE MeanShift decoder -> XY.
             lattice_distance2 = (
                 visual.gallery["xy"] - kalman_xy_t
             ).square().sum(dim=1)
@@ -133,10 +132,9 @@ direct_block = '''        # ====================================================
                 ms_lattice_index : ms_lattice_index + 1
             ]
 
-            # IMPORTANT runtime-correctness fix only: do NOT call
-            # visual.candidate_batch() here, because that legacy helper performs
-            # its own SoftMS before we run the actual final MS. Score the exact
-            # same candidate set directly, then execute MeanShift exactly once.
+            # Do NOT call visual.candidate_batch() here: that legacy helper runs
+            # an internal SoftMS. Score the same candidate set directly so the
+            # online final path contains exactly one MeanShift.
             ms_indices = regular_grid_indices(
                 visual.gallery["xy"],
                 visual.gallery["pixel"],
@@ -148,8 +146,6 @@ direct_block = '''        # ====================================================
             )
             ms_centers = visual.gallery["xy"][ms_indices]
             ms_satellite_clip = visual.gallery["clip_feat"][ms_indices]
-            # Reuse the already-computed current UAV embedding. This changes no
-            # score numerics and only removes duplicate projection work.
             ms_z_uav = obs.candidate.z_uav
             ms_z_sat = visual.model.encode_sat_from_clip(
                 ms_satellite_clip.reshape(-1, ms_satellite_clip.shape[-1]),
@@ -181,6 +177,12 @@ direct_block = '''        # ====================================================
                 - weight_reference * d2_reference / (2.0 * sigma_reference ** 2)
             )
             regularized_ms_logits = tau * combined_log_probability
+
+            # PURE MS DECODER TIMER. Start only after candidates and logits are
+            # ready; stop after MeanShift output has become the metric XY/SE.
+            if measure_ms and device.type == "cuda":
+                torch.cuda.synchronize(device)
+            ms_timer_start = time.perf_counter() if measure_ms else None
 
             ms_xy_t, ms_support_t, _, _, ms_mode_weights_t, _ = soft_mean_shift(
                 regularized_ms_logits,
@@ -271,6 +273,7 @@ new_summary = '''    summary["Kalman_MAE_m"] = float(np.mean(kalman_errors)) if 
     summary["MS_ThroughputFPS"] = (1000.0 / summary["MS_LatencyMean_ms"]) if summary["MS_LatencyMean_ms"] > 0 else 0.0
     summary["MS_LatencyWarmupFrames"] = int(_ms_warmup)
     summary["MS_Definition"] = "exactly one final local Soft MeanShift after the original v39 Kalman estimator"
+    summary["MS_LatencyDefinition"] = "final candidate centers + regularized logits already prepared -> one soft_mean_shift decoder -> metric XY"
 '''
 if s.count(old_summary) != 1:
     raise SystemExit(f"ERROR: summary block count={s.count(old_summary)}")
@@ -286,7 +289,7 @@ if old_console in s:
     s = s.replace(old_console, new_console, 1)
 
 # Static correctness audit: front MS removed; temporary KF2 removed; exactly one
-# explicit soft_mean_shift call remains in the online final path.
+# explicit final MeanShift remains in the selected online path.
 for forbidden in [
     "kf2_errors",
     "ms2_shifts_from_kf2",
@@ -298,11 +301,10 @@ for forbidden in [
     if forbidden in s:
         raise SystemExit(f"ERROR: stale token remains: {forbidden}")
 if s.count("soft_mean_shift(") != 2:
-    # One definition/import-side call remains in visual_observation's legacy
-    # softms branch, but weighted_centroid runtime never enters it; the other is
-    # the single final MS. Guard against accidentally reintroducing extra calls.
+    # One legacy softms-only uncertainty branch remains in visual_observation,
+    # but weighted_centroid runtime never enters it. The other call is final MS.
     raise SystemExit(f"ERROR: unexpected soft_mean_shift call count={s.count('soft_mean_shift(')}")
 
 compile(s, str(p), "exec")
 p.write_text(s, encoding="utf-8")
-print("[OK] clean v39: Weighted Centroid -> original GRU -> original Kalman -> one final MS")
+print("[OK] clean v39: Weighted Centroid -> original GRU -> original Kalman -> one final MS; pure MS timer enabled")
