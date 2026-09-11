@@ -21,6 +21,11 @@ VISUAL_CKPT="${REPO_ROOT}/forNX/weights/v36_${BACKBONE}/checkpoints/visual_retri
 ORIGINAL_V39_TEMPORAL_CKPT="${REPO_ROOT}/PreviousState-exp/output/mobilenetv3_prevstate/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
 CKPT_NAME="controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
 
+export TORCH_HOME="${REPO_ROOT}/forNX/pretrained_cache/torch"
+export HF_HOME="${REPO_ROOT}/forNX/pretrained_cache/huggingface"
+export HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false
+
 for f in config.py data.py robust_tracker.py visual_localizer.py visual_model.py; do
   [[ -f "${BASE_SRC}/${f}" ]] || { echo "ERROR: missing ${BASE_SRC}/${f}" >&2; exit 2; }
 done
@@ -30,7 +35,7 @@ for route in route_A route_B route_C; do
   [[ -f "${DATA_ROOT}/routes/${route}/frames.csv" ]] || { echo "ERROR: missing ${DATA_ROOT}/routes/${route}/frames.csv" >&2; exit 2; }
 done
 
-# Do not allow the later experimental training edits to leak into this suite.
+# Do not allow later experimental training edits to leak into this suite.
 # 1/2/3-frame variants are retrained with the ORIGINAL v39 optimizer/loss code.
 python3 - "${BASE_SRC}/config.py" "${BASE_SRC}/robust_tracker.py" "${BASE_SRC}/visual_model.py" <<'PY'
 from pathlib import Path
@@ -142,24 +147,26 @@ run_cfg() {
     python3 -u robust_tracker.py "${args[@]}" 2>&1 | sed -u "s/^/[${name}] /" | tee "${out}/${mode}.log"
   )
 
-  python3 - "${out}/robust_tracker_summary.json" "${FINAL_ARCH}" "${name}" "${category}" "${mode}" <<'PY'
-import json,os,sys
+  # Write metadata from explicit run_cfg arguments, never from ambient shell
+  # defaults. This prevents 1/2-frame rows from being mislabeled as 3-frame.
+  python3 - "${out}/robust_tracker_summary.json" "${FINAL_ARCH}" "${name}" "${category}" "${mode}" "${frames}" "${kalman}" "${disable_gru}" "${ms_enabled}" "${grid}" "${DEFAULT_MS_BANDWIDTH}" <<'PY'
+import json,sys
 from pathlib import Path
 p=Path(sys.argv[1]); d=json.loads(p.read_text(encoding='utf-8'))
 d['architecture']=sys.argv[2]
 d['experiment_tag']=sys.argv[3]
 d['experiment_category']=sys.argv[4]
 d['experiment_run_mode']=sys.argv[5]
+d['experiment_frame_count']=int(sys.argv[6])
+d['experiment_kalman']=sys.argv[7]
+d['experiment_disable_gru']=bool(int(sys.argv[8]))
+d['ms_enabled']=bool(int(sys.argv[9]))
+d['ms_grid_size']=int(sys.argv[10])
 d['experiment_anchor']='weighted_centroid'
-d['experiment_motion']=os.environ.get('UAVSAT_EXPERIMENT_MOTION','velocity')
-d['experiment_kalman']=os.environ.get('UAVSAT_EXPERIMENT_KALMAN','fixed')
-d['experiment_disable_gru']=os.environ.get('UAVSAT_EXPERIMENT_DISABLE_GRU','0')=='1'
-d['experiment_frame_count']=int(os.environ.get('UAVSAT_EXPERIMENT_FRAME_COUNT','3'))
-d['ms_enabled']=os.environ.get('MS_ENABLED','1').lower() not in {'0','false','no','off'}
-d['ms_grid_size']=int(os.environ.get('MS_GRID_SIZE','6'))
+d['experiment_motion']='velocity'
 d['final_chain']='Weighted Centroid -> GRU -> fixed-R Kalman -> one final MS -> Final Position'
 d['training_definition']='original v39 training code/hyperparameters; only front decoder is Weighted Centroid'
-d['ms_hyperparameters']={'bandwidth_m':float(os.environ.get('MS_BANDWIDTH_M','7.0'))}
+d['ms_hyperparameters']={'bandwidth_m':float(sys.argv[11])}
 p.write_text(json.dumps(d,indent=2,ensure_ascii=False),encoding='utf-8')
 PY
   echo "[DONE][${name}]"
@@ -201,8 +208,8 @@ if [[ "${RUN_ALL_EXPERIMENTS:-0}" == "1" ]]; then
 
   # Progressive architecture ablation. No extra Kalman-design or motion-model
   # experiments: Kalman contribution is already measured by +Kalman here.
-  run_cfg 0 abl_wc_only       3 none               1 0 "${DEFAULT_MS_GRID}" module_ablation eval ""       0 0
-  run_cfg 0 abl_wc_gru        3 none               0 0 "${DEFAULT_MS_GRID}" module_ablation eval "${CKPT3}" 0 0
+  run_cfg 0 abl_wc_only       3 none                1 0 "${DEFAULT_MS_GRID}" module_ablation eval ""        0 0
+  run_cfg 0 abl_wc_gru        3 none                0 0 "${DEFAULT_MS_GRID}" module_ablation eval "${CKPT3}" 0 0
   run_cfg 0 abl_wc_gru_kalman 3 "${DEFAULT_KALMAN}" 0 0 "${DEFAULT_MS_GRID}" module_ablation eval "${CKPT3}" 0 0
 
   # Pure final-MeanShift decoder timing. Run sequentially on GPU5 after all
