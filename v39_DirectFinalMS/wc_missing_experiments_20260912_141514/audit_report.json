@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "added_experiments": [
+    "WC -> Kalman -> final MS (no GRU)",
+    "5x5 full-chain E2E runtime",
+    "no-GT route_reference full-chain evaluation"
+  ],
+  "selected_ms_grid": 5,
+  "checkpoint_architecture_policy": "runtime tag must equal the stored checkpoint tag; original v39 checkpoint tag is V36_PreviousStateOnly_MobileNetV3_Forward3x6_PolynomialKalman",
+  "pooled_percentile_definition": "concatenate Route B+C per-frame error_final_m, then np.quantile",
+  "no_gt_final_ms_reference": "causal_local_search_reference; verified against prior_center_x/y on every frame"
+}

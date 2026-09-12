@@ -1,0 +1,18 @@
+[runtime_e2e_5x5] ============================================================================================================
+[runtime_e2e_5x5] V39_WeightedCentroid_GRU_Kalman_MS_5x5
+[runtime_e2e_5x5] device=cuda:0
+[runtime_e2e_5x5] Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+[runtime_e2e_5x5] 3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.
+[runtime_e2e_5x5] Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+[runtime_e2e_5x5] Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+[runtime_e2e_5x5] ============================================================================================================
+[runtime_e2e_5x5] Traceback (most recent call last):
+[runtime_e2e_5x5]   File "robust_tracker.py", line 3252, in <module>
+[runtime_e2e_5x5]     main()
+[runtime_e2e_5x5]   File "robust_tracker.py", line 3247, in main
+[runtime_e2e_5x5]     eval_pipeline(device)
+[runtime_e2e_5x5]   File "robust_tracker.py", line 3098, in eval_pipeline
+[runtime_e2e_5x5]     model = load_temporal_model(device)
+[runtime_e2e_5x5]   File "robust_tracker.py", line 3047, in load_temporal_model
+[runtime_e2e_5x5]     raise RuntimeError(
+[runtime_e2e_5x5] RuntimeError: Temporal checkpoint architecture mismatch: 'V36_PreviousStateOnly_MobileNetV3_Forward3x6_PolynomialKalman'

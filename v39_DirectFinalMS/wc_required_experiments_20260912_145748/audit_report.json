@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "included_experiments": [
+    "WC -> fixed-R Kalman -> 5x5 final MS (no GRU)",
+    "WC -> 3-frame GRU -> fixed-R Kalman -> 5x5 final MS with E2E timing"
+  ],
+  "evaluation_protocol": "controlled_gt_jitter (matches checkpoint training protocol)",
+  "selected_ms_grid": 5,
+  "pooled_percentile_definition": "concatenate Route B+C per-frame error_final_m, then np.quantile",
+  "excluded_experiment": {
+    "name": "route_reference closed-loop",
+    "reason": "checkpoint trained with one controlled local window, but route_reference changes inference to a 13-window +/-60 m acquisition bank; same-protocol training is required before a fair evaluation"
+  }
+}
