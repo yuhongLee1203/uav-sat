@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "full_model_beats_no_gru": true,
+  "runtime_same_gpu_sanity": true,
+  "patience": 5,
+  "BC_MLE_no_gru_m": 2.316704034143983,
+  "BC_MLE_full_m": 2.04459493483194,
+  "BC_MLE_full_improvement_pct": 11.745527063520079,
+  "E2E_5x5_ms": 36.667385397607084,
+  "E2E_5x5_fps": 27.272192689944564,
+  "E2E_6x6_ms": 39.55364528051258,
+  "E2E_6x6_fps": 25.282119837705153,
+  "architecture": "WC -> context-aware 3-frame GRU residual/velocity -> fixed-R Kalman -> one final 5x5 MS",
+  "no_gru_fallback": "external Kalman internal constant-velocity state",
+  "runtime_fix": "GPU-resident regular-grid lookup; no repeated full-gallery .cpu() copies"
+}
