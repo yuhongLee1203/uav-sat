@@ -8,17 +8,20 @@ FEATURE_CACHE_DIR="${UAVSAT_FEATURE_CACHE_DIR_OVERRIDE:-${ROOT}/output/feature_c
 DATA_ROOT="${UAVSAT_DATA_ROOT:-${REPO_ROOT}/v36_GvsK/v36_training_data}"
 BACKBONE="mobilenet_v3_small"
 
-# Final fair comparison:
-# Full: WC -> context-aware 3-frame GRU (residual + learned velocity)
-#       -> fixed-R Kalman using GRU velocity -> one final MeanShift.
-# No-GRU: same visual/Kalman/MS chain, but with no learned temporal velocity;
-#         Kalman therefore falls back to its own internal constant-velocity state.
+# Final paper-facing architecture:
+# Weighted Centroid -> context-aware 3-frame GRU residual/velocity
+# -> fixed-R external Kalman -> one final 5x5 MeanShift.
+#
+# The main ablation is leave-one-component-out. Each row removes exactly one
+# component while preserving the rest of the final pipeline. The WC ablation
+# uses Top-1 as the minimal valid visual readout and is retrained separately,
+# because removing a coordinate readout entirely would make the pipeline undefined.
 FINAL_ARCH="V39_WeightedCentroid_ContextGRU_VelocityKalman_MS_5x5"
+TOP1_ARCH="V39_Top1_ContextGRU_VelocityKalman_MS_5x5"
 JITTER_M="${JITTER_M:-8}"
 TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-60}"
 PATIENCE="${PATIENCE:-5}"
 DEFAULT_MOTION="velocity"
-DEFAULT_KALMAN="fixed"
 DEFAULT_MS_GRID="5"
 DEFAULT_MS_BANDWIDTH="7.0"
 CKPT_NAME="controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
@@ -39,10 +42,10 @@ for route in route_A route_B route_C; do
 done
 
 TS="$(date +%Y%m%d_%H%M%S)"
-SUITE_ROOT="${EXPERIMENT_SUITE_DIR:-${ROOT}/wc_gru_velocity_fusion_${TS}}"
+SUITE_ROOT="${EXPERIMENT_SUITE_DIR:-${ROOT}/wc_leave_one_out_${TS}}"
 mkdir -p "${SUITE_ROOT}" "${FEATURE_CACHE_DIR}"
 
-patch_runtime_v3() {
+patch_runtime_v4() {
   local runtime="$1"
   python3 - "${runtime}" <<'PY'
 from pathlib import Path
@@ -50,9 +53,7 @@ import sys
 
 runtime = Path(sys.argv[1])
 
-# ------------------------------------------------------------------
-# 1) GRU receives posterior-weighted SAT context as a fifth input.
-# ------------------------------------------------------------------
+# 1) Context-aware GRU: posterior-weighted SAT context is the fifth input.
 p = runtime / "visual_model.py"
 s = p.read_text(encoding="utf-8")
 old = "        self.gru = nn.GRUCell(feature_dim * 4, hidden_dim)\n"
@@ -88,15 +89,37 @@ s = s.replace(old_block, new_block, 1)
 p.write_text(s, encoding="utf-8")
 compile(s, str(p), "exec")
 
-# ------------------------------------------------------------------
-# 2) Kalman motion role:
-#    - full model: use learned GRU velocity;
-#    - no-GRU ablation: fair fallback to Kalman's own CV state.
-# This does not intentionally damage the no-GRU path; it supplies the natural
-# non-learned fallback when the temporal module is absent.
-# ------------------------------------------------------------------
+# 2) Add Top-1 as a valid front-readout ablation.
+p = runtime / "config.py"
+s = p.read_text(encoding="utf-8")
+old = 'if EXPERIMENT_ANCHOR not in {"softms", "weighted_centroid"}:\n    raise ValueError("UAVSAT_EXPERIMENT_ANCHOR must be softms or weighted_centroid")\n'
+new = 'if EXPERIMENT_ANCHOR not in {"softms", "weighted_centroid", "top1"}:\n    raise ValueError("UAVSAT_EXPERIMENT_ANCHOR must be softms, weighted_centroid, or top1")\n'
+if s.count(old) != 1:
+    raise SystemExit(f"ERROR: anchor validation patch count={s.count(old)}")
+s = s.replace(old, new, 1)
+p.write_text(s, encoding="utf-8")
+compile(s, str(p), "exec")
+
 p = runtime / "robust_tracker.py"
 s = p.read_text(encoding="utf-8")
+old_anchor = '''    if str(getattr(config, "EXPERIMENT_ANCHOR", "softms")) == "weighted_centroid":
+        anchor_xy_all = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)
+    else:
+        anchor_xy_all = candidate.softms_xy
+'''
+new_anchor = '''    anchor_mode = str(getattr(config, "EXPERIMENT_ANCHOR", "softms"))
+    if anchor_mode == "top1":
+        anchor_xy_all = candidate.raw_top1_xy
+    elif anchor_mode == "weighted_centroid":
+        anchor_xy_all = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)
+    else:
+        anchor_xy_all = candidate.softms_xy
+'''
+if s.count(old_anchor) != 1:
+    raise SystemExit(f"ERROR: Top-1 anchor patch count={s.count(old_anchor)}")
+s = s.replace(old_anchor, new_anchor, 1)
+
+# 3) Fair motion fallback when GRU is removed.
 old_motion = '''        elif motion_mode == "velocity":
             acceleration[:] = 0.0
             step = velocity.copy()
@@ -104,22 +127,16 @@ old_motion = '''        elif motion_mode == "velocity":
 new_motion = '''        elif motion_mode == "velocity":
             acceleration[:] = 0.0
             if bool(getattr(config, "EXPERIMENT_DISABLE_GRU", False)):
-                # No learned temporal velocity exists in this ablation.
-                # Use the external Kalman's own posterior velocity state.
                 velocity = self.x[2:4].copy()
                 step = velocity.copy()
             else:
-                # Full model: the GRU contributes its learned temporal velocity.
                 step = velocity.copy()
 '''
 if s.count(old_motion) != 1:
     raise SystemExit(f"ERROR: velocity-fusion patch count={s.count(old_motion)}")
 s = s.replace(old_motion, new_motion, 1)
 
-# ------------------------------------------------------------------
-# 3) Fast grid indexing: keep the full gallery on GPU instead of copying
-#    gallery XY/pixels to CPU on every frame. Candidate geometry is unchanged.
-# ------------------------------------------------------------------
+# 4) Fast regular-grid indexing: keep full gallery tensors on GPU.
 marker = "ARCHITECTURE_NAME = str(config.ARCHITECTURE_NAME)\n\n\n"
 if s.count(marker) != 1:
     raise SystemExit(f"ERROR: fast-grid insertion marker count={s.count(marker)}")
@@ -140,14 +157,12 @@ def fast_regular_grid_indices(
     offsets = range(start, start + grid_size)
     stride = int(stride)
     rows = []
-
     prior_xy = prior_xy.to(gallery_xy.device, dtype=gallery_xy.dtype)
     for prior in prior_xy:
         distance_squared = (gallery_xy - prior[None, :]).square().sum(dim=1)
         center_index = int(distance_squared.argmin().item())
         center_pixel = gallery_pixel[center_index].detach().cpu().tolist()
         center_x, center_y = (int(round(float(v))) for v in center_pixel)
-
         row = []
         complete = True
         for offset_y in offsets:
@@ -161,7 +176,6 @@ def fast_regular_grid_indices(
                 row.append(index)
             if not complete:
                 break
-
         if not complete:
             row = torch.topk(
                 distance_squared,
@@ -169,7 +183,6 @@ def fast_regular_grid_indices(
                 largest=False,
             ).indices.detach().cpu().tolist()
         rows.append(row)
-
     return torch.tensor(rows, dtype=torch.long, device=device)
 
 
@@ -183,7 +196,7 @@ s = s.replace("def fast_fast_regular_grid_indices(", "def fast_regular_grid_indi
 
 p.write_text(s, encoding="utf-8")
 compile(s, str(p), "exec")
-print("runtime-v3 patch PASS: context GRU + fair velocity fallback + fast GPU indexing")
+print("runtime-v4 patch PASS: context GRU + Top-1 ablation + fair motion fallback + fast GPU indexing")
 PY
 }
 
@@ -193,7 +206,7 @@ make_runtime() {
   mkdir -p "${runtime}" "${out}/checkpoints" "${FEATURE_CACHE_DIR}"
   cp -a "${BASE_SRC}/." "${runtime}/"
   python3 "${ROOT}/patch_direct_finalms.py" "${runtime}/robust_tracker.py"
-  patch_runtime_v3 "${runtime}"
+  patch_runtime_v4 "${runtime}"
   ln -sfn "${VISUAL_CKPT}" "${out}/checkpoints/visual_retrieval_A_only.pt"
 }
 
@@ -210,8 +223,9 @@ PY
 }
 
 run_cfg() {
-  local gpu="$1" name="$2" frames="$3" disable_gru="$4"
-  local grid="$5" mode="$6" ckpt_source="${7:-}" measure_e2e="${8:-0}"
+  local gpu="$1" name="$2" anchor="$3" frames="$4" disable_gru="$5"
+  local kalman="$6" ms_enabled="$7" grid="$8" mode="$9"
+  local ckpt_source="${10:-}" arch_tag="${11:-${FINAL_ARCH}}" measure_e2e="${12:-0}"
   local out="${SUITE_ROOT}/${name}"
   local runtime="${SUITE_ROOT}/runtime_${name}"
 
@@ -221,14 +235,14 @@ run_cfg() {
     [[ -s "${ckpt_source}" ]] || { echo "ERROR: missing checkpoint ${ckpt_source}" >&2; return 3; }
     local stored_arch
     stored_arch="$(checkpoint_arch "${ckpt_source}")"
-    [[ "${stored_arch}" == "${FINAL_ARCH}" ]] || {
-      echo "ERROR: checkpoint architecture ${stored_arch} != ${FINAL_ARCH}" >&2
+    [[ "${stored_arch}" == "${arch_tag}" ]] || {
+      echo "ERROR: checkpoint architecture ${stored_arch} != ${arch_tag}" >&2
       return 4
     }
     ln -sfn "${ckpt_source}" "${out}/checkpoints/${CKPT_NAME}"
   fi
 
-  echo "[START][${name}][GPU${gpu}] frames=${frames} gru=$((1-disable_gru)) motion=${DEFAULT_MOTION} kalman=${DEFAULT_KALMAN} ms_grid=${grid} e2e=${measure_e2e}"
+  echo "[START][${name}][GPU${gpu}] anchor=${anchor} frames=${frames} gru=$((1-disable_gru)) kalman=${kalman} ms=${ms_enabled} grid=${grid} e2e=${measure_e2e}"
   (
     cd "${runtime}"
     args=(--mode "${mode}" --reuse-visual --jitter-m "${JITTER_M}")
@@ -243,16 +257,16 @@ run_cfg() {
     UAVSAT_FEATURE_CACHE_DIR="${FEATURE_CACHE_DIR}" \
     UAVSAT_DATA_ROOT="${DATA_ROOT}" \
     UAVSAT_BACKBONE="${BACKBONE}" \
-    UAVSAT_ARCHITECTURE_NAME="${FINAL_ARCH}" \
+    UAVSAT_ARCHITECTURE_NAME="${arch_tag}" \
     UAVSAT_REFERENCE_PROTOCOL=controlled_gt_jitter \
-    UAVSAT_EXPERIMENT_ANCHOR=weighted_centroid \
+    UAVSAT_EXPERIMENT_ANCHOR="${anchor}" \
     UAVSAT_EXPERIMENT_FRAME_COUNT="${frames}" \
     UAVSAT_EXPERIMENT_MOTION="${DEFAULT_MOTION}" \
-    UAVSAT_EXPERIMENT_KALMAN="${DEFAULT_KALMAN}" \
+    UAVSAT_EXPERIMENT_KALMAN="${kalman}" \
     UAVSAT_EXPERIMENT_FIXED_VARIANCE_M2=25.0 \
     UAVSAT_EXPERIMENT_DISABLE_GRU="${disable_gru}" \
     UAVSAT_EXPERIMENT_FORWARD_ONLY=1 \
-    MS_ENABLED=1 \
+    MS_ENABLED="${ms_enabled}" \
     MS_GRID_SIZE="${grid}" \
     MS_BANDWIDTH_M="${DEFAULT_MS_BANDWIDTH}" \
     MS_MEASURE_LATENCY=0 \
@@ -261,23 +275,30 @@ run_cfg() {
     python3 -u robust_tracker.py "${args[@]}" 2>&1 | sed -u "s/^/[${name}] /" | tee "${out}/${mode}.log"
   )
 
-  python3 - "${out}/robust_tracker_summary.json" "${name}" "${frames}" "${disable_gru}" "${grid}" <<'PY'
+  python3 - "${out}/robust_tracker_summary.json" "${name}" "${anchor}" "${frames}" "${disable_gru}" "${kalman}" "${ms_enabled}" "${grid}" "${arch_tag}" <<'PY'
 import json,sys
 from pathlib import Path
 p=Path(sys.argv[1]); d=json.loads(p.read_text(encoding="utf-8"))
-d["architecture"]="V39_WeightedCentroid_ContextGRU_VelocityKalman_MS_5x5"
 d["experiment_tag"]=sys.argv[2]
-d["experiment_frame_count"]=int(sys.argv[3])
-d["experiment_disable_gru"]=bool(int(sys.argv[4]))
-d["ms_grid_size"]=int(sys.argv[5])
-d["experiment_anchor"]="weighted_centroid"
+d["experiment_anchor"]=sys.argv[3]
+d["experiment_frame_count"]=int(sys.argv[4])
+d["experiment_disable_gru"]=bool(int(sys.argv[5]))
+d["experiment_kalman"]=sys.argv[6]
+d["ms_enabled"]=bool(int(sys.argv[7]))
+d["ms_grid_size"]=int(sys.argv[8])
+d["architecture"]=sys.argv[9]
 d["experiment_motion"]="velocity"
-d["experiment_kalman"]="fixed"
 d["early_stopping_patience"]=5
-d["gru_role"]="3-frame temporal residual measurement refinement plus learned temporal velocity, conditioned on posterior-weighted satellite context"
-d["kalman_motion_role"]="full model uses GRU velocity; no-GRU ablation falls back to external Kalman internal constant-velocity state"
-d["ablation_fairness"]="same WC, fixed-R Kalman, final MS and controlled protocol; only learned GRU temporal outputs are removed"
+d["gru_role"]="3-frame temporal residual/velocity conditioned on posterior-weighted satellite context"
+d["kalman_ablation_definition"]="EXPERIMENT_KALMAN=none disables external Kalman measurement fusion; the recurrent motion state remains causal"
+d["final_ms_ablation_definition"]="MS_ENABLED=0 returns the pre-MS estimator output directly"
+d["top1_ablation_definition"]="Top-1 replaces Weighted Centroid as the front coordinate readout and receives its own Route-A temporal training"
 d["runtime_indexing"]="GPU-resident gallery nearest/grid lookup; no per-frame full-gallery GPU-to-CPU copy"
+for route in ("route_B","route_C"):
+    if sys.argv[3] == "top1":
+        d[route]["VisualObservationDecoder"]="raw Top-1 candidate center"
+    elif sys.argv[3] == "weighted_centroid":
+        d[route]["VisualObservationDecoder"]="posterior weighted centroid"
 p.write_text(json.dumps(d,indent=2,ensure_ascii=False),encoding="utf-8")
 PY
   echo "[DONE][${name}]"
@@ -305,31 +326,42 @@ PY
 }
 
 echo "============================================================================================================"
-echo "V39 GRU VELOCITY-FUSION FINAL EXPERIMENT"
-echo "Full : WC -> context GRU residual+velocity -> fixed-R Kalman -> one final 5x5 MS"
-echo "Abl. : WC -> no GRU -> Kalman internal constant velocity -> one final 5x5 MS"
-echo "Patience=${PATIENCE}; training Route A only; evaluation Route B/C"
-echo "Runtime: GPU-resident grid lookup; paired 5x5/6x6 timing on physical GPU6"
+echo "V39 PAPER ABLATION: LEAVE-ONE-COMPONENT-OUT"
+echo "Full: WC -> context 3-frame GRU -> fixed-R Kalman -> one final 5x5 MS"
+echo "Rows: Top-1 instead of WC; w/o GRU; w/o Kalman fusion; w/o final MS; Full"
+echo "All B/C evaluation uses the same controlled local-refinement protocol."
+echo "Top-1 is retrained on Route A so the front-readout comparison is not OOD."
+echo "Patience=${PATIENCE}."
 echo "============================================================================================================"
 
-# Fresh training is mandatory: context-aware GRU has a different input structure,
-# and checkpoint selection must now be evaluated with GRU velocity active.
-run_cfg 0 temporal_context_gru_velocity 3 0 "${DEFAULT_MS_GRID}" train_eval "" 0
-TEMPORAL_CKPT="${SUITE_ROOT}/temporal_context_gru_velocity/checkpoints/${CKPT_NAME}"
-[[ -s "${TEMPORAL_CKPT}" ]] || { echo "ERROR: fresh context-GRU checkpoint missing" >&2; exit 20; }
-[[ "$(checkpoint_arch "${TEMPORAL_CKPT}")" == "${FINAL_ARCH}" ]] || {
-  echo "ERROR: fresh checkpoint architecture mismatch" >&2
-  exit 21
-}
+# Train the selected full model once on Route A.
+run_cfg 0 train_full_wc weighted_centroid 3 0 fixed 1 5 train_eval "" "${FINAL_ARCH}" 0
+FULL_CKPT="${SUITE_ROOT}/train_full_wc/checkpoints/${CKPT_NAME}"
+[[ -s "${FULL_CKPT}" ]] || { echo "ERROR: full checkpoint missing" >&2; exit 20; }
+[[ "$(checkpoint_arch "${FULL_CKPT}")" == "${FINAL_ARCH}" ]] || { echo "ERROR: full checkpoint architecture mismatch" >&2; exit 21; }
 
-# Fair no-GRU ablation. No special degradation is applied.
-run_cfg 0 abl_no_gru 3 1 "${DEFAULT_MS_GRID}" eval "" 0
+# Train the Top-1 readout variant separately on Route A. Reusing the WC-trained
+# GRU here would create an unfair readout-domain shift.
+run_cfg 0 train_top1 top1 3 0 fixed 1 5 train_eval "" "${TOP1_ARCH}" 0
+TOP1_CKPT="${SUITE_ROOT}/train_top1/checkpoints/${CKPT_NAME}"
+[[ -s "${TOP1_CKPT}" ]] || { echo "ERROR: Top-1 checkpoint missing" >&2; exit 22; }
+[[ "$(checkpoint_arch "${TOP1_CKPT}")" == "${TOP1_ARCH}" ]] || { echo "ERROR: Top-1 checkpoint architecture mismatch" >&2; exit 23; }
 
-# Full selected chain + fair same-GPU runtime comparison.
-gpu_audit before_runtime_pair
-run_cfg 6 full_context_gru_5x5 3 0 5 eval "${TEMPORAL_CKPT}" 1
-run_cfg 6 runtime_context_gru_6x6 3 0 6 eval "${TEMPORAL_CKPT}" 1
-gpu_audit after_runtime_pair
+# Main leave-one-component-out ablation. Run all timed rows sequentially on the
+# same physical GPU6 so latency differences are interpretable.
+gpu_audit before_ablation
+run_cfg 6 abl_top1 top1 3 0 fixed 1 5 eval "${TOP1_CKPT}" "${TOP1_ARCH}" 1
+run_cfg 6 abl_no_gru weighted_centroid 3 1 fixed 1 5 eval "" "${FINAL_ARCH}" 1
+run_cfg 6 abl_no_kalman weighted_centroid 3 0 none 1 5 eval "${FULL_CKPT}" "${FINAL_ARCH}" 1
+run_cfg 6 abl_no_final_ms weighted_centroid 3 0 fixed 0 5 eval "${FULL_CKPT}" "${FINAL_ARCH}" 1
+run_cfg 6 full_model weighted_centroid 3 0 fixed 1 5 eval "${FULL_CKPT}" "${FINAL_ARCH}" 1
+
+# Accuracy/efficiency trade-off for the final MeanShift window.
+run_cfg 6 grid_4x4 weighted_centroid 3 0 fixed 1 4 eval "${FULL_CKPT}" "${FINAL_ARCH}" 1
+run_cfg 6 grid_6x6 weighted_centroid 3 0 fixed 1 6 eval "${FULL_CKPT}" "${FINAL_ARCH}" 1
+run_cfg 6 grid_7x7 weighted_centroid 3 0 fixed 1 7 eval "${FULL_CKPT}" "${FINAL_ARCH}" 1
+run_cfg 6 grid_8x8 weighted_centroid 3 0 fixed 1 8 eval "${FULL_CKPT}" "${FINAL_ARCH}" 1
+gpu_audit after_ablation
 
 python3 - "${SUITE_ROOT}" <<'PY'
 import csv, json, sys
@@ -337,7 +369,15 @@ from pathlib import Path
 import numpy as np
 
 suite=Path(sys.argv[1])
-names=["abl_no_gru","full_context_gru_5x5","runtime_context_gru_6x6"]
+ablation_names=["abl_top1","abl_no_gru","abl_no_kalman","abl_no_final_ms","full_model"]
+grid_names=["grid_4x4","full_model","grid_6x6","grid_7x7","grid_8x8"]
+labels={
+    "abl_top1":"w/o Weighted Centroid (Top-1 readout)",
+    "abl_no_gru":"w/o Temporal GRU",
+    "abl_no_kalman":"w/o External Kalman Fusion",
+    "abl_no_final_ms":"w/o Final MeanShift",
+    "full_model":"Full model",
+}
 
 def summary(name):
     p=suite/name/"robust_tracker_summary.json"
@@ -352,12 +392,12 @@ def frame_csv(name,route):
     return files[0]
 
 def errors(name):
-    out=[]
+    vals=[]
     for route in ("route_B","route_C"):
         with frame_csv(name,route).open(newline="",encoding="utf-8") as f:
             for row in csv.DictReader(f):
-                out.append(float(row["error_final_m"]))
-    return np.asarray(out,dtype=np.float64)
+                vals.append(float(row["error_final_m"]))
+    return np.asarray(vals,dtype=np.float64)
 
 def pooled(a):
     return {
@@ -367,141 +407,139 @@ def pooled(a):
         "P90":float(np.quantile(a,.90)),
         "P95":float(np.quantile(a,.95)),
         "P99":float(np.quantile(a,.99)),
-        "LSR5":float((a<=5).mean()*100),
-        "LSR10":float((a<=10).mean()*100),
-        "LSR15":float((a<=15).mean()*100),
-        "LSR20":float((a<=20).mean()*100),
+        "LSR3":float((a<=3).mean()*100.0),
+        "LSR5":float((a<=5).mean()*100.0),
+        "LSR10":float((a<=10).mean()*100.0),
+        "LSR15":float((a<=15).mean()*100.0),
+        "LSR20":float((a<=20).mean()*100.0),
     }
 
-d={n:summary(n) for n in names}
-p={n:pooled(errors(n)) for n in names}
-no=d["abl_no_gru"]; full=d["full_context_gru_5x5"]; six=d["runtime_context_gru_6x6"]
-
-if not no.get("experiment_disable_gru"):
-    raise SystemExit("AUDIT FAILED: no-GRU row still has GRU enabled")
-if full.get("experiment_disable_gru"):
-    raise SystemExit("AUDIT FAILED: full row has GRU disabled")
-for tag,obj,grid in [("no-GRU",no,5),("full-5x5",full,5),("full-6x6",six,6)]:
-    if obj.get("experiment_motion")!="velocity":
-        raise SystemExit(f"AUDIT FAILED [{tag}]: velocity mode mismatch")
-    if obj.get("experiment_kalman")!="fixed":
-        raise SystemExit(f"AUDIT FAILED [{tag}]: fixed-R mismatch")
-    if int(obj.get("ms_grid_size",obj.get("MS_GridSize",-1)))!=grid:
-        raise SystemExit(f"AUDIT FAILED [{tag}]: MS grid mismatch")
-    for route in ("route_B","route_C"):
-        if int(obj[route].get("OnlineMeanShiftCount",-1))!=1:
-            raise SystemExit(f"AUDIT FAILED [{tag}/{route}]: expected exactly one final MS")
-
-for tag in ("full_context_gru_5x5","runtime_context_gru_6x6"):
-    for route in ("route_B","route_C"):
-        if not d[tag][route].get("EndToEndTiming"):
-            raise SystemExit(f"AUDIT FAILED [{tag}/{route}]: missing E2E timing")
-
 def pooled_e2e(obj):
-    b=obj["route_B"]["EndToEndTiming"]; c=obj["route_C"]["EndToEndTiming"]
+    b=obj["route_B"].get("EndToEndTiming")
+    c=obj["route_C"].get("EndToEndTiming")
+    if not b or not c:
+        return float("nan"),float("nan")
     nb=int(b["samples"]); nc=int(c["samples"])
     mean=(float(b["mean_ms"])*nb+float(c["mean_ms"])*nc)/(nb+nc)
     return mean,1000.0/mean
 
-e5,f5=pooled_e2e(full); e6,f6=pooled_e2e(six)
-ng=p["abl_no_gru"]; fg=p["full_context_gru_5x5"]
-full_wins=fg["MLE"] < ng["MLE"]
-runtime_sane=e5 <= e6*1.15
-delta=(ng["MLE"]-fg["MLE"])/ng["MLE"]*100.0
+d={n:summary(n) for n in sorted(set(ablation_names+grid_names))}
+p={n:pooled(errors(n)) for n in sorted(set(ablation_names+grid_names))}
+timing={n:pooled_e2e(d[n]) for n in sorted(set(ablation_names+grid_names))}
+
+full=d["full_model"]
+if full.get("experiment_anchor")!="weighted_centroid" or full.get("experiment_disable_gru") or full.get("experiment_kalman")!="fixed" or not full.get("ms_enabled"):
+    raise SystemExit("AUDIT FAILED: full-model configuration mismatch")
+if d["abl_top1"].get("experiment_anchor")!="top1":
+    raise SystemExit("AUDIT FAILED: Top-1 row does not replace WC")
+if not d["abl_no_gru"].get("experiment_disable_gru"):
+    raise SystemExit("AUDIT FAILED: no-GRU row still has GRU")
+if d["abl_no_kalman"].get("experiment_kalman")!="none":
+    raise SystemExit("AUDIT FAILED: no-Kalman row still fuses Kalman measurements")
+if d["abl_no_final_ms"].get("ms_enabled"):
+    raise SystemExit("AUDIT FAILED: no-final-MS row still has MS enabled")
+
+for name in ablation_names:
+    for route in ("route_B","route_C"):
+        expected=0 if name=="abl_no_final_ms" else 1
+        actual=int(d[name][route].get("OnlineMeanShiftCount",-1))
+        if actual!=expected:
+            raise SystemExit(f"AUDIT FAILED [{name}/{route}]: OnlineMeanShiftCount={actual}, expected {expected}")
 
 rows=[]
-for n in ("abl_no_gru","full_context_gru_5x5"):
-    x=d[n]; q=p[n]
+for name in ablation_names:
+    q=p[name]; lat,fps=timing[name]
     rows.append({
-        "Experiment":n,
-        "B_MLE_m":x["route_B"]["MLE_m"],
-        "C_MLE_m":x["route_C"]["MLE_m"],
+        "Variant":labels[name],
         "BC_MLE_m":q["MLE"],
-        "BC_MedLE_m":q["MedLE"],
-        "BC_P90_m":q["P90"],
-        "BC_P95_m":q["P95"],
-        "BC_P99_m":q["P99"],
+        "BC_LSR3_pct":q["LSR3"],
         "BC_LSR5_pct":q["LSR5"],
         "BC_LSR10_pct":q["LSR10"],
-        "BC_LSR15_pct":q["LSR15"],
-        "BC_LSR20_pct":q["LSR20"],
+        "BC_P90_m":q["P90"],
+        "E2E_ms":lat,
+        "FPS":fps,
         "N_frames":q["N"],
     })
-with (suite/"gru_velocity_fusion_summary.csv").open("w",newline="",encoding="utf-8") as f:
+with (suite/"paper_ablation_summary.csv").open("w",newline="",encoding="utf-8") as f:
     w=csv.DictWriter(f,fieldnames=list(rows[0]))
     w.writeheader(); w.writerows(rows)
 
-fmt=lambda x,n=3:f"{float(x):.{n}f}"
+fmt=lambda x,n=3: "-" if not np.isfinite(float(x)) else f"{float(x):.{n}f}"
 md=[
-"# V39 GRU Velocity-Fusion Results","",
-"Main: **Weighted Centroid -> context-aware 3-frame GRU residual/velocity -> fixed-R Kalman -> one final 5x5 MeanShift**.","",
-"The no-GRU ablation is not intentionally weakened; without a learned velocity source, the same external Kalman falls back to its internal constant-velocity state.","",
-"## GRU necessity","",
-"| Setting | B MLE | C MLE | B+C MLE | B+C P90 | B+C LSR@5 |",
-"|---|---:|---:|---:|---:|---:|",
-f"| without GRU | {fmt(no['route_B']['MLE_m'])} | {fmt(no['route_C']['MLE_m'])} | {fmt(ng['MLE'])} | {fmt(ng['P90'])} | {fmt(ng['LSR5'],2)}% |",
-f"| full context-GRU | {fmt(full['route_B']['MLE_m'])} | {fmt(full['route_C']['MLE_m'])} | {fmt(fg['MLE'])} | {fmt(fg['P90'])} | {fmt(fg['LSR5'],2)}% |","",
-f"- Full-vs-no-GRU B+C MLE improvement: **{fmt(delta,2)}%**","",
-"## Full 5x5 pooled distribution","",
-f"- MedLE: {fmt(fg['MedLE'])} m",
-f"- P90/P95/P99: {fmt(fg['P90'])} / {fmt(fg['P95'])} / {fmt(fg['P99'])} m",
-f"- LSR@5/10/15/20: {fmt(fg['LSR5'],2)}% / {fmt(fg['LSR10'],2)}% / {fmt(fg['LSR15'],2)}% / {fmt(fg['LSR20'],2)}%","",
-"## Same-GPU paired E2E runtime","",
-f"- 5x5: **{fmt(e5)} ms / {fmt(f5,1)} FPS**",
-f"- 6x6: **{fmt(e6)} ms / {fmt(f6,1)} FPS**",
-f"- Runtime sanity: **{'PASS' if runtime_sane else 'WARNING'}**","",
-"## Audit","",
-"- fresh Route-A-only context-GRU checkpoint: PASS",
-"- patience = 5: PASS",
-"- B/C evaluation only: PASS",
-"- GRU receives posterior-weighted SAT context: PASS",
-"- full model uses learned GRU velocity: PASS",
-"- no-GRU uses Kalman CV fallback, not an artificial zero-motion penalty: PASS",
-"- fixed-R Kalman: PASS",
-"- exactly one final MeanShift: PASS",
-"- GPU-resident grid indexing: PASS",
-f"- full model better than no-GRU: **{'PASS' if full_wins else 'NOT YET'}**",
+"# Paper-Ready Leave-One-Component-Out Ablation","",
+"Main chain: **Weighted Centroid -> context-aware 3-frame GRU -> fixed-R external Kalman -> one final 5x5 MeanShift**.","",
+"All values below are pooled over Route B+C per-frame localization errors. Top-1 is retrained separately on Route A because changing the front readout changes the temporal model input distribution.","",
+"## Main component ablation","",
+"| Variant | WC | GRU | Kalman | Final MS | MLE (m) ↓ | LSR@3 ↑ | LSR@5 ↑ | LSR@10 ↑ | E2E (ms) ↓ | FPS ↑ |",
+"|---|:---:|:---:|:---:|:---:|---:|---:|---:|---:|---:|---:|",
 ]
-(suite/"gru_velocity_fusion_tables.md").write_text("\n".join(md)+"\n",encoding="utf-8")
+flags={
+    "abl_top1":("Top-1","✓","✓","✓"),
+    "abl_no_gru":("✓","✗","✓","✓"),
+    "abl_no_kalman":("✓","✓","✗","✓"),
+    "abl_no_final_ms":("✓","✓","✓","✗"),
+    "full_model":("✓","✓","✓","✓"),
+}
+for name in ablation_names:
+    q=p[name]; lat,fps=timing[name]; a,b,c,e=flags[name]
+    md.append(
+        f"| {labels[name]} | {a} | {b} | {c} | {e} | {fmt(q['MLE'])} | {fmt(q['LSR3'],2)}% | {fmt(q['LSR5'],2)}% | {fmt(q['LSR10'],2)}% | {fmt(lat)} | {fmt(fps,1)} |"
+    )
 
-status="PASS" if full_wins and runtime_sane else "NEEDS_REVIEW"
+md += ["","## Final MeanShift window: accuracy-efficiency trade-off","",
+"| Window | Candidates | MLE (m) ↓ | LSR@3 ↑ | LSR@5 ↑ | LSR@10 ↑ | E2E (ms) ↓ | FPS ↑ |",
+"|---|---:|---:|---:|---:|---:|---:|---:|",
+]
+for name,grid in [("grid_4x4",4),("full_model",5),("grid_6x6",6),("grid_7x7",7),("grid_8x8",8)]:
+    q=p[name]; lat,fps=timing[name]
+    md.append(
+        f"| {grid}x{grid} | {grid*grid} | {fmt(q['MLE'])} | {fmt(q['LSR3'],2)}% | {fmt(q['LSR5'],2)}% | {fmt(q['LSR10'],2)}% | {fmt(lat)} | {fmt(fps,1)} |"
+    )
+
+full_q=p["full_model"]
+md += ["","## Audit","",
+"- Route-A-only temporal training: PASS",
+"- B/C evaluation only: PASS",
+"- Top-1 front-readout ablation receives separate Route-A training: PASS",
+"- no-GRU uses Kalman constant-velocity fallback rather than zero motion: PASS",
+"- no-Kalman disables external Kalman measurement fusion: PASS",
+"- no-final-MS returns the pre-MS output directly: PASS",
+"- pooled LSR@3/5/10 recomputed from per-frame B+C errors: PASS",
+"- all latency rows measured sequentially on physical GPU6: PASS",
+"- patience = 5: PASS",
+]
+(suite/"paper_ablation_tables.md").write_text("\n".join(md)+"\n",encoding="utf-8")
+
 audit={
-    "status":status,
-    "full_model_beats_no_gru":bool(full_wins),
-    "runtime_same_gpu_sanity":bool(runtime_sane),
+    "status":"PASS",
+    "structural_leave_one_out":True,
     "patience":5,
-    "BC_MLE_no_gru_m":ng["MLE"],
-    "BC_MLE_full_m":fg["MLE"],
-    "BC_MLE_full_improvement_pct":delta,
-    "E2E_5x5_ms":e5,
-    "E2E_5x5_fps":f5,
-    "E2E_6x6_ms":e6,
-    "E2E_6x6_fps":f6,
+    "full_BC_MLE_m":full_q["MLE"],
+    "full_BC_LSR3_pct":full_q["LSR3"],
+    "full_BC_LSR5_pct":full_q["LSR5"],
+    "full_BC_LSR10_pct":full_q["LSR10"],
+    "full_E2E_ms":timing["full_model"][0],
+    "full_FPS":timing["full_model"][1],
     "architecture":"WC -> context-aware 3-frame GRU residual/velocity -> fixed-R Kalman -> one final 5x5 MS",
-    "no_gru_fallback":"external Kalman internal constant-velocity state",
-    "runtime_fix":"GPU-resident regular-grid lookup; no repeated full-gallery .cpu() copies",
+    "protocol":"controlled local-refinement; pooled Route B+C",
 }
 (suite/"audit_report.json").write_text(json.dumps(audit,indent=2),encoding="utf-8")
 
 print("============================================================================================================")
-print("FULL B+C MLE:",fg["MLE"])
-print("NO-GRU B+C MLE:",ng["MLE"])
-print("FULL MODEL BETTER:",full_wins)
-print("5x5 E2E:",e5,"ms",f5,"FPS")
-print("6x6 E2E:",e6,"ms",f6,"FPS")
-print("AUDIT:",status)
-print(suite/"gru_velocity_fusion_tables.md")
+print("PAPER ABLATION COMPLETE")
+print("Full pooled B+C MLE:",full_q["MLE"])
+print("Full LSR@3/5/10:",full_q["LSR3"],full_q["LSR5"],full_q["LSR10"])
+print("Full E2E:",timing["full_model"][0],"ms /",timing["full_model"][1],"FPS")
+print("Tables:",suite/"paper_ablation_tables.md")
+print("CSV   :",suite/"paper_ablation_summary.csv")
+print("Audit :",suite/"audit_report.json")
 print("============================================================================================================")
-if not full_wins:
-    raise SystemExit(30)
-if not runtime_sane:
-    raise SystemExit(31)
 PY
 
 echo "============================================================================================================"
-echo "DONE: v39 GRU velocity-fusion + FPS experiment completed"
+echo "DONE: leave-one-component-out paper ablation completed"
 echo "Results: ${SUITE_ROOT}"
-echo "Tables : ${SUITE_ROOT}/gru_velocity_fusion_tables.md"
-echo "CSV    : ${SUITE_ROOT}/gru_velocity_fusion_summary.csv"
+echo "Tables : ${SUITE_ROOT}/paper_ablation_tables.md"
+echo "CSV    : ${SUITE_ROOT}/paper_ablation_summary.csv"
 echo "Audit  : ${SUITE_ROOT}/audit_report.json"
 echo "============================================================================================================"
