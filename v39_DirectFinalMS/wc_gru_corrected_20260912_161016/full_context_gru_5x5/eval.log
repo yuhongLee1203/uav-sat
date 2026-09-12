@@ -1,0 +1,13 @@
+[full_context_gru_5x5] ============================================================================================================
+[full_context_gru_5x5] V39_WeightedCentroid_ContextGRU_KalmanCV_MS_5x5
+[full_context_gru_5x5] device=cuda:0
+[full_context_gru_5x5] Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+[full_context_gru_5x5] 3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.
+[full_context_gru_5x5] Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+[full_context_gru_5x5] Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+[full_context_gru_5x5] ============================================================================================================
+[full_context_gru_5x5] route_B: reuse UAV backbone cache
+[full_context_gru_5x5] route_B final MLE=2.470m P90=4.298m LSR@15=100.00% selected_capture=89.63% bank_capture=89.63% acq_acc=100.00% speed_mae=0.608m/frame progress_mae=14.507m heading_mae=14.9deg jump_rate=0.00% max_step=9.11m final_leg=14 gt_leg=14
+[full_context_gru_5x5] route_C: reuse UAV backbone cache
+[full_context_gru_5x5] route_C final MLE=2.233m P90=4.603m LSR@15=100.00% selected_capture=91.73% bank_capture=91.73% acq_acc=100.00% speed_mae=1.088m/frame progress_mae=13.293m heading_mae=36.8deg jump_rate=0.00% max_step=8.84m final_leg=10 gt_leg=10
+[full_context_gru_5x5] summary: /yh/study/uav-sat/v39_DirectFinalMS/wc_gru_corrected_20260912_161016/full_context_gru_5x5/robust_tracker_summary.json

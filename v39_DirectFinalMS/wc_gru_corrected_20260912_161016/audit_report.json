@@ -1,0 +1,14 @@
+{
+  "status": "NEEDS_REVIEW",
+  "full_model_beats_no_gru": false,
+  "runtime_same_gpu_sanity": true,
+  "BC_MLE_no_gru_m": 2.316704034143983,
+  "BC_MLE_full_m": 2.3853121059687776,
+  "BC_MLE_full_improvement_pct": -2.961451735467164,
+  "E2E_5x5_ms": 35.62137332774922,
+  "E2E_5x5_fps": 28.073033310621835,
+  "E2E_6x6_ms": 40.14755125081399,
+  "E2E_6x6_fps": 24.90811939569353,
+  "architecture": "WC -> context-aware 3-frame GRU residual refinement -> fixed-R Kalman(CV) -> one final 5x5 MS",
+  "runtime_fix": "GPU-resident regular-grid lookup; removed repeated full-gallery .cpu() copies"
+}
