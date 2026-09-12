@@ -1,0 +1,61 @@
+Python: /usr/bin/python3 3.8.10
+Python syntax preflight: OK
+Temporal data policy: Route-A native/original speed ONLY; C=val; B=test
+GRU v8: MS1 XY + temporal mean + first difference + previous motion info
+================================================================================================
+CONTROLLED v8: corresponding route reference point opens MS1 local window
+Reference point is NOT Kalman measurement, GRU input, MS2 center, or final output
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU v8 input = MS1 XY(2->128) + temporal mean(512->128) + first diff(512->128) + previous motion(4->128)
+GRUCell = concatenated 512-d input + separate previous hidden 256-d
+GRU output = speed + acceleration + heading change; polynomial only then forms Delta XY
+MS2 = NEW CENTERED FULL 6x6 around Kalman output
+================================================================================================
+Temporal training v4: Route-A ORIGINAL SPEED ONLY; C=validation; B=test
+Route-A target step mean=2.868m median=3.231m p90=3.555m mean|a|=0.307
+planned-start alignment: A=0.000m C=0.000m
+MS1 v4 = center-adjacent forward 3x6; Kalman positional prior = previous final; frame0 = temporal warm-up
+Cdiag-v8: refPrior=0.00m autoPrior=13.70m | MS1oracle=3.00m MS1cap=100.0% MS1miss=None | MS2oracle=2.71m MS2cap=95.7% MS2miss=243 | final20=11
+epoch=001/60 A_loss=9.77532 [d=1.277 v=1.785 a=0.127 h=0.843] C: prevFinal=13.6 prior=0.0 MS1=7.8 KF=9.2 MS2=12.7m P90=22.1m fail20=11 best=12.747 patience=0/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.89m | MS1oracle=3.20m MS1cap=100.0% MS1miss=None | MS2oracle=2.69m MS2cap=96.6% MS2miss=261 | final20=11
+epoch=002/60 A_loss=10.29106 [d=1.296 v=1.886 a=0.277 h=1.005] C: prevFinal=13.8 prior=0.0 MS1=8.2 KF=9.5 MS2=13.0m P90=22.5m fail20=11 best=12.747 patience=1/12
+Cdiag-v8: refPrior=0.00m autoPrior=14.04m | MS1oracle=3.32m MS1cap=100.0% MS1miss=None | MS2oracle=2.63m MS2cap=98.3% MS2miss=243 | final20=11
+epoch=003/60 A_loss=9.83790 [d=1.267 v=1.805 a=0.342 h=0.876] C: prevFinal=13.9 prior=0.0 MS1=8.4 KF=9.6 MS2=13.2m P90=22.2m fail20=11 best=12.747 patience=2/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.84m | MS1oracle=3.37m MS1cap=100.0% MS1miss=None | MS2oracle=2.65m MS2cap=96.7% MS2miss=243 | final20=11
+epoch=004/60 A_loss=10.26815 [d=1.308 v=1.703 a=0.367 h=1.009] C: prevFinal=13.7 prior=0.0 MS1=8.5 KF=9.5 MS2=13.0m P90=22.6m fail20=11 best=12.747 patience=3/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.74m | MS1oracle=3.42m MS1cap=100.0% MS1miss=None | MS2oracle=2.66m MS2cap=96.9% MS2miss=243 | final20=11
+epoch=005/60 A_loss=10.19285 [d=1.297 v=1.517 a=1.049 h=1.031] C: prevFinal=13.6 prior=0.0 MS1=8.5 KF=9.6 MS2=12.8m P90=20.9m fail20=11 best=12.747 patience=4/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.81m | MS1oracle=3.36m MS1cap=100.0% MS1miss=None | MS2oracle=2.61m MS2cap=97.0% MS2miss=243 | final20=11
+epoch=006/60 A_loss=9.97793 [d=1.306 v=1.260 a=1.428 h=0.973] C: prevFinal=13.7 prior=0.0 MS1=8.5 KF=9.5 MS2=12.9m P90=21.6m fail20=11 best=12.747 patience=5/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.70m | MS1oracle=3.24m MS1cap=100.0% MS1miss=None | MS2oracle=2.77m MS2cap=97.2% MS2miss=430 | final20=261
+epoch=007/60 A_loss=10.07326 [d=1.344 v=0.900 a=2.048 h=0.998] C: prevFinal=13.4 prior=0.0 MS1=8.5 KF=9.7 MS2=12.6m P90=20.9m fail20=261 best=12.625 patience=0/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.80m | MS1oracle=3.48m MS1cap=100.0% MS1miss=None | MS2oracle=2.73m MS2cap=96.7% MS2miss=245 | final20=73
+epoch=008/60 A_loss=9.99102 [d=1.324 v=0.907 a=2.159 h=1.023] C: prevFinal=13.7 prior=0.0 MS1=8.5 KF=9.6 MS2=12.9m P90=21.8m fail20=73 best=12.625 patience=1/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.52m | MS1oracle=3.31m MS1cap=100.0% MS1miss=None | MS2oracle=2.55m MS2cap=97.4% MS2miss=243 | final20=72
+epoch=009/60 A_loss=10.00066 [d=1.295 v=1.011 a=2.188 h=1.019] C: prevFinal=13.4 prior=0.0 MS1=8.3 KF=9.0 MS2=12.7m P90=21.9m fail20=72 best=12.625 patience=2/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.98m | MS1oracle=3.43m MS1cap=100.0% MS1miss=None | MS2oracle=2.67m MS2cap=97.9% MS2miss=243 | final20=113
+epoch=010/60 A_loss=9.84556 [d=1.313 v=0.532 a=3.329 h=0.987] C: prevFinal=13.8 prior=0.0 MS1=8.6 KF=9.6 MS2=13.0m P90=22.2m fail20=113 best=12.625 patience=3/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.83m | MS1oracle=3.41m MS1cap=100.0% MS1miss=None | MS2oracle=2.64m MS2cap=96.3% MS2miss=245 | final20=8
+epoch=011/60 A_loss=9.84388 [d=1.307 v=0.562 a=3.168 h=1.014] C: prevFinal=13.7 prior=0.0 MS1=8.5 KF=9.5 MS2=13.0m P90=22.0m fail20=8 best=12.625 patience=4/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.86m | MS1oracle=3.39m MS1cap=100.0% MS1miss=None | MS2oracle=2.68m MS2cap=97.2% MS2miss=243 | final20=73
+epoch=012/60 A_loss=9.84951 [d=1.319 v=0.608 a=2.891 h=1.014] C: prevFinal=13.7 prior=0.0 MS1=8.5 KF=9.5 MS2=13.0m P90=22.2m fail20=73 best=12.625 patience=5/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.59m | MS1oracle=3.44m MS1cap=100.0% MS1miss=None | MS2oracle=2.56m MS2cap=97.5% MS2miss=432 | final20=8
+epoch=013/60 A_loss=9.90469 [d=1.315 v=0.632 a=2.991 h=1.040] C: prevFinal=13.5 prior=0.0 MS1=8.5 KF=9.4 MS2=12.7m P90=22.0m fail20=8 best=12.625 patience=6/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.68m | MS1oracle=3.40m MS1cap=100.0% MS1miss=None | MS2oracle=2.56m MS2cap=97.6% MS2miss=243 | final20=8
+epoch=014/60 A_loss=9.85446 [d=1.296 v=0.613 a=3.293 h=0.999] C: prevFinal=13.5 prior=0.0 MS1=8.4 KF=9.4 MS2=12.8m P90=21.8m fail20=8 best=12.625 patience=7/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.82m | MS1oracle=3.44m MS1cap=100.0% MS1miss=None | MS2oracle=2.66m MS2cap=97.0% MS2miss=517 | final20=73
+epoch=015/60 A_loss=9.87526 [d=1.310 v=0.511 a=3.453 h=1.011] C: prevFinal=13.7 prior=0.0 MS1=8.4 KF=9.4 MS2=12.9m P90=21.6m fail20=73 best=12.625 patience=8/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.72m | MS1oracle=3.45m MS1cap=100.0% MS1miss=None | MS2oracle=2.62m MS2cap=97.8% MS2miss=243 | final20=231
+epoch=016/60 A_loss=9.79038 [d=1.310 v=0.524 a=3.150 h=0.988] C: prevFinal=13.6 prior=0.0 MS1=8.5 KF=9.3 MS2=12.9m P90=22.0m fail20=231 best=12.625 patience=9/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.50m | MS1oracle=3.39m MS1cap=100.0% MS1miss=None | MS2oracle=2.50m MS2cap=98.0% MS2miss=247 | final20=8
+epoch=017/60 A_loss=9.76060 [d=1.310 v=0.632 a=2.884 h=0.958] C: prevFinal=13.4 prior=0.0 MS1=8.5 KF=9.2 MS2=12.7m P90=21.6m fail20=8 best=12.625 patience=10/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.57m | MS1oracle=3.42m MS1cap=100.0% MS1miss=None | MS2oracle=2.49m MS2cap=97.5% MS2miss=246 | final20=11
+epoch=018/60 A_loss=9.81124 [d=1.305 v=0.565 a=3.125 h=0.985] C: prevFinal=13.5 prior=0.0 MS1=8.4 KF=9.1 MS2=12.7m P90=21.6m fail20=11 best=12.625 patience=11/12
+Cdiag-v8: refPrior=0.00m autoPrior=13.55m | MS1oracle=3.35m MS1cap=100.0% MS1miss=None | MS2oracle=2.53m MS2cap=97.7% MS2miss=243 | final20=8
+epoch=019/60 A_loss=9.77305 [d=1.305 v=0.523 a=3.342 h=0.990] C: prevFinal=13.5 prior=0.0 MS1=8.3 KF=9.1 MS2=12.7m P90=21.5m fail20=8 best=12.625 patience=12/12
+best Route-C validation MLE=12.625m
+route_C (validation, reference-assisted): refPrior=0.000m MS1=8.492m KF=9.681m MS2/final=12.625m P90=20.934m LSR@15=63.91%
+route_B (test, reference-assisted): refPrior=0.000m MS1=8.839m KF=10.310m MS2/final=14.069m P90=24.341m LSR@15=60.46%

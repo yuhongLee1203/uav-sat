@@ -1,0 +1,469 @@
+FULL v8r1 checkpoint: BEST -> /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+
+FULL checkpoint ready. Starting STRICTLY EVAL-ONLY accuracy/latency sweep...
+  MS1       : 3x6 baseline, 4x6, 5x6, 6x6, 7x6
+  MS2       : 5x5, 6x6 baseline, 7x7
+  MeanShift : 4m, 8m baseline, 12m, 16m
+  latency   : E2E + MS1 + centered MS2 + total MeanShift + final active-mode average
+  comparator: direct weighted average over all MS2 candidates
+  fixed     : same FULL weights, same KF, merge radius=2m, iterations=3
+
+METHOD sensitivity + latency: STRICTLY EVAL ONLY; CPU threads=1
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms1_forward_3x6_baseline
+  MS1 forward support     = 3x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 8.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_3x6_baseline
+MS1 SUPPORT: 3x6 candidates= 18
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 8.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=8.555m KF=8.848m MS2/final=9.924m P90=16.501m LSR@15=81.72%
+route_B (test, full): refPrior=0.000m MS1=8.881m KF=9.353m MS2/final=10.698m P90=18.148m LSR@15=79.96%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=9.924m P90=16.501m LSR15=81.72% | WeightedAll MLE=9.933m P90=16.476m LSR15=82.27% | E2E=20.037ms MS1=7.459ms CenterMS=2.880ms MS2MeanShift=6.501ms FinalActiveAvg=0.073909ms AllCandidateAvg=0.066189ms ActiveModes=1.00
+route_B: MS MLE=10.698m P90=18.148m LSR15=79.96% | WeightedAll MLE=10.638m P90=18.110m LSR15=80.62% | E2E=19.906ms MS1=7.398ms CenterMS=2.861ms MS2MeanShift=6.495ms FinalActiveAvg=0.072571ms AllCandidateAvg=0.066350ms ActiveModes=1.00
+B+C average: MS MLE=10.311m P90=17.324m LSR15=80.84% | WeightedAll MLE=10.285m P90=17.293m LSR15=81.45% | E2E=19.972ms MS1=7.429ms CenterMS=2.871ms MS2MeanShift=6.498ms FinalActiveAvg=0.073240ms AllCandidateAvg=0.066270ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_3x6_baseline/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms1_forward_4x6
+  MS1 forward support     = 4x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 8.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_4x6
+MS1 SUPPORT: 4x6 candidates= 24
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 8.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=10.467m KF=10.500m MS2/final=11.298m P90=18.256m LSR@15=75.60%
+route_B (test, full): refPrior=0.000m MS1=10.770m KF=11.090m MS2/final=12.240m P90=20.095m LSR@15=71.84%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=11.298m P90=18.256m LSR15=75.60% | WeightedAll MLE=11.327m P90=18.242m LSR15=74.88% | E2E=20.665ms MS1=8.075ms CenterMS=2.864ms MS2MeanShift=6.510ms FinalActiveAvg=0.074766ms AllCandidateAvg=0.066016ms ActiveModes=1.00
+route_B: MS MLE=12.240m P90=20.095m LSR15=71.84% | WeightedAll MLE=12.180m P90=19.957m LSR15=72.23% | E2E=20.662ms MS1=8.106ms CenterMS=2.859ms MS2MeanShift=6.510ms FinalActiveAvg=0.075426ms AllCandidateAvg=0.065377ms ActiveModes=1.00
+B+C average: MS MLE=11.769m P90=19.175m LSR15=73.72% | WeightedAll MLE=11.753m P90=19.099m LSR15=73.56% | E2E=20.664ms MS1=8.091ms CenterMS=2.861ms MS2MeanShift=6.510ms FinalActiveAvg=0.075096ms AllCandidateAvg=0.065696ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_4x6/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms1_forward_5x6
+  MS1 forward support     = 5x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 8.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_5x6
+MS1 SUPPORT: 5x6 candidates= 30
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 8.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=12.436m KF=12.353m MS2/final=12.952m P90=20.446m LSR@15=63.59%
+route_B (test, full): refPrior=0.000m MS1=12.793m KF=12.975m MS2/final=13.938m P90=22.685m LSR@15=62.21%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=12.952m P90=20.446m LSR15=63.59% | WeightedAll MLE=12.990m P90=20.312m LSR15=63.83% | E2E=22.247ms MS1=9.588ms CenterMS=2.890ms MS2MeanShift=6.542ms FinalActiveAvg=0.074289ms AllCandidateAvg=0.066009ms ActiveModes=1.00
+route_B: MS MLE=13.938m P90=22.685m LSR15=62.21% | WeightedAll MLE=13.896m P90=22.585m LSR15=62.65% | E2E=21.700ms MS1=9.350ms CenterMS=2.823ms MS2MeanShift=6.419ms FinalActiveAvg=0.071062ms AllCandidateAvg=0.064372ms ActiveModes=1.00
+B+C average: MS MLE=13.445m P90=21.566m LSR15=62.90% | WeightedAll MLE=13.443m P90=21.449m LSR15=63.24% | E2E=21.974ms MS1=9.469ms CenterMS=2.856ms MS2MeanShift=6.481ms FinalActiveAvg=0.072676ms AllCandidateAvg=0.065190ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_5x6/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms1_forward_6x6
+  MS1 forward support     = 6x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 8.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_6x6
+MS1 SUPPORT: 6x6 candidates= 36
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 8.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=14.488m KF=14.363m MS2/final=14.934m P90=23.293m LSR@15=53.74%
+route_B (test, full): refPrior=0.000m MS1=14.950m KF=15.048m MS2/final=15.933m P90=26.245m LSR@15=51.19%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=14.934m P90=23.293m LSR15=53.74% | WeightedAll MLE=14.927m P90=23.155m LSR15=53.58% | E2E=23.102ms MS1=10.376ms CenterMS=2.943ms MS2MeanShift=6.534ms FinalActiveAvg=0.075786ms AllCandidateAvg=0.068188ms ActiveModes=1.00
+route_B: MS MLE=15.933m P90=26.245m LSR15=51.19% | WeightedAll MLE=15.891m P90=26.139m LSR15=51.19% | E2E=22.748ms MS1=10.246ms CenterMS=2.866ms MS2MeanShift=6.467ms FinalActiveAvg=0.071802ms AllCandidateAvg=0.066192ms ActiveModes=1.00
+B+C average: MS MLE=15.433m P90=24.769m LSR15=52.46% | WeightedAll MLE=15.409m P90=24.647m LSR15=52.38% | E2E=22.925ms MS1=10.311ms CenterMS=2.904ms MS2MeanShift=6.501ms FinalActiveAvg=0.073794ms AllCandidateAvg=0.067190ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_6x6/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms1_forward_7x6
+  MS1 forward support     = 7x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 8.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_7x6
+MS1 SUPPORT: 7x6 candidates= 42
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 8.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=16.487m KF=16.271m MS2/final=16.764m P90=25.782m LSR@15=44.75%
+route_B (test, full): refPrior=0.000m MS1=17.155m KF=17.185m MS2/final=17.990m P90=29.630m LSR@15=41.83%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=16.764m P90=25.782m LSR15=44.75% | WeightedAll MLE=16.773m P90=25.525m LSR15=44.75% | E2E=24.552ms MS1=11.541ms CenterMS=2.907ms MS2MeanShift=6.786ms FinalActiveAvg=0.075356ms AllCandidateAvg=0.068016ms ActiveModes=1.00
+route_B: MS MLE=17.990m P90=29.630m LSR15=41.83% | WeightedAll MLE=17.958m P90=29.574m LSR15=41.61% | E2E=22.360ms MS1=10.492ms CenterMS=2.776ms MS2MeanShift=6.023ms FinalActiveAvg=0.068100ms AllCandidateAvg=0.062200ms ActiveModes=1.00
+B+C average: MS MLE=17.377m P90=27.706m LSR15=43.29% | WeightedAll MLE=17.366m P90=27.549m LSR15=43.18% | E2E=23.456ms MS1=11.017ms CenterMS=2.841ms MS2MeanShift=6.405ms FinalActiveAvg=0.071728ms AllCandidateAvg=0.065108ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms1_forward_7x6/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms2_grid_5x5
+  MS1 forward support     = 3x6
+  MS2 centered grid       = 5x5
+  MeanShift bandwidth     = 8.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms2_grid_5x5
+MS1 SUPPORT: 3x6 candidates= 18
+MS2 GRID: 5x5
+MEANSHIFT BANDWIDTH: 8.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=8.555m KF=8.697m MS2/final=9.480m P90=16.123m LSR@15=83.94%
+route_B (test, full): refPrior=0.000m MS1=8.881m KF=9.184m MS2/final=10.252m P90=17.113m LSR@15=83.04%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=9.480m P90=16.123m LSR15=83.94% | WeightedAll MLE=9.421m P90=16.102m LSR15=84.58% | E2E=20.298ms MS1=8.329ms CenterMS=3.073ms MS2MeanShift=5.318ms FinalActiveAvg=0.076225ms AllCandidateAvg=0.075471ms ActiveModes=1.00
+route_B: MS MLE=10.252m P90=17.113m LSR15=83.04% | WeightedAll MLE=10.142m P90=16.896m LSR15=83.74% | E2E=17.197ms MS1=7.101ms CenterMS=2.762ms MS2MeanShift=4.294ms FinalActiveAvg=0.063321ms AllCandidateAvg=0.062824ms ActiveModes=1.00
+B+C average: MS MLE=9.866m P90=16.618m LSR15=83.49% | WeightedAll MLE=9.781m P90=16.499m LSR15=84.16% | E2E=18.747ms MS1=7.715ms CenterMS=2.918ms MS2MeanShift=4.806ms FinalActiveAvg=0.069773ms AllCandidateAvg=0.069147ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms2_grid_5x5/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms2_grid_6x6_baseline
+  MS1 forward support     = 3x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 8.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms2_grid_6x6_baseline
+MS1 SUPPORT: 3x6 candidates= 18
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 8.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=8.555m KF=8.848m MS2/final=9.924m P90=16.501m LSR@15=81.72%
+route_B (test, full): refPrior=0.000m MS1=8.881m KF=9.353m MS2/final=10.698m P90=18.148m LSR@15=79.96%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=9.924m P90=16.501m LSR15=81.72% | WeightedAll MLE=9.933m P90=16.476m LSR15=82.27% | E2E=19.475ms MS1=7.272ms CenterMS=2.802ms MS2MeanShift=6.301ms FinalActiveAvg=0.069915ms AllCandidateAvg=0.064839ms ActiveModes=1.00
+route_B: MS MLE=10.698m P90=18.148m LSR15=79.96% | WeightedAll MLE=10.638m P90=18.110m LSR15=80.62% | E2E=20.049ms MS1=7.444ms CenterMS=2.851ms MS2MeanShift=6.568ms FinalActiveAvg=0.072195ms AllCandidateAvg=0.066417ms ActiveModes=1.00
+B+C average: MS MLE=10.311m P90=17.324m LSR15=80.84% | WeightedAll MLE=10.285m P90=17.293m LSR15=81.45% | E2E=19.762ms MS1=7.358ms CenterMS=2.826ms MS2MeanShift=6.434ms FinalActiveAvg=0.071055ms AllCandidateAvg=0.065628ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms2_grid_6x6_baseline/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms2_grid_7x7
+  MS1 forward support     = 3x6
+  MS2 centered grid       = 7x7
+  MeanShift bandwidth     = 8.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms2_grid_7x7
+MS1 SUPPORT: 3x6 candidates= 18
+MS2 GRID: 7x7
+MEANSHIFT BANDWIDTH: 8.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=8.555m KF=8.774m MS2/final=9.750m P90=16.466m LSR@15=82.11%
+route_B (test, full): refPrior=0.000m MS1=8.881m KF=9.301m MS2/final=10.643m P90=17.991m LSR@15=80.32%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=9.750m P90=16.466m LSR15=82.11% | WeightedAll MLE=9.732m P90=16.557m LSR15=82.51% | E2E=21.644ms MS1=7.433ms CenterMS=2.922ms MS2MeanShift=8.055ms FinalActiveAvg=0.072009ms AllCandidateAvg=0.066054ms ActiveModes=1.00
+route_B: MS MLE=10.643m P90=17.991m LSR15=80.32% | WeightedAll MLE=10.565m P90=17.980m LSR15=80.32% | E2E=21.023ms MS1=7.230ms CenterMS=2.820ms MS2MeanShift=7.874ms FinalActiveAvg=0.068817ms AllCandidateAvg=0.063832ms ActiveModes=1.01
+B+C average: MS MLE=10.196m P90=17.228m LSR15=81.22% | WeightedAll MLE=10.149m P90=17.269m LSR15=81.41% | E2E=21.333ms MS1=7.332ms CenterMS=2.871ms MS2MeanShift=7.964ms FinalActiveAvg=0.070413ms AllCandidateAvg=0.064943ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms2_grid_7x7/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms_bandwidth_4m
+  MS1 forward support     = 3x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 4.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms_bandwidth_4m
+MS1 SUPPORT: 3x6 candidates= 18
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 4.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=8.785m KF=9.095m MS2/final=10.241m P90=17.270m LSR@15=81.16%
+route_B (test, full): refPrior=0.000m MS1=9.223m KF=9.657m MS2/final=11.051m P90=18.549m LSR@15=77.72%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=10.241m P90=17.270m LSR15=81.16% | WeightedAll MLE=10.152m P90=17.012m LSR15=80.76% | E2E=20.543ms MS1=7.891ms CenterMS=2.861ms MS2MeanShift=6.608ms FinalActiveAvg=0.068309ms AllCandidateAvg=0.065565ms ActiveModes=3.16
+route_B: MS MLE=11.051m P90=18.549m LSR15=77.72% | WeightedAll MLE=10.905m P90=18.349m LSR15=78.95% | E2E=20.194ms MS1=7.702ms CenterMS=2.791ms MS2MeanShift=6.618ms FinalActiveAvg=0.067160ms AllCandidateAvg=0.063856ms ActiveModes=3.77
+B+C average: MS MLE=10.646m P90=17.909m LSR15=79.44% | WeightedAll MLE=10.529m P90=17.680m LSR15=79.86% | E2E=20.368ms MS1=7.797ms CenterMS=2.826ms MS2MeanShift=6.613ms FinalActiveAvg=0.067735ms AllCandidateAvg=0.064710ms ActiveModes=3.47
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms_bandwidth_4m/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms_bandwidth_8m_baseline
+  MS1 forward support     = 3x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 8.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms_bandwidth_8m_baseline
+MS1 SUPPORT: 3x6 candidates= 18
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 8.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=8.555m KF=8.848m MS2/final=9.924m P90=16.501m LSR@15=81.72%
+route_B (test, full): refPrior=0.000m MS1=8.881m KF=9.353m MS2/final=10.698m P90=18.148m LSR@15=79.96%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=9.924m P90=16.501m LSR15=81.72% | WeightedAll MLE=9.933m P90=16.476m LSR15=82.27% | E2E=19.551ms MS1=7.239ms CenterMS=2.811ms MS2MeanShift=6.402ms FinalActiveAvg=0.071678ms AllCandidateAvg=0.065077ms ActiveModes=1.00
+route_B: MS MLE=10.698m P90=18.148m LSR15=79.96% | WeightedAll MLE=10.638m P90=18.110m LSR15=80.62% | E2E=19.391ms MS1=7.200ms CenterMS=2.796ms MS2MeanShift=6.321ms FinalActiveAvg=0.071389ms AllCandidateAvg=0.063686ms ActiveModes=1.00
+B+C average: MS MLE=10.311m P90=17.324m LSR15=80.84% | WeightedAll MLE=10.285m P90=17.293m LSR15=81.45% | E2E=19.471ms MS1=7.220ms CenterMS=2.804ms MS2MeanShift=6.362ms FinalActiveAvg=0.071534ms AllCandidateAvg=0.064381ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms_bandwidth_8m_baseline/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms_bandwidth_12m
+  MS1 forward support     = 3x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 12.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms_bandwidth_12m
+MS1 SUPPORT: 3x6 candidates= 18
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 12.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=8.483m KF=8.781m MS2/final=9.841m P90=16.422m LSR@15=82.51%
+route_B (test, full): refPrior=0.000m MS1=8.760m KF=9.246m MS2/final=10.550m P90=17.948m LSR@15=80.93%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=9.841m P90=16.422m LSR15=82.51% | WeightedAll MLE=9.856m P90=16.405m LSR15=82.75% | E2E=19.506ms MS1=7.257ms CenterMS=2.802ms MS2MeanShift=6.359ms FinalActiveAvg=0.070498ms AllCandidateAvg=0.064587ms ActiveModes=1.00
+route_B: MS MLE=10.550m P90=17.948m LSR15=80.93% | WeightedAll MLE=10.517m P90=17.909m LSR15=81.28% | E2E=19.418ms MS1=7.206ms CenterMS=2.794ms MS2MeanShift=6.353ms FinalActiveAvg=0.069999ms AllCandidateAvg=0.063944ms ActiveModes=1.00
+B+C average: MS MLE=10.195m P90=17.185m LSR15=81.72% | WeightedAll MLE=10.187m P90=17.157m LSR15=82.02% | E2E=19.462ms MS1=7.231ms CenterMS=2.798ms MS2MeanShift=6.356ms FinalActiveAvg=0.070248ms AllCandidateAvg=0.064265ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms_bandwidth_12m/accuracy_latency_summary.csv
+====================================================================================================
+
+================================================================================================
+METHOD SENSITIVITY CASE: ms_bandwidth_16m
+  MS1 forward support     = 3x6
+  MS2 centered grid       = 6x6
+  MeanShift bandwidth     = 16.0 m
+  fixed                   = same FULL weights, KF, merge radius=2m, iterations=3
+  latency warm-up         = 10 frames/route
+================================================================================================
+CPU THREAD LIMIT: 1
+SOURCE CHECKPOINT KIND: best
+SOURCE FULL CHECKPOINT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/checkpoints/reference_prior_compact_gru_A_native_v8r1_full_mobilenet_v3_small.pt
+ISOLATED CASE ROOT: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms_bandwidth_16m
+MS1 SUPPORT: 3x6 candidates= 18
+MS2 GRID: 6x6
+MEANSHIFT BANDWIDTH: 16.0 m
+MODE: eval only + synchronized latency
+================================================================================================
+CONTROLLED v8r1 ablation=full
+Reference point opens MS1 local window only; it is not a GRU/Kalman/MS2/final input
+Temporal training: Route-A ORIGINAL SPEED ONLY
+Route-C validation; Route-B final untouched test
+MS1 = STRICT FORWARD HALF 3x6 around reference-point coarse prior
+Kalman = previous final state + MS1 visual measurement
+GRU active groups = ms_xy,temporal_mean,first_difference,previous_motion; input=512-d; previous hidden=256-d
+GRU heads predict speed/acceleration/heading CHANGES; polynomial then forms Delta XY
+MS2 = full centered 6x6; posterior = visual + Kalman Gaussian prior (sigma=12.0m, weight=1.00)
+================================================================================================
+route_C (validation, full): refPrior=0.000m MS1=8.428m KF=8.736m MS2/final=9.799m P90=16.337m LSR@15=82.99%
+route_B (test, full): refPrior=0.000m MS1=8.675m KF=9.172m MS2/final=10.455m P90=17.728m LSR@15=81.41%
+
+====================================================================================================
+ACCURACY + LATENCY SUMMARY
+route_C: MS MLE=9.799m P90=16.337m LSR15=82.99% | WeightedAll MLE=9.811m P90=16.334m LSR15=82.99% | E2E=19.885ms MS1=7.381ms CenterMS=2.829ms MS2MeanShift=6.527ms FinalActiveAvg=0.071956ms AllCandidateAvg=0.066091ms ActiveModes=1.00
+route_B: MS MLE=10.455m P90=17.728m LSR15=81.41% | WeightedAll MLE=10.438m P90=17.685m LSR15=81.59% | E2E=19.431ms MS1=7.202ms CenterMS=2.781ms MS2MeanShift=6.390ms FinalActiveAvg=0.068429ms AllCandidateAvg=0.063568ms ActiveModes=1.00
+B+C average: MS MLE=10.127m P90=17.032m LSR15=82.20% | WeightedAll MLE=10.124m P90=17.010m LSR15=82.29% | E2E=19.658ms MS1=7.291ms CenterMS=2.805ms MS2MeanShift=6.459ms FinalActiveAvg=0.070192ms AllCandidateAvg=0.064830ms ActiveModes=1.00
+CSV: /yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/method_ablation/ms_bandwidth_16m/accuracy_latency_summary.csv
+====================================================================================================
+
+All requested one-variable-at-a-time accuracy/latency cases completed.

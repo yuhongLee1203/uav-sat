@@ -1,0 +1,13 @@
+{
+  "protocol": "same city-A satellite image; irregular train_1+train_2 train, val_1 validation",
+  "validation_route": "val_1",
+  "validation": {
+    "mle": 5.129039501319357,
+    "p90": 10.316121730483044,
+    "speed_mae": 2.0135436968541436,
+    "progress_mae": 0.07830579846448056,
+    "heading_mae_deg": 34.5750948967785,
+    "capture_pct": 77.88649706457925,
+    "score": 11.531935787825917
+  }
+}
