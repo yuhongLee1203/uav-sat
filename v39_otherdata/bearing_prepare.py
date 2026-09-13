@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare Bearing-UAV-90K pseudo-flight routes for the v36 temporal tracker.
+"""Prepare Bearing-UAV-90K pseudo-flight routes for the v39 temporal tracker.
 
 Bearing-UAV-90K contains independently sampled UAV observations rather than a
 recorded video trajectory. This script plans continuous routes on one full city
@@ -77,7 +77,6 @@ def _dense_targets(points: np.ndarray, step_m: float) -> Tuple[np.ndarray, np.nd
     """Sample a polyline approximately every step_m and return route headings."""
     step_px = float(step_m) / MPP
     rows, headings = [], []
-    s = 0.0
     seg_lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
     cumulative = np.concatenate([[0.0], np.cumsum(seg_lengths)])
     total = float(cumulative[-1])
@@ -283,20 +282,22 @@ def _draw_preview(sat_path: Path, routes: Dict[str, np.ndarray], out_path: Path)
     for i, name in enumerate(routes):
         y = 24 + i*30
         draw.line((24, y+8, 66, y+8), fill=palette[name], width=6)
-        split = "TRAIN" if name in TRAIN_ROUTES else "INFERENCE"
-        draw.text((76, y), f"{name} [{split}]", fill=(255,255,255,255))
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(out_path, quality=95)
+        split = "TRAIN" if name in TRAIN_ROUTES else "TEST"
+        draw.text((78, y), f"{name}  [{split}]", fill=(255,255,255,255))
+    image.save(out_path, quality=94)
 
 
-def prepare(args: argparse.Namespace) -> Path:
-    dataset_root = Path(args.dataset_root).expanduser().resolve()
+def prepare(args):
+    dataset_root = Path(args.dataset_root).resolve()
     city = args.city.lower()
-    output_root = Path(args.output_root).expanduser().resolve() if args.output_root else Path(__file__).resolve().parent / "generated" / city
+    output_root = Path(args.output_root).resolve() if args.output_root else Path(__file__).resolve().parent / "generated" / city
     output_root.mkdir(parents=True, exist_ok=True)
-    metadata_path, sat_path = _find_metadata(dataset_root), _find_satellite(dataset_root, city)
-    with Image.open(sat_path) as sat:
-        width, height = sat.size
+    sat_path = _find_satellite(dataset_root, city)
+    metadata_path = _find_metadata(dataset_root)
+    with Image.open(sat_path) as im:
+        width, height = im.size
+    if (width, height) != (REFERENCE_SIZE, REFERENCE_SIZE):
+        raise ValueError("Expected official city RSI %dx%d, got %s" % (REFERENCE_SIZE, REFERENCE_SIZE, (width, height)))
     df = pd.read_csv(metadata_path)
     rows = _city_rows(df, city)
     basename_index = _build_basename_index(dataset_root, city)
@@ -345,8 +346,10 @@ def build_parser():
     p.add_argument("--dataset-root", default="/yh/study/cvpr_data/Bearing_UAV_90K")
     p.add_argument("--city", default="cityb", choices=sorted(CITY_TO_RSI))
     p.add_argument("--output-root", default=None)
-    p.add_argument("--step-m", type=float, default=25.0)
-    p.add_argument("--max-sample-distance-m", type=float, default=20.0)
+    # Keep pseudo-frame displacement inside the unmodified v39 temporal motion
+    # envelope instead of enlarging the model's speed/acceleration caps.
+    p.add_argument("--step-m", type=float, default=8.0)
+    p.add_argument("--max-sample-distance-m", type=float, default=15.0)
     p.add_argument("--heading-weight-px-per-deg", type=float, default=0.35)
     return p
 
