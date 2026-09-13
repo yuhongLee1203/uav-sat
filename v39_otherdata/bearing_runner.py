@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -25,13 +24,16 @@ def _patch_config(args, prepared_root: Path) -> None:
     exp = json.loads((prepared_root / "experiment.json").read_text(encoding="utf-8"))
     output = prepared_root / "v39_output"
     checkpoints = output / "checkpoints"
+    feature_cache = prepared_root / "feature_cache"
     output.mkdir(parents=True, exist_ok=True)
     checkpoints.mkdir(parents=True, exist_ok=True)
+    feature_cache.mkdir(parents=True, exist_ok=True)
 
     config.PROJECT_ROOT = HERE
     config.ARCHITECTURE_NAME = "V39_BearingUAV_" + str(config.ARCHITECTURE_NAME)
     config.OUTPUT_DIR = output
     config.CHECKPOINT_DIR = checkpoints
+    config.FEATURE_CACHE_DIR = feature_cache
     config.VISUAL_CHECKPOINT = checkpoints / "visual_retrieval_Bearing_train_union.pt"
     config.TEMPORAL_CHECKPOINT = checkpoints / "temporal_Bearing_multiroute.pt"
     config.LATEST_TEMPORAL_CHECKPOINT = checkpoints / "temporal_Bearing_multiroute_latest.pt"
@@ -47,7 +49,7 @@ def _patch_config(args, prepared_root: Path) -> None:
     config.WAYPOINT_DIR = prepared_root / "routes"
     config.SAT_IMAGE = Path(exp["satellite_image"]).resolve()
     config.SAT_JSON = prepared_root / "bearing_satellite.json"
-    config.DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+    config.DEVICE = f"cuda:{int(args.gpu)}" if torch.cuda.is_available() else "cpu"
 
     # Preserve v36 retrieval geometry. On Bearing-UAV 0.25 m/px, stride 32 px = 8 m.
     config.IMAGE_SIZE = 256
@@ -113,7 +115,6 @@ def _promote_latest_to_final() -> None:
 
 def train_and_infer(args, prepared_root: Path) -> None:
     _patch_config(args, prepared_root)
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 
     import robust_tracker as tracker
     from visual_localizer import FrozenVisualLocalizer, train_visual_retrieval_a_only
