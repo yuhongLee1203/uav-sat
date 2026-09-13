@@ -1,0 +1,13 @@
+[bw_5m] ============================================================================================================
+[bw_5m] V39_Forward3x6_ContextGRU_FixedKalman_FinalMS6x6
+[bw_5m] device=cuda:0
+[bw_5m] Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+[bw_5m] 3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.
+[bw_5m] Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+[bw_5m] Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+[bw_5m] ============================================================================================================
+[bw_5m] route_B: reuse UAV backbone cache
+[bw_5m] route_B final MLE=2.223m P90=4.212m LSR@15=100.00% selected_capture=89.63% bank_capture=89.63% acq_acc=100.00% speed_mae=0.566m/frame progress_mae=5.721m heading_mae=12.2deg jump_rate=0.00% max_step=8.89m final_leg=14 gt_leg=14
+[bw_5m] route_C: reuse UAV backbone cache
+[bw_5m] route_C final MLE=1.815m P90=4.008m LSR@15=100.00% selected_capture=91.73% bank_capture=91.73% acq_acc=100.00% speed_mae=1.152m/frame progress_mae=10.803m heading_mae=35.3deg jump_rate=0.00% max_step=8.95m final_leg=10 gt_leg=10
+[bw_5m] summary: /yh/study/uav-sat/v39_DirectFinalMS/paper6x6_all_20260913_012154/bw_5m/robust_tracker_summary.json

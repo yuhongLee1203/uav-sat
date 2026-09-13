@@ -1,0 +1,13 @@
+[kalman_learned] ============================================================================================================
+[kalman_learned] V39_Forward3x6_ContextGRU_FixedKalman_FinalMS6x6
+[kalman_learned] device=cuda:0
+[kalman_learned] Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+[kalman_learned] 3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.
+[kalman_learned] Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+[kalman_learned] Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+[kalman_learned] ============================================================================================================
+[kalman_learned] route_B: reuse UAV backbone cache
+[kalman_learned] route_B final MLE=2.270m P90=4.278m LSR@15=100.00% selected_capture=89.59% bank_capture=89.59% acq_acc=100.00% speed_mae=0.566m/frame progress_mae=6.396m heading_mae=12.7deg jump_rate=0.00% max_step=8.82m final_leg=14 gt_leg=14
+[kalman_learned] route_C: reuse UAV backbone cache
+[kalman_learned] route_C final MLE=1.809m P90=4.057m LSR@15=100.00% selected_capture=91.73% bank_capture=91.73% acq_acc=100.00% speed_mae=1.153m/frame progress_mae=10.472m heading_mae=34.9deg jump_rate=0.00% max_step=8.85m final_leg=10 gt_leg=10
+[kalman_learned] summary: /yh/study/uav-sat/v39_DirectFinalMS/paper6x6_all_20260913_012154/kalman_learned/robust_tracker_summary.json

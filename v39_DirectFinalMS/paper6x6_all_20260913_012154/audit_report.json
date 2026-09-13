@@ -1,0 +1,27 @@
+{
+  "status": "PASS",
+  "grid": "6x6 only",
+  "structural_leave_one_out": true,
+  "patience": 5,
+  "gpus_used": [
+    0,
+    5,
+    6
+  ],
+  "full_BC_MLE_m": 2.044777546596973,
+  "full_BC_LSR3_pct": 77.5608375778155,
+  "full_BC_LSR5_pct": 95.72722127900396,
+  "full_BC_LSR10_pct": 100.0,
+  "full_E2E_ms": 40.406205114816295,
+  "full_FPS": 24.748674050395202,
+  "protocol": "controlled local-refinement; pooled Route B+C",
+  "paper_tables": [
+    "overall performance",
+    "main component ablation",
+    "temporal context",
+    "Kalman design",
+    "forward restriction efficiency",
+    "MeanShift bandwidth sensitivity",
+    "runtime efficiency"
+  ]
+}

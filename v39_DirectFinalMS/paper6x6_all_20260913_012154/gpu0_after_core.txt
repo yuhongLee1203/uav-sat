@@ -1,0 +1,8 @@
+timestamp=2026-09-13T02:20:31+08:00
+physical_gpu_index=0
+NVIDIA GeForce RTX 3090, GPU-7f6fd3db-e0ef-7baf-7a7f-15880e5e6310, P2, 0, 0, 15, 24576, 1695, 9501, 115.71
+torch_version= 1.13.1+cu117
+cuda_available= True
+cuda_runtime= 11.7
+visible_device_name= NVIDIA GeForce RTX 3090
+total_memory_GB= 23.559
