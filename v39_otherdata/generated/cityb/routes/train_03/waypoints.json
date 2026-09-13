@@ -1,0 +1,77 @@
+{
+  "route_name": "train_03",
+  "coordinate_system": "bearing_rsi_map_meters",
+  "mpp": 0.25,
+  "waypoints": [
+    {
+      "waypoint_order": 0,
+      "latitude": 107.5,
+      "longitude": 832.5,
+      "pixel_x": 3330.0,
+      "pixel_y": 430.0
+    },
+    {
+      "waypoint_order": 1,
+      "latitude": 190.0,
+      "longitude": 762.5,
+      "pixel_x": 3050.0,
+      "pixel_y": 760.0
+    },
+    {
+      "waypoint_order": 2,
+      "latitude": 277.5,
+      "longitude": 852.5,
+      "pixel_x": 3410.0,
+      "pixel_y": 1110.0
+    },
+    {
+      "waypoint_order": 3,
+      "latitude": 370.0,
+      "longitude": 775.0,
+      "pixel_x": 3100.0,
+      "pixel_y": 1480.0
+    },
+    {
+      "waypoint_order": 4,
+      "latitude": 452.5,
+      "longitude": 877.5,
+      "pixel_x": 3510.0,
+      "pixel_y": 1810.0
+    },
+    {
+      "waypoint_order": 5,
+      "latitude": 545.0,
+      "longitude": 800.0,
+      "pixel_x": 3200.0,
+      "pixel_y": 2180.0
+    },
+    {
+      "waypoint_order": 6,
+      "latitude": 632.5,
+      "longitude": 890.0,
+      "pixel_x": 3560.0,
+      "pixel_y": 2530.0
+    },
+    {
+      "waypoint_order": 7,
+      "latitude": 725.0,
+      "longitude": 815.0,
+      "pixel_x": 3260.0,
+      "pixel_y": 2900.0
+    },
+    {
+      "waypoint_order": 8,
+      "latitude": 815.0,
+      "longitude": 902.5,
+      "pixel_x": 3610.0,
+      "pixel_y": 3260.0
+    },
+    {
+      "waypoint_order": 9,
+      "latitude": 902.5,
+      "longitude": 827.5,
+      "pixel_x": 3310.0,
+      "pixel_y": 3610.0
+    }
+  ]
+}

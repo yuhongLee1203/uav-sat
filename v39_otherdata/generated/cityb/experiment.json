@@ -1,0 +1,64 @@
+{
+  "dataset_root": "/yh/study/cvpr_data/Bearing_UAV_90K",
+  "city": "cityb",
+  "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+  "metadata_csv": "/yh/study/cvpr_data/Bearing_UAV_90K/c4m_254k_96bc_b15_s100_v3d/metadata/metadata.csv",
+  "mpp": 0.25,
+  "train_routes": [
+    "train_01",
+    "train_02",
+    "train_03"
+  ],
+  "inference_routes": [
+    "test_01",
+    "test_02"
+  ],
+  "route_stats": {
+    "train_01": {
+      "split": "train",
+      "planned_length_m": 966.5226820875931,
+      "waypoints": 11,
+      "frames": 40,
+      "sample_step_m": 25.0,
+      "mean_nearest_sample_error_m": 4.853371115069288,
+      "max_nearest_sample_error_m": 9.905431139737617
+    },
+    "train_02": {
+      "split": "train",
+      "planned_length_m": 1066.68736419563,
+      "waypoints": 10,
+      "frames": 44,
+      "sample_step_m": 25.0,
+      "mean_nearest_sample_error_m": 5.582431700115299,
+      "max_nearest_sample_error_m": 12.227553184731939
+    },
+    "train_03": {
+      "split": "train",
+      "planned_length_m": 1092.0238321075653,
+      "waypoints": 10,
+      "frames": 45,
+      "sample_step_m": 25.0,
+      "mean_nearest_sample_error_m": 4.772884297631663,
+      "max_nearest_sample_error_m": 9.692606329782508
+    },
+    "test_01": {
+      "split": "inference",
+      "planned_length_m": 1067.7365142049823,
+      "waypoints": 10,
+      "frames": 44,
+      "sample_step_m": 25.0,
+      "mean_nearest_sample_error_m": 4.82448907759572,
+      "max_nearest_sample_error_m": 10.798026768968711
+    },
+    "test_02": {
+      "split": "inference",
+      "planned_length_m": 1151.13137153439,
+      "waypoints": 11,
+      "frames": 47,
+      "sample_step_m": 25.0,
+      "mean_nearest_sample_error_m": 5.490175961600649,
+      "max_nearest_sample_error_m": 13.78092726156435
+    }
+  },
+  "note": "Independent Bearing-UAV observations are selected into disjoint pseudo-flight sequences."
+}
