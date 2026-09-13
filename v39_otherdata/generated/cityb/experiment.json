@@ -18,46 +18,46 @@
       "split": "train",
       "planned_length_m": 966.5226820875931,
       "waypoints": 11,
-      "frames": 40,
-      "sample_step_m": 25.0,
-      "mean_nearest_sample_error_m": 4.853371115069288,
-      "max_nearest_sample_error_m": 9.905431139737617
+      "frames": 122,
+      "sample_step_m": 8.0,
+      "mean_nearest_sample_error_m": 5.276055815705997,
+      "max_nearest_sample_error_m": 12.411613415412905
     },
     "train_02": {
       "split": "train",
       "planned_length_m": 1066.68736419563,
       "waypoints": 10,
-      "frames": 44,
-      "sample_step_m": 25.0,
-      "mean_nearest_sample_error_m": 5.582431700115299,
-      "max_nearest_sample_error_m": 12.227553184731939
+      "frames": 134,
+      "sample_step_m": 8.0,
+      "mean_nearest_sample_error_m": 5.539323167700906,
+      "max_nearest_sample_error_m": 12.486344447584758
     },
     "train_03": {
       "split": "train",
       "planned_length_m": 1092.0238321075653,
       "waypoints": 10,
-      "frames": 45,
-      "sample_step_m": 25.0,
-      "mean_nearest_sample_error_m": 4.772884297631663,
-      "max_nearest_sample_error_m": 9.692606329782508
+      "frames": 138,
+      "sample_step_m": 8.0,
+      "mean_nearest_sample_error_m": 4.907927639440029,
+      "max_nearest_sample_error_m": 12.653476099092336
     },
     "test_01": {
       "split": "inference",
       "planned_length_m": 1067.7365142049823,
       "waypoints": 10,
-      "frames": 44,
-      "sample_step_m": 25.0,
-      "mean_nearest_sample_error_m": 4.82448907759572,
-      "max_nearest_sample_error_m": 10.798026768968711
+      "frames": 134,
+      "sample_step_m": 8.0,
+      "mean_nearest_sample_error_m": 5.724500910290867,
+      "max_nearest_sample_error_m": 14.111415957021643
     },
     "test_02": {
       "split": "inference",
       "planned_length_m": 1151.13137153439,
       "waypoints": 11,
-      "frames": 47,
-      "sample_step_m": 25.0,
-      "mean_nearest_sample_error_m": 5.490175961600649,
-      "max_nearest_sample_error_m": 13.78092726156435
+      "frames": 145,
+      "sample_step_m": 8.0,
+      "mean_nearest_sample_error_m": 5.496552679452501,
+      "max_nearest_sample_error_m": 14.167790473007786
     }
   },
   "note": "Independent Bearing-UAV observations are selected into disjoint pseudo-flight sequences."
