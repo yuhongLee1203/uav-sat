@@ -63,6 +63,33 @@ def _patch_config(args, prepared_root: Path) -> None:
     config.CANDIDATE_CAPTURE_RADIUS_M = 10.0
     config.LOCAL_PRIOR_JITTER_M = float(args.jitter_m)
 
+    # The original v36 visual split used a 16-frame guard on both sides of the
+    # validation interval. Bearing pseudo-routes are much shorter, so that fixed
+    # guard can consume the complete validation interval. Keep the same split
+    # fractions, but cap only the v39 guard to one quarter of the available
+    # validation span. Held-out test_01/test_02 are still never used here.
+    route_a_manifest = prepared_root / "routes" / "route_A" / "manifest.csv"
+    with route_a_manifest.open("r", encoding="utf-8") as handle:
+        route_a_length = max(0, sum(1 for _ in handle) - 1)
+    train_end = int(route_a_length * float(config.TRAIN_FRACTION))
+    val_end = int(
+        route_a_length
+        * (float(config.TRAIN_FRACTION) + float(config.VAL_FRACTION))
+    )
+    val_span = max(0, val_end - train_end)
+    original_guard = int(config.SPLIT_GUARD_FRAMES)
+    config.SPLIT_GUARD_FRAMES = min(original_guard, max(0, val_span // 4))
+    print(
+        "v39 visual split: route_A=%d frames, val_span=%d, guard=%d (v36=%d)"
+        % (
+            route_a_length,
+            val_span,
+            int(config.SPLIT_GUARD_FRAMES),
+            original_guard,
+        ),
+        flush=True,
+    )
+
     # Explicitly use v36 route-reference mode: inference cannot read current-frame
     # GT coordinates or use a GT progress cap. GT remains training supervision.
     config.REFERENCE_PROTOCOL = "route_reference"
