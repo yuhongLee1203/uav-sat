@@ -1,0 +1,12 @@
+{
+  "best_mle_m": 2.042807949246995,
+  "accuracy_threshold_pct": 0.5,
+  "mle_threshold_m": 2.0530219889932297,
+  "selected_window": "5x5",
+  "selected_candidates": 25,
+  "selected_mle_m": 2.04459493483194,
+  "selected_lsr3_pct": 77.5608375778155,
+  "selected_lsr5_pct": 95.72722127900396,
+  "selected_e2e_ms": 28.43239172700917,
+  "selected_fps": 35.17115301454068
+}
