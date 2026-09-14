@@ -9,28 +9,36 @@ PREPARED_ROOT="${REPO_ROOT}/v39_otherdata/generated/${CITY}"
 
 cd "${REPO_ROOT}"
 
-# Fresh Bearing experiment. Remove old pseudo-flight routes and old checkpoints
-# so no broken cadence result is reused.
-rm -rf "${PREPARED_ROOT}"
+prepare_sequence() {
+  local safety_cap="$1"
+  rm -rf "${PREPARED_ROOT}"
+  echo "[PREP] trying soft temporal sequence with safety max step ${safety_cap} m"
+  python3 v39_otherdata/bearing_prepare_sequence_v3.py \
+    --dataset-root "${DATASET_ROOT}" \
+    --city "${CITY}" \
+    --step-m 8 \
+    --max-sample-distance-m 15 \
+    --preferred-step-m 8 \
+    --safety-max-step-m "${safety_cap}" \
+    --candidate-limit 64 \
+    --beam-width 128 \
+    --skip-penalty 30 \
+    --continuity-weight 1.5 \
+    --large-step-weight 0.35 \
+    --cross-weight 1.0 \
+    --backward-weight 8.0 \
+    --min-selected-ratio 0.70
+}
 
-# Bearing-UAV is not video. Build a dense, globally-disjoint pseudo-flight by
-# maximizing retained frames while softly penalizing large/lateral/backward
-# transitions. Yaw is not used for selection.
-python3 v39_otherdata/bearing_prepare_sequence_v3.py \
-  --dataset-root "${DATASET_ROOT}" \
-  --city "${CITY}" \
-  --step-m 8 \
-  --max-sample-distance-m 15 \
-  --preferred-step-m 8 \
-  --safety-max-step-m 22 \
-  --candidate-limit 64 \
-  --beam-width 128 \
-  --skip-penalty 30 \
-  --continuity-weight 1.5 \
-  --large-step-weight 0.35 \
-  --cross-weight 1.0 \
-  --backward-weight 8.0 \
-  --min-selected-ratio 0.70
+# Bearing-UAV is not video. Start tight, then relax only the absolute safety cap
+# if the independent observations are too sparse to form a usable sequence.
+if ! prepare_sequence 22; then
+  echo "[PREP] 22 m safety cap was too sparse; retrying with 26 m"
+  if ! prepare_sequence 26; then
+    echo "[PREP] 26 m safety cap was too sparse; final retry with 30 m"
+    prepare_sequence 30
+  fi
+fi
 
 # Same v39 architecture, but temporal/Kalman cadence limits are derived from
 # TRAIN route frame-step statistics only. Test-route cadence is never used to
@@ -48,7 +56,7 @@ python3 v39_otherdata/bearing_runner_cadence_adapted.py \
   --max-sample-distance-m 15 \
   --heading-weight-px-per-deg 0
 
-# Simplified visualization requested by the user: GT/reference + final only.
+# Simplified visualization: only GT/reference + final prediction.
 python3 v39_otherdata/bearing_plot_final_vs_gt.py \
   --prepared-root "${PREPARED_ROOT}" \
   --output-dir "${PREPARED_ROOT}/v39_output_corrected" \
