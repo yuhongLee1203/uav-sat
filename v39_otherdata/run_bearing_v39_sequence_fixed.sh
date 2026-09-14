@@ -6,13 +6,14 @@ DATASET_ROOT="${DATASET_ROOT:-/yh/study/cvpr_data/Bearing_UAV_90K}"
 CITY="${CITY:-cityb}"
 GPU="${GPU:-0}"
 PREPARED_ROOT="${REPO_ROOT}/v39_otherdata/generated/${CITY}"
+OUTPUT_DIR="${PREPARED_ROOT}/v39_output_exact"
 
 cd "${REPO_ROOT}"
 
 prepare_sequence() {
   local safety_cap="$1"
   rm -rf "${PREPARED_ROOT}"
-  echo "[PREP] trying soft temporal sequence with safety max step ${safety_cap} m"
+  echo "[PREP] Bearing data adapter only; trying sequence safety cap ${safety_cap} m"
   python3 v39_otherdata/bearing_prepare_sequence_v3.py \
     --dataset-root "${DATASET_ROOT}" \
     --city "${CITY}" \
@@ -30,20 +31,21 @@ prepare_sequence() {
     --min-selected-ratio 0.70
 }
 
-# Bearing-UAV is not video. Start tight, then relax only the absolute safety cap
-# if the independent observations are too sparse to form a usable sequence.
+# This modifies only the Bearing pseudo-flight data adapter. It never changes
+# GRU/Kalman/MeanShift parameters. Start with the successful 22 m absolute data
+# safety cap and relax only if the independent Bearing observations are too sparse.
 if ! prepare_sequence 22; then
-  echo "[PREP] 22 m safety cap was too sparse; retrying with 26 m"
+  echo "[PREP] 22 m data safety cap too sparse; retrying 26 m"
   if ! prepare_sequence 26; then
-    echo "[PREP] 26 m safety cap was too sparse; final retry with 30 m"
+    echo "[PREP] 26 m data safety cap too sparse; final retry 30 m"
     prepare_sequence 30
   fi
 fi
 
-# Same v39 architecture, but temporal/Kalman cadence limits are derived from
-# TRAIN route frame-step statistics only. Test-route cadence is never used to
-# set the adaptation.
-python3 v39_otherdata/bearing_runner_cadence_adapted.py \
+# IMPORTANT: exact canonical-v39 estimator. No Bearing cadence adaptation.
+# Model/inference settings are audited against the saved v39 weighted-centroid
+# main experiment before training starts.
+python3 v39_otherdata/bearing_runner_exact_v39.py \
   --dataset-root "${DATASET_ROOT}" \
   --city "${CITY}" \
   --gpu "${GPU}" \
@@ -56,18 +58,21 @@ python3 v39_otherdata/bearing_runner_cadence_adapted.py \
   --max-sample-distance-m 15 \
   --heading-weight-px-per-deg 0
 
-# Simplified visualization: only GT/reference + final prediction.
+# Requested visualization: GT/reference + final prediction only.
 python3 v39_otherdata/bearing_plot_final_vs_gt.py \
   --prepared-root "${PREPARED_ROOT}" \
-  --output-dir "${PREPARED_ROOT}/v39_output_corrected" \
+  --output-dir "${OUTPUT_DIR}" \
   --routes test_01 test_02
 
 echo ""
 echo "================================================================================================="
-echo "Bearing v39 soft-sequence + TRAIN-cadence experiment finished"
-echo "Summary: ${PREPARED_ROOT}/v39_output_corrected/bearing_v39_summary.json"
-echo "Audit  : ${PREPARED_ROOT}/v39_output_corrected/v39_bearing_training_audit.json"
-echo "Plot 1 : ${PREPARED_ROOT}/v39_output_corrected/test_01_final_vs_gt_zoom.jpg"
-echo "Plot 2 : ${PREPARED_ROOT}/v39_output_corrected/test_02_final_vs_gt_zoom.jpg"
+echo "Bearing exact-v39 experiment finished"
+echo "Model: Weighted Centroid -> 3-frame Context-GRU -> velocity -> fixed Kalman -> final 5x5 MS"
+echo "Bearing cadence adaptation: DISABLED"
+echo "Canonical Kalman final-step cap: 7.0 m"
+echo "Summary: ${OUTPUT_DIR}/bearing_v39_summary.json"
+echo "Audit  : ${OUTPUT_DIR}/v39_bearing_training_audit.json"
+echo "Plot 1 : ${OUTPUT_DIR}/test_01_final_vs_gt_zoom.jpg"
+echo "Plot 2 : ${OUTPUT_DIR}/test_02_final_vs_gt_zoom.jpg"
 echo "Route diagnostics: ${PREPARED_ROOT}/experiment.json"
 echo "================================================================================================="
