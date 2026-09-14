@@ -34,5 +34,61 @@
   "test_routes": [
     "test_01",
     "test_02"
-  ]
+  ],
+  "bearing_temporal_cadence_adaptation": {
+    "train_step_p50_m": 8.494578198518118,
+    "train_step_p90_m": 11.106245218822963,
+    "train_step_p95_m": 12.285891987854408,
+    "train_step_max_m": 16.045498670726133,
+    "max_forward_speed_m_per_frame": 14.743070385425288,
+    "max_polynomial_step_m_per_frame": 14.743070385425288,
+    "kalman_final_step_max_m": 13.51448118663985,
+    "kalman_max_measurement_innovation_progress_m": 8.88499617505837,
+    "kalman_max_posterior_correction_progress_m": 4.997810348470334,
+    "max_measurement_correction_parallel_m": 6.10843487035263,
+    "source": "TRAIN routes only"
+  },
+  "bearing_validation_split_adaptation": {
+    "split_guard_frames": 2,
+    "reason": "3-frame temporal window => 2-frame train/validation separation",
+    "routes": {
+      "train_01": {
+        "train": [
+          0,
+          83
+        ],
+        "val": [
+          87,
+          101
+        ],
+        "train_frames": 83,
+        "val_frames": 14
+      },
+      "train_02": {
+        "train": [
+          0,
+          91
+        ],
+        "val": [
+          95,
+          111
+        ],
+        "train_frames": 91,
+        "val_frames": 16
+      },
+      "train_03": {
+        "train": [
+          0,
+          94
+        ],
+        "val": [
+          98,
+          115
+        ],
+        "train_frames": 94,
+        "val_frames": 17
+      }
+    }
+  },
+  "comparison_label": "v39 architecture + Bearing TRAIN-cadence adaptation + short-episode split fix"
 }
