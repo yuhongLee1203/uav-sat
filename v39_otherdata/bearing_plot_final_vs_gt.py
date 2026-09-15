@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Plot only GT/reference and final prediction for Bearing v39 inference."""
+"""Plot the planned piecewise-linear reference route and final prediction.
+
+Important: Bearing-UAV observations are independent samples, not frames from a
+single recorded flight. Their true coordinates are therefore scattered around
+the planned route.  Connecting those true sample coordinates produces a fake
+"caterpillar" polyline that looks like many small turns.  This visualizer keeps
+those coordinates for the localization metrics, but does NOT connect them into
+a route.  The green line is the planned reference route from waypoints.json;
+true sampled GT positions are shown only as sparse dots.  Final prediction is
+shown as the red trajectory.
+"""
 from __future__ import annotations
 
 import argparse
@@ -31,6 +41,17 @@ def _points(rows: Sequence[Mapping[str, str]], x_key: str, y_key: str, mpp: floa
     return out
 
 
+def _reference_waypoints(prepared_root: Path, route: str) -> List[Point]:
+    path = prepared_root / "routes" / route / "waypoints.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    points = []
+    for item in payload.get("waypoints", []):
+        points.append((float(item["pixel_x"]), float(item["pixel_y"])))
+    if len(points) < 2:
+        raise RuntimeError(f"Missing planned waypoints for {route}: {path}")
+    return points
+
+
 def _find_csv(route: str, output_dir: Path, summary: Mapping[str, object]) -> Path:
     explicit = summary.get("CSV")
     if isinstance(explicit, str):
@@ -57,25 +78,60 @@ def _crop_bounds(groups, width: int, height: int, margin: int = 180):
     return left, top, right, bottom
 
 
+def _draw_sparse_gt_dots(draw: ImageDraw.ImageDraw, gt: Sequence[Point], radius: int, stride: int = 6):
+    # The true Bearing sample positions remain visible for transparency, but are
+    # deliberately not connected. Connecting independent observations is what
+    # created the misleading small zig-zag/caterpillar line.
+    for i, (x, y) in enumerate(gt):
+        if i % max(1, int(stride)) != 0 and i != len(gt) - 1:
+            continue
+        draw.ellipse(
+            (x - radius, y - radius, x + radius, y + radius),
+            fill=(80, 255, 130, 145),
+            outline=(255, 255, 255, 120),
+            width=1,
+        )
+
+
 def render(route: str, prepared_root: Path, output_dir: Path, summary: Mapping[str, object]):
     sat_meta = json.loads((prepared_root / "bearing_satellite.json").read_text(encoding="utf-8"))
     sat_path = Path(sat_meta["satellite_image"])
     mpp = float(sat_meta["mpp"])
     rows = _read_rows(_find_csv(route, output_dir, summary))
-    gt = _points(rows, "gt_x", "gt_y", mpp)
+
+    # True per-frame GT is still used by the tracker metrics.
+    true_gt = _points(rows, "gt_x", "gt_y", mpp)
     final = _points(rows, "final_x", "final_y", mpp)
-    if not gt or not final:
+    reference = _reference_waypoints(prepared_root, route)
+    if not true_gt or not final:
         raise RuntimeError(f"Missing GT/final coordinates for {route}")
 
     image = Image.open(sat_path).convert("RGB")
     draw = ImageDraw.Draw(image, "RGBA")
     width = max(5, image.width // 700)
-    draw.line(gt, fill=(40, 255, 100, 245), width=width + 3, joint="curve")
+
+    # EXACT piecewise-linear reference route: straight -> major corner -> straight.
+    # Do not connect the scattered true GT observations.
+    draw.line(reference, fill=(40, 255, 100, 250), width=width + 3, joint="curve")
+    corner_r = max(6, width + 1)
+    for x, y in reference:
+        draw.ellipse(
+            (x - corner_r, y - corner_r, x + corner_r, y + corner_r),
+            fill=(40, 255, 100, 255),
+            outline=(255, 255, 255, 220),
+            width=2,
+        )
+
+    # Sparse actual GT dots show where the selected Bearing images truly are,
+    # without turning that sample scatter into a fake wiggly route.
+    _draw_sparse_gt_dots(draw, true_gt, radius=max(2, width // 2), stride=6)
     draw.line(final, fill=(255, 45, 60, 255), width=width + 2, joint="curve")
 
     lines = [
         f"{route} held-out inference",
-        "GT/reference: green | Final prediction: red",
+        "Planned reference route: green | Final prediction: red",
+        "True sampled GT: green dots (not connected)",
+        "Metrics below use final prediction vs true sampled GT",
     ]
     for label, key, suffix in (
         ("MLE", "MLE_m", " m"),
@@ -86,7 +142,7 @@ def render(route: str, prepared_root: Path, output_dir: Path, summary: Mapping[s
         value = summary.get(key)
         if isinstance(value, (int, float)):
             lines.append(f"{label}: {float(value):.2f}{suffix}")
-    box_w = 600
+    box_w = 720
     box_h = 24 + 27 * len(lines)
     draw.rounded_rectangle((18, 18, 18 + box_w, 18 + box_h), radius=12, fill=(0, 0, 0, 185))
     for i, text in enumerate(lines):
@@ -94,7 +150,7 @@ def render(route: str, prepared_root: Path, output_dir: Path, summary: Mapping[s
 
     full = output_dir / f"{route}_final_vs_gt_full.jpg"
     image.save(full, quality=95)
-    crop = image.crop(_crop_bounds((gt, final), image.width, image.height))
+    crop = image.crop(_crop_bounds((reference, true_gt, final), image.width, image.height))
     zoom = output_dir / f"{route}_final_vs_gt_zoom.jpg"
     crop.save(zoom, quality=95)
     print(f"[PLOT] {full}", flush=True)
