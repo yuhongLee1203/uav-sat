@@ -21,10 +21,10 @@
   "bearing_step_m": 4.0,
   "route_frames": {
     "train_01": 241,
-    "train_02": 268,
+    "train_02": 267,
     "train_03": 273,
-    "test_01": 255,
-    "test_02": 288
+    "test_01": 262,
+    "test_02": 289
   },
   "train_routes": [
     "train_01",
@@ -77,14 +77,14 @@
         "val_frames": 32
       },
       "train_02": {
-        "length": 268,
+        "length": 267,
         "train": [
           0,
-          185
+          184
         ],
         "val": [
-          189,
-          225
+          188,
+          224
         ],
         "val_frames": 36
       },
