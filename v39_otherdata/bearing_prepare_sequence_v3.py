@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Prepare Bearing-UAV pseudo-flight routes with long straight legs and big turns.
+"""Prepare Bearing-UAV pseudo-flight routes as long straight legs + clear turns.
 
-Bearing-UAV images are independent observations rather than consecutive video
-frames. We therefore build a pseudo-flight sequence from real Bearing samples.
-Each route is intentionally planned as a few long straight legs followed by
-clear large turns, rather than frequent alternating bends. Within each straight
-leg, the sample selector prefers observations close to the planned centreline
-and with stable lateral offset so the GT trajectory is visually easier to read.
-
-The smoothing cost is disabled across a genuine large turn, so it cannot flatten
-the deliberate corners. UAV yaw is not used by the localization model.
+Bearing-UAV images are independent observations, not consecutive video frames.
+This adapter builds globally-disjoint pseudo-flight sequences from real samples.
+The planned route is deliberately piecewise-linear: a long straight leg, one
+clear large turn, then another long straight leg.  Within a straight leg, sample
+selection strongly prefers a stable lateral offset from the centreline so the
+GT trace does not look like a small left/right 'caterpillar'.  The smoothing
+term is disabled across a real corner.  UAV yaw is never fed to the model.
 """
 from __future__ import annotations
 
@@ -24,52 +22,51 @@ from PIL import Image
 
 import bearing_prepare as base
 
-SELECTION_VERSION = "soft_sequence_v5_long_straights_big_turns"
+SELECTION_VERSION = "soft_sequence_v6_piecewise_straight_big_turns"
 
-# Long-straight / big-turn route geometry. Each route stays in the same broad
-# city region as before, but now contains only a few explicit corners. Typical
-# straight legs are about 100-275 m and planned turns are roughly 43-101 deg.
-# This makes it visually obvious whether a bend belongs to GT or prediction.
-# Coordinates are in the canonical 4096x4096 Bearing RSI.
-BIG_TURN_ROUTE_SPECS = {
+# Explicit piecewise-linear routes.  These are not gradual curves: every pair of
+# waypoints is one long straight leg, and every intermediate waypoint is a clear
+# corner.  Coordinates are canonical 4096x4096 Bearing RSI pixels.
+PIECEWISE_ROUTE_SPECS = {
     "train_01": [
         (330, 620),
-        (1250, 700),
-        (1500, 1150),
-        (2600, 1200),
-        (3000, 1620),
-        (3330, 1480),
+        (1300, 620),
+        (1300, 1100),
+        (2400, 1100),
+        (2400, 1550),
+        (3330, 1550),
     ],
     "train_02": [
         (430, 3080),
-        (1350, 3080),
-        (1600, 2550),
-        (2650, 2550),
-        (3000, 3000),
-        (3510, 2410),
+        (1400, 3080),
+        (1400, 2600),
+        (2600, 2600),
+        (2600, 3100),
+        (3510, 3100),
     ],
     "train_03": [
         (3330, 430),
-        (3330, 1350),
-        (2950, 1750),
-        (3550, 2500),
-        (3150, 3050),
-        (3310, 3610),
+        (3330, 1300),
+        (3000, 1300),
+        (3000, 2400),
+        (3550, 2400),
+        (3550, 3610),
     ],
     "test_01": [
         (560, 1810),
-        (1450, 1810),
-        (1700, 1450),
-        (2550, 1450),
-        (2800, 2000),
+        (1500, 1810),
+        (1500, 1450),
+        (2600, 1450),
+        (2600, 2050),
         (3410, 2050),
     ],
     "test_02": [
         (900, 330),
-        (900, 1250),
-        (1350, 1600),
-        (1350, 2450),
-        (950, 2850),
+        (900, 1150),
+        (1300, 1150),
+        (1300, 2300),
+        (900, 2300),
+        (900, 3300),
         (1440, 3690),
     ],
 }
@@ -122,16 +119,14 @@ def _sequence_select(
         order = np.argsort(err_m)[: int(candidate_limit)]
         candidate_lists.append([(int(valid[j]), float(err_m[j])) for j in order])
 
-    # state = (cost, last_row, last_target, selected_rows, selected_targets,
-    #          used_local, skips)
+    # state: cost, last sample, last target, selected samples, selected targets,
+    # local-used set, skipped-target count.
     beams = [(0.0, None, None, tuple(), tuple(), frozenset(), 0)]
 
     for target_index, candidates in enumerate(candidate_lists):
         expanded = []
         for state in beams:
             cost, last_idx, last_target, ids, tids, local_used, skips = state
-
-            # Bearing observations are independent, so a target may be skipped.
             expanded.append(
                 (
                     cost + float(skip_penalty),
@@ -152,10 +147,7 @@ def _sequence_select(
                 current_lateral = float(
                     np.dot(current_offset, target_cross_axis[target_index])
                 )
-
-                # Prefer a real UAV observation close to the planned centreline.
-                # This never moves or relabels GT; it only selects a better real
-                # Bearing observation from the available pool.
+                # Keep the real observation but prefer one close to the centreline.
                 transition = (
                     float(target_err_m)
                     + float(point_cross_weight) * abs(current_lateral)
@@ -167,8 +159,7 @@ def _sequence_select(
                     if step > float(safety_max_step_m) + 1e-9:
                         continue
 
-                    ta = int(last_target)
-                    tb = int(target_index)
+                    ta, tb = int(last_target), int(target_index)
                     route_delta = target_m[tb] - target_m[ta]
                     route_norm = float(np.linalg.norm(route_delta))
                     if route_norm <= 1e-9:
@@ -188,9 +179,8 @@ def _sequence_select(
                         0.0, step - float(preferred_step_m)
                     ) ** 2
 
-                    # Suppress only same-leg left/right wobble. Across an actual
-                    # planned corner (>= threshold), this term is disabled so the
-                    # large turn remains explicit.
+                    # On one straight leg: strongly suppress left/right wobble.
+                    # At a real large turn: disable this term completely.
                     planned_turn = _angle_delta_abs_deg(headings[tb], headings[ta])
                     if planned_turn < float(big_turn_threshold_deg):
                         previous_offset = xy_m[int(last_idx)] - target_m[ta]
@@ -215,8 +205,6 @@ def _sequence_select(
 
         if not expanded:
             raise RuntimeError(f"sequence search became empty at target {target_index}")
-
-        # First keep as many targets as possible, then choose the smoothest chain.
         expanded.sort(key=lambda s: (-len(s[3]), s[0], s[6]))
         beams = expanded[: int(beam_width)]
 
@@ -225,8 +213,7 @@ def _sequence_select(
     if not feasible:
         best_count = max(len(state[3]) for state in beams)
         raise RuntimeError(
-            "No sufficiently dense soft-temporal route: required=%d/%d best=%d. "
-            "Try --safety-max-step-m 24 before increasing sample distance."
+            "No sufficiently dense piecewise route: required=%d/%d best=%d"
             % (minimum, len(targets), best_count)
         )
 
@@ -267,7 +254,6 @@ def _sequence_select(
             along = float(np.dot(delta, unit))
             cross_values.append(abs(float(np.dot(delta, cross_axis))))
             backward += int(along < -1e-6)
-
         if _angle_delta_abs_deg(headings[tb], headings[ta]) < float(big_turn_threshold_deg):
             same_leg_lateral_delta.append(
                 abs(float(signed_lateral[k] - signed_lateral[k - 1]))
@@ -323,10 +309,9 @@ def prepare(args):
 
     rows = base._city_rows(pd.read_csv(metadata_path), city)
     basename_index = base._build_basename_index(dataset_root, city)
-
     routes = {
         name: base._scale_route(points, width, height)
-        for name, points in BIG_TURN_ROUTE_SPECS.items()
+        for name, points in PIECEWISE_ROUTE_SPECS.items()
     }
 
     used_global, stats = set(), {}
@@ -358,9 +343,7 @@ def prepare(args):
             base._resolve_image_path(value, dataset_root, city, basename_index)
             for value in selected["target_path"]
         ]
-        base._write_route(
-            output_root / "routes" / name, name, planned, selected, paths
-        )
+        base._write_route(output_root / "routes" / name, name, planned, selected, paths)
 
         stats[name] = {
             "split": "train" if name in base.TRAIN_ROUTES else "inference",
@@ -381,7 +364,6 @@ def prepare(args):
         print("[SEQUENCE]", name, json.dumps(stats[name], indent=2), flush=True)
 
     base._make_train_union(output_root)
-
     sat_meta = {
         "mode": "bearing_uav_pixel_meter",
         "mpp": base.MPP,
@@ -406,8 +388,8 @@ def prepare(args):
         "inference_routes": list(base.TEST_ROUTES),
         "route_stats": stats,
         "note": (
-            "Long straight route legs with explicit large turns; real Bearing "
-            "observations use same-leg centreline/lateral smoothing only. Yaw is not used."
+            "Piecewise straight route: long straight leg -> explicit large turn -> long straight leg. "
+            "GT remains the true selected Bearing observation; yaw is not used."
         ),
     }
     (output_root / "experiment.json").write_text(
@@ -424,20 +406,20 @@ def build_parser():
     p.add_argument("--city", default="cityb", choices=sorted(base.CITY_TO_RSI))
     p.add_argument("--output-root", default=None)
     p.add_argument("--step-m", type=float, default=8.0)
-    p.add_argument("--max-sample-distance-m", type=float, default=15.0)
+    p.add_argument("--max-sample-distance-m", type=float, default=10.0)
     p.add_argument("--preferred-step-m", type=float, default=8.0)
     p.add_argument("--safety-max-step-m", type=float, default=22.0)
-    p.add_argument("--candidate-limit", type=int, default=64)
-    p.add_argument("--beam-width", type=int, default=128)
-    p.add_argument("--skip-penalty", type=float, default=30.0)
-    p.add_argument("--continuity-weight", type=float, default=1.5)
-    p.add_argument("--large-step-weight", type=float, default=0.35)
-    p.add_argument("--cross-weight", type=float, default=1.0)
-    p.add_argument("--backward-weight", type=float, default=8.0)
-    p.add_argument("--point-cross-weight", type=float, default=5.0)
-    p.add_argument("--lateral-smooth-weight", type=float, default=5.0)
-    p.add_argument("--big-turn-threshold-deg", type=float, default=35.0)
-    p.add_argument("--min-selected-ratio", type=float, default=0.70)
+    p.add_argument("--candidate-limit", type=int, default=128)
+    p.add_argument("--beam-width", type=int, default=256)
+    p.add_argument("--skip-penalty", type=float, default=36.0)
+    p.add_argument("--continuity-weight", type=float, default=2.0)
+    p.add_argument("--large-step-weight", type=float, default=0.75)
+    p.add_argument("--cross-weight", type=float, default=1.25)
+    p.add_argument("--backward-weight", type=float, default=10.0)
+    p.add_argument("--point-cross-weight", type=float, default=8.0)
+    p.add_argument("--lateral-smooth-weight", type=float, default=12.0)
+    p.add_argument("--big-turn-threshold-deg", type=float, default=45.0)
+    p.add_argument("--min-selected-ratio", type=float, default=0.75)
     return p
 
 
