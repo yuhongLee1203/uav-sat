@@ -20,11 +20,11 @@
   },
   "bearing_step_m": 4.0,
   "route_frames": {
-    "train_01": 196,
-    "train_02": 198,
-    "train_03": 199,
-    "test_01": 184,
-    "test_02": 216
+    "train_01": 241,
+    "train_02": 268,
+    "train_03": 273,
+    "test_01": 255,
+    "test_02": 288
   },
   "train_routes": [
     "train_01",
@@ -65,40 +65,40 @@
     "split_reason": "3-frame temporal window on short external episodes",
     "route_splits": {
       "train_01": {
-        "length": 196,
+        "length": 241,
         "train": [
           0,
-          135
-        ],
-        "val": [
-          139,
-          164
-        ],
-        "val_frames": 25
-      },
-      "train_02": {
-        "length": 198,
-        "train": [
-          0,
-          136
-        ],
-        "val": [
-          140,
           166
         ],
-        "val_frames": 26
+        "val": [
+          170,
+          202
+        ],
+        "val_frames": 32
       },
-      "train_03": {
-        "length": 199,
+      "train_02": {
+        "length": 268,
         "train": [
           0,
-          137
+          185
         ],
         "val": [
-          141,
-          167
+          189,
+          225
         ],
-        "val_frames": 26
+        "val_frames": 36
+      },
+      "train_03": {
+        "length": 273,
+        "train": [
+          0,
+          189
+        ],
+        "val": [
+          193,
+          230
+        ],
+        "val_frames": 37
       }
     }
   },
