@@ -22,7 +22,7 @@ prepare_sequence() {
   local mode="$7"
 
   rm -rf "${PREPARED_ROOT}"
-  echo "[PREP] v10 physical pseudo-flight: mode=${mode} safety=${safety_cap}m radius=${sample_distance}m cross<=${max_cross}m lateral_jump<=${max_lat_jump}m"
+  echo "[PREP] v11 physical pseudo-flight: mode=${mode} safety=${safety_cap}m radius=${sample_distance}m cross<=${max_cross}m lateral_jump<=${max_lat_jump}m"
 
   if python3 - "${DATASET_ROOT}" "${CITY}" "${PREPARED_ROOT}" \
       "${safety_cap}" "${sample_distance}" "${max_cross}" \
@@ -65,17 +65,19 @@ seq.PIECEWISE_ROUTE_SPECS = {
         (1240, 3010), (1660, 3360), (1440, 3690),
     ],
 }
-seq.SELECTION_VERSION = "soft_sequence_v10_dualbeam_monotonic_straight_legs"
+seq.SELECTION_VERSION = "soft_sequence_v11_dualbeam_monotonic_skip_safe"
 
 args = argparse.Namespace(
     dataset_root=sys.argv[1],
     city=sys.argv[2],
     output_root=sys.argv[3],
 
-    # Denser 3 m targets give the selector room to skip physically bad
-    # independent observations while retaining a v39-like temporal cadence.
-    step_m=3.0,
-    preferred_step_m=3.0,
+    # Use 4 m targets. The previous 3 m target grid oversampled an independent
+    # image dataset and forced an unrealistically high unique-observation
+    # density. At 4 m, bad observations can be skipped while the retained
+    # sequence stays close to the temporal scale of canonical v39.
+    step_m=4.0,
+    preferred_step_m=4.0,
 
     safety_max_step_m=float(sys.argv[4]),
     max_sample_distance_m=float(sys.argv[5]),
@@ -105,16 +107,15 @@ PY
   return 1
 }
 
-# v9 retained ~95-100% of independent observations even when that produced
-# 13-15% backward steps and about 6 m same-leg lateral wobble. v10 first enforces
-# a physically monotonic/smooth pseudo-flight. If Bearing is sparse, only the
-# hard sample-selection bounds are relaxed; route geometry and exact-v39 stay.
+# v11 never kills the entire beam merely because one local section is sparse.
+# Each pass is evaluated after the complete route, then the hard physical gates
+# are relaxed gradually only if the requested route density is impossible.
 if ! prepare_sequence 10 8 3.5 2.5 0.00 0.55 strict; then
-  echo "[PREP] strict chain too sparse; retrying moderate constraints"
+  echo "[PREP] strict route not dense enough; retrying moderate constraints"
   if ! prepare_sequence 12 10 4.0 3.0 0.15 0.55 moderate; then
-    echo "[PREP] moderate chain too sparse; retrying balanced constraints"
+    echo "[PREP] moderate route not dense enough; retrying balanced constraints"
     if ! prepare_sequence 14 12 4.75 3.5 0.35 0.52 balanced; then
-      echo "[PREP] balanced chain too sparse; final physical fallback"
+      echo "[PREP] balanced route not dense enough; final physical fallback"
       prepare_sequence 16 15 5.5 4.0 0.50 0.50 fallback
     fi
   fi
@@ -127,7 +128,7 @@ from pathlib import Path
 p = Path(sys.argv[1])
 root = Path(sys.argv[2])
 d = json.loads(p.read_text(encoding="utf-8"))
-print("[V10-PHYSICAL-PSEUDOFLIGHT] route audit")
+print("[V11-PHYSICAL-PSEUDOFLIGHT] route audit")
 failed = []
 
 for name, s in d["route_stats"].items():
@@ -174,13 +175,13 @@ for name, s in d["route_stats"].items():
 
 if failed:
     raise SystemExit(
-        "[V10-PHYSICAL-PSEUDOFLIGHT] audit failed: " + "; ".join(failed)
+        "[V11-PHYSICAL-PSEUDOFLIGHT] audit failed: " + "; ".join(failed)
     )
-print("[V10-PHYSICAL-PSEUDOFLIGHT] route audit: PASS")
+print("[V11-PHYSICAL-PSEUDOFLIGHT] route audit: PASS")
 PY
 
 # The estimator remains the saved canonical exact-v39. Only the external
-# pseudo-flight data adapter/cadence changed.
+# pseudo-flight data adapter changed.
 python3 v39_otherdata/bearing_runner_exact_v39.py \
   --dataset-root "${DATASET_ROOT}" \
   --city "${CITY}" \
@@ -190,7 +191,7 @@ python3 v39_otherdata/bearing_runner_exact_v39.py \
   --epochs-per-route 20 \
   --patience 10 \
   --jitter-m 8 \
-  --step-m 3 \
+  --step-m 4 \
   --max-sample-distance-m "${USED_SAMPLE_DISTANCE}" \
   --heading-weight-px-per-deg 0
 
@@ -201,9 +202,9 @@ python3 v39_otherdata/bearing_plot_final_vs_gt.py \
 
 echo ""
 echo "================================================================================================="
-echo "Bearing exact-v39 v10 physical pseudo-flight experiment finished"
-echo "Data adapter: dual density/smoothness beam + hard straight-leg monotonic/lateral constraints"
-echo "Target pseudo-flight cadence: 3.0 m (bad independent observations may be skipped)"
+echo "Bearing exact-v39 v11 physical pseudo-flight experiment finished"
+echo "Data adapter: dual density/smoothness beam + skip-safe straight-leg physical constraints"
+echo "Target pseudo-flight cadence: 4.0 m"
 echo "Selection mode: ${USED_MODE}; observation radius: ${USED_SAMPLE_DISTANCE} m"
 echo "Green: planned/reference route | Cyan dots: true sampled GT | Red: final prediction"
 echo "Diagnostic orange: Kalman before final MeanShift"
