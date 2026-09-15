@@ -1,0 +1,106 @@
+{
+  "architecture": "V39_GRU_Kalman_MS",
+  "canonical_source": "v39_DirectFinalMS/base_src + patch_direct_finalms.py + run.sh Context-GRU patch",
+  "backbone": "mobilenet_v3_small",
+  "reference_protocol": "controlled_gt_jitter",
+  "visual_decoder": "weighted_centroid",
+  "frame_count": 3,
+  "motion": "velocity",
+  "kalman": "fixed",
+  "forward_only": true,
+  "final_ms_grid": 5,
+  "final_ms_bandwidth_m": 7.0,
+  "losses": {
+    "acquisition": 0.0,
+    "measurement": 1.0,
+    "next_step": 3.0,
+    "velocity": 0.25,
+    "heading": 1.25,
+    "variance_nll": 0.05
+  },
+  "bearing_step_m": 4.0,
+  "route_frames": {
+    "train_01": 242,
+    "train_02": 268,
+    "train_03": 274,
+    "test_01": 216,
+    "test_02": 288
+  },
+  "train_routes": [
+    "train_01",
+    "train_02",
+    "train_03"
+  ],
+  "test_routes": [
+    "test_01",
+    "test_02"
+  ],
+  "exact_v39_model_inference": true,
+  "bearing_cadence_adaptation": false,
+  "exact_v39_values": {
+    "reference_protocol": "controlled_gt_jitter",
+    "visual_decoder": "weighted_centroid",
+    "frame_count": 3,
+    "motion": "velocity",
+    "kalman": "fixed",
+    "forward_only": true,
+    "max_forward_speed_m_per_frame": 14.0,
+    "max_cross_speed_m_per_frame": 5.0,
+    "max_polynomial_step_m_per_frame": 14.0,
+    "max_measurement_correction_parallel_m": 4.0,
+    "max_measurement_correction_cross_m": 4.0,
+    "kalman_max_measurement_innovation_progress_m": 5.0,
+    "kalman_max_measurement_innovation_cross_m": 3.0,
+    "kalman_max_posterior_correction_progress_m": 3.0,
+    "kalman_max_posterior_correction_cross_m": 1.75,
+    "kalman_max_velocity_correction_m_per_frame": 1.25,
+    "kalman_final_step_max_m": 7.0,
+    "ms_grid_size": 5,
+    "ms_bandwidth_m": 7.0
+  },
+  "dataset_only_adaptations": {
+    "bearing_coordinate_and_image_adapter": true,
+    "pseudo_flight_sequence_construction": true,
+    "split_guard_frames": 2,
+    "split_reason": "3-frame temporal window on short external episodes",
+    "route_splits": {
+      "train_01": {
+        "length": 242,
+        "train": [
+          0,
+          167
+        ],
+        "val": [
+          171,
+          203
+        ],
+        "val_frames": 32
+      },
+      "train_02": {
+        "length": 268,
+        "train": [
+          0,
+          185
+        ],
+        "val": [
+          189,
+          225
+        ],
+        "val_frames": 36
+      },
+      "train_03": {
+        "length": 274,
+        "train": [
+          0,
+          189
+        ],
+        "val": [
+          193,
+          230
+        ],
+        "val_frames": 37
+      }
+    }
+  },
+  "comparison_label": "original v39 estimator/settings on Bearing data; no cadence adaptation"
+}
