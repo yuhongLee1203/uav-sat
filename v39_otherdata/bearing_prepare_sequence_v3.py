@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Prepare Bearing-UAV pseudo-flight routes with big turns preserved.
+"""Prepare Bearing-UAV pseudo-flight routes with long straight legs and big turns.
 
 Bearing-UAV images are independent observations rather than consecutive video
-frames.  We therefore build a pseudo-flight sequence from real Bearing samples.
-The route keeps the original large navigation turns, while the sample selector
-suppresses small left/right zig-zags *inside the same route leg* by preferring
-observations close to the planned leg centreline and with stable lateral offset.
+frames. We therefore build a pseudo-flight sequence from real Bearing samples.
+Each route is intentionally planned as a few long straight legs followed by
+clear large turns, rather than frequent alternating bends. Within each straight
+leg, the sample selector prefers observations close to the planned centreline
+and with stable lateral offset so the GT trajectory is visually easier to read.
 
-The smoothing cost is automatically disabled across a genuine large turn, so it
-cannot flatten the large corners that are intentionally part of the route.
-UAV yaw is not used by the localization model.
+The smoothing cost is disabled across a genuine large turn, so it cannot flatten
+the deliberate corners. UAV yaw is not used by the localization model.
 """
 from __future__ import annotations
 
@@ -24,37 +24,53 @@ from PIL import Image
 
 import bearing_prepare as base
 
-SELECTION_VERSION = "soft_sequence_v4_big_turns_smooth_legs"
+SELECTION_VERSION = "soft_sequence_v5_long_straights_big_turns"
 
-# Restore the original large-turn geometry.  These are the turns the temporal
-# tracker is supposed to follow.  The only planned micro-kink removed is the
-# nearly-collinear test_01 point (3040, 1690); the surrounding large corners are
-# unchanged.  Coordinates are in the canonical 4096x4096 Bearing RSI.
+# Long-straight / big-turn route geometry. Each route stays in the same broad
+# city region as before, but now contains only a few explicit corners. Typical
+# straight legs are about 100-275 m and planned turns are roughly 43-101 deg.
+# This makes it visually obvious whether a bend belongs to GT or prediction.
+# Coordinates are in the canonical 4096x4096 Bearing RSI.
 BIG_TURN_ROUTE_SPECS = {
     "train_01": [
-        (330, 620), (690, 850), (1060, 690), (1390, 1030), (1710, 880),
-        (1990, 1210), (2240, 1090), (2510, 1450), (2780, 1290),
-        (3070, 1620), (3330, 1480),
+        (330, 620),
+        (1250, 700),
+        (1500, 1150),
+        (2600, 1200),
+        (3000, 1620),
+        (3330, 1480),
     ],
     "train_02": [
-        (430, 3080), (770, 2780), (1120, 3060), (1460, 2700),
-        (1800, 2970), (2110, 2600), (2460, 2910), (2800, 2510),
-        (3170, 2780), (3510, 2410),
+        (430, 3080),
+        (1350, 3080),
+        (1600, 2550),
+        (2650, 2550),
+        (3000, 3000),
+        (3510, 2410),
     ],
     "train_03": [
-        (3330, 430), (3050, 760), (3410, 1110), (3100, 1480),
-        (3510, 1810), (3200, 2180), (3560, 2530), (3260, 2900),
-        (3610, 3260), (3310, 3610),
+        (3330, 430),
+        (3330, 1350),
+        (2950, 1750),
+        (3550, 2500),
+        (3150, 3050),
+        (3310, 3610),
     ],
     "test_01": [
-        (560, 1810), (900, 1510), (1260, 1840), (1610, 1540),
-        (1980, 1900), (2320, 1610), (2680, 1970),
-        (3250, 1450), (3410, 2050),
+        (560, 1810),
+        (1450, 1810),
+        (1700, 1450),
+        (2550, 1450),
+        (2800, 2000),
+        (3410, 2050),
     ],
     "test_02": [
-        (900, 330), (1160, 660), (900, 1010), (1270, 1320),
-        (1010, 1660), (1370, 2010), (1090, 2360), (1500, 2660),
-        (1240, 3010), (1660, 3360), (1440, 3690),
+        (900, 330),
+        (900, 1250),
+        (1350, 1600),
+        (1350, 2450),
+        (950, 2850),
+        (1440, 3690),
     ],
 }
 
@@ -138,8 +154,8 @@ def _sequence_select(
                 )
 
                 # Prefer a real UAV observation close to the planned centreline.
-                # This does not alter its GT coordinate; it selects a better real
-                # sample from the Bearing pool.
+                # This never moves or relabels GT; it only selects a better real
+                # Bearing observation from the available pool.
                 transition = (
                     float(target_err_m)
                     + float(point_cross_weight) * abs(current_lateral)
@@ -172,9 +188,9 @@ def _sequence_select(
                         0.0, step - float(preferred_step_m)
                     ) ** 2
 
-                    # Suppress only the small left/right wobble within the same
-                    # leg.  Across a real large corner this term is disabled, so
-                    # the intended 70-120 degree route turns remain untouched.
+                    # Suppress only same-leg left/right wobble. Across an actual
+                    # planned corner (>= threshold), this term is disabled so the
+                    # large turn remains explicit.
                     planned_turn = _angle_delta_abs_deg(headings[tb], headings[ta])
                     if planned_turn < float(big_turn_threshold_deg):
                         previous_offset = xy_m[int(last_idx)] - target_m[ta]
@@ -308,8 +324,6 @@ def prepare(args):
     rows = base._city_rows(pd.read_csv(metadata_path), city)
     basename_index = base._build_basename_index(dataset_root, city)
 
-    # IMPORTANT: do not use the flattened route experiment.  Use the restored
-    # large-turn route geometry above.
     routes = {
         name: base._scale_route(points, width, height)
         for name, points in BIG_TURN_ROUTE_SPECS.items()
@@ -392,8 +406,8 @@ def prepare(args):
         "inference_routes": list(base.TEST_ROUTES),
         "route_stats": stats,
         "note": (
-            "Original large route turns preserved; real Bearing observations are "
-            "selected with same-leg centreline/lateral smoothing only. Yaw is not used."
+            "Long straight route legs with explicit large turns; real Bearing "
+            "observations use same-leg centreline/lateral smoothing only. Yaw is not used."
         ),
     }
     (output_root / "experiment.json").write_text(
@@ -420,9 +434,9 @@ def build_parser():
     p.add_argument("--large-step-weight", type=float, default=0.35)
     p.add_argument("--cross-weight", type=float, default=1.0)
     p.add_argument("--backward-weight", type=float, default=8.0)
-    p.add_argument("--point-cross-weight", type=float, default=3.0)
-    p.add_argument("--lateral-smooth-weight", type=float, default=3.0)
-    p.add_argument("--big-turn-threshold-deg", type=float, default=45.0)
+    p.add_argument("--point-cross-weight", type=float, default=5.0)
+    p.add_argument("--lateral-smooth-weight", type=float, default=5.0)
+    p.add_argument("--big-turn-threshold-deg", type=float, default=35.0)
     p.add_argument("--min-selected-ratio", type=float, default=0.70)
     return p
 
