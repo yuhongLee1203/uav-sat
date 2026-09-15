@@ -13,20 +13,16 @@ USED_MODE="?"
 cd "${REPO_ROOT}"
 
 prepare_sequence() {
-  local safety_cap="$1"
-  local sample_distance="$2"
-  local max_cross="$3"
-  local max_lat_jump="$4"
-  local max_backward="$5"
-  local min_ratio="$6"
-  local mode="$7"
+  local max_cross="$1"
+  local max_lat_jump="$2"
+  local min_ratio="$3"
+  local mode="$4"
 
   rm -rf "${PREPARED_ROOT}"
-  echo "[PREP] v11 physical pseudo-flight: mode=${mode} safety=${safety_cap}m radius=${sample_distance}m cross<=${max_cross}m lateral_jump<=${max_lat_jump}m"
+  echo "[PREP] v12 dense->physical-prune: mode=${mode} cross<=${max_cross}m lateral_jump<=${max_lat_jump}m"
 
   if python3 - "${DATASET_ROOT}" "${CITY}" "${PREPARED_ROOT}" \
-      "${safety_cap}" "${sample_distance}" "${max_cross}" \
-      "${max_lat_jump}" "${max_backward}" "${min_ratio}" "${mode}" <<'PY'
+      "${max_cross}" "${max_lat_jump}" "${min_ratio}" "${mode}" <<'PY'
 import argparse
 import sys
 from pathlib import Path
@@ -35,9 +31,9 @@ repo = Path.cwd()
 sys.path.insert(0, str(repo / "v39_otherdata"))
 import bearing_prepare_sequence_v3 as seq
 
-# Keep the previously verified dense Bearing corridors. These routes already
-# have many explicit turns and long waypoint-to-waypoint straight legs. We do
-# not move the corridor into unsupported map regions again.
+# These are the proven Bearing corridors: multiple irregular major turns with a
+# straight waypoint-to-waypoint leg between turns.  Do not invent unsupported
+# corridors merely to make the plot look straight.
 seq.PIECEWISE_ROUTE_SPECS = {
     "train_01": [
         (330, 620), (690, 850), (1060, 690), (1390, 1030), (1710, 880),
@@ -65,59 +61,56 @@ seq.PIECEWISE_ROUTE_SPECS = {
         (1240, 3010), (1660, 3360), (1440, 3690),
     ],
 }
-seq.SELECTION_VERSION = "soft_sequence_v11_dualbeam_monotonic_skip_safe"
+seq.SELECTION_VERSION = "soft_sequence_v12_dense_then_physical_leg_prune"
 
 args = argparse.Namespace(
     dataset_root=sys.argv[1],
     city=sys.argv[2],
     output_root=sys.argv[3],
 
-    # Use 4 m targets. The previous 3 m target grid oversampled an independent
-    # image dataset and forced an unrealistically high unique-observation
-    # density. At 4 m, bad observations can be skipped while the retained
-    # sequence stays close to the temporal scale of canonical v39.
+    # Keep the successful v9 4 m target grid for dense matching.  We do NOT
+    # demand one physical frame every 4 m; bad frames are removed afterwards.
     step_m=4.0,
     preferred_step_m=4.0,
 
-    safety_max_step_m=float(sys.argv[4]),
-    max_sample_distance_m=float(sys.argv[5]),
-    max_cross_track_m=float(sys.argv[6]),
-    max_same_leg_lateral_jump_m=float(sys.argv[7]),
-    max_same_leg_backward_m=float(sys.argv[8]),
-    min_selected_ratio=float(sys.argv[9]),
-
+    # Dense-stage settings deliberately match the previously successful regime.
+    safety_max_step_m=22.0,
+    max_sample_distance_m=10.0,
     candidate_limit=256,
     beam_width=512,
-    skip_penalty=95.0,
-    continuity_weight=3.0,
-    large_step_weight=1.0,
-    cross_weight=2.5,
-    backward_weight=18.0,
-    point_cross_weight=22.0,
-    lateral_smooth_weight=40.0,
+    skip_penalty=40.0,
+    continuity_weight=2.5,
+    large_step_weight=0.85,
+    cross_weight=2.0,
+    backward_weight=12.0,
+    point_cross_weight=20.0,
+    lateral_smooth_weight=35.0,
     big_turn_threshold_deg=25.0,
+
+    # Second-stage physical straight-leg prune.
+    max_cross_track_m=float(sys.argv[4]),
+    max_same_leg_lateral_jump_m=float(sys.argv[5]),
+    max_same_leg_backward_m=0.0,
+    min_selected_ratio=float(sys.argv[6]),
 )
 seq.prepare(args)
 PY
   then
-    USED_SAMPLE_DISTANCE="${sample_distance}"
+    USED_SAMPLE_DISTANCE="10"
     USED_MODE="${mode}"
     return 0
   fi
   return 1
 }
 
-# v11 never kills the entire beam merely because one local section is sparse.
-# Each pass is evaluated after the complete route, then the hard physical gates
-# are relaxed gradually only if the requested route density is impossible.
-if ! prepare_sequence 10 8 3.5 2.5 0.00 0.55 strict; then
-  echo "[PREP] strict route not dense enough; retrying moderate constraints"
-  if ! prepare_sequence 12 10 4.0 3.0 0.15 0.55 moderate; then
-    echo "[PREP] moderate route not dense enough; retrying balanced constraints"
-    if ! prepare_sequence 14 12 4.75 3.5 0.35 0.52 balanced; then
-      echo "[PREP] balanced route not dense enough; final physical fallback"
-      prepare_sequence 16 15 5.5 4.0 0.50 0.50 fallback
-    fi
+# The dense first stage is intentionally easy to satisfy because it reproduces
+# the old 98-100% route matching.  Only the POST-selection physical prune is
+# relaxed if a corridor is unusually sparse.
+if ! prepare_sequence 5.5 2.75 0.30 strict; then
+  echo "[PREP] strict post-prune kept too few frames; retrying balanced prune"
+  if ! prepare_sequence 6.5 3.5 0.28 balanced; then
+    echo "[PREP] balanced post-prune kept too few frames; retrying relaxed prune"
+    prepare_sequence 8.0 4.5 0.25 relaxed
   fi
 fi
 
@@ -128,18 +121,20 @@ from pathlib import Path
 p = Path(sys.argv[1])
 root = Path(sys.argv[2])
 d = json.loads(p.read_text(encoding="utf-8"))
-print("[V11-PHYSICAL-PSEUDOFLIGHT] route audit")
+print("[V12-DENSE-THEN-PRUNE] route audit")
 failed = []
 
 for name, s in d["route_stats"].items():
     ratio = float(s["selected_ratio"])
+    dense_ratio = float(s.get("dense_selected_ratio", 0.0))
+    keep_ratio = float(s.get("prune_keep_ratio", 0.0))
     center_p90 = float(s.get("centerline_cross_p90_m", 0.0))
     wobble_p90 = float(s.get("same_leg_lateral_delta_p90_m", 0.0))
     wobble_max = float(s.get("same_leg_lateral_delta_max_m", 0.0))
     backward = float(s.get("backward_step_pct", 0.0))
     same_back = float(s.get("same_leg_backward_step_pct", 0.0))
-    step_mean = float(s["actual_step_mean_m"])
-    step_p90 = float(s["actual_step_p90_m"])
+    step_mean = float(s.get("actual_step_mean_m", 0.0))
+    step_p90 = float(s.get("actual_step_p90_m", 0.0))
 
     wp = json.loads(
         (root / "routes" / name / "waypoints.json").read_text(encoding="utf-8")
@@ -147,15 +142,12 @@ for name, s in d["route_stats"].items():
     pts = [(float(x["pixel_x"]), float(x["pixel_y"])) for x in wp]
     headings = []
     for a, b in zip(pts, pts[1:]):
-        dx, dy = b[0] - a[0], b[1] - a[1]
-        headings.append(math.degrees(math.atan2(dy, dx)))
-    turns = [
-        abs((b - a + 180.0) % 360.0 - 180.0)
-        for a, b in zip(headings, headings[1:])
-    ]
+        headings.append(math.degrees(math.atan2(b[1]-a[1], b[0]-a[0])))
+    turns = [abs((b-a+180.0)%360.0-180.0) for a,b in zip(headings, headings[1:])]
 
     print(
-        f"  {name}: frames={s['frames']} selected={ratio*100:.1f}% "
+        f"  {name}: dense={dense_ratio*100:.1f}% -> physical={ratio*100:.1f}% "
+        f"(kept {keep_ratio*100:.1f}% of dense) frames={s['frames']} "
         f"step_mean={step_mean:.2f}m step_p90={step_p90:.2f}m "
         f"centerline_p90={center_p90:.2f}m "
         f"same_leg_wobble_p90={wobble_p90:.2f}m max={wobble_max:.2f}m "
@@ -163,25 +155,21 @@ for name, s in d["route_stats"].items():
         f"turns={[round(v,1) for v in turns]}"
     )
 
-    if ratio < 0.50:
-        failed.append(f"{name}: selected_ratio={ratio:.3f}")
-    if same_back > 1.0:
-        failed.append(f"{name}: same_leg_backward={same_back:.2f}%")
+    if int(s["frames"]) < 30:
+        failed.append(f"{name}: only {s['frames']} frames")
+    if same_back > 0.01:
+        failed.append(f"{name}: same-leg backward remained {same_back:.3f}%")
     rule = float(s.get("max_same_leg_lateral_jump_rule_m", 999.0))
     if wobble_max > rule + 1e-5:
-        failed.append(
-            f"{name}: lateral jump {wobble_max:.3f} > rule {rule:.3f}"
-        )
+        failed.append(f"{name}: wobble {wobble_max:.3f} > rule {rule:.3f}")
 
 if failed:
-    raise SystemExit(
-        "[V11-PHYSICAL-PSEUDOFLIGHT] audit failed: " + "; ".join(failed)
-    )
-print("[V11-PHYSICAL-PSEUDOFLIGHT] route audit: PASS")
+    raise SystemExit("[V12-DENSE-THEN-PRUNE] audit failed: " + "; ".join(failed))
+print("[V12-DENSE-THEN-PRUNE] route audit: PASS")
 PY
 
-# The estimator remains the saved canonical exact-v39. Only the external
-# pseudo-flight data adapter changed.
+# Exact canonical v39 estimator.  Step=4 must match experiment.json so the
+# runner reuses the v12 prepared data rather than rebuilding it with base prep.
 python3 v39_otherdata/bearing_runner_exact_v39.py \
   --dataset-root "${DATASET_ROOT}" \
   --city "${CITY}" \
@@ -202,10 +190,10 @@ python3 v39_otherdata/bearing_plot_final_vs_gt.py \
 
 echo ""
 echo "================================================================================================="
-echo "Bearing exact-v39 v11 physical pseudo-flight experiment finished"
-echo "Data adapter: dual density/smoothness beam + skip-safe straight-leg physical constraints"
-echo "Target pseudo-flight cadence: 4.0 m"
-echo "Selection mode: ${USED_MODE}; observation radius: ${USED_SAMPLE_DISTANCE} m"
+echo "Bearing exact-v39 v12 experiment finished"
+echo "Adapter: dense real-observation match -> per-straight-leg longest physical subsequence prune"
+echo "Mode: ${USED_MODE}"
+echo "No GT projection/relabeling; retained Bearing coordinates remain real"
 echo "Green: planned/reference route | Cyan dots: true sampled GT | Red: final prediction"
 echo "Diagnostic orange: Kalman before final MeanShift"
 echo "Model unchanged: Weighted Centroid -> 3-frame Context-GRU -> velocity -> fixed Kalman -> final 5x5 MS"
