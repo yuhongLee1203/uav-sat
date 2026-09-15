@@ -30,34 +30,51 @@ CITY_TO_RSI = {
     "cityd": ("38bc", "37.75538738738739_-122.4533351740761_1791.95_1024_1024_4326_city.jpg"),
 }
 
-# Irregular route style follows Bearing-UAV's released navigation waypoint files:
-# alternating turns, unequal legs, and occasional partial crossings rather than
-# straight or uniformly sinusoidal paths. Coordinates are canonical 4096x4096 px.
+# Smooth long-leg pseudo-flight routes for temporal evaluation.  Keep each route
+# in the same broad map region as the previous version, but remove the repeated
+# short left/right zig-zags.  Each route now contains a few long straight legs
+# joined by broad, interpretable bends so GT-vs-prediction plots are easier to
+# read while still testing turns. Coordinates are canonical 4096x4096 px.
 ROUTE_SPECS: Dict[str, List[Tuple[int, int]]] = {
     "train_01": [
-        (330, 620), (690, 850), (1060, 690), (1390, 1030), (1710, 880),
-        (1990, 1210), (2240, 1090), (2510, 1450), (2780, 1290),
-        (3070, 1620), (3330, 1480),
+        (330, 620),
+        (980, 760),
+        (1600, 910),
+        (2200, 1110),
+        (2800, 1290),
+        (3330, 1480),
     ],
     "train_02": [
-        (430, 3080), (770, 2780), (1120, 3060), (1460, 2700),
-        (1800, 2970), (2110, 2600), (2460, 2910), (2800, 2510),
-        (3170, 2780), (3510, 2410),
+        (430, 3080),
+        (1050, 2960),
+        (1700, 2860),
+        (2350, 2740),
+        (2950, 2600),
+        (3510, 2410),
     ],
     "train_03": [
-        (3330, 430), (3050, 760), (3410, 1110), (3100, 1480),
-        (3510, 1810), (3200, 2180), (3560, 2530), (3260, 2900),
-        (3610, 3260), (3310, 3610),
+        (3330, 430),
+        (3210, 1060),
+        (3350, 1710),
+        (3260, 2360),
+        (3400, 3010),
+        (3310, 3610),
     ],
     "test_01": [
-        (560, 1810), (900, 1510), (1260, 1840), (1610, 1540),
-        (1980, 1900), (2320, 1610), (2680, 1970), (3040, 1690),
-        (3250, 1450), (3410, 2050),
+        (560, 1810),
+        (1160, 1710),
+        (1760, 1760),
+        (2360, 1860),
+        (2920, 1810),
+        (3410, 2050),
     ],
     "test_02": [
-        (900, 330), (1160, 660), (900, 1010), (1270, 1320),
-        (1010, 1660), (1370, 2010), (1090, 2360), (1500, 2660),
-        (1240, 3010), (1660, 3360), (1440, 3690),
+        (900, 330),
+        (1080, 960),
+        (1020, 1610),
+        (1230, 2260),
+        (1320, 2960),
+        (1440, 3690),
     ],
 }
 TRAIN_ROUTES = ("train_01", "train_02", "train_03")
