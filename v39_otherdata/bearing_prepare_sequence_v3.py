@@ -2,7 +2,7 @@
 """Prepare Bearing-UAV pseudo-flight routes from real independent observations.
 
 Bearing-UAV images are independent observations rather than frames from one
-recorded flight.  A pseudo-flight must therefore be assembled carefully.  The
+recorded flight. A pseudo-flight must therefore be assembled carefully. The
 planned waypoint polyline defines the reference route, while every selected UAV
 image keeps its real metric coordinate.
 
@@ -12,9 +12,10 @@ The selector uses two complementary beam fronts:
     skipped.
 
 In addition to soft costs, physical same-leg constraints reject backward motion
-and large left/right lateral jumps.  This avoids turning independent observation
-scatter into a "caterpillar" temporal trajectory.  UAV yaw is never used by the
-localization model.
+and large left/right lateral jumps. Skipping is always allowed during beam
+search; the requested density is checked only after the complete route has been
+processed. This prevents an early sparse section from killing every hypothesis.
+UAV yaw is never used by the localization model.
 """
 from __future__ import annotations
 
@@ -29,9 +30,9 @@ from PIL import Image
 
 import bearing_prepare as base
 
-SELECTION_VERSION = "soft_sequence_v10_dualbeam_monotonic_straight_legs"
+SELECTION_VERSION = "soft_sequence_v11_dualbeam_monotonic_skip_safe"
 
-# Safe defaults.  The experiment runner overrides this dictionary with the
+# Safe defaults. The experiment runner overrides this dictionary with the
 # verified dense Bearing corridors before calling prepare().
 PIECEWISE_ROUTE_SPECS = dict(base.ROUTE_SPECS)
 
@@ -127,7 +128,6 @@ def _sequence_select(
     minimum = max(
         2, int(np.ceil(float(min_selected_ratio) * len(targets)))
     )
-    max_skips_total = max(0, len(targets) - minimum)
 
     # state = cost, last_row, last_target, selected_rows, selected_targets,
     #         used_local, skips
@@ -146,20 +146,22 @@ def _sequence_select(
                 skips,
             ) = state
 
-            # A bad independent observation may be skipped.  The total number
-            # of skips can never exceed the requested minimum density.
-            if skips < max_skips_total:
-                expanded.append(
-                    (
-                        cost + float(skip_penalty),
-                        last_idx,
-                        last_target,
-                        ids,
-                        tids,
-                        local_used,
-                        skips + 1,
-                    )
+            # IMPORTANT: always keep a skip hypothesis. Bearing observations
+            # are independent and sparse in some local sections. The previous
+            # implementation stopped allowing skips after a global quota was
+            # reached, which could make every beam disappear at one target.
+            # Density is enforced after the whole route, not mid-route.
+            expanded.append(
+                (
+                    cost + float(skip_penalty),
+                    last_idx,
+                    last_target,
+                    ids,
+                    tids,
+                    local_used,
+                    skips + 1,
                 )
+            )
 
             for idx, target_err_m in candidates:
                 if idx in local_used:
@@ -173,7 +175,7 @@ def _sequence_select(
                     )
                 )
 
-                # Absolute cross-track guard.  This is a sample-selection rule,
+                # Absolute cross-track guard. This is a sample-selection rule,
                 # not a coordinate projection: the retained GT remains real.
                 if (
                     abs(current_lateral)
@@ -199,9 +201,7 @@ def _sequence_select(
                     ta = int(last_target)
                     tb = int(target_index)
                     route_delta = target_m[tb] - target_m[ta]
-                    route_norm = float(
-                        np.linalg.norm(route_delta)
-                    )
+                    route_norm = float(np.linalg.norm(route_delta))
                     if route_norm <= 1e-9:
                         unit = heading_unit[tb]
                         desired = float(preferred_step_m)
@@ -213,25 +213,19 @@ def _sequence_select(
                         [-unit[1], unit[0]], dtype=np.float64
                     )
                     along = float(np.dot(delta, unit))
-                    cross = abs(
-                        float(np.dot(delta, cross_axis))
-                    )
+                    cross = abs(float(np.dot(delta, cross_axis)))
 
                     planned_turn = _angle_delta_abs_deg(
                         headings[tb], headings[ta]
                     )
-                    same_leg = (
-                        planned_turn
-                        < float(big_turn_threshold_deg)
-                    )
+                    same_leg = planned_turn < float(big_turn_threshold_deg)
 
                     if same_leg:
                         # On a straight segment, never walk backwards just to
                         # retain more independent Bearing observations.
                         if (
                             along
-                            < -float(max_same_leg_backward_m)
-                            - 1e-9
+                            < -float(max_same_leg_backward_m) - 1e-9
                         ):
                             continue
 
@@ -248,30 +242,22 @@ def _sequence_select(
                             current_lateral - previous_lateral
                         )
 
-                        # Soft weights alone could not stop the old count-first
-                        # beam from choosing left/right caterpillar steps.
                         if (
                             lateral_jump
-                            > float(
-                                max_same_leg_lateral_jump_m
-                            )
-                            + 1e-9
+                            > float(max_same_leg_lateral_jump_m) + 1e-9
                         ):
                             continue
 
                         transition += (
-                            float(lateral_smooth_weight)
-                            * lateral_jump
+                            float(lateral_smooth_weight) * lateral_jump
                         )
 
                     transition += (
-                        float(continuity_weight)
-                        * abs(step - desired)
+                        float(continuity_weight) * abs(step - desired)
                     )
                     transition += float(cross_weight) * cross
                     transition += (
-                        float(backward_weight)
-                        * max(0.0, -along)
+                        float(backward_weight) * max(0.0, -along)
                     )
                     transition += (
                         float(large_step_weight)
@@ -294,13 +280,13 @@ def _sequence_select(
                     )
                 )
 
+        # Because a skip hypothesis is unconditional, expanded should never be
+        # empty. Keep this assertion as a real internal-error guard.
         if not expanded:
             raise RuntimeError(
-                f"sequence search became empty at target {target_index}"
+                f"internal beam error at target {target_index}"
             )
 
-        # Keep both dense and smooth routes, then choose the cheapest feasible
-        # route after all targets have been processed.
         beams = _merge_beams(expanded, int(beam_width))
 
     feasible = [
@@ -309,10 +295,16 @@ def _sequence_select(
     ]
     if not feasible:
         best_count = max(len(state[3]) for state in beams)
+        best_ratio = best_count / max(len(targets), 1)
         raise RuntimeError(
             "No sufficiently dense monotonic route: "
-            "required=%d/%d best=%d"
-            % (minimum, len(targets), best_count)
+            "required=%d/%d best=%d (%.1f%%)"
+            % (
+                minimum,
+                len(targets),
+                best_count,
+                100.0 * best_ratio,
+            )
         )
 
     best = min(
@@ -331,9 +323,7 @@ def _sequence_select(
     selected_cross_axis = target_cross_axis[selected_tid]
 
     steps = (
-        np.linalg.norm(
-            np.diff(selected_xy, axis=0), axis=1
-        )
+        np.linalg.norm(np.diff(selected_xy, axis=0), axis=1)
         if len(ids) > 1
         else np.zeros(0, dtype=np.float64)
     )
@@ -395,24 +385,16 @@ def _sequence_select(
     diag = {
         "targets": int(len(targets)),
         "frames": int(len(ids)),
-        "selected_ratio": float(
-            len(ids) / max(len(targets), 1)
-        ),
+        "selected_ratio": float(len(ids) / max(len(targets), 1)),
         "skipped_targets": int(len(targets) - len(ids)),
         "mean_target_error_m": (
-            float(target_error.mean())
-            if len(target_error)
-            else 0.0
+            float(target_error.mean()) if len(target_error) else 0.0
         ),
         "max_target_error_m": (
-            float(target_error.max())
-            if len(target_error)
-            else 0.0
+            float(target_error.max()) if len(target_error) else 0.0
         ),
         "centerline_cross_mean_m": (
-            float(abs_lateral.mean())
-            if len(abs_lateral)
-            else 0.0
+            float(abs_lateral.mean()) if len(abs_lateral) else 0.0
         ),
         "centerline_cross_p90_m": (
             float(np.percentile(abs_lateral, 90))
@@ -420,9 +402,7 @@ def _sequence_select(
             else 0.0
         ),
         "centerline_cross_max_m": (
-            float(abs_lateral.max())
-            if len(abs_lateral)
-            else 0.0
+            float(abs_lateral.max()) if len(abs_lateral) else 0.0
         ),
         "same_leg_lateral_delta_p90_m": (
             float(np.percentile(same_leg_lateral_delta, 90))
@@ -438,19 +418,13 @@ def _sequence_select(
             float(steps.mean()) if len(steps) else 0.0
         ),
         "actual_step_p50_m": (
-            float(np.percentile(steps, 50))
-            if len(steps)
-            else 0.0
+            float(np.percentile(steps, 50)) if len(steps) else 0.0
         ),
         "actual_step_p90_m": (
-            float(np.percentile(steps, 90))
-            if len(steps)
-            else 0.0
+            float(np.percentile(steps, 90)) if len(steps) else 0.0
         ),
         "actual_step_p95_m": (
-            float(np.percentile(steps, 95))
-            if len(steps)
-            else 0.0
+            float(np.percentile(steps, 95)) if len(steps) else 0.0
         ),
         "actual_step_max_m": (
             float(steps.max()) if len(steps) else 0.0
@@ -467,9 +441,7 @@ def _sequence_select(
             100.0 * backward / max(len(ids) - 1, 1)
         ),
         "same_leg_backward_step_pct": float(
-            100.0
-            * same_leg_backward
-            / max(len(ids) - 1, 1)
+            100.0 * same_leg_backward / max(len(ids) - 1, 1)
         ),
         "max_cross_track_rule_m": float(max_cross_track_m),
         "max_same_leg_lateral_jump_rule_m": float(
