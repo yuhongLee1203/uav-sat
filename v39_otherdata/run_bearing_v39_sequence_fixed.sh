@@ -26,10 +26,10 @@ repo = Path.cwd()
 sys.path.insert(0, str(repo / "v39_otherdata"))
 import bearing_prepare_sequence_v3 as seq
 
-# IMPORTANT: explicit piecewise-linear navigation routes.  Every two waypoints
+# IMPORTANT: explicit piecewise-linear navigation routes. Every two waypoints
 # define one long straight leg. Intermediate waypoints are deliberate large
 # corners, not gradual small bends.
-seq.BIG_TURN_ROUTE_SPECS = {
+seq.PIECEWISE_ROUTE_SPECS = {
     "train_01": [
         (330, 620), (1300, 620), (1300, 1100),
         (2400, 1100), (2400, 1550), (3330, 1550),
@@ -68,11 +68,8 @@ args = argparse.Namespace(
     large_step_weight=0.75,
     cross_weight=1.25,
     backward_weight=10.0,
-    # Stronger than the previous run: keep true Bearing samples close to each
-    # straight leg and avoid alternating left/right offsets within that leg.
     point_cross_weight=8.0,
     lateral_smooth_weight=12.0,
-    # The planned corners are ~90 deg. Same-leg smoothing is disabled there.
     big_turn_threshold_deg=45.0,
     min_selected_ratio=0.75,
 )
