@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Prepare Bearing-UAV pseudo-flight routes with soft temporal coherence.
+"""Prepare Bearing-UAV pseudo-flight routes with big turns preserved.
 
-Bearing-UAV images are independent observations, not video frames.  Therefore a
-hard <=8 m frame-to-frame rule is often infeasible.  This adapter instead finds
-a globally-disjoint, route-ordered sequence that maximizes usable frames while
-penalizing large steps, lateral jumps and backwards motion.  UAV yaw is ignored
-by default and is never passed to the localization model.
+Bearing-UAV images are independent observations rather than consecutive video
+frames.  We therefore build a pseudo-flight sequence from real Bearing samples.
+The route keeps the original large navigation turns, while the sample selector
+suppresses small left/right zig-zags *inside the same route leg* by preferring
+observations close to the planned leg centreline and with stable lateral offset.
 
-The resulting route statistics are later used by the Bearing-only runner to
-adapt the temporal cadence limits from TRAIN routes only.  The v39 architecture
-itself is unchanged.
+The smoothing cost is automatically disabled across a genuine large turn, so it
+cannot flatten the large corners that are intentionally part of the route.
+UAV yaw is not used by the localization model.
 """
 from __future__ import annotations
 
@@ -24,7 +24,43 @@ from PIL import Image
 
 import bearing_prepare as base
 
-SELECTION_VERSION = "soft_sequence_v3_train_cadence"
+SELECTION_VERSION = "soft_sequence_v4_big_turns_smooth_legs"
+
+# Restore the original large-turn geometry.  These are the turns the temporal
+# tracker is supposed to follow.  The only planned micro-kink removed is the
+# nearly-collinear test_01 point (3040, 1690); the surrounding large corners are
+# unchanged.  Coordinates are in the canonical 4096x4096 Bearing RSI.
+BIG_TURN_ROUTE_SPECS = {
+    "train_01": [
+        (330, 620), (690, 850), (1060, 690), (1390, 1030), (1710, 880),
+        (1990, 1210), (2240, 1090), (2510, 1450), (2780, 1290),
+        (3070, 1620), (3330, 1480),
+    ],
+    "train_02": [
+        (430, 3080), (770, 2780), (1120, 3060), (1460, 2700),
+        (1800, 2970), (2110, 2600), (2460, 2910), (2800, 2510),
+        (3170, 2780), (3510, 2410),
+    ],
+    "train_03": [
+        (3330, 430), (3050, 760), (3410, 1110), (3100, 1480),
+        (3510, 1810), (3200, 2180), (3560, 2530), (3260, 2900),
+        (3610, 3260), (3310, 3610),
+    ],
+    "test_01": [
+        (560, 1810), (900, 1510), (1260, 1840), (1610, 1540),
+        (1980, 1900), (2320, 1610), (2680, 1970),
+        (3250, 1450), (3410, 2050),
+    ],
+    "test_02": [
+        (900, 330), (1160, 660), (900, 1010), (1270, 1320),
+        (1010, 1660), (1370, 2010), (1090, 2360), (1500, 2660),
+        (1240, 3010), (1660, 3360), (1440, 3690),
+    ],
+}
+
+
+def _angle_delta_abs_deg(a: float, b: float) -> float:
+    return abs((float(a) - float(b) + 180.0) % 360.0 - 180.0)
 
 
 def _sequence_select(
@@ -43,13 +79,21 @@ def _sequence_select(
     large_step_weight: float,
     cross_weight: float,
     backward_weight: float,
+    point_cross_weight: float,
+    lateral_smooth_weight: float,
+    big_turn_threshold_deg: float,
     min_selected_ratio: float,
 ):
     xy_px = rows[["global_x_px", "global_y_px"]].to_numpy(dtype=np.float64)
     xy_m = xy_px * float(base.MPP)
+    target_m = np.asarray(targets, dtype=np.float64) * float(base.MPP)
     identities = rows["target_path"].astype(str).tolist()
     blocked = np.asarray([identity in used_global for identity in identities], dtype=bool)
     max_sample_px = float(max_sample_distance_m) / float(base.MPP)
+
+    heading_rad = np.deg2rad(np.asarray(headings, dtype=np.float64))
+    heading_unit = np.stack([np.cos(heading_rad), np.sin(heading_rad)], axis=1)
+    target_cross_axis = np.stack([-heading_unit[:, 1], heading_unit[:, 0]], axis=1)
 
     candidate_lists: List[List[Tuple[int, float]]] = []
     for target in targets:
@@ -71,8 +115,7 @@ def _sequence_select(
         for state in beams:
             cost, last_idx, last_target, ids, tids, local_used, skips = state
 
-            # Skip is permitted because the source is not a video.  We prefer
-            # selecting more frames first, then choose the smoothest chain.
+            # Bearing observations are independent, so a target may be skipped.
             expanded.append(
                 (
                     cost + float(skip_penalty),
@@ -88,7 +131,20 @@ def _sequence_select(
             for idx, target_err_m in candidates:
                 if idx in local_used:
                     continue
-                transition = float(target_err_m)
+
+                current_offset = xy_m[idx] - target_m[target_index]
+                current_lateral = float(
+                    np.dot(current_offset, target_cross_axis[target_index])
+                )
+
+                # Prefer a real UAV observation close to the planned centreline.
+                # This does not alter its GT coordinate; it selects a better real
+                # sample from the Bearing pool.
+                transition = (
+                    float(target_err_m)
+                    + float(point_cross_weight) * abs(current_lateral)
+                )
+
                 if last_idx is not None:
                     delta = xy_m[idx] - xy_m[int(last_idx)]
                     step = float(np.linalg.norm(delta))
@@ -97,11 +153,10 @@ def _sequence_select(
 
                     ta = int(last_target)
                     tb = int(target_index)
-                    route_delta = (targets[tb] - targets[ta]) * float(base.MPP)
+                    route_delta = target_m[tb] - target_m[ta]
                     route_norm = float(np.linalg.norm(route_delta))
                     if route_norm <= 1e-9:
-                        heading_rad = np.deg2rad(float(headings[tb]))
-                        unit = np.asarray([np.cos(heading_rad), np.sin(heading_rad)])
+                        unit = heading_unit[tb]
                         desired = float(preferred_step_m)
                     else:
                         unit = route_delta / route_norm
@@ -116,6 +171,19 @@ def _sequence_select(
                     transition += float(large_step_weight) * max(
                         0.0, step - float(preferred_step_m)
                     ) ** 2
+
+                    # Suppress only the small left/right wobble within the same
+                    # leg.  Across a real large corner this term is disabled, so
+                    # the intended 70-120 degree route turns remain untouched.
+                    planned_turn = _angle_delta_abs_deg(headings[tb], headings[ta])
+                    if planned_turn < float(big_turn_threshold_deg):
+                        previous_offset = xy_m[int(last_idx)] - target_m[ta]
+                        previous_lateral = float(
+                            np.dot(previous_offset, target_cross_axis[ta])
+                        )
+                        transition += float(lateral_smooth_weight) * abs(
+                            current_lateral - previous_lateral
+                        )
 
                 expanded.append(
                     (
@@ -132,9 +200,7 @@ def _sequence_select(
         if not expanded:
             raise RuntimeError(f"sequence search became empty at target {target_index}")
 
-        # Primary objective: retain as many frames as possible. Secondary:
-        # minimum temporal/geometric cost. This avoids the previous beam search
-        # degenerating to a very short but cheap 12-frame chain.
+        # First keep as many targets as possible, then choose the smoothest chain.
         expanded.sort(key=lambda s: (-len(s[3]), s[0], s[6]))
         beams = expanded[: int(beam_width)]
 
@@ -154,31 +220,42 @@ def _sequence_select(
     for idx in ids:
         used_global.add(identities[idx])
 
-    selected_xy = xy_m[np.asarray(ids, dtype=np.int64)]
+    selected_idx = np.asarray(ids, dtype=np.int64)
+    selected_tid = np.asarray(target_ids, dtype=np.int64)
+    selected_xy = xy_m[selected_idx]
+    selected_targets_m = target_m[selected_tid]
+    selected_cross_axis = target_cross_axis[selected_tid]
+
     steps = (
         np.linalg.norm(np.diff(selected_xy, axis=0), axis=1)
         if len(ids) > 1
         else np.zeros(0, dtype=np.float64)
     )
-    target_xy = targets[np.asarray(target_ids, dtype=np.int64)]
-    target_error = np.linalg.norm(
-        xy_px[np.asarray(ids, dtype=np.int64)] - target_xy, axis=1
-    ) * float(base.MPP)
+    target_error = np.linalg.norm(selected_xy - selected_targets_m, axis=1)
+    signed_lateral = np.sum(
+        (selected_xy - selected_targets_m) * selected_cross_axis, axis=1
+    )
+    abs_lateral = np.abs(signed_lateral)
 
     backward = 0
     cross_values = []
+    same_leg_lateral_delta = []
     for k in range(1, len(ids)):
         ta, tb = int(target_ids[k - 1]), int(target_ids[k])
-        route_delta = (targets[tb] - targets[ta]) * float(base.MPP)
+        route_delta = target_m[tb] - target_m[ta]
         norm = float(np.linalg.norm(route_delta))
-        if norm <= 1e-9:
-            continue
-        unit = route_delta / norm
-        cross_axis = np.asarray([-unit[1], unit[0]], dtype=np.float64)
-        delta = selected_xy[k] - selected_xy[k - 1]
-        along = float(np.dot(delta, unit))
-        cross_values.append(abs(float(np.dot(delta, cross_axis))))
-        backward += int(along < -1e-6)
+        if norm > 1e-9:
+            unit = route_delta / norm
+            cross_axis = np.asarray([-unit[1], unit[0]], dtype=np.float64)
+            delta = selected_xy[k] - selected_xy[k - 1]
+            along = float(np.dot(delta, unit))
+            cross_values.append(abs(float(np.dot(delta, cross_axis))))
+            backward += int(along < -1e-6)
+
+        if _angle_delta_abs_deg(headings[tb], headings[ta]) < float(big_turn_threshold_deg):
+            same_leg_lateral_delta.append(
+                abs(float(signed_lateral[k] - signed_lateral[k - 1]))
+            )
 
     def pct_over(value: float) -> float:
         return float(100.0 * np.mean(steps > value)) if len(steps) else 0.0
@@ -190,6 +267,13 @@ def _sequence_select(
         "skipped_targets": int(len(targets) - len(ids)),
         "mean_target_error_m": float(target_error.mean()) if len(target_error) else 0.0,
         "max_target_error_m": float(target_error.max()) if len(target_error) else 0.0,
+        "centerline_cross_mean_m": float(abs_lateral.mean()) if len(abs_lateral) else 0.0,
+        "centerline_cross_p90_m": float(np.percentile(abs_lateral, 90)) if len(abs_lateral) else 0.0,
+        "centerline_cross_max_m": float(abs_lateral.max()) if len(abs_lateral) else 0.0,
+        "same_leg_lateral_delta_p90_m": (
+            float(np.percentile(same_leg_lateral_delta, 90))
+            if same_leg_lateral_delta else 0.0
+        ),
         "actual_step_mean_m": float(steps.mean()) if len(steps) else 0.0,
         "actual_step_p50_m": float(np.percentile(steps, 50)) if len(steps) else 0.0,
         "actual_step_p90_m": float(np.percentile(steps, 90)) if len(steps) else 0.0,
@@ -223,9 +307,12 @@ def prepare(args):
 
     rows = base._city_rows(pd.read_csv(metadata_path), city)
     basename_index = base._build_basename_index(dataset_root, city)
+
+    # IMPORTANT: do not use the flattened route experiment.  Use the restored
+    # large-turn route geometry above.
     routes = {
         name: base._scale_route(points, width, height)
-        for name, points in base.ROUTE_SPECS.items()
+        for name, points in BIG_TURN_ROUTE_SPECS.items()
     }
 
     used_global, stats = set(), {}
@@ -247,6 +334,9 @@ def prepare(args):
             large_step_weight=float(args.large_step_weight),
             cross_weight=float(args.cross_weight),
             backward_weight=float(args.backward_weight),
+            point_cross_weight=float(args.point_cross_weight),
+            lateral_smooth_weight=float(args.lateral_smooth_weight),
+            big_turn_threshold_deg=float(args.big_turn_threshold_deg),
             min_selected_ratio=float(args.min_selected_ratio),
         )
         selected = rows.iloc[ids].copy()
@@ -268,6 +358,9 @@ def prepare(args):
             "max_sample_distance_m": float(args.max_sample_distance_m),
             "preferred_step_m": float(args.preferred_step_m),
             "safety_max_step_m": float(args.safety_max_step_m),
+            "point_cross_weight": float(args.point_cross_weight),
+            "lateral_smooth_weight": float(args.lateral_smooth_weight),
+            "big_turn_threshold_deg": float(args.big_turn_threshold_deg),
             "heading_weight_px_per_deg": 0.0,
             **diag,
         }
@@ -299,8 +392,8 @@ def prepare(args):
         "inference_routes": list(base.TEST_ROUTES),
         "route_stats": stats,
         "note": (
-            "Bearing independent observations converted to globally-disjoint "
-            "soft-temporal pseudo-flight sequences; yaw is not used."
+            "Original large route turns preserved; real Bearing observations are "
+            "selected with same-leg centreline/lateral smoothing only. Yaw is not used."
         ),
     }
     (output_root / "experiment.json").write_text(
@@ -327,6 +420,9 @@ def build_parser():
     p.add_argument("--large-step-weight", type=float, default=0.35)
     p.add_argument("--cross-weight", type=float, default=1.0)
     p.add_argument("--backward-weight", type=float, default=8.0)
+    p.add_argument("--point-cross-weight", type=float, default=3.0)
+    p.add_argument("--lateral-smooth-weight", type=float, default=3.0)
+    p.add_argument("--big-turn-threshold-deg", type=float, default=45.0)
     p.add_argument("--min-selected-ratio", type=float, default=0.70)
     return p
 
