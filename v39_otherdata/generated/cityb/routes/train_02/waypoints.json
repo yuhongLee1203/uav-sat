@@ -12,62 +12,34 @@
     },
     {
       "waypoint_order": 1,
-      "latitude": 695.0,
-      "longitude": 192.5,
-      "pixel_x": 770.0,
-      "pixel_y": 2780.0
+      "latitude": 740.0,
+      "longitude": 262.5,
+      "pixel_x": 1050.0,
+      "pixel_y": 2960.0
     },
     {
       "waypoint_order": 2,
-      "latitude": 765.0,
-      "longitude": 280.0,
-      "pixel_x": 1120.0,
-      "pixel_y": 3060.0
+      "latitude": 715.0,
+      "longitude": 425.0,
+      "pixel_x": 1700.0,
+      "pixel_y": 2860.0
     },
     {
       "waypoint_order": 3,
-      "latitude": 675.0,
-      "longitude": 365.0,
-      "pixel_x": 1460.0,
-      "pixel_y": 2700.0
+      "latitude": 685.0,
+      "longitude": 587.5,
+      "pixel_x": 2350.0,
+      "pixel_y": 2740.0
     },
     {
       "waypoint_order": 4,
-      "latitude": 742.5,
-      "longitude": 450.0,
-      "pixel_x": 1800.0,
-      "pixel_y": 2970.0
-    },
-    {
-      "waypoint_order": 5,
       "latitude": 650.0,
-      "longitude": 527.5,
-      "pixel_x": 2110.0,
+      "longitude": 737.5,
+      "pixel_x": 2950.0,
       "pixel_y": 2600.0
     },
     {
-      "waypoint_order": 6,
-      "latitude": 727.5,
-      "longitude": 615.0,
-      "pixel_x": 2460.0,
-      "pixel_y": 2910.0
-    },
-    {
-      "waypoint_order": 7,
-      "latitude": 627.5,
-      "longitude": 700.0,
-      "pixel_x": 2800.0,
-      "pixel_y": 2510.0
-    },
-    {
-      "waypoint_order": 8,
-      "latitude": 695.0,
-      "longitude": 792.5,
-      "pixel_x": 3170.0,
-      "pixel_y": 2780.0
-    },
-    {
-      "waypoint_order": 9,
+      "waypoint_order": 5,
       "latitude": 602.5,
       "longitude": 877.5,
       "pixel_x": 3510.0,
