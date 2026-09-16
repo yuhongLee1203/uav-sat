@@ -6,11 +6,11 @@ DATASET_ROOT="${DATASET_ROOT:-/yh/study/cvpr_data/Bearing_UAV_90K}"
 CITY="${CITY:-cityb}"
 GPU="${GPU:-0}"
 PREPARED_ROOT="${REPO_ROOT}/v39_otherdata/generated/${CITY}"
-OUTPUT_DIR="${PREPARED_ROOT}/v39_output_exact"
+OUTPUT_DIR="${PREPARED_ROOT}/v39_output_bearing_adapted"
 
 cd "${REPO_ROOT}"
 
-echo "[CODE-AUDIT] compiling every file used by this Bearing exact-v39 run"
+echo "[CODE-AUDIT] compiling every file used by the Bearing-v39 run"
 python3 -m py_compile \
   v39_otherdata/bearing_prepare.py \
   v39_otherdata/bearing_prepare_sequence_v3.py \
@@ -23,7 +23,7 @@ echo "[CODE-AUDIT] PASS"
 
 rm -rf "${PREPARED_ROOT}"
 
-echo "[PREP] full-route coverage-safe pseudo-flight"
+echo "[PREP] multiple irregular turns + full-route coverage-safe pseudo-flight"
 python3 - "${DATASET_ROOT}" "${CITY}" "${PREPARED_ROOT}" <<'PY'
 import argparse
 import sys
@@ -33,8 +33,8 @@ repo = Path.cwd()
 sys.path.insert(0, str(repo / "v39_otherdata"))
 import bearing_prepare_sequence_v3 as seq
 
-# Proven Bearing corridors.  They contain multiple irregular turns and have
-# already demonstrated dense observation coverage on cityb.
+# Proven cityb corridors: multiple irregular turns.  Each waypoint-to-waypoint
+# segment is a straight planned leg; no artificial micro-turn waypoint is added.
 seq.PIECEWISE_ROUTE_SPECS = {
     "train_01": [
         (330, 620), (690, 850), (1060, 690), (1390, 1030), (1710, 880),
@@ -62,116 +62,7 @@ seq.PIECEWISE_ROUTE_SPECS = {
         (1240, 3010), (1660, 3360), (1440, 3690),
     ],
 }
-
-# Keep the selection-version string required by the exact-v39 prepared-data
-# lock.  The physical-prune function below fixes the v12 truncation bug by
-# enforcing coverage of BOTH ends of EVERY straight leg.
 seq.SELECTION_VERSION = "soft_sequence_v12_dense_then_physical_leg_prune"
-_original_leg_solver = seq._longest_physical_leg
-
-
-def _coverage_safe_physical_prune(
-    dense_ids,
-    dense_tids,
-    xy_m,
-    target_m,
-    target_cross_axis,
-    headings,
-    *,
-    preferred_step_m,
-    safety_max_step_m,
-    big_turn_threshold_deg,
-    max_cross_track_m,
-    max_same_leg_lateral_jump_m,
-    max_same_leg_backward_m,
-):
-    """Smooth each leg without ever truncating the route.
-
-    v12 previously accepted the longest smooth chain even when that chain lived
-    only in the first/middle part of a leg.  Here a smoothed chain is accepted
-    only when it spans at least 85% of that leg's dense target range and reaches
-    both leg boundaries.  Otherwise that leg falls back to its dense sequence.
-    Even for an accepted chain, dense boundary samples are restored before/after
-    the chain so every waypoint transition is represented.
-    """
-    groups = seq._split_selected_into_legs(
-        dense_tids, headings, big_turn_threshold_deg
-    )
-    kept_positions = []
-    per_leg = []
-
-    for leg_index, group in enumerate(groups):
-        if not group:
-            continue
-        chain = _original_leg_solver(
-            dense_ids,
-            dense_tids,
-            group,
-            xy_m,
-            target_m,
-            target_cross_axis,
-            headings,
-            preferred_step_m=preferred_step_m,
-            safety_max_step_m=safety_max_step_m,
-            max_cross_track_m=max_cross_track_m,
-            max_same_leg_lateral_jump_m=max_same_leg_lateral_jump_m,
-            max_same_leg_backward_m=max_same_leg_backward_m,
-        )
-
-        group_start_tid = int(dense_tids[group[0]])
-        group_end_tid = int(dense_tids[group[-1]])
-        group_span = max(group_end_tid - group_start_tid, 1)
-
-        use_dense = False
-        coverage = 0.0
-        if len(chain) < 2:
-            use_dense = True
-        else:
-            chain_start_tid = int(dense_tids[chain[0]])
-            chain_end_tid = int(dense_tids[chain[-1]])
-            coverage = (chain_end_tid - chain_start_tid) / float(group_span)
-            start_fraction = (chain_start_tid - group_start_tid) / float(group_span)
-            end_fraction = (group_end_tid - chain_end_tid) / float(group_span)
-            if coverage < 0.85 or start_fraction > 0.10 or end_fraction > 0.10:
-                use_dense = True
-
-        if use_dense:
-            selected = list(group)
-            mode = "dense_fallback_for_coverage"
-            coverage = 1.0
-        else:
-            # Restore all dense samples from the leg boundary to the first/last
-            # smoothed sample.  This prevents a beautiful middle subsequence from
-            # disconnecting a waypoint transition.
-            first = chain[0]
-            last = chain[-1]
-            prefix = [p for p in group if p < first]
-            suffix = [p for p in group if p > last]
-            selected = sorted(set(prefix + list(chain) + suffix))
-            mode = "smoothed_full_span"
-
-        kept_positions.extend(selected)
-        per_leg.append(
-            {
-                "leg": int(leg_index),
-                "dense": int(len(group)),
-                "kept": int(len(selected)),
-                "coverage": float(coverage),
-                "mode": mode,
-                "first_target": int(dense_tids[selected[0]]),
-                "last_target": int(dense_tids[selected[-1]]),
-            }
-        )
-
-    kept_positions = sorted(set(kept_positions))
-    return (
-        [int(dense_ids[p]) for p in kept_positions],
-        [int(dense_tids[p]) for p in kept_positions],
-        per_leg,
-    )
-
-
-seq._physical_prune = _coverage_safe_physical_prune
 
 args = argparse.Namespace(
     dataset_root=sys.argv[1],
@@ -179,7 +70,6 @@ args = argparse.Namespace(
     output_root=sys.argv[3],
     step_m=4.0,
     preferred_step_m=4.0,
-    # Dense stage reproduces the previously successful high-coverage selector.
     safety_max_step_m=22.0,
     max_sample_distance_m=10.0,
     candidate_limit=256,
@@ -192,7 +82,8 @@ args = argparse.Namespace(
     point_cross_weight=20.0,
     lateral_smooth_weight=35.0,
     big_turn_threshold_deg=25.0,
-    # Physical pruning is allowed only when it preserves full leg coverage.
+    # Cleanup may be used only when the implementation preserves full leg span;
+    # bearing_prepare_sequence_v3.py now falls back to dense samples otherwise.
     max_cross_track_m=8.5,
     max_same_leg_lateral_jump_m=4.0,
     max_same_leg_backward_m=0.25,
@@ -202,15 +93,10 @@ seq.prepare(args)
 PY
 
 # ---------------------------------------------------------------------------
-# PRE-INFERENCE ROUTE COVERAGE AUDIT
+# FULL-ROUTE COVERAGE AUDIT
 # ---------------------------------------------------------------------------
-# A run is invalid if selected real observations do not reach EVERY waypoint.
-# This directly prevents the previous image where red stopped after ~1/3 route.
 python3 - "${PREPARED_ROOT}" <<'PY'
-import csv
-import json
-import math
-import sys
+import csv, json, math, sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
@@ -220,65 +106,53 @@ if exp.get("sequence_selection_version") != "soft_sequence_v12_dense_then_physic
 
 print("[COVERAGE-AUDIT] checking every waypoint against retained observations")
 for route in ["train_01", "train_02", "train_03", "test_01", "test_02"]:
-    with (root / "routes" / route / "manifest.csv").open(
-        "r", newline="", encoding="utf-8"
-    ) as f:
+    with (root / "routes" / route / "manifest.csv").open("r", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     if len(rows) < 30:
         raise SystemExit(f"[COVERAGE-AUDIT] {route}: only {len(rows)} frames")
-
     pts = [(float(r["x_m"]), float(r["y_m"])) for r in rows]
-    wp_payload = json.loads(
-        (root / "routes" / route / "waypoints.json").read_text(encoding="utf-8")
-    )
+    payload = json.loads((root / "routes" / route / "waypoints.json").read_text(encoding="utf-8"))
     wps = [
         (float(w["longitude"]), float(w["latitude"]))
-        for w in sorted(
-            wp_payload["waypoints"], key=lambda w: int(w["waypoint_order"])
-        )
+        for w in sorted(payload["waypoints"], key=lambda w: int(w["waypoint_order"]))
     ]
-
-    nearest = []
-    for wx, wy in wps:
-        nearest.append(min(math.hypot(x-wx, y-wy) for x, y in pts))
-
-    endpoint_start = math.hypot(pts[0][0]-wps[0][0], pts[0][1]-wps[0][1])
-    endpoint_end = math.hypot(pts[-1][0]-wps[-1][0], pts[-1][1]-wps[-1][1])
-
-    # Route projection switches within 24 m in canonical v39.  Requiring every
-    # waypoint within 18 m gives margin and guarantees the sequence reaches all
-    # planned turns rather than only accumulating enough frames in the front.
-    if max(nearest) > 18.0:
+    nearest = [min(math.hypot(x-wx, y-wy) for x, y in pts) for wx, wy in wps]
+    start = math.hypot(pts[0][0]-wps[0][0], pts[0][1]-wps[0][1])
+    end = math.hypot(pts[-1][0]-wps[-1][0], pts[-1][1]-wps[-1][1])
+    if max(nearest) > 18.0 or start > 18.0 or end > 18.0:
         raise SystemExit(
-            f"[COVERAGE-AUDIT] {route}: waypoint not covered; "
-            f"max nearest={max(nearest):.2f}m distances={[round(v,2) for v in nearest]}"
+            f"[COVERAGE-AUDIT] {route}: incomplete route | start={start:.2f}m "
+            f"end={end:.2f}m worst_waypoint={max(nearest):.2f}m"
         )
-    if endpoint_start > 18.0 or endpoint_end > 18.0:
-        raise SystemExit(
-            f"[COVERAGE-AUDIT] {route}: endpoint coverage failed "
-            f"start={endpoint_start:.2f}m end={endpoint_end:.2f}m"
-        )
-
-    stats = exp["route_stats"][route]
+    s = exp["route_stats"][route]
     print(
-        f"  {route}: PASS frames={len(rows)} "
-        f"start={endpoint_start:.2f}m end={endpoint_end:.2f}m "
-        f"worst_waypoint={max(nearest):.2f}m "
-        f"selected={float(stats['selected_ratio'])*100:.1f}%"
+        f"  {route}: PASS frames={len(rows)} start={start:.2f}m end={end:.2f}m "
+        f"worst_waypoint={max(nearest):.2f}m step_mean={float(s['actual_step_mean_m']):.2f}m "
+        f"step_p90={float(s['actual_step_p90_m']):.2f}m"
     )
 print("[COVERAGE-AUDIT] FULL ROUTE COVERAGE: PASS")
+
+# Explicitly print the only route allowed to tune cadence.
+t = exp["route_stats"]["train_01"]
+print(
+    "[TRAIN-CADENCE] train_01 only | mean=%.3fm p90=%.3fm p95=%.3fm"
+    % (float(t["actual_step_mean_m"]), float(t["actual_step_p90_m"]), float(t["actual_step_p95_m"]))
+)
 PY
 
 # ---------------------------------------------------------------------------
-# EXACT CANONICAL v39 MODEL/INFERENCE
+# SELECTED v39 METHOD + EXTERNAL-DATA PHYSICAL ADAPTER
 # ---------------------------------------------------------------------------
+# The legacy CLI name --epochs-per-route is retained by bearing_runner.py, but
+# this wrapper requires 60 and bearing_runner_exact_v39.py performs ONE A-only
+# 60-epoch run (it does NOT train three 20-epoch episodes).
 python3 v39_otherdata/bearing_runner_exact_v39.py \
   --dataset-root "${DATASET_ROOT}" \
   --city "${CITY}" \
   --gpu "${GPU}" \
   --backbone mobilenet_v3_small \
   --visual-epochs 30 \
-  --epochs-per-route 20 \
+  --epochs-per-route 60 \
   --patience 10 \
   --jitter-m 8 \
   --step-m 4 \
@@ -286,91 +160,97 @@ python3 v39_otherdata/bearing_runner_exact_v39.py \
   --heading-weight-px-per-deg 0
 
 # ---------------------------------------------------------------------------
-# POST-INFERENCE COMPLETION + METRIC AUDIT
+# FINAL COMPLETION / METRIC / ANTI-WIGGLE AUDIT
 # ---------------------------------------------------------------------------
-# Do not create a result image unless prediction and GT both reach the LAST leg.
+# Do not draw another misleading result.  The final image is created only if the
+# route completes, metrics match the CSV, and the external adapter no longer
+# exhibits the huge final-MS rescue jumps seen in the broken run.
 python3 - "${PREPARED_ROOT}" "${OUTPUT_DIR}" <<'PY'
-import csv
-import json
-import math
-import sys
+import csv, json, math, sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
 out = Path(sys.argv[2])
 summaries = json.loads((out / "bearing_v39_summary.json").read_text(encoding="utf-8"))
-with (root / "routes" / "route_A" / "manifest.csv").open(
-    "r", newline="", encoding="utf-8"
-) as f:
+with (root / "routes" / "train_01" / "manifest.csv").open("r", newline="", encoding="utf-8") as f:
     a = list(csv.DictReader(f))
-origin_x = float(a[0]["x_m"])
-origin_y = float(a[0]["y_m"])
+origin_x, origin_y = float(a[0]["x_m"]), float(a[0]["y_m"])
 
-print("[FINAL-COMPLETION-AUDIT]")
+def quantile(values, q):
+    values = sorted(float(v) for v in values)
+    if not values:
+        return 0.0
+    x = (len(values)-1) * float(q)
+    lo, hi = int(math.floor(x)), int(math.ceil(x))
+    if lo == hi:
+        return values[lo]
+    return values[lo] * (hi-x) + values[hi] * (x-lo)
+
+print("[FINAL-QUALITY-AUDIT]")
 for route in ["test_01", "test_02"]:
-    summary = summaries[route]
-    wp = json.loads(
-        (root / "routes" / route / "waypoints.json").read_text(encoding="utf-8")
-    )["waypoints"]
+    s = summaries[route]
+    wp = json.loads((root / "routes" / route / "waypoints.json").read_text(encoding="utf-8"))["waypoints"]
     wp = sorted(wp, key=lambda w: int(w["waypoint_order"]))
     last_leg = len(wp) - 2
-
-    pred_leg = int(summary["FinalPredictedWaypointLeg"])
-    gt_leg = int(summary["FinalGTWaypointLeg"])
+    pred_leg = int(s["FinalPredictedWaypointLeg"])
+    gt_leg = int(s["FinalGTWaypointLeg"])
     if pred_leg != last_leg or gt_leg != last_leg:
         raise SystemExit(
-            f"[FINAL-COMPLETION-AUDIT] {route}: route NOT completed: "
-            f"pred_leg={pred_leg}, gt_leg={gt_leg}, required={last_leg}"
+            f"[FINAL-QUALITY-AUDIT] {route}: route incomplete pred={pred_leg} gt={gt_leg} required={last_leg}"
         )
 
-    csv_path = Path(summary["CSV"])
+    csv_path = Path(s["CSV"])
     if not csv_path.exists():
         csv_path = out / csv_path.name
     with csv_path.open("r", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
-    with (root / "routes" / route / "manifest.csv").open(
-        "r", newline="", encoding="utf-8"
-    ) as f:
+    with (root / "routes" / route / "manifest.csv").open("r", newline="", encoding="utf-8") as f:
         manifest = list(csv.DictReader(f))
     if len(rows) != len(manifest):
-        raise SystemExit(
-            f"[FINAL-COMPLETION-AUDIT] {route}: frame count mismatch "
-            f"CSV={len(rows)} manifest={len(manifest)}"
-        )
+        raise SystemExit(f"[FINAL-QUALITY-AUDIT] {route}: CSV/manifest length mismatch")
 
-    errors = [
-        math.hypot(float(r["final_x"])-float(r["gt_x"]),
-                   float(r["final_y"])-float(r["gt_y"]))
-        for r in rows
-    ]
+    errors = [math.hypot(float(r["final_x"])-float(r["gt_x"]), float(r["final_y"])-float(r["gt_y"])) for r in rows]
     mle = sum(errors) / len(errors)
-    if abs(mle - float(summary["MLE_m"])) > 1e-5:
-        raise SystemExit(
-            f"[FINAL-COMPLETION-AUDIT] {route}: MLE mismatch "
-            f"CSV={mle:.9f} summary={float(summary['MLE_m']):.9f}"
-        )
+    if abs(mle - float(s["MLE_m"])) > 1e-5:
+        raise SystemExit(f"[FINAL-QUALITY-AUDIT] {route}: summary MLE mismatch")
 
     last = rows[-1]
-    final_abs = (
-        float(last["final_x"]) + origin_x,
-        float(last["final_y"]) + origin_y,
-    )
+    final_abs = (float(last["final_x"])+origin_x, float(last["final_y"])+origin_y)
     end_wp = (float(wp[-1]["longitude"]), float(wp[-1]["latitude"]))
     end_distance = math.hypot(final_abs[0]-end_wp[0], final_abs[1]-end_wp[1])
     if end_distance > 35.0:
-        raise SystemExit(
-            f"[FINAL-COMPLETION-AUDIT] {route}: final prediction did not reach route end; "
-            f"distance={end_distance:.2f}m"
-        )
+        raise SystemExit(f"[FINAL-QUALITY-AUDIT] {route}: final endpoint distance={end_distance:.2f}m")
+
+    ms_shift = float(s["MS_MeanShiftFromKalman_m"])
+    step_limited = float(s["KalmanStepLimited_pct"])
+    jump = float(s["JumpRate_pct"])
+    cross = [abs(float(r["final_cross_e"])) for r in rows]
+    cross_delta = [abs(float(rows[i]["final_cross_e"])-float(rows[i-1]["final_cross_e"])) for i in range(1, len(rows))]
+    cross_p90 = quantile(cross, 0.90)
+    cross_delta_p90 = quantile(cross_delta, 0.90)
+
+    # Broken uploaded run: MS mean=8.80/9.55 m and K-limit=85.5/81.8%.
+    # These gates prevent that failure mode from being emitted as a final plot.
+    if ms_shift > 7.0:
+        raise SystemExit(f"[FINAL-QUALITY-AUDIT] {route}: final-MS rescue still too large: {ms_shift:.2f}m")
+    if step_limited > 80.0:
+        raise SystemExit(f"[FINAL-QUALITY-AUDIT] {route}: Kalman still cadence-limited: {step_limited:.2f}%")
+    if jump > 5.0:
+        raise SystemExit(f"[FINAL-QUALITY-AUDIT] {route}: jump rate too high: {jump:.2f}%")
+    if cross_p90 > 7.5:
+        raise SystemExit(f"[FINAL-QUALITY-AUDIT] {route}: route cross-track P90 too high: {cross_p90:.2f}m")
+    if cross_delta_p90 > 7.0:
+        raise SystemExit(f"[FINAL-QUALITY-AUDIT] {route}: lateral frame wobble P90 too high: {cross_delta_p90:.2f}m")
 
     print(
-        f"  {route}: PASS frames={len(rows)} last_leg={pred_leg}/{last_leg} "
-        f"end_distance={end_distance:.2f}m MLE={mle:.3f}m"
+        f"  {route}: PASS | MLE={mle:.3f}m end={end_distance:.2f}m "
+        f"KLimit={step_limited:.1f}% MSshift={ms_shift:.2f}m "
+        f"crossP90={cross_p90:.2f}m lateralDeltaP90={cross_delta_p90:.2f}m jump={jump:.2f}%"
     )
-print("[FINAL-COMPLETION-AUDIT] BOTH TEST ROUTES COMPLETE: PASS")
+print("[FINAL-QUALITY-AUDIT] BOTH TEST ROUTES: PASS")
 PY
 
-# Produce ONLY the two final-result images, one per held-out test route.
+# ONLY final prediction-vs-reference images.
 python3 v39_otherdata/bearing_plot_final_vs_gt.py \
   --prepared-root "${PREPARED_ROOT}" \
   --output-dir "${OUTPUT_DIR}" \
@@ -378,12 +258,15 @@ python3 v39_otherdata/bearing_plot_final_vs_gt.py \
 
 echo ""
 echo "================================================================================"
-echo "Bearing exact-v39 full-route experiment finished"
-echo "Model: Weighted Centroid -> 3-frame Context-GRU -> velocity -> fixed Kalman -> final 5x5 MS"
-echo "Model/inference parameters unchanged; Bearing cadence adaptation disabled"
-echo "Route rule: every planned waypoint must be covered before inference can run"
+echo "Bearing v39 physically-adapted experiment finished"
+echo "Architecture: Weighted Centroid -> 3-frame GRU -> CV -> fixed Kalman -> final 6x6 MS (BW7)"
+echo "Training: ONE Route A (train_01), 60 epochs; B/C = test_01/test_02"
+echo "Scale: v39 physical SAT spacing/FOV preserved across 0.14 -> 0.25 m/px"
+echo "Cadence: longitudinal limits derived from TRAIN train_01 only; test stats never tune parameters"
+echo "Final MS: route-centerline spatial reference; true Bearing sample coordinates remain metric GT"
 echo "Output: ONLY final prediction vs reference route"
 echo "  ${OUTPUT_DIR}/test_01_final_result.jpg"
 echo "  ${OUTPUT_DIR}/test_02_final_result.jpg"
 echo "Summary: ${OUTPUT_DIR}/bearing_v39_summary.json"
+echo "Audit  : ${OUTPUT_DIR}/v39_bearing_training_audit.json"
 echo "================================================================================"
