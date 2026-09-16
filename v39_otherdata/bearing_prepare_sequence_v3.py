@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
 """Prepare Bearing-UAV pseudo-flight routes from independent observations.
 
-Bearing-UAV is not a continuous flight video.  The safe strategy is therefore
-TWO STAGES:
+Bearing-UAV does not provide a continuous recorded flight.  We therefore build
+an ordered pseudo-flight in two stages:
 
-1) build a dense route-matched sequence from real Bearing observations;
-2) inside each planned straight leg, prune that dense sequence to a longest
-   physically plausible subsequence (forward motion, bounded lateral wobble,
-   bounded step length).
+1. Dense route matching from real Bearing observations.
+2. Per-straight-leg physical cleanup.
 
-The important difference from v10/v11 is that physical hard gates are NOT used
-while the dense beam is being built.  Hard-gating the sparse independent data
-made the whole route impossible.  They are applied afterwards, per straight
-leg, where dropping a bad observation cannot destroy the rest of the route.
-
-Every retained UAV image keeps its original metric coordinate.  Nothing is
-projected onto the reference route and UAV yaw is never fed to the model.
+The cleanup is COVERAGE SAFE: smoothing is never allowed to truncate a leg or
+remove later turns.  A smoothed subsequence is accepted only when it spans the
+full leg.  Otherwise that leg falls back to its dense real-observation sequence.
+Every retained UAV image keeps its original metric coordinate; no GT coordinate
+is projected or relabelled and yaw is never used by the localization model.
 """
 from __future__ import annotations
 
@@ -30,6 +26,9 @@ from PIL import Image
 
 import bearing_prepare as base
 
+# Keep this identifier because bearing_runner_exact_v39.py explicitly locks to
+# this prepared-data family.  The implementation below is the corrected,
+# full-route-safe version of the v12 two-stage selector.
 SELECTION_VERSION = "soft_sequence_v12_dense_then_physical_leg_prune"
 PIECEWISE_ROUTE_SPECS = dict(base.ROUTE_SPECS)
 
@@ -58,28 +57,38 @@ def _dense_sequence_select(
     lateral_smooth_weight: float,
     big_turn_threshold_deg: float,
 ):
-    """First pass: recover a dense sequence.  Only soft geometry costs are used."""
+    """Recover a dense route-matched sequence using only soft geometry costs."""
     xy_px = rows[["global_x_px", "global_y_px"]].to_numpy(dtype=np.float64)
     xy_m = xy_px * float(base.MPP)
     target_m = np.asarray(targets, dtype=np.float64) * float(base.MPP)
     identities = rows["target_path"].astype(str).tolist()
-    blocked = np.asarray([identity in used_global for identity in identities], dtype=bool)
+    blocked = np.asarray(
+        [identity in used_global for identity in identities], dtype=bool
+    )
     max_sample_px = float(max_sample_distance_m) / float(base.MPP)
 
     heading_rad = np.deg2rad(np.asarray(headings, dtype=np.float64))
-    heading_unit = np.stack([np.cos(heading_rad), np.sin(heading_rad)], axis=1)
-    target_cross_axis = np.stack([-heading_unit[:, 1], heading_unit[:, 0]], axis=1)
+    heading_unit = np.stack(
+        [np.cos(heading_rad), np.sin(heading_rad)], axis=1
+    )
+    target_cross_axis = np.stack(
+        [-heading_unit[:, 1], heading_unit[:, 0]], axis=1
+    )
 
     candidate_lists: List[List[Tuple[int, float]]] = []
     for target in targets:
         spatial_px = np.linalg.norm(xy_px - target[None, :], axis=1)
-        valid = np.flatnonzero((spatial_px <= max_sample_px) & (~blocked))
+        valid = np.flatnonzero(
+            (spatial_px <= max_sample_px) & (~blocked)
+        )
         if valid.size == 0:
             candidate_lists.append([])
             continue
         err_m = spatial_px[valid] * float(base.MPP)
         order = np.argsort(err_m)[: int(candidate_limit)]
-        candidate_lists.append([(int(valid[j]), float(err_m[j])) for j in order])
+        candidate_lists.append(
+            [(int(valid[j]), float(err_m[j])) for j in order]
+        )
 
     # state = cost, last row, last target, row ids, target ids, local-used, skips
     beams = [(0.0, None, None, tuple(), tuple(), frozenset(), 0)]
@@ -89,9 +98,18 @@ def _dense_sequence_select(
         for state in beams:
             cost, last_idx, last_target, ids, tids, local_used, skips = state
 
-            # Always permit a skip.  Dense preference is handled by beam ordering.
+            # Independent Bearing observations can be locally sparse.  A skip is
+            # always legal; density is favored by beam ordering below.
             expanded.append(
-                (cost + float(skip_penalty), last_idx, last_target, ids, tids, local_used, skips + 1)
+                (
+                    cost + float(skip_penalty),
+                    last_idx,
+                    last_target,
+                    ids,
+                    tids,
+                    local_used,
+                    skips + 1,
+                )
             )
 
             for idx, target_err_m in candidates:
@@ -99,17 +117,25 @@ def _dense_sequence_select(
                     continue
 
                 current_offset = xy_m[idx] - target_m[target_index]
-                current_lateral = float(np.dot(current_offset, target_cross_axis[target_index]))
-                transition = float(target_err_m) + float(point_cross_weight) * abs(current_lateral)
+                current_lateral = float(
+                    np.dot(
+                        current_offset,
+                        target_cross_axis[target_index],
+                    )
+                )
+                transition = (
+                    float(target_err_m)
+                    + float(point_cross_weight) * abs(current_lateral)
+                )
 
                 if last_idx is not None:
                     delta = xy_m[idx] - xy_m[int(last_idx)]
                     step = float(np.linalg.norm(delta))
-                    # Keep only a generous global safety bound in the dense stage.
                     if step > float(safety_max_step_m) + 1e-9:
                         continue
 
-                    ta, tb = int(last_target), int(target_index)
+                    ta = int(last_target)
+                    tb = int(target_index)
                     route_delta = target_m[tb] - target_m[ta]
                     route_norm = float(np.linalg.norm(route_delta))
                     if route_norm <= 1e-9:
@@ -118,23 +144,45 @@ def _dense_sequence_select(
                     else:
                         unit = route_delta / route_norm
                         desired = route_norm
-                    cross_axis = np.asarray([-unit[1], unit[0]], dtype=np.float64)
+
+                    cross_axis = np.asarray(
+                        [-unit[1], unit[0]], dtype=np.float64
+                    )
                     along = float(np.dot(delta, unit))
                     cross = abs(float(np.dot(delta, cross_axis)))
 
-                    transition += float(continuity_weight) * abs(step - desired)
+                    transition += (
+                        float(continuity_weight) * abs(step - desired)
+                    )
                     transition += float(cross_weight) * cross
-                    transition += float(backward_weight) * max(0.0, -along)
-                    transition += float(large_step_weight) * max(
-                        0.0, step - float(preferred_step_m)
-                    ) ** 2
+                    transition += (
+                        float(backward_weight) * max(0.0, -along)
+                    )
+                    transition += (
+                        float(large_step_weight)
+                        * max(
+                            0.0,
+                            step - float(preferred_step_m),
+                        )
+                        ** 2
+                    )
 
-                    planned_turn = _angle_delta_abs_deg(headings[tb], headings[ta])
+                    planned_turn = _angle_delta_abs_deg(
+                        headings[tb], headings[ta]
+                    )
                     if planned_turn < float(big_turn_threshold_deg):
-                        previous_offset = xy_m[int(last_idx)] - target_m[ta]
-                        previous_lateral = float(np.dot(previous_offset, target_cross_axis[ta]))
-                        transition += float(lateral_smooth_weight) * abs(
-                            current_lateral - previous_lateral
+                        previous_offset = (
+                            xy_m[int(last_idx)] - target_m[ta]
+                        )
+                        previous_lateral = float(
+                            np.dot(
+                                previous_offset,
+                                target_cross_axis[ta],
+                            )
+                        )
+                        transition += (
+                            float(lateral_smooth_weight)
+                            * abs(current_lateral - previous_lateral)
                         )
 
                 expanded.append(
@@ -150,10 +198,12 @@ def _dense_sequence_select(
                 )
 
         if not expanded:
-            raise RuntimeError(f"dense sequence search became empty at target {target_index}")
+            raise RuntimeError(
+                f"dense sequence search became empty at target {target_index}"
+            )
 
-        # Deliberately density-first here.  This reproduces the successful v9
-        # behaviour; physical cleanup happens in the second stage below.
+        # Dense first: this reproduces the previously successful high-coverage
+        # selection.  Physical cleanup is applied after the whole route exists.
         expanded.sort(key=lambda s: (-len(s[3]), s[0], s[6]))
         beams = expanded[: max(32, int(beam_width))]
 
@@ -167,7 +217,9 @@ def _dense_sequence_select(
     return ids, tids, xy_m, target_m, target_cross_axis
 
 
-def _split_selected_into_legs(target_ids, headings, big_turn_threshold_deg: float):
+def _split_selected_into_legs(
+    target_ids, headings, big_turn_threshold_deg: float
+):
     if not target_ids:
         return []
     groups = [[0]]
@@ -197,7 +249,7 @@ def _longest_physical_leg(
     max_same_leg_lateral_jump_m: float,
     max_same_leg_backward_m: float,
 ):
-    """Longest valid subsequence inside ONE planned straight leg."""
+    """Longest physically plausible subsequence inside one straight leg."""
     if not group_positions:
         return []
 
@@ -205,16 +257,17 @@ def _longest_physical_leg(
     n = len(pos)
     valid_node = [False] * n
     lateral = [0.0] * n
+
     for j, seq_pos in enumerate(pos):
         rid = int(dense_ids[seq_pos])
         tid = int(dense_tids[seq_pos])
         offset = xy_m[rid] - target_m[tid]
         lat = float(np.dot(offset, target_cross_axis[tid]))
         lateral[j] = lat
-        valid_node[j] = abs(lat) <= float(max_cross_track_m) + 1e-9
+        valid_node[j] = (
+            abs(lat) <= float(max_cross_track_m) + 1e-9
+        )
 
-    # DP objective: first maximize retained frames, then target-span coverage,
-    # then minimize geometric cost.  O(n^2) is fine for ~20-80 samples/leg.
     dp_len = [0] * n
     dp_cost = [float("inf")] * n
     dp_start_tid = [0] * n
@@ -230,7 +283,6 @@ def _longest_physical_leg(
         dp_cost[j] = abs(lateral[j])
         dp_start_tid[j] = tid_j
 
-        # Searching all previous nodes is still cheap at Bearing route sizes.
         for i in range(j):
             if dp_len[i] <= 0:
                 continue
@@ -247,7 +299,9 @@ def _longest_physical_leg(
             route_norm = float(np.linalg.norm(route_delta))
             if route_norm <= 1e-9:
                 hr = np.deg2rad(float(headings[tid_j]))
-                unit = np.asarray([np.cos(hr), np.sin(hr)], dtype=np.float64)
+                unit = np.asarray(
+                    [np.cos(hr), np.sin(hr)], dtype=np.float64
+                )
                 desired = float(preferred_step_m)
             else:
                 unit = route_delta / route_norm
@@ -256,7 +310,10 @@ def _longest_physical_leg(
             along = float(np.dot(delta, unit))
             if along < -float(max_same_leg_backward_m) - 1e-9:
                 continue
-            if abs(lateral[j] - lateral[i]) > float(max_same_leg_lateral_jump_m) + 1e-9:
+            if (
+                abs(lateral[j] - lateral[i])
+                > float(max_same_leg_lateral_jump_m) + 1e-9
+            ):
                 continue
 
             new_len = dp_len[i] + 1
@@ -268,7 +325,11 @@ def _longest_physical_leg(
             )
             new_start = dp_start_tid[i]
             new_span = tid_j - new_start
-            old_span = tid_j - dp_start_tid[j] if dp_len[j] > 0 else -1
+            old_span = (
+                tid_j - dp_start_tid[j]
+                if dp_len[j] > 0
+                else -1
+            )
 
             if (
                 new_len > dp_len[j]
@@ -287,6 +348,7 @@ def _longest_physical_leg(
     candidates = [j for j in range(n) if dp_len[j] > 0]
     if not candidates:
         return []
+
     end = max(
         candidates,
         key=lambda j: (
@@ -319,10 +381,25 @@ def _physical_prune(
     max_same_leg_lateral_jump_m: float,
     max_same_leg_backward_m: float,
 ):
-    groups = _split_selected_into_legs(dense_tids, headings, big_turn_threshold_deg)
+    """Coverage-safe leg cleanup.
+
+    The old v12 bug accepted a smooth chain even if it represented only the
+    front/middle of a leg.  That could leave many later waypoints with no frames
+    and make inference stop early.  Here a chain is accepted only when it spans
+    >=85% of the dense target range and reaches within 10% of both boundaries.
+    Otherwise the full dense leg is retained.  Boundary samples are also restored
+    around accepted chains so every turn remains connected.
+    """
+    groups = _split_selected_into_legs(
+        dense_tids, headings, big_turn_threshold_deg
+    )
     kept_positions = []
     per_leg = []
-    for group in groups:
+
+    for leg_index, group in enumerate(groups):
+        if not group:
+            continue
+
         chain = _longest_physical_leg(
             dense_ids,
             dense_tids,
@@ -337,8 +414,56 @@ def _physical_prune(
             max_same_leg_lateral_jump_m=max_same_leg_lateral_jump_m,
             max_same_leg_backward_m=max_same_leg_backward_m,
         )
-        kept_positions.extend(chain)
-        per_leg.append({"dense": len(group), "kept": len(chain)})
+
+        group_start_tid = int(dense_tids[group[0]])
+        group_end_tid = int(dense_tids[group[-1]])
+        group_span = max(group_end_tid - group_start_tid, 1)
+        coverage = 0.0
+        use_dense = len(chain) < 2
+
+        if not use_dense:
+            chain_start_tid = int(dense_tids[chain[0]])
+            chain_end_tid = int(dense_tids[chain[-1]])
+            coverage = (
+                chain_end_tid - chain_start_tid
+            ) / float(group_span)
+            start_fraction = (
+                chain_start_tid - group_start_tid
+            ) / float(group_span)
+            end_fraction = (
+                group_end_tid - chain_end_tid
+            ) / float(group_span)
+            if (
+                coverage < 0.85
+                or start_fraction > 0.10
+                or end_fraction > 0.10
+            ):
+                use_dense = True
+
+        if use_dense:
+            selected = list(group)
+            mode = "dense_fallback_for_coverage"
+            coverage = 1.0
+        else:
+            first = chain[0]
+            last = chain[-1]
+            prefix = [p for p in group if p < first]
+            suffix = [p for p in group if p > last]
+            selected = sorted(set(prefix + list(chain) + suffix))
+            mode = "smoothed_full_span"
+
+        kept_positions.extend(selected)
+        per_leg.append(
+            {
+                "leg": int(leg_index),
+                "dense": int(len(group)),
+                "kept": int(len(selected)),
+                "coverage": float(coverage),
+                "mode": mode,
+                "first_target": int(dense_tids[selected[0]]),
+                "last_target": int(dense_tids[selected[-1]]),
+            }
+        )
 
     kept_positions = sorted(set(kept_positions))
     return (
@@ -372,11 +497,15 @@ def _diagnostics(
 
     steps = (
         np.linalg.norm(np.diff(selected_xy, axis=0), axis=1)
-        if len(ids) > 1 else np.zeros(0, dtype=np.float64)
+        if len(ids) > 1
+        else np.zeros(0, dtype=np.float64)
     )
-    target_error = np.linalg.norm(selected_xy - selected_targets_m, axis=1)
+    target_error = np.linalg.norm(
+        selected_xy - selected_targets_m, axis=1
+    )
     signed_lateral = np.sum(
-        (selected_xy - selected_targets_m) * selected_cross_axis, axis=1
+        (selected_xy - selected_targets_m) * selected_cross_axis,
+        axis=1,
     )
     abs_lateral = np.abs(signed_lateral)
 
@@ -384,56 +513,118 @@ def _diagnostics(
     same_leg_backward = 0
     cross_values = []
     same_leg_lateral_delta = []
+
     for k in range(1, len(ids)):
-        ta, tb = int(target_ids[k - 1]), int(target_ids[k])
+        ta = int(target_ids[k - 1])
+        tb = int(target_ids[k])
         route_delta = target_m[tb] - target_m[ta]
         norm = float(np.linalg.norm(route_delta))
         if norm <= 1e-9:
             continue
         unit = route_delta / norm
-        cross_axis = np.asarray([-unit[1], unit[0]], dtype=np.float64)
+        cross_axis = np.asarray(
+            [-unit[1], unit[0]], dtype=np.float64
+        )
         delta = selected_xy[k] - selected_xy[k - 1]
         along = float(np.dot(delta, unit))
         cross_values.append(abs(float(np.dot(delta, cross_axis))))
         backward += int(along < -1e-6)
-        same_leg = _angle_delta_abs_deg(headings[tb], headings[ta]) < float(big_turn_threshold_deg)
+
+        same_leg = (
+            _angle_delta_abs_deg(headings[tb], headings[ta])
+            < float(big_turn_threshold_deg)
+        )
         if same_leg:
             same_leg_backward += int(along < -1e-6)
-            same_leg_lateral_delta.append(abs(float(signed_lateral[k] - signed_lateral[k - 1])))
+            same_leg_lateral_delta.append(
+                abs(
+                    float(
+                        signed_lateral[k] - signed_lateral[k - 1]
+                    )
+                )
+            )
 
     def pct_over(value: float) -> float:
-        return float(100.0 * np.mean(steps > value)) if len(steps) else 0.0
+        return (
+            float(100.0 * np.mean(steps > value))
+            if len(steps)
+            else 0.0
+        )
 
     return {
         "targets": int(targets_count),
         "dense_frames_before_prune": int(dense_count),
-        "dense_selected_ratio": float(dense_count / max(targets_count, 1)),
+        "dense_selected_ratio": float(
+            dense_count / max(targets_count, 1)
+        ),
         "frames": int(len(ids)),
         "selected_ratio": float(len(ids) / max(targets_count, 1)),
         "prune_keep_ratio": float(len(ids) / max(dense_count, 1)),
         "skipped_targets": int(targets_count - len(ids)),
         "per_leg_prune": per_leg,
-        "mean_target_error_m": float(target_error.mean()) if len(target_error) else 0.0,
-        "max_target_error_m": float(target_error.max()) if len(target_error) else 0.0,
-        "centerline_cross_mean_m": float(abs_lateral.mean()) if len(abs_lateral) else 0.0,
-        "centerline_cross_p90_m": float(np.percentile(abs_lateral, 90)) if len(abs_lateral) else 0.0,
-        "centerline_cross_max_m": float(abs_lateral.max()) if len(abs_lateral) else 0.0,
-        "same_leg_lateral_delta_p90_m": float(np.percentile(same_leg_lateral_delta, 90)) if same_leg_lateral_delta else 0.0,
-        "same_leg_lateral_delta_max_m": float(max(same_leg_lateral_delta)) if same_leg_lateral_delta else 0.0,
-        "actual_step_mean_m": float(steps.mean()) if len(steps) else 0.0,
-        "actual_step_p50_m": float(np.percentile(steps, 50)) if len(steps) else 0.0,
-        "actual_step_p90_m": float(np.percentile(steps, 90)) if len(steps) else 0.0,
-        "actual_step_p95_m": float(np.percentile(steps, 95)) if len(steps) else 0.0,
-        "actual_step_max_m": float(steps.max()) if len(steps) else 0.0,
+        "mean_target_error_m": (
+            float(target_error.mean()) if len(target_error) else 0.0
+        ),
+        "max_target_error_m": (
+            float(target_error.max()) if len(target_error) else 0.0
+        ),
+        "centerline_cross_mean_m": (
+            float(abs_lateral.mean()) if len(abs_lateral) else 0.0
+        ),
+        "centerline_cross_p90_m": (
+            float(np.percentile(abs_lateral, 90))
+            if len(abs_lateral)
+            else 0.0
+        ),
+        "centerline_cross_max_m": (
+            float(abs_lateral.max()) if len(abs_lateral) else 0.0
+        ),
+        "same_leg_lateral_delta_p90_m": (
+            float(np.percentile(same_leg_lateral_delta, 90))
+            if same_leg_lateral_delta
+            else 0.0
+        ),
+        "same_leg_lateral_delta_max_m": (
+            float(max(same_leg_lateral_delta))
+            if same_leg_lateral_delta
+            else 0.0
+        ),
+        "actual_step_mean_m": (
+            float(steps.mean()) if len(steps) else 0.0
+        ),
+        "actual_step_p50_m": (
+            float(np.percentile(steps, 50)) if len(steps) else 0.0
+        ),
+        "actual_step_p90_m": (
+            float(np.percentile(steps, 90)) if len(steps) else 0.0
+        ),
+        "actual_step_p95_m": (
+            float(np.percentile(steps, 95)) if len(steps) else 0.0
+        ),
+        "actual_step_max_m": (
+            float(steps.max()) if len(steps) else 0.0
+        ),
         "step_over_7m_pct": pct_over(7.0),
         "step_over_10m_pct": pct_over(10.0),
         "step_over_14m_pct": pct_over(14.0),
-        "cross_step_p90_m": float(np.percentile(cross_values, 90)) if cross_values else 0.0,
-        "backward_step_pct": float(100.0 * backward / max(len(ids) - 1, 1)),
-        "same_leg_backward_step_pct": float(100.0 * same_leg_backward / max(len(ids) - 1, 1)),
+        "cross_step_p90_m": (
+            float(np.percentile(cross_values, 90))
+            if cross_values
+            else 0.0
+        ),
+        "backward_step_pct": float(
+            100.0 * backward / max(len(ids) - 1, 1)
+        ),
+        "same_leg_backward_step_pct": float(
+            100.0 * same_leg_backward / max(len(ids) - 1, 1)
+        ),
         "max_cross_track_rule_m": float(max_cross_track_m),
-        "max_same_leg_lateral_jump_rule_m": float(max_same_leg_lateral_jump_m),
-        "max_same_leg_backward_rule_m": float(max_same_leg_backward_m),
+        "max_same_leg_lateral_jump_rule_m": float(
+            max_same_leg_lateral_jump_m
+        ),
+        "max_same_leg_backward_rule_m": float(
+            max_same_leg_backward_m
+        ),
     }
 
 
@@ -461,24 +652,26 @@ def _sequence_select(
     max_same_leg_lateral_jump_m: float,
     max_same_leg_backward_m: float,
 ):
-    dense_ids, dense_tids, xy_m, target_m, target_cross_axis = _dense_sequence_select(
-        rows,
-        targets,
-        headings,
-        used_global,
-        max_sample_distance_m=max_sample_distance_m,
-        preferred_step_m=preferred_step_m,
-        safety_max_step_m=safety_max_step_m,
-        candidate_limit=candidate_limit,
-        beam_width=beam_width,
-        skip_penalty=skip_penalty,
-        continuity_weight=continuity_weight,
-        large_step_weight=large_step_weight,
-        cross_weight=cross_weight,
-        backward_weight=backward_weight,
-        point_cross_weight=point_cross_weight,
-        lateral_smooth_weight=lateral_smooth_weight,
-        big_turn_threshold_deg=big_turn_threshold_deg,
+    dense_ids, dense_tids, xy_m, target_m, target_cross_axis = (
+        _dense_sequence_select(
+            rows,
+            targets,
+            headings,
+            used_global,
+            max_sample_distance_m=max_sample_distance_m,
+            preferred_step_m=preferred_step_m,
+            safety_max_step_m=safety_max_step_m,
+            candidate_limit=candidate_limit,
+            beam_width=beam_width,
+            skip_penalty=skip_penalty,
+            continuity_weight=continuity_weight,
+            large_step_weight=large_step_weight,
+            cross_weight=cross_weight,
+            backward_weight=backward_weight,
+            point_cross_weight=point_cross_weight,
+            lateral_smooth_weight=lateral_smooth_weight,
+            big_turn_threshold_deg=big_turn_threshold_deg,
+        )
     )
 
     ids, target_ids, per_leg = _physical_prune(
@@ -500,7 +693,12 @@ def _sequence_select(
     if len(ids) < 12 or ratio < float(min_selected_ratio):
         raise RuntimeError(
             "Physical prune retained too little: kept=%d/%d (%.1f%%), dense_before=%d"
-            % (len(ids), len(targets), 100.0 * ratio, len(dense_ids))
+            % (
+                len(ids),
+                len(targets),
+                100.0 * ratio,
+                len(dense_ids),
+            )
         )
 
     identities = rows["target_path"].astype(str).tolist()
@@ -528,7 +726,11 @@ def _sequence_select(
 def prepare(args):
     dataset_root = Path(args.dataset_root).resolve()
     city = args.city.lower()
-    output_root = Path(args.output_root).resolve() if args.output_root else Path(__file__).resolve().parent / "generated" / city
+    output_root = (
+        Path(args.output_root).resolve()
+        if args.output_root
+        else Path(__file__).resolve().parent / "generated" / city
+    )
     output_root.mkdir(parents=True, exist_ok=True)
 
     sat_path = base._find_satellite(dataset_root, city)
@@ -536,16 +738,23 @@ def prepare(args):
     with Image.open(sat_path) as image:
         width, height = image.size
     if (width, height) != (base.REFERENCE_SIZE, base.REFERENCE_SIZE):
-        raise ValueError(f"Expected {base.REFERENCE_SIZE}x{base.REFERENCE_SIZE} RSI")
+        raise ValueError(
+            f"Expected {base.REFERENCE_SIZE}x{base.REFERENCE_SIZE} RSI"
+        )
 
     rows = base._city_rows(pd.read_csv(metadata_path), city)
     basename_index = base._build_basename_index(dataset_root, city)
-    routes = {name: base._scale_route(points, width, height) for name, points in PIECEWISE_ROUTE_SPECS.items()}
+    routes = {
+        name: base._scale_route(points, width, height)
+        for name, points in PIECEWISE_ROUTE_SPECS.items()
+    }
 
     used_global, stats = set(), {}
     for name in (*base.TRAIN_ROUTES, *base.TEST_ROUTES):
         planned = routes[name]
-        targets, headings = base._dense_targets(planned, float(args.step_m))
+        targets, headings = base._dense_targets(
+            planned, float(args.step_m)
+        )
         ids, target_ids, diag = _sequence_select(
             rows,
             targets,
@@ -566,16 +775,38 @@ def prepare(args):
             big_turn_threshold_deg=float(args.big_turn_threshold_deg),
             min_selected_ratio=float(args.min_selected_ratio),
             max_cross_track_m=float(args.max_cross_track_m),
-            max_same_leg_lateral_jump_m=float(args.max_same_leg_lateral_jump_m),
-            max_same_leg_backward_m=float(args.max_same_leg_backward_m),
+            max_same_leg_lateral_jump_m=float(
+                args.max_same_leg_lateral_jump_m
+            ),
+            max_same_leg_backward_m=float(
+                args.max_same_leg_backward_m
+            ),
         )
+
         selected = rows.iloc[ids].copy()
-        paths = [base._resolve_image_path(v, dataset_root, city, basename_index) for v in selected["target_path"]]
-        base._write_route(output_root / "routes" / name, name, planned, selected, paths)
+        paths = [
+            base._resolve_image_path(
+                value, dataset_root, city, basename_index
+            )
+            for value in selected["target_path"]
+        ]
+        base._write_route(
+            output_root / "routes" / name,
+            name,
+            planned,
+            selected,
+            paths,
+        )
 
         stats[name] = {
-            "split": "train" if name in base.TRAIN_ROUTES else "inference",
-            "planned_length_m": base._route_length_px(planned) * float(base.MPP),
+            "split": (
+                "train"
+                if name in base.TRAIN_ROUTES
+                else "inference"
+            ),
+            "planned_length_m": (
+                base._route_length_px(planned) * float(base.MPP)
+            ),
             "waypoints": len(planned),
             "frames": int(diag["frames"]),
             "sample_step_m": float(args.step_m),
@@ -589,9 +820,15 @@ def prepare(args):
             "heading_weight_px_per_deg": 0.0,
             **diag,
         }
-        print("[SEQUENCE-V12]", name, json.dumps(stats[name], indent=2), flush=True)
+        print(
+            "[SEQUENCE-V12-FULLROUTE]",
+            name,
+            json.dumps(stats[name], indent=2),
+            flush=True,
+        )
 
     base._make_train_union(output_root)
+
     sat_meta = {
         "mode": "bearing_uav_pixel_meter",
         "mpp": base.MPP,
@@ -602,7 +839,10 @@ def prepare(args):
         "satellite_image": str(sat_path),
         "metadata_csv": str(metadata_path),
     }
-    (output_root / "bearing_satellite.json").write_text(json.dumps(sat_meta, indent=2), encoding="utf-8")
+    (output_root / "bearing_satellite.json").write_text(
+        json.dumps(sat_meta, indent=2), encoding="utf-8"
+    )
+
     experiment = {
         "dataset_root": str(dataset_root),
         "city": city,
@@ -614,20 +854,35 @@ def prepare(args):
         "inference_routes": list(base.TEST_ROUTES),
         "route_stats": stats,
         "note": (
-            "Dense real-observation sequence first; per-straight-leg physical subsequence prune second. "
-            "Retained GT coordinates are never projected or relabelled; yaw is not used."
+            "Dense real-observation route first; coverage-safe per-leg physical "
+            "cleanup second. Smoothing may never truncate a leg. Retained GT "
+            "coordinates remain real and yaw is not used."
         ),
     }
-    (output_root / "experiment.json").write_text(json.dumps(experiment, indent=2), encoding="utf-8")
-    base._draw_preview(sat_path, routes, output_root / "route_plan_full_satellite.jpg")
-    print("[DONE] experiment:", output_root / "experiment.json", flush=True)
+    (output_root / "experiment.json").write_text(
+        json.dumps(experiment, indent=2), encoding="utf-8"
+    )
+
+    base._draw_preview(
+        sat_path,
+        routes,
+        output_root / "route_plan_full_satellite.jpg",
+    )
+    print(
+        "[DONE] experiment:", output_root / "experiment.json", flush=True
+    )
     return output_root
 
 
 def build_parser():
     p = argparse.ArgumentParser()
-    p.add_argument("--dataset-root", default="/yh/study/cvpr_data/Bearing_UAV_90K")
-    p.add_argument("--city", default="cityb", choices=sorted(base.CITY_TO_RSI))
+    p.add_argument(
+        "--dataset-root",
+        default="/yh/study/cvpr_data/Bearing_UAV_90K",
+    )
+    p.add_argument(
+        "--city", default="cityb", choices=sorted(base.CITY_TO_RSI)
+    )
     p.add_argument("--output-root", default=None)
     p.add_argument("--step-m", type=float, default=4.0)
     p.add_argument("--max-sample-distance-m", type=float, default=10.0)
@@ -643,10 +898,14 @@ def build_parser():
     p.add_argument("--point-cross-weight", type=float, default=20.0)
     p.add_argument("--lateral-smooth-weight", type=float, default=35.0)
     p.add_argument("--big-turn-threshold-deg", type=float, default=25.0)
-    p.add_argument("--min-selected-ratio", type=float, default=0.35)
-    p.add_argument("--max-cross-track-m", type=float, default=6.5)
-    p.add_argument("--max-same-leg-lateral-jump-m", type=float, default=3.5)
-    p.add_argument("--max-same-leg-backward-m", type=float, default=0.25)
+    p.add_argument("--min-selected-ratio", type=float, default=0.25)
+    p.add_argument("--max-cross-track-m", type=float, default=8.5)
+    p.add_argument(
+        "--max-same-leg-lateral-jump-m", type=float, default=4.0
+    )
+    p.add_argument(
+        "--max-same-leg-backward-m", type=float, default=0.25
+    )
     return p
 
 
