@@ -20,11 +20,11 @@
   },
   "bearing_step_m": 4.0,
   "route_frames": {
-    "train_01": 241,
-    "train_02": 267,
-    "train_03": 273,
-    "test_01": 262,
-    "test_02": 289
+    "train_01": 182,
+    "train_02": 201,
+    "train_03": 208,
+    "test_01": 228,
+    "test_02": 247
   },
   "train_routes": [
     "train_01",
@@ -37,6 +37,17 @@
   ],
   "exact_v39_model_inference": true,
   "bearing_cadence_adaptation": false,
+  "prepared_selection_version": "soft_sequence_v12_dense_then_physical_leg_prune",
+  "training_protocol": "single continuous Route-A-only temporal training for 60 epochs",
+  "route_mapping": {
+    "route_A_train": "train_01",
+    "route_B_eval": "test_01",
+    "route_C_eval": "test_02",
+    "unused_extra_training_routes": [
+      "train_02",
+      "train_03"
+    ]
+  },
   "exact_v39_values": {
     "reference_protocol": "controlled_gt_jitter",
     "visual_decoder": "weighted_centroid",
@@ -44,6 +55,12 @@
     "motion": "velocity",
     "kalman": "fixed",
     "forward_only": true,
+    "temporal_epochs": 60,
+    "temporal_lr": 0.0002,
+    "loss_measurement": 1.0,
+    "loss_next_step": 3.0,
+    "loss_velocity": 0.25,
+    "teacher_ratio_final": 1.0,
     "max_forward_speed_m_per_frame": 14.0,
     "max_cross_speed_m_per_frame": 5.0,
     "max_polynomial_step_m_per_frame": 14.0,
@@ -62,45 +79,6 @@
     "bearing_coordinate_and_image_adapter": true,
     "pseudo_flight_sequence_construction": true,
     "split_guard_frames": 2,
-    "split_reason": "3-frame temporal window on short external episodes",
-    "route_splits": {
-      "train_01": {
-        "length": 241,
-        "train": [
-          0,
-          166
-        ],
-        "val": [
-          170,
-          202
-        ],
-        "val_frames": 32
-      },
-      "train_02": {
-        "length": 267,
-        "train": [
-          0,
-          184
-        ],
-        "val": [
-          188,
-          224
-        ],
-        "val_frames": 36
-      },
-      "train_03": {
-        "length": 273,
-        "train": [
-          0,
-          189
-        ],
-        "val": [
-          193,
-          230
-        ],
-        "val_frames": 37
-      }
-    }
-  },
-  "comparison_label": "original v39 estimator/settings on Bearing data; no cadence adaptation"
+    "split_reason": "3-frame temporal window on shorter external Route A"
+  }
 }
