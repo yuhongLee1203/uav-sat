@@ -10,7 +10,7 @@ Canonical methodological flow reproduced here:
   -> fixed-R constrained Kalman -> one final 5x5 MeanShift -> Final Position
 
 Bearing-specific code is restricted to data/coordinate adaptation and pseudo-flight
-construction.  It must NOT silently switch training routes every 20 epochs.
+construction. It must NOT silently switch training routes every 20 epochs.
 """
 from __future__ import annotations
 
@@ -67,11 +67,6 @@ def _require_audited_prepared(args, prepared_root: Path) -> None:
             if not path.exists():
                 errors.append(f"missing {path}")
 
-    if int(args.epochs_per_route) != CANONICAL_TEMPORAL_EPOCHS:
-        errors.append(
-            f"temporal epochs={args.epochs_per_route}; canonical v39 requires {CANONICAL_TEMPORAL_EPOCHS}"
-        )
-
     if errors:
         raise RuntimeError(
             "Exact-v39 refused non-canonical/stale setup:\n- " + "\n- ".join(errors)
@@ -114,7 +109,6 @@ def _set_exact_environment(args, prepared_root: Path):
         "UAVSAT_EXPERIMENT_FORWARD_ONLY": "1",
         "UAVSAT_SAT_IMAGE": str(Path(exp["satellite_image"]).resolve()),
         "UAVSAT_SAT_JSON": str((prepared_root / "bearing_satellite.json").resolve()),
-        # Saved v39 main result used one final 5x5 MeanShift with bandwidth 7 m.
         "MS_ENABLED": "1",
         "MS_GRID_SIZE": "5",
         "MS_BANDWIDTH_M": "7.0",
@@ -124,11 +118,9 @@ def _set_exact_environment(args, prepared_root: Path):
 
 
 def _patch_exact_paths(config, args, prepared_root: Path) -> None:
-    # Apply the generic Bearing coordinate/image settings first.
     ORIGINAL_PATCH_PATHS(config, args, prepared_root)
 
-    # Canonical v39 is A-only training, then B/C held-out inference.  Do NOT use
-    # the old Bearing three-stage train_01 -> train_02 -> train_03 schedule.
+    # Canonical v39: one Route A for visual+temporal training, held-out B/C.
     config.ROUTE_NAMES = ["route_A", "route_B", "route_C"]
     config.ROUTE_ROOTS = [
         prepared_root / "routes" / "train_01",
@@ -141,12 +133,9 @@ def _patch_exact_paths(config, args, prepared_root: Path) -> None:
         "route_C": prepared_root / "routes" / "test_02" / "waypoints.json",
     }
 
-    # Bearing episodes are much shorter than the original field Route A.  This
-    # is the only temporal-training bookkeeping adaptation: keep a two-frame
-    # separation for the 3-frame window so validation remains non-empty.
+    # Only unavoidable external-dataset bookkeeping adaptation.
     config.SPLIT_GUARD_FRAMES = 2
 
-    # Lock the actual model/estimator values to canonical v39.
     config.TEMPORAL_EPOCHS = CANONICAL_TEMPORAL_EPOCHS
     config.MAX_FORWARD_SPEED_M_PER_FRAME = 14.0
     config.MAX_CROSS_SPEED_M_PER_FRAME = 5.0
@@ -235,7 +224,6 @@ def _audit_exact(config, runtime: Path, args, prepared_root: Path) -> None:
     if mismatches:
         raise RuntimeError("Exact-v39 audit failed: %s" % json.dumps(mismatches, indent=2))
 
-    # Prove the actual route mapping used by the model.
     expected_roots = [
         prepared_root / "routes" / "train_01",
         prepared_root / "routes" / "test_01",
@@ -276,7 +264,6 @@ def _audit_exact(config, runtime: Path, args, prepared_root: Path) -> None:
 
 
 def _train_and_infer_exact_a_only(args, prepared_root: Path) -> None:
-    """Canonical v39 training schedule: one A-only temporal run, then B/C."""
     runtime = base._make_runtime(prepared_root)
     _set_exact_environment(args, prepared_root)
     config, tracker, visual_localizer = base._load_runtime_modules(runtime)
@@ -293,8 +280,6 @@ def _train_and_infer_exact_a_only(args, prepared_root: Path) -> None:
             if Path(path).exists() or Path(path).is_symlink():
                 Path(path).unlink()
 
-    # External dataset requires a Bearing-specific visual head/gallery, but the
-    # training function/hyperparameters are the canonical Route-A-only ones.
     if not args.reuse_visual or not config.VISUAL_CHECKPOINT.exists():
         visual_localizer.train_visual_retrieval_a_only(
             device=device,
@@ -306,14 +291,11 @@ def _train_and_infer_exact_a_only(args, prepared_root: Path) -> None:
         print("reuse visual checkpoint:", config.VISUAL_CHECKPOINT, flush=True)
 
     visual = visual_localizer.FrozenVisualLocalizer(device)
-
-    # EXACT canonical temporal schedule: ONE cache, ONE route, ONE 60-epoch run.
-    cache_a = tracker.build_route_cache(
-        "route_A", config.ROUTE_ROOTS[0], visual, device
-    )
+    cache_a = tracker.build_route_cache("route_A", config.ROUTE_ROOTS[0], visual, device)
     route_a = tracker.WaypointRoute(
         tracker.load_waypoint_xy("route_A", visual.origin_lat, visual.origin_lon)
     )
+
     print("\n=== EXACT v39 temporal training: Route A only, 60 epochs ===", flush=True)
     tracker.train_temporal_model(
         visual=visual,
