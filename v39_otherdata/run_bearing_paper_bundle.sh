@@ -36,18 +36,13 @@ fi
 rm -rf "${BUNDLE_DIR}"
 mkdir -p "${BUNDLE_DIR}" "${FINAL_DIR}"
 
-# Re-render ALL eight figures with the new paper-style high-contrast convention.
 for city in citya cityb cityc cityd; do
   prepared="${GEN_ROOT}/${city}"
   out="${prepared}/v39_output_bearing_adapted"
   test -s "${out}/bearing_v39_summary.json"
-
   echo "[PAPER-BUNDLE] render ${city}"
   python3 v39_otherdata/bearing_plot_final_vs_gt.py \
-    --prepared-root "${prepared}" \
-    --output-dir "${out}" \
-    --routes test_01 test_02
-
+    --prepared-root "${prepared}" --output-dir "${out}" --routes test_01 test_02
   for route in test_01 test_02; do
     src="${out}/${route}_final_result.jpg"
     dst="${FINAL_DIR}/${city}_${route}_final_result.jpg"
@@ -57,49 +52,36 @@ for city in citya cityb cityc cityd; do
   done
 done
 
-# Export the exact published Bearing-UAV comparison rows used in its paper.
-# External baseline implementations are not present in the public Bearing-UAV
-# repository, therefore these are explicitly marked as published references.
+# Published values remain a separate reference table; they are not described as reruns.
 python3 v39_otherdata/bearing_published_reference.py \
-  --generated-root "${GEN_ROOT}" \
-  --output-dir "${BUNDLE_DIR}"
+  --generated-root "${GEN_ROOT}" --output-dir "${BUNDLE_DIR}"
 
-# Copy our own multi-city machine-readable results next to the published rows.
 for f in \
   bearing_multicity_status.json \
   bearing_multicity_summary.csv \
   bearing_multicity_summary.json \
   bearing_paper_comparison_multicity.csv \
   bearing_paper_comparison_multicity.json; do
-  if [[ -s "${GEN_ROOT}/${f}" ]]; then
-    cp "${GEN_ROOT}/${f}" "${BUNDLE_DIR}/${f}"
-  fi
+  if [[ -s "${GEN_ROOT}/${f}" ]]; then cp "${GEN_ROOT}/${f}" "${BUNDLE_DIR}/${f}"; fi
 done
 
-# Small manifest that is convenient when assembling the thesis/paper.
 python3 - "${BUNDLE_DIR}" <<'PY'
-import csv
-import json
-import sys
+import csv,json,sys
 from pathlib import Path
-root = Path(sys.argv[1])
-rows = []
-for city in ("citya", "cityb", "cityc", "cityd"):
-    for route in ("test_01", "test_02"):
-        image = root / f"{city}_{route}_final_result.jpg"
-        if not image.exists() or image.stat().st_size == 0:
-            raise SystemExit(f"[PAPER-BUNDLE] missing image: {image}")
+root=Path(sys.argv[1]);rows=[]
+for city in ("citya","cityb","cityc","cityd"):
+    for route in ("test_01","test_02"):
+        image=root/f"{city}_{route}_final_result.jpg"
+        if not image.exists() or image.stat().st_size==0:raise SystemExit(f"[PAPER-BUNDLE] missing image: {image}")
         rows.append({
-            "city": city,
-            "route": route,
-            "figure": image.name,
-            "prediction_style": "red solid + white halo",
-            "reference_style": "purple dashed + white halo + waypoint markers",
+            "city":city,"route":route,"figure":image.name,
+            "prediction_style":"red solid + white halo",
+            "ground_truth_style":"purple dashed + white halo (true per-frame GT)",
+            "planned_route_style":"gray dotted (context only)",
         })
-with (root / "figure_manifest.csv").open("w", newline="", encoding="utf-8") as f:
-    w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-    w.writeheader(); w.writerows(rows)
-(root / "figure_manifest.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
+with (root/"figure_manifest.csv").open("w",newline="",encoding="utf-8") as f:
+    w=csv.DictWriter(f,fieldnames=list(rows[0].keys()));w.writeheader();w.writerows(rows)
+(root/"figure_manifest.json").write_text(json.dumps(rows,indent=2),encoding="utf-8")
 print(f"[PAPER-BUNDLE] figures={len(rows)}: PASS")
 PY
 
