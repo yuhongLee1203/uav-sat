@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Run Bearing-UAV with the original v39 estimator settings.
+"""Run Bearing-UAV with the canonical v39 DirectFinalMS training/inference flow.
 
-The Bearing adapter may change dataset I/O / pseudo-flight bookkeeping only.
-The inference model and estimator are locked to the saved v39 configuration:
+Canonical methodological flow reproduced here:
+
+  Route A only -> one continuous 60-epoch temporal training run
+  Route B/C    -> held-out inference
 
   Weighted Centroid -> 3-frame Context-GRU -> velocity motion
   -> fixed-R constrained Kalman -> one final 5x5 MeanShift -> Final Position
 
-This wrapper also refuses to silently rebuild prepared Bearing data.  The caller
-must provide the audited v12 pseudo-flight package.  This prevents a route or
-coordinate mismatch from being hidden by bearing_runner._ensure_prepared().
+Bearing-specific code is restricted to data/coordinate adaptation and pseudo-flight
+construction.  It must NOT silently switch training routes every 20 epochs.
 """
 from __future__ import annotations
 
@@ -21,28 +22,24 @@ import torch
 
 import bearing_runner as base
 
-ORIGINAL_SET_ENV = base._set_canonical_environment
 ORIGINAL_PATCH_PATHS = base._patch_bearing_paths
 ORIGINAL_AUDIT = base._audit_canonical
 
 EXACT_ARCH = "V39_GRU_Kalman_MS"
 EXPECTED_SELECTION_VERSION = "soft_sequence_v12_dense_then_physical_leg_prune"
+CANONICAL_TEMPORAL_EPOCHS = 60
 
 
 def _require_audited_prepared(args, prepared_root: Path) -> None:
-    """Never silently replace the route package that the shell just audited."""
     if bool(getattr(args, "reprepare", False)):
         raise RuntimeError(
             "Exact-v39 runner does not permit --reprepare. Run "
-            "run_bearing_v39_sequence_fixed.sh so the audited v12 adapter is used."
+            "run_bearing_v39_sequence_fixed.sh so the audited prepared data is used."
         )
 
     exp_path = prepared_root / "experiment.json"
     if not exp_path.exists():
-        raise RuntimeError(
-            f"Missing audited Bearing experiment: {exp_path}. "
-            "Run run_bearing_v39_sequence_fixed.sh."
-        )
+        raise RuntimeError(f"Missing audited Bearing experiment: {exp_path}")
     exp = json.loads(exp_path.read_text(encoding="utf-8"))
 
     errors = []
@@ -56,38 +53,37 @@ def _require_audited_prepared(args, prepared_root: Path) -> None:
             % (exp.get("sequence_selection_version"), EXPECTED_SELECTION_VERSION)
         )
 
-    route_stats = exp.get("route_stats", {})
-    expected_routes = list(base.TRAIN_ROUTES) + list(base.TEST_ROUTES)
-    for route_name in expected_routes:
-        stats = route_stats.get(route_name)
+    for route_name in (*base.TRAIN_ROUTES, *base.TEST_ROUTES):
+        stats = exp.get("route_stats", {}).get(route_name)
         if not isinstance(stats, dict):
             errors.append(f"missing route_stats[{route_name}]")
             continue
         if abs(float(stats.get("sample_step_m", -1.0)) - float(args.step_m)) > 1e-6:
             errors.append(
-                f"{route_name} sample_step={stats.get('sample_step_m')} "
-                f"!= runner step={args.step_m}"
+                f"{route_name} sample_step={stats.get('sample_step_m')} != runner step={args.step_m}"
             )
-        manifest = prepared_root / "routes" / route_name / "manifest.csv"
-        waypoint = prepared_root / "routes" / route_name / "waypoints.json"
-        if not manifest.exists():
-            errors.append(f"missing {manifest}")
-        if not waypoint.exists():
-            errors.append(f"missing {waypoint}")
+        for filename in ("manifest.csv", "waypoints.json"):
+            path = prepared_root / "routes" / route_name / filename
+            if not path.exists():
+                errors.append(f"missing {path}")
 
-    route_a_manifest = prepared_root / "routes" / "route_A" / "manifest.csv"
-    if not route_a_manifest.exists():
-        errors.append(f"missing {route_a_manifest}")
+    if int(args.epochs_per_route) != CANONICAL_TEMPORAL_EPOCHS:
+        errors.append(
+            f"temporal epochs={args.epochs_per_route}; canonical v39 requires {CANONICAL_TEMPORAL_EPOCHS}"
+        )
 
     if errors:
         raise RuntimeError(
-            "Exact-v39 refused unaudited/stale prepared data:\n- "
-            + "\n- ".join(errors)
+            "Exact-v39 refused non-canonical/stale setup:\n- " + "\n- ".join(errors)
         )
 
     print(
-        "[EXACT-V39] audited prepared-data lock: PASS | "
+        "[EXACT-V39] prepared-data lock: PASS | "
         f"selection={EXPECTED_SELECTION_VERSION}",
+        flush=True,
+    )
+    print(
+        "[EXACT-V39] training protocol: ONE Route A, 60 continuous epochs -> Route B/C inference",
         flush=True,
     )
 
@@ -118,6 +114,7 @@ def _set_exact_environment(args, prepared_root: Path):
         "UAVSAT_EXPERIMENT_FORWARD_ONLY": "1",
         "UAVSAT_SAT_IMAGE": str(Path(exp["satellite_image"]).resolve()),
         "UAVSAT_SAT_JSON": str((prepared_root / "bearing_satellite.json").resolve()),
+        # Saved v39 main result used one final 5x5 MeanShift with bandwidth 7 m.
         "MS_ENABLED": "1",
         "MS_GRID_SIZE": "5",
         "MS_BANDWIDTH_M": "7.0",
@@ -127,13 +124,30 @@ def _set_exact_environment(args, prepared_root: Path):
 
 
 def _patch_exact_paths(config, args, prepared_root: Path) -> None:
+    # Apply the generic Bearing coordinate/image settings first.
     ORIGINAL_PATCH_PATHS(config, args, prepared_root)
 
-    # Dataset bookkeeping only: short external pseudo-flight episodes need a
-    # two-frame split guard for the 3-frame temporal window.
+    # Canonical v39 is A-only training, then B/C held-out inference.  Do NOT use
+    # the old Bearing three-stage train_01 -> train_02 -> train_03 schedule.
+    config.ROUTE_NAMES = ["route_A", "route_B", "route_C"]
+    config.ROUTE_ROOTS = [
+        prepared_root / "routes" / "train_01",
+        prepared_root / "routes" / "test_01",
+        prepared_root / "routes" / "test_02",
+    ]
+    config.WAYPOINT_FILES = {
+        "route_A": prepared_root / "routes" / "train_01" / "waypoints.json",
+        "route_B": prepared_root / "routes" / "test_01" / "waypoints.json",
+        "route_C": prepared_root / "routes" / "test_02" / "waypoints.json",
+    }
+
+    # Bearing episodes are much shorter than the original field Route A.  This
+    # is the only temporal-training bookkeeping adaptation: keep a two-frame
+    # separation for the 3-frame window so validation remains non-empty.
     config.SPLIT_GUARD_FRAMES = 2
 
-    # Lock all estimator values to canonical v39.  No Bearing cadence adaptation.
+    # Lock the actual model/estimator values to canonical v39.
+    config.TEMPORAL_EPOCHS = CANONICAL_TEMPORAL_EPOCHS
     config.MAX_FORWARD_SPEED_M_PER_FRAME = 14.0
     config.MAX_CROSS_SPEED_M_PER_FRAME = 5.0
     config.MAX_FINAL_CROSS_TRACK_M = 10.0
@@ -142,7 +156,6 @@ def _patch_exact_paths(config, args, prepared_root: Path) -> None:
     config.MAX_POLYNOMIAL_STEP_M_PER_FRAME = 14.0
     config.MAX_MEASUREMENT_CORRECTION_PARALLEL_M = 4.0
     config.MAX_MEASUREMENT_CORRECTION_CROSS_M = 4.0
-
     config.KALMAN_MAX_MEASUREMENT_INNOVATION_PROGRESS_M = 5.0
     config.KALMAN_MAX_MEASUREMENT_INNOVATION_CROSS_M = 3.0
     config.KALMAN_MAX_POSTERIOR_CORRECTION_PROGRESS_M = 3.0
@@ -151,7 +164,6 @@ def _patch_exact_paths(config, args, prepared_root: Path) -> None:
     config.KALMAN_FINAL_STEP_SLACK_M = 0.0
     config.KALMAN_FINAL_STEP_MIN_M = 0.0
     config.KALMAN_FINAL_STEP_MAX_M = 7.0
-
     config.BEARING_CADENCE_ADAPTATION = None
 
 
@@ -163,6 +175,12 @@ def _exact_model_values(config):
         "motion": str(config.EXPERIMENT_MOTION),
         "kalman": str(config.EXPERIMENT_KALMAN),
         "forward_only": bool(config.FORWARD_ONLY_LOCAL_SEARCH),
+        "temporal_epochs": int(config.TEMPORAL_EPOCHS),
+        "temporal_lr": float(config.TEMPORAL_LR),
+        "loss_measurement": float(config.LOSS_MEASUREMENT),
+        "loss_next_step": float(config.LOSS_NEXT_STEP),
+        "loss_velocity": float(config.LOSS_VELOCITY),
+        "teacher_ratio_final": float(config.TEACHER_RATIO_FINAL),
         "max_forward_speed_m_per_frame": float(config.MAX_FORWARD_SPEED_M_PER_FRAME),
         "max_cross_speed_m_per_frame": float(config.MAX_CROSS_SPEED_M_PER_FRAME),
         "max_polynomial_step_m_per_frame": float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME),
@@ -181,7 +199,6 @@ def _exact_model_values(config):
 
 def _audit_exact(config, runtime: Path, args, prepared_root: Path) -> None:
     ORIGINAL_AUDIT(config, runtime, args, prepared_root)
-
     actual = _exact_model_values(config)
     expected = {
         "reference_protocol": "controlled_gt_jitter",
@@ -190,6 +207,12 @@ def _audit_exact(config, runtime: Path, args, prepared_root: Path) -> None:
         "motion": "velocity",
         "kalman": "fixed",
         "forward_only": True,
+        "temporal_epochs": 60,
+        "temporal_lr": 2e-4,
+        "loss_measurement": 1.0,
+        "loss_next_step": 3.0,
+        "loss_velocity": 0.25,
+        "teacher_ratio_final": 1.0,
         "max_forward_speed_m_per_frame": 14.0,
         "max_cross_speed_m_per_frame": 5.0,
         "max_polynomial_step_m_per_frame": 14.0,
@@ -212,47 +235,122 @@ def _audit_exact(config, runtime: Path, args, prepared_root: Path) -> None:
     if mismatches:
         raise RuntimeError("Exact-v39 audit failed: %s" % json.dumps(mismatches, indent=2))
 
-    split_rows = {}
-    for route_name in base.TRAIN_ROUTES:
-        manifest = prepared_root / "routes" / route_name / "manifest.csv"
-        with manifest.open("r", encoding="utf-8") as handle:
-            length = max(0, sum(1 for _ in handle) - 1)
-        split = __import__("robust_tracker").split_ranges(length)
-        train_range, val_range = split["train"], split["val"]
-        val_frames = max(0, int(val_range[1]) - int(val_range[0]))
-        if val_frames < 4:
-            raise RuntimeError(
-                f"Bearing validation still too short for {route_name}: {val_frames} frames"
-            )
-        split_rows[route_name] = {
-            "length": length,
-            "train": list(train_range),
-            "val": list(val_range),
-            "val_frames": val_frames,
-        }
+    # Prove the actual route mapping used by the model.
+    expected_roots = [
+        prepared_root / "routes" / "train_01",
+        prepared_root / "routes" / "test_01",
+        prepared_root / "routes" / "test_02",
+    ]
+    if [Path(p).resolve() for p in config.ROUTE_ROOTS] != [p.resolve() for p in expected_roots]:
+        raise RuntimeError("Exact-v39 Route A/B/C mapping audit failed")
 
     audit_path = Path(config.OUTPUT_DIR) / "v39_bearing_training_audit.json"
     audit = json.loads(audit_path.read_text(encoding="utf-8"))
-    audit["architecture"] = EXACT_ARCH
-    audit["exact_v39_model_inference"] = True
-    audit["bearing_cadence_adaptation"] = False
-    audit["prepared_selection_version"] = EXPECTED_SELECTION_VERSION
-    audit["exact_v39_values"] = actual
-    audit["dataset_only_adaptations"] = {
-        "bearing_coordinate_and_image_adapter": True,
-        "pseudo_flight_sequence_construction": True,
-        "split_guard_frames": 2,
-        "split_reason": "3-frame temporal window on short external episodes",
-        "route_splits": split_rows,
-    }
-    audit["comparison_label"] = (
-        "original v39 estimator/settings on Bearing data; no cadence adaptation"
-    )
+    audit.update({
+        "architecture": EXACT_ARCH,
+        "exact_v39_model_inference": True,
+        "bearing_cadence_adaptation": False,
+        "prepared_selection_version": EXPECTED_SELECTION_VERSION,
+        "training_protocol": "single continuous Route-A-only temporal training for 60 epochs",
+        "route_mapping": {
+            "route_A_train": "train_01",
+            "route_B_eval": "test_01",
+            "route_C_eval": "test_02",
+            "unused_extra_training_routes": ["train_02", "train_03"],
+        },
+        "exact_v39_values": actual,
+        "dataset_only_adaptations": {
+            "bearing_coordinate_and_image_adapter": True,
+            "pseudo_flight_sequence_construction": True,
+            "split_guard_frames": 2,
+            "split_reason": "3-frame temporal window on shorter external Route A",
+        },
+    })
     audit_path.write_text(json.dumps(audit, indent=2), encoding="utf-8")
 
-    print("[EXACT-V39] model/inference settings: PASS", flush=True)
+    print("[EXACT-V39] model/training/inference settings: PASS", flush=True)
     print(json.dumps(actual, indent=2), flush=True)
+    print("[EXACT-V39] Route A=train_01 | Route B=test_01 | Route C=test_02", flush=True)
+    print("[EXACT-V39] temporal training = ONE continuous 60-epoch A-only run", flush=True)
     print("[EXACT-V39] Bearing cadence adaptation: DISABLED", flush=True)
+
+
+def _train_and_infer_exact_a_only(args, prepared_root: Path) -> None:
+    """Canonical v39 training schedule: one A-only temporal run, then B/C."""
+    runtime = base._make_runtime(prepared_root)
+    _set_exact_environment(args, prepared_root)
+    config, tracker, visual_localizer = base._load_runtime_modules(runtime)
+    _patch_exact_paths(config, args, prepared_root)
+    _audit_exact(config, runtime, args, prepared_root)
+
+    device = tracker.resolve_device()
+    if not args.resume:
+        for path in (
+            config.VISUAL_CHECKPOINT,
+            config.TEMPORAL_CHECKPOINT,
+            config.LATEST_TEMPORAL_CHECKPOINT,
+        ):
+            if Path(path).exists() or Path(path).is_symlink():
+                Path(path).unlink()
+
+    # External dataset requires a Bearing-specific visual head/gallery, but the
+    # training function/hyperparameters are the canonical Route-A-only ones.
+    if not args.reuse_visual or not config.VISUAL_CHECKPOINT.exists():
+        visual_localizer.train_visual_retrieval_a_only(
+            device=device,
+            epochs=int(args.visual_epochs),
+            jitter_m=float(args.jitter_m),
+            resume=bool(args.resume),
+        )
+    else:
+        print("reuse visual checkpoint:", config.VISUAL_CHECKPOINT, flush=True)
+
+    visual = visual_localizer.FrozenVisualLocalizer(device)
+
+    # EXACT canonical temporal schedule: ONE cache, ONE route, ONE 60-epoch run.
+    cache_a = tracker.build_route_cache(
+        "route_A", config.ROUTE_ROOTS[0], visual, device
+    )
+    route_a = tracker.WaypointRoute(
+        tracker.load_waypoint_xy("route_A", visual.origin_lat, visual.origin_lon)
+    )
+    print("\n=== EXACT v39 temporal training: Route A only, 60 epochs ===", flush=True)
+    tracker.train_temporal_model(
+        visual=visual,
+        cache=cache_a,
+        route=route_a,
+        device=device,
+        epochs=CANONICAL_TEMPORAL_EPOCHS,
+        patience_limit=int(args.patience),
+        resume=bool(args.resume),
+    )
+
+    if not config.TEMPORAL_CHECKPOINT.exists():
+        raise RuntimeError("Canonical A-only temporal training produced no best checkpoint")
+    model = tracker.load_temporal_model(device)
+
+    summaries = {}
+    for external_name, canonical_name, root in (
+        ("test_01", "route_B", config.ROUTE_ROOTS[1]),
+        ("test_02", "route_C", config.ROUTE_ROOTS[2]),
+    ):
+        cache = tracker.build_route_cache(canonical_name, root, visual, device)
+        route = tracker.WaypointRoute(
+            tracker.load_waypoint_xy(canonical_name, visual.origin_lat, visual.origin_lon)
+        )
+        print(
+            f"\n=== held-out exact-v39 inference: {external_name} ({canonical_name}) ===",
+            flush=True,
+        )
+        summaries[external_name] = tracker.run_route_inference(
+            external_name, visual, model, cache, route, device
+        )
+
+    summary_path = Path(config.OUTPUT_DIR) / "bearing_v39_summary.json"
+    summary_path.write_text(
+        json.dumps(summaries, indent=2, default=float), encoding="utf-8"
+    )
+    print("\n[DONE] summary:", summary_path, flush=True)
 
 
 base.FINAL_ARCH = EXACT_ARCH
@@ -260,6 +358,7 @@ base._ensure_prepared = _require_audited_prepared
 base._set_canonical_environment = _set_exact_environment
 base._patch_bearing_paths = _patch_exact_paths
 base._audit_canonical = _audit_exact
+base.train_and_infer = _train_and_infer_exact_a_only
 
 
 if __name__ == "__main__":
