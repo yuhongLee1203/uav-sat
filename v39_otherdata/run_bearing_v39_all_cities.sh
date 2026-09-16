@@ -58,7 +58,7 @@ for city in ${CITIES}; do
   echo "################################################################################"
 done
 
-export SUCCESS_CITIES FAILED_CITIES
+export SUCCESS_CITIES FAILED_CITIES CITIES
 python3 - "${GEN_ROOT}" <<'PY'
 import csv
 import json
@@ -69,8 +69,9 @@ from pathlib import Path
 root = Path(sys.argv[1]).resolve()
 success = os.environ.get("SUCCESS_CITIES", "").split()
 failed = os.environ.get("FAILED_CITIES", "").split()
+requested = os.environ.get("CITIES", "citya cityb cityc cityd").split()
 status = {
-    "requested_cities": ["citya", "cityb", "cityc", "cityd"],
+    "requested_cities": requested,
     "successful_cities": success,
     "failed_cities": failed,
     "successful_city_count": len(success),
@@ -115,7 +116,7 @@ for city in success:
             "HSR@15_pct": "N/A",
             "MHE_deg": "N/A", "MedHE_deg": "N/A",
             "SR@20_pct": "N/A", "SPL_pct": "N/A", "NE_m": "N/A",
-            "comparison_note": "MLE/MedLE/LSR@15 direct; Recall@1 derived same-quadrant; heading/navigation N/A (different protocol)",
+            "comparison_note": "MLE/MedLE/LSR@15 use the same formulas but protocol differs (controlled local prior); Recall@1 is derived; heading/navigation N/A",
         })
 
 if summary_rows:
@@ -128,11 +129,12 @@ if summary_rows:
         "total_frames": total_frames,
         "weighted_Recall@1_derived_same_quadrant_pct": weighted("Recall@1_derived_same_quadrant_pct"),
         "weighted_MLE_m": weighted("MLE_m"),
-        "weighted_MedLE_route_average_m": sum(float(r["MedLE_m"]) for r in paper_rows) / len(paper_rows),
+        "MedLE_route_average_m": sum(float(r["MedLE_m"]) for r in paper_rows) / len(paper_rows),
         "weighted_LSR@15_pct": weighted("LSR@15_pct"),
-        "directly_comparable_to_Bearing_UAV": ["MLE_m", "MedLE_m", "LSR@15_pct"],
+        "same_metric_definition_Bearing_UAV_protocol_footnote_required": ["MLE_m", "MedLE_m", "LSR@15_pct"],
+        "protocol_footnote": "v39 uses controlled-local-prior temporal refinement on pseudo-flight sequences; Bearing-UAV uses four-adjacent-RST pose regression.",
         "derived_same_criterion": ["Recall@1_derived_same_quadrant_pct"],
-        "not_directly_comparable_current_protocol": ["HSR@15", "MHE", "MedHE", "SR@20", "SPL", "NE"],
+        "not_available_under_current_protocol": ["HSR@15", "MHE", "MedHE", "SR@20", "SPL", "NE"],
         "routes": paper_rows,
         "raw_city_paper_metrics": raw_paper,
     }
@@ -172,4 +174,4 @@ if [[ -n "${FAILED_CITIES// }" ]]; then
   exit 1
 fi
 
-echo "[MULTICITY-AUDIT] PASS: all four cities, eight official test routes, eight final images"
+echo "[MULTICITY-AUDIT] PASS: all requested cities, two official test routes per city, two final images per city"
