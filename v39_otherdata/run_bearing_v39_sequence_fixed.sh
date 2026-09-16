@@ -12,6 +12,17 @@ USED_MODE="?"
 
 cd "${REPO_ROOT}"
 
+echo "[CODE-AUDIT] compiling every Bearing/v39 adapter used by this run"
+python3 -m py_compile \
+  v39_otherdata/bearing_prepare.py \
+  v39_otherdata/bearing_prepare_sequence_v3.py \
+  v39_otherdata/data.py \
+  v39_otherdata/bearing_runner.py \
+  v39_otherdata/bearing_runner_exact_v39.py \
+  v39_otherdata/bearing_plot_final_vs_gt.py \
+  v39_DirectFinalMS/patch_direct_finalms.py
+echo "[CODE-AUDIT] Python syntax/import source compilation: PASS"
+
 prepare_sequence() {
   local max_cross="$1"
   local max_lat_jump="$2"
@@ -31,9 +42,9 @@ repo = Path.cwd()
 sys.path.insert(0, str(repo / "v39_otherdata"))
 import bearing_prepare_sequence_v3 as seq
 
-# These are the proven Bearing corridors: multiple irregular major turns with a
-# straight waypoint-to-waypoint leg between turns.  Do not invent unsupported
-# corridors merely to make the plot look straight.
+# Proven Bearing corridors: multiple irregular turns.  Every waypoint-to-waypoint
+# section is a straight planned leg.  We never invent a corridor in an area with
+# no real Bearing observations.
 seq.PIECEWISE_ROUTE_SPECS = {
     "train_01": [
         (330, 620), (690, 850), (1060, 690), (1390, 1030), (1710, 880),
@@ -67,13 +78,10 @@ args = argparse.Namespace(
     dataset_root=sys.argv[1],
     city=sys.argv[2],
     output_root=sys.argv[3],
-
-    # Keep the successful v9 4 m target grid for dense matching.  We do NOT
-    # demand one physical frame every 4 m; bad frames are removed afterwards.
     step_m=4.0,
     preferred_step_m=4.0,
 
-    # Dense-stage settings deliberately match the previously successful regime.
+    # Dense-stage settings reproduce the previously successful route matching.
     safety_max_step_m=22.0,
     max_sample_distance_m=10.0,
     candidate_limit=256,
@@ -87,7 +95,7 @@ args = argparse.Namespace(
     lateral_smooth_weight=35.0,
     big_turn_threshold_deg=25.0,
 
-    # Second-stage physical straight-leg prune.
+    # Physical cleanup happens only after the dense sequence exists.
     max_cross_track_m=float(sys.argv[4]),
     max_same_leg_lateral_jump_m=float(sys.argv[5]),
     max_same_leg_backward_m=0.0,
@@ -103,9 +111,6 @@ PY
   return 1
 }
 
-# The dense first stage is intentionally easy to satisfy because it reproduces
-# the old 98-100% route matching.  Only the POST-selection physical prune is
-# relaxed if a corridor is unusually sparse.
 if ! prepare_sequence 5.5 2.75 0.30 strict; then
   echo "[PREP] strict post-prune kept too few frames; retrying balanced prune"
   if ! prepare_sequence 6.5 3.5 0.28 balanced; then
@@ -168,8 +173,73 @@ if failed:
 print("[V12-DENSE-THEN-PRUNE] route audit: PASS")
 PY
 
-# Exact canonical v39 estimator.  Step=4 must match experiment.json so the
-# runner reuses the v12 prepared data rather than rebuilding it with base prep.
+# Validate every prepared coordinate before model training.  This catches unit,
+# origin, manifest, waypoint, missing-image, and stale route errors early.
+python3 - "${PREPARED_ROOT}" <<'PY'
+import csv, json, math, sys
+from pathlib import Path
+
+root = Path(sys.argv[1]).resolve()
+meta = json.loads((root / "bearing_satellite.json").read_text(encoding="utf-8"))
+mpp = float(meta["mpp"])
+width = int(meta["width"])
+height = int(meta["height"])
+routes = ["train_01", "train_02", "train_03", "test_01", "test_02"]
+
+def read_csv(path):
+    with path.open("r", newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+route_a = read_csv(root / "routes" / "route_A" / "manifest.csv")
+if not route_a:
+    raise SystemExit("[DATA-AUDIT] empty route_A")
+origin_x = float(route_a[0]["x_m"])
+origin_y = float(route_a[0]["y_m"])
+
+for name in routes:
+    manifest_path = root / "routes" / name / "manifest.csv"
+    rows = read_csv(manifest_path)
+    if len(rows) < 30:
+        raise SystemExit(f"[DATA-AUDIT] {name}: only {len(rows)} frames")
+    ids = [int(r["frame_id"]) for r in rows]
+    if ids != list(range(len(rows))):
+        raise SystemExit(f"[DATA-AUDIT] {name}: frame_id is not contiguous from zero")
+
+    for r in rows:
+        x_px, y_px = float(r["x_px"]), float(r["y_px"])
+        x_m, y_m = float(r["x_m"]), float(r["y_m"])
+        if abs(x_m - x_px * mpp) > 2e-4 or abs(y_m - y_px * mpp) > 2e-4:
+            raise SystemExit(f"[DATA-AUDIT] {name}: pixel/metre mismatch at frame {r['frame_id']}")
+        if not (0.0 <= x_px < width and 0.0 <= y_px < height):
+            raise SystemExit(f"[DATA-AUDIT] {name}: GT outside satellite at frame {r['frame_id']}")
+        if not Path(r["image_path"]).exists():
+            raise SystemExit(f"[DATA-AUDIT] {name}: missing UAV image {r['image_path']}")
+
+    wp = json.loads((root / "routes" / name / "waypoints.json").read_text(encoding="utf-8"))
+    waypoints = wp.get("waypoints", [])
+    if len(waypoints) < 2:
+        raise SystemExit(f"[DATA-AUDIT] {name}: fewer than two waypoints")
+    for w in waypoints:
+        px, py = float(w["pixel_x"]), float(w["pixel_y"])
+        lon, lat = float(w["longitude"]), float(w["latitude"])
+        if abs(lon - px * mpp) > 1e-6 or abs(lat - py * mpp) > 1e-6:
+            raise SystemExit(f"[DATA-AUDIT] {name}: waypoint pixel/metre mismatch")
+        if not (0.0 <= px < width and 0.0 <= py < height):
+            raise SystemExit(f"[DATA-AUDIT] {name}: waypoint outside satellite")
+
+    print(f"[DATA-AUDIT] {name}: PASS | frames={len(rows)} waypoints={len(waypoints)}")
+
+# route_A is the source of the visual checkpoint origin.  Print it explicitly so
+# relative runtime XY can later be reconstructed into absolute satellite XY.
+print(
+    f"[DATA-AUDIT] visual/runtime origin: x={origin_x:.6f}m y={origin_y:.6f}m "
+    f"= ({origin_x/mpp:.3f}px, {origin_y/mpp:.3f}px)"
+)
+print("[DATA-AUDIT] prepared coordinate contract: PASS")
+PY
+
+# Exact canonical v39 estimator.  Step=4 matches experiment.json so the runner
+# must reuse the audited v12 prepared data rather than silently rebuilding it.
 python3 v39_otherdata/bearing_runner_exact_v39.py \
   --dataset-root "${DATASET_ROOT}" \
   --city "${CITY}" \
@@ -183,6 +253,11 @@ python3 v39_otherdata/bearing_runner_exact_v39.py \
   --max-sample-distance-m "${USED_SAMPLE_DISTANCE}" \
   --heading-weight-px-per-deg 0
 
+# The plotter now performs a second hard audit:
+# CSV relative GT + runtime origin must equal the current manifest absolute GT,
+# recomputed CSV MLE must equal the summary MLE, and all reconstructed points
+# must lie inside the current satellite image.  It refuses to save a plot if any
+# of those checks fail.
 python3 v39_otherdata/bearing_plot_final_vs_gt.py \
   --prepared-root "${PREPARED_ROOT}" \
   --output-dir "${OUTPUT_DIR}" \
@@ -191,11 +266,13 @@ python3 v39_otherdata/bearing_plot_final_vs_gt.py \
 echo ""
 echo "================================================================================================="
 echo "Bearing exact-v39 v12 experiment finished"
+echo "CODE/DATA/COORDINATE audits: PASS"
 echo "Adapter: dense real-observation match -> per-straight-leg longest physical subsequence prune"
 echo "Mode: ${USED_MODE}"
 echo "No GT projection/relabeling; retained Bearing coordinates remain real"
 echo "Green: planned/reference route | Cyan dots: true sampled GT | Red: final prediction"
 echo "Diagnostic orange: Kalman before final MeanShift"
+echo "IMPORTANT: inference CSV XY is relative to route_A origin; plot now translates it back to absolute satellite XY"
 echo "Model unchanged: Weighted Centroid -> 3-frame Context-GRU -> velocity -> fixed Kalman -> final 5x5 MS"
 echo "Bearing cadence adaptation: DISABLED"
 echo "Summary: ${OUTPUT_DIR}/bearing_v39_summary.json"
