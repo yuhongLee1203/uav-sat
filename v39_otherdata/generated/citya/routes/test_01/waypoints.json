@@ -1,0 +1,98 @@
+{
+  "route_name": "test_01",
+  "coordinate_system": "bearing_rsi_map_meters",
+  "mpp": 0.25,
+  "waypoints": [
+    {
+      "waypoint_order": 0,
+      "latitude": 848.25,
+      "longitude": 417.25,
+      "pixel_x": 1669.0,
+      "pixel_y": 3393.0
+    },
+    {
+      "waypoint_order": 1,
+      "latitude": 893.25,
+      "longitude": 556.25,
+      "pixel_x": 2225.0,
+      "pixel_y": 3573.0
+    },
+    {
+      "waypoint_order": 2,
+      "latitude": 814.25,
+      "longitude": 604.25,
+      "pixel_x": 2417.0,
+      "pixel_y": 3257.0
+    },
+    {
+      "waypoint_order": 3,
+      "latitude": 877.25,
+      "longitude": 654.5,
+      "pixel_x": 2618.0,
+      "pixel_y": 3509.0
+    },
+    {
+      "waypoint_order": 4,
+      "latitude": 909.25,
+      "longitude": 650.75,
+      "pixel_x": 2603.0,
+      "pixel_y": 3637.0
+    },
+    {
+      "waypoint_order": 5,
+      "latitude": 950.75,
+      "longitude": 648.5,
+      "pixel_x": 2594.0,
+      "pixel_y": 3803.0
+    },
+    {
+      "waypoint_order": 6,
+      "latitude": 954.0,
+      "longitude": 692.75,
+      "pixel_x": 2771.0,
+      "pixel_y": 3816.0
+    },
+    {
+      "waypoint_order": 7,
+      "latitude": 946.25,
+      "longitude": 739.25,
+      "pixel_x": 2957.0,
+      "pixel_y": 3785.0
+    },
+    {
+      "waypoint_order": 8,
+      "latitude": 885.0,
+      "longitude": 835.0,
+      "pixel_x": 3340.0,
+      "pixel_y": 3540.0
+    },
+    {
+      "waypoint_order": 9,
+      "latitude": 844.5,
+      "longitude": 840.75,
+      "pixel_x": 3363.0,
+      "pixel_y": 3378.0
+    },
+    {
+      "waypoint_order": 10,
+      "latitude": 806.0,
+      "longitude": 848.75,
+      "pixel_x": 3395.0,
+      "pixel_y": 3224.0
+    },
+    {
+      "waypoint_order": 11,
+      "latitude": 775.5,
+      "longitude": 853.0,
+      "pixel_x": 3412.0,
+      "pixel_y": 3102.0
+    },
+    {
+      "waypoint_order": 12,
+      "latitude": 771.0,
+      "longitude": 811.5,
+      "pixel_x": 3246.0,
+      "pixel_y": 3084.0
+    }
+  ]
+}
