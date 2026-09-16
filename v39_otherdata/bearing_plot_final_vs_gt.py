@@ -2,12 +2,13 @@
 """Render only the final Bearing-v39 result for each held-out route.
 
 Coordinate contract:
-- inference CSV gt/final coordinates are metres RELATIVE to the route_A origin;
+- inference CSV gt/final coordinates are metres RELATIVE to the visual checkpoint
+  origin, which in the current A-only protocol is train_01 frame 0;
 - Bearing manifests and satellite pixels are ABSOLUTE map coordinates.
 
-The plotter therefore restores the route_A origin before converting final XY to
-satellite pixels.  It also verifies CSV GT against the manifest and recomputes
-MLE before any image is written.  No Kalman diagnostic image, no extra full-size
+The plotter restores that exact train_01 origin before converting final XY to
+satellite pixels. It verifies CSV GT against the manifest and recomputes MLE
+before any image is written. No Kalman diagnostic image, no duplicate full-size
 copy, and no cosmetic trajectory smoothing are produced.
 """
 from __future__ import annotations
@@ -31,9 +32,10 @@ def _read_rows(path: Path) -> List[Dict[str, str]]:
 
 
 def _route_origin_m(prepared_root: Path) -> Tuple[float, float]:
-    rows = _read_rows(prepared_root / "routes" / "route_A" / "manifest.csv")
+    # The Bearing-v39 runner maps canonical Route A directly to train_01.
+    rows = _read_rows(prepared_root / "routes" / "train_01" / "manifest.csv")
     if not rows:
-        raise RuntimeError("route_A manifest is empty")
+        raise RuntimeError("train_01 manifest is empty")
     return float(rows[0]["x_m"]), float(rows[0]["y_m"])
 
 
@@ -195,7 +197,6 @@ def render(
     draw.line(reference, fill=(30, 255, 95, 255), width=width + 3, joint="curve")
     draw.line(final, fill=(255, 45, 55, 255), width=width + 2, joint="curve")
 
-    # Mark only route start/end so the final figure stays clean.
     r = max(6, width + 1)
     for x, y in (reference[0], reference[-1]):
         draw.ellipse(
