@@ -43,7 +43,6 @@ export TOKENIZERS_PARALLELISM=false
 export TORCH_HOME="${EXT_ROOT}/model_cache/torch"
 export HF_HOME="${EXT_ROOT}/model_cache/huggingface"
 export HUGGINGFACE_HUB_CACHE="${HF_HOME}/hub"
-export TIMM_FAST_DOWNLOAD=1
 mkdir -p "${TORCH_HOME}" "${HF_HOME}"
 
 echo "================================================================================"
@@ -91,33 +90,37 @@ ensure_repo "${DENSE_ROOT}" "https://github.com/Dmmm1997/DenseUAV.git" "${DENSE_
 ensure_repo "${GTA_ROOT}" "https://github.com/Yux1angJi/GTA-UAV.git" "${GTA_COMMIT}" "GTA-UAV"
 ensure_repo "${BEARING_ROOT}" "https://github.com/liukejia121/bearinguav.git" "${BEARING_COMMIT}" "Bearing-UAV"
 
-# The official Bearing code resolves its default dataset relative to repo root.
 if [[ -e "${BEARING_ROOT}/Bearing_UAV_90K" && ! -L "${BEARING_ROOT}/Bearing_UAV_90K" ]]; then
   echo "${BEARING_ROOT}/Bearing_UAV_90K exists and is not a symlink; refusing to overwrite" >&2
   exit 3
 fi
 ln -sfn "${DATASET_ROOT}" "${BEARING_ROOT}/Bearing_UAV_90K"
 
-# One environment and one pretrained-model cache for every baseline.  The user's
-# installed CUDA/PyTorch is reused; only light Python dependencies are added.
+# Isolated helper environment. Reuse the user's CUDA PyTorch, but pin NumPy/CV
+# versions compatible with Bearing-UAV's imgaug stack. timm is kept recent enough
+# for GTA-UAV's rope ViT identifier. Nothing is installed into the user's main env.
 if [[ ! -x "${VENV}/bin/python" ]]; then
   python3 -m venv --system-site-packages "${VENV}"
 fi
 PY="${VENV}/bin/python"
 if ! "${PY}" - <<'PY' >/dev/null 2>&1
-import timm, pandas, PIL, scipy, yaml, cv2, imgaug, albumentations, einops, thop
+from packaging.version import Version
+import numpy, timm, pandas, PIL, scipy, yaml, cv2, imgaug, albumentations, einops, thop
 import pytorch_metric_learning, sklearn, torch, torchvision
+assert Version(numpy.__version__) < Version("2.0")
+assert Version(timm.__version__) >= Version("1.0.7")
 PY
 then
-  echo "[SETUP] install shared non-PyTorch dependencies once"
-  PIP_DISABLE_PIP_VERSION_CHECK=1 "${PY}" -m pip install -q \
-    timm pandas pillow scipy pyyaml opencv-python-headless imgaug albumentations \
-    einops thop pytorch-metric-learning scikit-learn
+  echo "[SETUP] install shared dependency set once"
+  PIP_DISABLE_PIP_VERSION_CHECK=1 "${PY}" -m pip install -q --upgrade \
+    "numpy==1.26.4" "scipy==1.11.4" "pandas==2.1.4" "Pillow==10.2.0" \
+    "opencv-python==4.10.0.84" "albumentations==1.3.1" "imgaug==0.4.0" \
+    "timm>=1.0.7" einops thop pytorch-metric-learning scikit-learn pyyaml packaging
 fi
 
 # -----------------------------------------------------------------------------
-# OUR METHOD: reuse valid current runs; if any are missing, run only those cities
-# across GPU 0/5/6.  The strong paper figures are always regenerated afterwards.
+# 1. OUR METHOD. Existing valid results are reused; missing/forced cities run in
+#    parallel on 0/5/6. Figures are always regenerated afterwards.
 # -----------------------------------------------------------------------------
 ours_ok() {
   local city="$1" out="${GEN_ROOT}/${city}/v39_output_bearing_adapted"
@@ -145,27 +148,18 @@ for ((base=0;base<${#pending[@]};base+=3)); do
 done
 for city in citya cityb cityc cityd; do ours_ok "${city}" || { echo "[OURS] incomplete ${city}" >&2; exit 5; }; done
 
-# Re-render OUR eight figures with true per-frame GT (purple dashed) and final
-# prediction (thick red + white halo). No retraining if results are cached.
 RUN_MODEL=0 DATASET_ROOT="${DATASET_ROOT}" GPU=0 bash v39_otherdata/run_bearing_paper_bundle.sh \
   > >(tee "${LOG_ROOT}/ours_paper_bundle.log") 2>&1
 
 # -----------------------------------------------------------------------------
-# SHARED ROUTE CACHE: JPEG/RSI decode once. Later 20 baseline training jobs mmap
-# these arrays and do resize/normalization on GPU with zero DataLoader workers.
+# 2. SHARED MMAP CACHE. JPEG/RSI is decoded once for all retrieval baselines.
 # -----------------------------------------------------------------------------
-cache_args=()
-[[ "${FORCE_CACHE}" == "1" ]] && cache_args+=(--force)
+cache_args=(); [[ "${FORCE_CACHE}" == "1" ]] && cache_args+=(--force)
 "${PY}" v39_otherdata/bearing_route_baseline_cache.py \
   --generated-root "${GEN_ROOT}" --cache-root "${CACHE_ROOT}" \
   --cities citya cityb cityc cityd "${cache_args[@]}" \
   > >(tee "${LOG_ROOT}/route_cache.log") 2>&1
 
-# -----------------------------------------------------------------------------
-# ROUTE-ADAPTED PUBLIC METHODS.  Jobs are deliberately interleaved by method so
-# the first three GPUs do not simultaneously download the same pretrained model.
-# Every city/method checkpoint is cached.
-# -----------------------------------------------------------------------------
 repo_for() {
   case "$1" in
     university1652) echo "${UNI_ROOT}";; sues200) echo "${SUES_ROOT}";;
@@ -178,13 +172,13 @@ commit_for() {
     denseuav) echo "${DENSE_COMMIT}";; gtauav) echo "${GTA_COMMIT}";;
     *) return 1;; esac
 }
+batch_for() {
+  case "$1" in
+    university1652) echo 8;; sues200) echo 8;; denseuav) echo 16;; gtauav) echo 16;; *) echo 16;; esac
+}
 baseline_ok() {
   local method="$1" city="$2"
-  if [[ "${method}" == "bearinguav_route_adapted" ]]; then
-    [[ -s "${BASE_ROOT}/${method}/${city}/result.json" && -s "${BASE_ROOT}/${method}/${city}/test_01_final_result.jpg" && -s "${BASE_ROOT}/${method}/${city}/test_02_final_result.jpg" ]]
-  else
-    [[ -s "${BASE_ROOT}/${method}/${city}/result.json" && -s "${BASE_ROOT}/${method}/${city}/test_01_final_result.jpg" && -s "${BASE_ROOT}/${method}/${city}/test_02_final_result.jpg" ]]
-  fi
+  [[ -s "${BASE_ROOT}/${method}/${city}/result.json" && -s "${BASE_ROOT}/${method}/${city}/test_01_final_result.jpg" && -s "${BASE_ROOT}/${method}/${city}/test_02_final_result.jpg" ]]
 }
 run_route_job() {
   local method="$1" city="$2" gpu="$3"
@@ -195,19 +189,21 @@ run_route_job() {
       --official-root "${BEARING_ROOT}" --dataset-root "${DATASET_ROOT}" \
       --prepared-root "${GEN_ROOT}/${city}" --cache-root "${CACHE_ROOT}/${city}" \
       --output-root "${BASE_ROOT}" --city "${city}" --repo-commit "${BEARING_COMMIT}" \
-      --cpu-threads "${CPU_THREADS}" "${force[@]}" \
+      --batch-size 16 --cpu-threads "${CPU_THREADS}" "${force[@]}" \
       > >(tee "${LOG_ROOT}/${method}_${city}.log") 2>&1
   else
     CUDA_VISIBLE_DEVICES="${gpu}" "${PY}" v39_otherdata/bearing_route_baseline_runner.py \
       --method "${method}" --repo-dir "$(repo_for "${method}")" \
       --repo-commit "$(commit_for "${method}")" --cache-dir "${CACHE_ROOT}/${city}" \
       --prepared-root "${GEN_ROOT}/${city}" --output-root "${BASE_ROOT}" --city "${city}" \
-      --cpu-threads "${CPU_THREADS}" "${force[@]}" \
+      --batch-size "$(batch_for "${method}")" --cpu-threads "${CPU_THREADS}" "${force[@]}" \
       > >(tee "${LOG_ROOT}/${method}_${city}.log") 2>&1
   fi
   echo "[ROUTE-BASELINE] DONE ${method}/${city}"
 }
 
+# Interleave methods so the first three GPU jobs fetch different pretrained
+# backbones. At most one process owns each physical GPU.
 jobs=()
 for city in citya cityb cityc cityd; do
   for method in university1652 sues200 denseuav gtauav bearinguav_route_adapted; do
@@ -218,7 +214,6 @@ for city in citya cityb cityc cityd; do
     fi
   done
 done
-
 for ((base=0;base<${#jobs[@]};base+=3)); do
   pids=(); names=()
   for slot in 0 1 2; do
@@ -227,7 +222,7 @@ for ((base=0;base<${#jobs[@]};base+=3)); do
     run_route_job "${method}" "${city}" "${GPU_IDS[$slot]}" & pids+=("$!"); names+=("${method}/${city}")
   done
   for i in "${!pids[@]}"; do
-    wait "${pids[$i]}" || { echo "[ROUTE-BASELINE] FAILED ${names[$i]} -- see log" >&2; exit 6; }
+    wait "${pids[$i]}" || { echo "[ROUTE-BASELINE] FAILED ${names[$i]} -- see ${LOG_ROOT}" >&2; exit 6; }
   done
 done
 for city in citya cityb cityc cityd; do
@@ -237,8 +232,8 @@ for city in citya cityb cityc cityd; do
 done
 
 # -----------------------------------------------------------------------------
-# BEARING-UAV AUTHORS' PRETRAINED CHECKPOINT: additional same-frame reference.
-# It is intentionally a separate row from route-adapted Bearing-UAV.
+# 3. AUTHORS' BEARING-UAV FULL-DATA PRETRAINED CHECKPOINT ON THE SAME FRAMES.
+#    Kept separate from route-adapted Bearing-UAV.
 # -----------------------------------------------------------------------------
 WEIGHT_ZIP="${EXT_ROOT}/Bearing_UAV.zip"
 WEIGHT_DIR="${BEARING_ROOT}/Bearing_UAV/cross_view"
@@ -279,7 +274,7 @@ for ((base=0;base<${#pending[@]};base+=3)); do
 done
 
 # -----------------------------------------------------------------------------
-# FINAL TABLES + FIGURES.
+# 4. FINAL SAME-ROUTE TABLES + PUBLISHED-REFERENCE TABLE + CLEAR FIGURES.
 # -----------------------------------------------------------------------------
 rm -rf "${OUT_ROOT}";mkdir -p "${OUT_ROOT}/figures/ours" "${OUT_ROOT}/figures/route_adapted"
 "${PY}" v39_otherdata/bearing_all_methods_compare.py \
@@ -298,7 +293,7 @@ for city in citya cityb cityc cityd;do
 done
 
 cat > "${OUT_ROOT}/README.txt" <<EOF
-PRIMARY SAME-ROUTE TABLE:
+PRIMARY SAME-ROUTE TABLES:
   all_methods_same_routes_pooled.csv
   all_methods_same_routes_route_level.csv
 
@@ -311,7 +306,7 @@ Actually retrained on selected Route-A and tested on the same 8 routes:
   Bearing-UAV route-adapted
 
 Additional same-frame reference:
-  Bearing-UAV official pretrained VGG-16 (authors' released full-dataset checkpoint)
+  Bearing-UAV official pretrained VGG-16 (authors' full-benchmark checkpoint)
 
 Published-only reference (NOT rerun):
   bearinguav_published_uav_reference.csv
@@ -321,8 +316,8 @@ Figure semantics:
   red solid     = prediction
   gray dotted   = planned waypoint/reference route
 
-Important: route adaptation puts methods on the same selected data/GT, but algorithmic priors still differ.
-Do not replace published benchmark claims with route-adapted reproduction values.
+Route adaptation places methods on the same selected data/GT, but algorithmic priors and
+output parameterizations still differ. Keep published benchmark values separate.
 EOF
 
 echo ""
