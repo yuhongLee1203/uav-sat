@@ -23,16 +23,17 @@ def main():
             m=p["routes"][route]
             rows.append({"method":"Ours-v39","family":"temporal-local-refinement","city":city,"route":route,"frames":m["frames"],"Recall@1_pct":m.get("Recall@1_derived_same_quadrant_pct"),"MLE_m":m["MLE_m"],"MedLE_m":m["MedLE_m"],"P90_m":m["P90_m"],"LSR@5_pct":m["LSR@5_pct"],"LSR@10_pct":m["LSR@10_pct"],"LSR@15_pct":m["LSR@15_pct"],"LSR@20_pct":m["LSR@20_pct"],"HSR@15_pct":None,"MHE_deg":None,"note":"controlled local prior + temporal refinement; Recall@1 is derived quadrant criterion"})
 
-    # Bearing-UAV trained only on the same Route-A training subset, using its own
-    # four-neighbour RST input and position/heading regression objective.
-    for city in CITIES:
-        p=J(base/"bearinguav_route_adapted"/city/"result.json")
-        for route in ROUTES:
-            m=p["routes"][route]
-            rows.append({"method":"Bearing-UAV-route-adapted","family":"four-RST-pose-regression","city":city,"route":route,"frames":m["frames"],"Recall@1_pct":m.get("Recall@1_pct"),"MLE_m":m["MLE_m"],"MedLE_m":m["MedLE_m"],"P90_m":m["P90_m"],"LSR@5_pct":m["LSR@5_pct"],"LSR@10_pct":m["LSR@10_pct"],"LSR@15_pct":m["LSR@15_pct"],"LSR@20_pct":m["LSR@20_pct"],"HSR@15_pct":m.get("HSR@15_pct"),"MHE_deg":m.get("MHE_deg"),"note":"official Bearing-UAV architecture/objective; trained on selected train_01 only; native four-RST input; no v39 prior"})
+    # This stage is optional because run_bearing_fair_comparison.sh first builds
+    # the common four retrieval baselines; run_bearing_all_methods.sh then adds
+    # the same-training-scope Bearing-UAV row and reruns this aggregator.
+    bearing_route_ready=all((base/"bearinguav_route_adapted"/city/"result.json").exists() for city in CITIES)
+    if bearing_route_ready:
+        for city in CITIES:
+            p=J(base/"bearinguav_route_adapted"/city/"result.json")
+            for route in ROUTES:
+                m=p["routes"][route]
+                rows.append({"method":"Bearing-UAV-route-adapted","family":"four-RST-pose-regression","city":city,"route":route,"frames":m["frames"],"Recall@1_pct":m.get("Recall@1_pct"),"MLE_m":m["MLE_m"],"MedLE_m":m["MedLE_m"],"P90_m":m["P90_m"],"LSR@5_pct":m["LSR@5_pct"],"LSR@10_pct":m["LSR@10_pct"],"LSR@15_pct":m["LSR@15_pct"],"LSR@20_pct":m["LSR@20_pct"],"HSR@15_pct":m.get("HSR@15_pct"),"MHE_deg":m.get("MHE_deg"),"note":"official Bearing-UAV architecture/objective; trained on selected train_01 only; native four-RST input; no v39 prior"})
 
-    # Authors' full-data pretrained model: useful official reference, but its
-    # training scope differs from the route-adapted rows above.
     for city in CITIES:
         p=J(off/city/"official_bearinguav_same_route.json")
         for route in ROUTES:
@@ -64,7 +65,7 @@ def main():
         w=csv.DictWriter(f,fieldnames=pf);w.writeheader();w.writerows(pooled)
 
     manifest={
-        "methods":[p["method"] for p in pooled],
+        "methods":[p["method"] for p in pooled],"bearing_route_adapted_included":bearing_route_ready,
         "cities":list(CITIES),"test_routes_per_city":2,
         "comparison_rule":"All rerun rows use the same selected test UAV frames and GT metric formulas. University-1652/SUES-200/DenseUAV/GTA-UAV independently search the complete 16x16 city RST gallery and receive no route/waypoint/temporal prior. Bearing-UAV rows use its native four-RST pose-regression input. Ours retains its own controlled temporal local-refinement prior; these family differences must be disclosed.",
         "recommended_primary_baseline_rows":"Use route-adapted rows when comparing methods trained on the selected Route-A training subset. Treat Bearing-UAV-official-pretrained as an additional official-checkpoint reference because it was trained on a different/full-data scope.",
@@ -72,5 +73,5 @@ def main():
     }
     (out/"comparison_manifest.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
     print(f"[COMPARE] wrote {out/'same_frames_route_level.csv'}")
-    print(f"[COMPARE] wrote {out/'same_frames_pooled.csv'}")
+    print(f"[COMPARE] wrote {out/'same_frames_pooled.csv'} | Bearing-route-adapted={bearing_route_ready}")
 if __name__=="__main__":main()
