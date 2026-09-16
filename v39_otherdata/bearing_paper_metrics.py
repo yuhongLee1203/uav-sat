@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """Export paper-ready Bearing-UAV comparison metrics.
 
-Directly comparable to Bearing-UAV localization evaluation:
+Same mathematical metric definitions as Bearing-UAV:
   MLE, MedLE, LSR@15
+
+IMPORTANT protocol note: this v39 experiment is controlled-local-prior temporal
+refinement on pseudo-flight sequences, whereas Bearing-UAV's paper evaluates its
+four-adjacent-RST pose-regression protocol.  Therefore equal metric names do NOT
+by themselves imply a fully apples-to-apples experimental protocol.
 
 Recall@1 is additionally derived using the SAME four-adjacent-RST quadrant
 criterion used by the official Bearing-UAV test code, but from our continuous
-final position.  It is therefore exported with an explicit ``derived`` label.
+final position.  It is exported with an explicit ``derived`` label.
 
 HSR/MHE/MedHE are NOT silently fabricated: v39's temporal heading represents
 route/motion heading, whereas Bearing-UAV supervises UAV camera heading.
 SR@20/SPL/NE are also left N/A because the current experiment is offline
-localization replay, not Bearing-Naver closed-loop flight.  This distinction is
-written into every JSON/CSV so paper tables cannot accidentally mix protocols.
+localization replay, not Bearing-Naver closed-loop flight.
 """
 from __future__ import annotations
 
@@ -96,7 +100,7 @@ def _same_quadrant_recall(
         gt_rel = np.asarray([
             float(meta["x_norm"]), float(meta["y_norm"])
         ], dtype=np.float64)
-        # Scale does not affect sign.  Match official RECALL_AT_K_PHR sign rule.
+        # Scale does not affect sign. Match official RECALL_AT_K_PHR sign rule.
         if np.array_equal(np.sign(pred_rel), np.sign(gt_rel)):
             good += 1
         total += 1
@@ -137,7 +141,7 @@ def compute(prepared_root: Path, output_dir: Path) -> dict:
         recall = _same_quadrant_recall(
             result, manifest, city_rows, origin_x_m, origin_y_m
         )
-        direct = {
+        metrics = {
             "frames": len(result),
             "Recall@1_derived_same_quadrant_pct": float(recall),
             "MLE_m": float(errors.mean()),
@@ -156,8 +160,8 @@ def compute(prepared_root: Path, output_dir: Path) -> dict:
             "SPL_pct": None,
             "NE_m": None,
         }
-        route_metrics[route] = direct
-        flat_rows.append({"city": city, "route": route, **direct})
+        route_metrics[route] = metrics
+        flat_rows.append({"city": city, "route": route, **metrics})
         all_errors.extend(errors.tolist())
         total_frames += len(result)
         recall_good_equivalent += recall * len(result) / 100.0
@@ -185,15 +189,21 @@ def compute(prepared_root: Path, output_dir: Path) -> dict:
 
     payload = {
         "city": city,
-        "protocol": "v39 Bearing offline localization replay on two official held-out routes",
-        "directly_comparable_to_bearinguav": ["MLE_m", "MedLE_m", "LSR@15_pct"],
+        "protocol": "v39 controlled-local-prior temporal refinement on Bearing pseudo-flight sequences",
+        "bearing_uav_reference_protocol": "four-adjacent-RST pose regression plus separate closed-loop Bearing-Naver navigation",
+        "same_metric_definition_but_protocol_requires_footnote": ["MLE_m", "MedLE_m", "LSR@15_pct"],
+        "protocol_footnote": (
+            "Metric formulas match Bearing-UAV, but the evaluation protocol differs: this v39 experiment uses a "
+            "controlled local prior and temporal pseudo-flight refinement, so the values must not be described as "
+            "a fully apples-to-apples replacement for Bearing-UAV's four-RST pose-regression benchmark."
+        ),
         "derived_same_decision_criterion": {
             "Recall@1_derived_same_quadrant_pct": (
                 "Uses the official Bearing-UAV four-adjacent-RST sign/quadrant criterion, "
                 "but is derived from this method's continuous final position rather than an RST retrieval head."
             )
         },
-        "not_directly_comparable": {
+        "not_available_under_current_protocol": {
             "HSR@15_pct/MHE_deg/MedHE_deg": (
                 "Bearing-UAV evaluates supervised camera heading; v39 temporal heading is route/motion heading."
             ),
@@ -214,9 +224,9 @@ def compute(prepared_root: Path, output_dir: Path) -> dict:
         writer.writerows(flat_rows)
 
     print("[PAPER-METRICS]", city, json.dumps(aggregate, indent=2), flush=True)
-    print("[PAPER-METRICS] directly comparable: MLE, MedLE, LSR@15", flush=True)
+    print("[PAPER-METRICS] same metric definitions: MLE, MedLE, LSR@15 (protocol footnote REQUIRED)", flush=True)
     print("[PAPER-METRICS] Recall@1*: derived with official same-quadrant criterion", flush=True)
-    print("[PAPER-METRICS] heading/navigation fields intentionally N/A (different protocol)", flush=True)
+    print("[PAPER-METRICS] heading/navigation fields intentionally N/A (different task/protocol)", flush=True)
     return payload
 
 
