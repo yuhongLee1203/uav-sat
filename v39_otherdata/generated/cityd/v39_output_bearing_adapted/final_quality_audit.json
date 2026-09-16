@@ -1,0 +1,22 @@
+{
+  "test_01": {
+    "frames": 140,
+    "MLE_m": 4.803675782702108,
+    "P90_m": 8.440819653162974,
+    "LSR@15_pct": 100.0,
+    "JumpRate_pct": 0.0,
+    "KalmanStepLimited_pct": 64.28571428571429,
+    "MS_MeanShiftFromKalman_m": 5.22303838853074,
+    "warnings": []
+  },
+  "test_02": {
+    "frames": 235,
+    "MLE_m": 4.123498678196834,
+    "P90_m": 7.82556447307379,
+    "LSR@15_pct": 100.0,
+    "JumpRate_pct": 0.0,
+    "KalmanStepLimited_pct": 44.25531914893617,
+    "MS_MeanShiftFromKalman_m": 3.619156145101949,
+    "warnings": []
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "city": "cityb",
+  "routes": {
+    "test_01": {
+      "source": "Bearing-UAV official wps36bc_50.json",
+      "waypoints": 13,
+      "turn_delta_mod360_deg": [
+        283.3,
+        110.1,
+        45.3,
+        356.4,
+        271.1,
+        346.3,
+        336.9,
+        310.7,
+        3.7,
+        356.2,
+        268.3
+      ],
+      "meaningful_20_350_deg": [
+        283.3,
+        110.1,
+        45.3,
+        271.1,
+        346.3,
+        336.9,
+        310.7,
+        268.3
+      ]
+    },
+    "test_02": {
+      "source": "Bearing-UAV official wps36bc_51.json",
+      "waypoints": 11,
+      "turn_delta_mod360_deg": [
+        72.0,
+        283.7,
+        65.8,
+        298.5,
+        61.5,
+        294.2,
+        76.3,
+        283.7,
+        76.3
+      ],
+      "meaningful_20_350_deg": [
+        72.0,
+        283.7,
+        65.8,
+        298.5,
+        61.5,
+        294.2,
+        76.3,
+        283.7,
+        76.3
+      ]
+    }
+  },
+  "combined": {
+    "meaningful_turn_count": 17,
+    "occupied_turn_bins": [
+      0,
+      1,
+      4,
+      5
+    ],
+    "near_90_fraction": 0.4117647058823529,
+    "rule": "meaningful delta in [20,350] deg; >=4 bins across two tests; <=65% near 90deg"
+  }
+}

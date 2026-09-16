@@ -8,7 +8,7 @@
   "motion": "velocity",
   "kalman": "fixed",
   "forward_only": true,
-  "final_ms_grid": 5,
+  "final_ms_grid": 6,
   "final_ms_bandwidth_m": 7.0,
   "losses": {
     "acquisition": 0.0,
@@ -20,16 +20,12 @@
   },
   "bearing_step_m": 4.0,
   "route_frames": {
-    "train_01": 182,
-    "train_02": 201,
-    "train_03": 208,
-    "test_01": 228,
-    "test_02": 247
+    "train_01": 197,
+    "test_01": 160,
+    "test_02": 186
   },
   "train_routes": [
-    "train_01",
-    "train_02",
-    "train_03"
+    "train_01"
   ],
   "test_routes": [
     "test_01",
@@ -43,24 +39,21 @@
     "route_A_train": "train_01",
     "route_B_eval": "test_01",
     "route_C_eval": "test_02",
-    "unused_extra_training_routes": [
-      "train_02",
-      "train_03"
-    ]
+    "unused_extra_training_routes": []
   },
   "test_statistics_used_for_adaptation": false,
   "training_only_cadence_adaptation": {
     "source": "train_01_only",
-    "train_step_mean_m": 6.26307317346628,
-    "train_step_p90_m": 11.82223004158155,
-    "train_step_p95_m": 14.086671043113427,
-    "max_forward_speed_m_per_frame": 14.791004595269099,
-    "max_polynomial_step_m_per_frame": 14.791004595269099,
-    "max_measurement_correction_parallel_m": 6.502226522869853,
-    "kalman_max_measurement_innovation_progress_m": 7.684449527028008,
-    "kalman_max_posterior_correction_progress_m": 5.320003518711697,
-    "kalman_max_velocity_correction_m_per_frame": 2.128001407484679,
-    "kalman_final_step_max_m": 13.004453045739705
+    "train_step_mean_m": 5.769226700849377,
+    "train_step_p90_m": 10.316215527702047,
+    "train_step_p95_m": 11.515851781966472,
+    "max_forward_speed_m_per_frame": 14.0,
+    "max_polynomial_step_m_per_frame": 14.0,
+    "max_measurement_correction_parallel_m": 5.6739185402361265,
+    "kalman_max_measurement_innovation_progress_m": 6.705540093006331,
+    "kalman_max_posterior_correction_progress_m": 4.6422969874659215,
+    "kalman_max_velocity_correction_m_per_frame": 1.8569187949863684,
+    "kalman_final_step_max_m": 11.347837080472253
   },
   "physical_satellite_geometry_adaptation": {
     "bearing_mpp": 0.25,
@@ -91,19 +84,31 @@
     "teacher_ratio_final": 1.0,
     "sat_stride_px": 18,
     "sat_crop_px": 180,
-    "max_forward_speed_m_per_frame": 14.791004595269099,
+    "max_forward_speed_m_per_frame": 14.0,
     "max_cross_speed_m_per_frame": 5.0,
-    "max_polynomial_step_m_per_frame": 14.791004595269099,
-    "max_measurement_correction_parallel_m": 6.502226522869853,
+    "max_polynomial_step_m_per_frame": 14.0,
+    "max_measurement_correction_parallel_m": 5.6739185402361265,
     "max_measurement_correction_cross_m": 4.0,
-    "kalman_max_measurement_innovation_progress_m": 7.684449527028008,
+    "kalman_max_measurement_innovation_progress_m": 6.705540093006331,
     "kalman_max_measurement_innovation_cross_m": 3.0,
-    "kalman_max_posterior_correction_progress_m": 5.320003518711697,
+    "kalman_max_posterior_correction_progress_m": 4.6422969874659215,
     "kalman_max_posterior_correction_cross_m": 1.75,
-    "kalman_max_velocity_correction_m_per_frame": 2.128001407484679,
-    "kalman_final_step_max_m": 13.004453045739705,
+    "kalman_max_velocity_correction_m_per_frame": 1.8569187949863684,
+    "kalman_final_step_max_m": 11.347837080472253,
     "ms_grid_size": 6,
     "ms_bandwidth_m": 7.0
   },
-  "prepared_selection_version": "soft_sequence_v12_dense_then_physical_leg_prune"
+  "prepared_selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+  "route_a_candidate_source": "train_02",
+  "preparation_profile": {
+    "name": "strict",
+    "max_sample_distance_m": 10.0,
+    "safety_max_step_m": 22.0,
+    "max_cross_track_m": 8.5,
+    "max_same_leg_lateral_jump_m": 4.0
+  },
+  "official_test_route_source": {
+    "test_01": "Bearing-UAV official wps36bc_50.json",
+    "test_02": "Bearing-UAV official wps36bc_51.json"
+  }
 }
