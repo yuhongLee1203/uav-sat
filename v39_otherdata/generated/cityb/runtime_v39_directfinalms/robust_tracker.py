@@ -2550,10 +2550,18 @@ def run_route_inference(route_name, visual, model, cache, route, device):
         kalman_se = np.asarray(final_se, dtype=np.float64).copy()
         kalman_xy = route.xy_from_se(kalman_se[0], kalman_se[1])
 
-        # Keep the original v39 predefined frame-reference prior unchanged.
-        frame_reference_xy_t = cache.gt_xy[index : index + 1].to(device).float()
-        frame_reference_xy = (
-            frame_reference_xy_t[0].detach().cpu().numpy().astype(np.float64)
+        # Bearing-UAV consists of independent observations, not a recorded
+        # continuous video.  The true sample coordinate remains the metric GT,
+        # but using its lateral sampling scatter as a strong final-MS spatial
+        # prior creates artificial frame-to-frame zig-zags.  Use the planned
+        # route centerline at the sample's true route progress as the spatial
+        # reference, while ALL error metrics below still use cache.gt_xy.
+        reference_progress_s = float(gt_state["se"][index, 0])
+        frame_reference_xy = np.asarray(
+            route.xy_from_se(reference_progress_s, 0.0), dtype=np.float64
+        )
+        frame_reference_xy_t = torch.tensor(
+            frame_reference_xy[None, :], dtype=torch.float32, device=device
         )
         preferred_leg = route.frame_from_se(kalman_se[0], kalman_se[1]).leg_index
 
