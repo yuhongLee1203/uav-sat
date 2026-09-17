@@ -19,15 +19,11 @@ __pycache__/
 *.gif
 
 # forNX contains packaged runtime assets that must stay local.
-# Keep source/config/scripts under forNX versionable, but never commit the
-# large datasets, pretrained-model caches, or packaged model weights.
 forNX/data/
 forNX/pretrained_cache/
 forNX/weights/
 
-# Generated experiment artifacts are ignored by default. Keep only compact,
-# human-readable training logs and evaluation summaries in any future output
-# directory so experiment metrics can still be reviewed in Git.
+# Generated experiment artifacts are ignored by default.
 output/**
 outputs/**
 !output/
@@ -56,38 +52,17 @@ v36-exp/outputs/**/checkpoints/*.pt
 v36-exp/outputs/**/*.pth
 v36-exp/outputs/**/*.pt
 
-# ============================================================
-# v39 Bearing-UAV external baseline runtime files
-# Never commit downloaded repositories, environments or weights
-# ============================================================
+# Bearing-UAV external repos, virtualenvs and downloaded model caches.
 v39_otherdata/external/
-
-# Large generated runtime caches
-v39_otherdata/generated/route_baseline_cache/
-v39_otherdata/generated/native_m2t_cache/
-v39_otherdata/generated/native_m2t_baselines/**/checkpoint.pt
-
-# Python virtual environments / model caches
 **/.venv/
 **/venv/
 **/hf_cache/
 **/torch_cache/
 **/huggingface/
 
-# ============================================================
-# v39 Bearing-UAV external baseline runtime files
-# Never commit downloaded repositories, environments or weights
-# ============================================================
-v39_otherdata/external/
-
-# Large generated runtime caches
+# Large Bearing-UAV runtime caches. Keep compact CSV/JSON/JPG results elsewhere.
 v39_otherdata/generated/route_baseline_cache/
 v39_otherdata/generated/native_m2t_cache/
+v39_otherdata/generated/native_four_rst_cache/
 v39_otherdata/generated/native_m2t_baselines/**/checkpoint.pt
-
-# Python virtual environments / model caches
-**/.venv/
-**/venv/
-**/hf_cache/
-**/torch_cache/
-**/huggingface/
+v39_otherdata/generated/native_four_rst_baselines/**/checkpoint.pt
