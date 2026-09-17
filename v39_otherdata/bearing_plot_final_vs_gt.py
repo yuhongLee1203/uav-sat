@@ -3,7 +3,7 @@
 
 Visualization policy:
   - GT is the predefined Bearing-UAV waypoint route polyline, drawn as a GREEN
-    SOLID line.  Per-frame independently sampled GT observations are NOT joined,
+    SOLID line. Per-frame independently sampled GT observations are NOT joined,
     because that would create artificial zig-zag motion that is not the route.
   - Prediction is the RAW model output from the inference CSV (final_x/final_y),
     drawn as a RED SOLID polyline in frame order.
@@ -11,7 +11,7 @@ Visualization policy:
     resampling, denoising, corner rounding, or other display post-processing.
 
 This file never changes inference, saved CSV values, evaluation GT, MLE/P90/LSR,
-or any model component.  It only renders the already-produced results.
+or any model component. It only renders the already-produced results.
 """
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ def _audit_and_raw_prediction(
             math.hypot(gx_abs - float(man["x_m"]), gy_abs - float(man["y_m"])),
         )
 
-        # IMPORTANT: these are the model's saved final outputs.  Do not modify.
+        # IMPORTANT: these are the model's saved final outputs. Do not modify.
         fx = float(row["final_x"])
         fy = float(row["final_y"])
         errors.append(math.hypot(fx - gx_rel, fy - gy_rel))
@@ -165,62 +165,40 @@ def _bounds(groups: Tuple[List[Point], ...], width: int, height: int):
     )
 
 
-def _city_traj_title(root: Path, route: str) -> str:
-    city_map = {
-        "citya": "City A",
-        "cityb": "City B",
-        "cityc": "City C",
-        "cityd": "City D",
-    }
-    traj = "#1" if route == "test_01" else "#2"
-    return f"{city_map.get(root.name, root.name)} / Traj. {traj}"
-
-
-def _legend(img: Image.Image, root: Path, route: str, summary: dict) -> None:
+def _legend(img: Image.Image) -> None:
+    """Minimal, high-visibility legend: only GT and Predict."""
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay, "RGBA")
     scale = max(1.0, min(img.size) / 1200.0)
-    title_font = _font(max(20, int(25 * scale)), True)
-    body_font = _font(max(16, int(19 * scale)))
+    font = _font(max(22, int(28 * scale)), True)
     pad = max(14, int(18 * scale))
-    line_h = max(27, int(31 * scale))
-    box_w = min(img.width - 2 * pad, max(600, int(720 * scale)))
-    box_h = pad * 2 + line_h * 4
+    line_h = max(36, int(42 * scale))
+    swatch = max(95, int(120 * scale))
+    box_w = min(img.width - 2 * pad, max(330, int(390 * scale)))
+    box_h = pad * 2 + line_h * 2
 
     draw.rounded_rectangle(
         (pad, pad, pad + box_w, pad + box_h),
         radius=12,
         fill=TEXTBG,
-        outline=(255, 255, 255, 120),
+        outline=(255, 255, 255, 150),
         width=2,
     )
 
-    x = pad + 17
-    y = pad + 11
-    draw.text((x, y), _city_traj_title(root, route), font=title_font, fill="white")
-    y += line_h
-    draw.text(
-        (x, y),
-        f"MLE {float(summary['MLE_m']):.2f} m   "
-        f"P90 {float(summary['P90_m']):.2f} m   "
-        f"LSR@15 {float(summary['LSR@15_pct']):.1f}%",
-        font=body_font,
-        fill="white",
-    )
-    y += line_h
+    x = pad + 18
+    y = pad + 10
+    gt_w = max(5, int(6 * scale))
+    pred_w = max(5, int(6 * scale))
 
-    swatch = max(95, int(105 * scale))
-    gt_w = max(4, int(5 * scale))
-    pred_w = max(4, int(5 * scale))
+    draw.line((x, y + 14, x + swatch, y + 14), fill=HALO, width=gt_w + 4)
+    draw.line((x, y + 14, x + swatch, y + 14), fill=GT, width=gt_w)
+    draw.text((x + swatch + 18, y), "GT", font=font, fill="white")
 
-    draw.line((x, y + 9, x + swatch, y + 9), fill=HALO, width=gt_w + 4)
-    draw.line((x, y + 9, x + swatch, y + 9), fill=GT, width=gt_w)
-    draw.text((x + swatch + 15, y - 3), "GT waypoint trajectory", font=body_font, fill="white")
     y += line_h
+    draw.line((x, y + 14, x + swatch, y + 14), fill=HALO, width=pred_w + 4)
+    draw.line((x, y + 14, x + swatch, y + 14), fill=PRED, width=pred_w)
+    draw.text((x + swatch + 18, y), "Predict", font=font, fill="white")
 
-    draw.line((x, y + 9, x + swatch, y + 9), fill=HALO, width=pred_w + 4)
-    draw.line((x, y + 9, x + swatch, y + 9), fill=PRED, width=pred_w)
-    draw.text((x + swatch + 15, y - 3), "Raw model prediction", font=body_font, fill="white")
     img.alpha_composite(overlay)
 
 
@@ -240,7 +218,7 @@ def render(route: str, root: Path, out: Path, summary: dict) -> None:
     draw = ImageDraw.Draw(base, "RGBA")
     scale = max(1.0, base.width / 4096.0)
 
-    # Keep GT visually clean/prominent.  This is route geometry, not model output.
+    # Keep GT visually clean/prominent. This is route geometry, not model output.
     gt_w = max(5, int(6 * scale))
     draw.line(gt, fill=HALO, width=gt_w + 5, joint="curve")
     draw.line(gt, fill=GT, width=gt_w, joint="curve")
@@ -251,7 +229,7 @@ def render(route: str, root: Path, out: Path, summary: dict) -> None:
     draw.line(pred, fill=PRED, width=pred_w)
 
     crop = base.crop(_bounds((gt, pred), *base.size)).convert("RGBA")
-    _legend(crop, root, route, summary)
+    _legend(crop)
     dest = out / f"{route}_final_result.jpg"
     crop.convert("RGB").save(dest, quality=98, subsampling=0)
     print(
