@@ -1,7 +1,0 @@
-# Install a CUDA-compatible build of torch/torchvision first.
-numpy
-pandas
-Pillow
-open_clip_torch==2.32.0
-timm
-huggingface_hub
