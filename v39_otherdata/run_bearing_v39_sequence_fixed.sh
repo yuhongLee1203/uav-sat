@@ -20,7 +20,7 @@ echo "Bearing-v39 ${CITY}"
 echo "Train: auto-selected COMPLETE city-specific Route A -> 60 epochs"
 echo "Test : TWO OFFICIAL Bearing-UAV navigation routes"
 echo "Model: selected low-error Bearing-adapted v39 (architecture unchanged)"
-echo "Plot : green solid waypoint GT + red solid smoothed prediction"
+echo "Plot : green solid waypoint GT + RAW red model prediction (no smoothing)"
 echo "================================================================================"
 
 python3 -m py_compile \
@@ -140,19 +140,19 @@ print("[RESULT-AUDIT] structural/metric consistency: PASS")
 PY
 
 # ---------------------------------------------------------------------------
-# PAPER-STYLE RENDERING ONLY. This does NOT alter inference or metrics.
-# GT is the official waypoint polyline (green solid); prediction is display-only
-# smoothed (red solid). Raw predictions remain unchanged in CSV/metrics.
+# FINAL RENDERING ONLY. This does NOT alter inference or metrics.
+# GT is the official waypoint polyline (green solid). Prediction is the exact
+# frame-order model output saved in CSV final_x/final_y (red solid), with NO
+# smoothing/interpolation/denoising/resampling/corner-rounding post-processing.
 # ---------------------------------------------------------------------------
 python3 v39_otherdata/bearing_plot_final_vs_gt.py \
   --prepared-root "${PREPARED_ROOT}" \
   --output-dir "${OUTPUT_DIR}" \
-  --routes test_01 test_02 \
-  --smooth-window 9
+  --routes test_01 test_02
 
 test -s "${OUTPUT_DIR}/test_01_final_result.jpg"
 test -s "${OUTPUT_DIR}/test_02_final_result.jpg"
-echo "[FINAL-IMAGES] PASS: two paper-style result figures exist"
+echo "[FINAL-IMAGES] PASS: GT waypoint routes + raw model predictions"
 
 # Bearing-UAV paper-comparison metrics. Directly comparable fields are marked
 # separately from derived/incompatible protocols inside the JSON.
