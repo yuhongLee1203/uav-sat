@@ -64,5 +64,8 @@ v39_otherdata/external/
 v39_otherdata/generated/route_baseline_cache/
 v39_otherdata/generated/native_m2t_cache/
 v39_otherdata/generated/native_four_rst_cache/
+v39_otherdata/generated/full_benchmark_cache/
 v39_otherdata/generated/native_m2t_baselines/**/checkpoint.pt
 v39_otherdata/generated/native_four_rst_baselines/**/checkpoint.pt
+v39_otherdata/generated/full_benchmark_baselines/**/checkpoint.pt
+v39_otherdata/generated/full_benchmark_baselines/**/*_resume.pt
