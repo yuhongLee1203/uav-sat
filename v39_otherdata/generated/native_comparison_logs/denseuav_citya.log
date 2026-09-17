@@ -1,0 +1,26 @@
+/yh/study/uav-sat/v39_otherdata/external/DenseUAV/models/Backbone/cvt.py:553: SyntaxWarning: "is" with a literal. Did you mean "=="?
+  or pretrained_layers[0] is '*'
+/yh/study/uav-sat/v39_otherdata/external/native_baseline_env/lib/python3.8/site-packages/timm/models/layers/__init__.py:49: FutureWarning: Importing from timm.models.layers is deprecated, please import via timm.layers
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)
+Traceback (most recent call last):
+  File "v39_otherdata/bearing_route_baseline_runner.py", line 621, in <module>
+    main()
+  File "v39_otherdata/bearing_route_baseline_runner.py", line 567, in main
+    _train(adapter, cache, checkpoint, fingerprint, args.force, args.seed)
+  File "v39_otherdata/bearing_route_baseline_runner.py", line 342, in _train
+    loss = adapter.train_step(xs, xu, y)
+  File "v39_otherdata/bearing_route_baseline_runner.py", line 271, in train_step
+    loss, _, _, _ = self.criterion(out_u, out_s, labels, labels)
+  File "/usr/local/lib/python3.8/dist-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/yh/study/uav-sat/v39_otherdata/external/DenseUAV/losses/loss.py", line 58, in forward
+    res_triplet_loss = self.calc_triplet_loss(
+  File "/yh/study/uav-sat/v39_otherdata/external/DenseUAV/losses/loss.py", line 112, in calc_triplet_loss
+    loss = loss_func(out_concat, labels_concat)
+  File "/usr/local/lib/python3.8/dist-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/yh/study/uav-sat/v39_otherdata/external/DenseUAV/losses/TripletLoss.py", line 299, in forward
+    dist_ap, dist_an = hard_example_mining(dist, targets)
+  File "/yh/study/uav-sat/v39_otherdata/external/DenseUAV/losses/TripletLoss.py", line 135, in hard_example_mining
+    dist_mat[is_pos].contiguous().view(N, -1), 1, keepdim=True)
+RuntimeError: shape '[32, -1]' is invalid for input of size 136

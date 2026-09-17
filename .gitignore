@@ -55,3 +55,39 @@ tensorboard/
 v36-exp/outputs/**/checkpoints/*.pt
 v36-exp/outputs/**/*.pth
 v36-exp/outputs/**/*.pt
+
+# ============================================================
+# v39 Bearing-UAV external baseline runtime files
+# Never commit downloaded repositories, environments or weights
+# ============================================================
+v39_otherdata/external/
+
+# Large generated runtime caches
+v39_otherdata/generated/route_baseline_cache/
+v39_otherdata/generated/native_m2t_cache/
+v39_otherdata/generated/native_m2t_baselines/**/checkpoint.pt
+
+# Python virtual environments / model caches
+**/.venv/
+**/venv/
+**/hf_cache/
+**/torch_cache/
+**/huggingface/
+
+# ============================================================
+# v39 Bearing-UAV external baseline runtime files
+# Never commit downloaded repositories, environments or weights
+# ============================================================
+v39_otherdata/external/
+
+# Large generated runtime caches
+v39_otherdata/generated/route_baseline_cache/
+v39_otherdata/generated/native_m2t_cache/
+v39_otherdata/generated/native_m2t_baselines/**/checkpoint.pt
+
+# Python virtual environments / model caches
+**/.venv/
+**/venv/
+**/hf_cache/
+**/torch_cache/
+**/huggingface/

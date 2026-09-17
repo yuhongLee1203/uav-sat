@@ -1,0 +1,17 @@
+[sues200] epoch=001/60 loss=5.735452
+[sues200] epoch=005/60 loss=0.924359
+[sues200] epoch=010/60 loss=0.236616
+[sues200] epoch=015/60 loss=0.038915
+[sues200] epoch=020/60 loss=0.076525
+[sues200] epoch=025/60 loss=0.012134
+[sues200] epoch=030/60 loss=0.005584
+[sues200] epoch=035/60 loss=0.000357
+[sues200] epoch=040/60 loss=0.000111
+[sues200] epoch=045/60 loss=0.001616
+[sues200] epoch=050/60 loss=0.019677
+[sues200] epoch=055/60 loss=0.000512
+[sues200] epoch=060/60 loss=0.000743
+[M2T] saved /yh/study/uav-sat/v39_otherdata/generated/native_m2t_baselines/sues200/citya/checkpoint.pt
+[sues200] test_01: R1=22.84% MLE=266.532m MedLE=149.317m LSR15=1.85%
+[sues200] test_02: R1=6.34% MLE=313.746m MedLE=244.815m LSR15=0.98%
+[M2T-DONE] sues200/citya: R1=13.62% MLE=292.905m LSR15=1.36%

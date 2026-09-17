@@ -1,0 +1,66 @@
+[
+  {
+    "city": "citya",
+    "route": "test_01",
+    "figure": "citya_test_01_final_result.jpg",
+    "prediction_style": "red solid + white halo",
+    "ground_truth_style": "purple dashed + white halo (true per-frame GT)",
+    "planned_route_style": "gray dotted (context only)"
+  },
+  {
+    "city": "citya",
+    "route": "test_02",
+    "figure": "citya_test_02_final_result.jpg",
+    "prediction_style": "red solid + white halo",
+    "ground_truth_style": "purple dashed + white halo (true per-frame GT)",
+    "planned_route_style": "gray dotted (context only)"
+  },
+  {
+    "city": "cityb",
+    "route": "test_01",
+    "figure": "cityb_test_01_final_result.jpg",
+    "prediction_style": "red solid + white halo",
+    "ground_truth_style": "purple dashed + white halo (true per-frame GT)",
+    "planned_route_style": "gray dotted (context only)"
+  },
+  {
+    "city": "cityb",
+    "route": "test_02",
+    "figure": "cityb_test_02_final_result.jpg",
+    "prediction_style": "red solid + white halo",
+    "ground_truth_style": "purple dashed + white halo (true per-frame GT)",
+    "planned_route_style": "gray dotted (context only)"
+  },
+  {
+    "city": "cityc",
+    "route": "test_01",
+    "figure": "cityc_test_01_final_result.jpg",
+    "prediction_style": "red solid + white halo",
+    "ground_truth_style": "purple dashed + white halo (true per-frame GT)",
+    "planned_route_style": "gray dotted (context only)"
+  },
+  {
+    "city": "cityc",
+    "route": "test_02",
+    "figure": "cityc_test_02_final_result.jpg",
+    "prediction_style": "red solid + white halo",
+    "ground_truth_style": "purple dashed + white halo (true per-frame GT)",
+    "planned_route_style": "gray dotted (context only)"
+  },
+  {
+    "city": "cityd",
+    "route": "test_01",
+    "figure": "cityd_test_01_final_result.jpg",
+    "prediction_style": "red solid + white halo",
+    "ground_truth_style": "purple dashed + white halo (true per-frame GT)",
+    "planned_route_style": "gray dotted (context only)"
+  },
+  {
+    "city": "cityd",
+    "route": "test_02",
+    "figure": "cityd_test_02_final_result.jpg",
+    "prediction_style": "red solid + white halo",
+    "ground_truth_style": "purple dashed + white halo (true per-frame GT)",
+    "planned_route_style": "gray dotted (context only)"
+  }
+]
