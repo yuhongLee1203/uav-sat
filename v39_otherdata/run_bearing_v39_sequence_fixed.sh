@@ -36,7 +36,15 @@ python3 -m py_compile \
   v39_DirectFinalMS/patch_direct_finalms.py
 echo "[CODE-AUDIT] PASS"
 
-rm -rf "${PREPARED_ROOT}"
+# Never destroy a completed experiment before a new one succeeds. Move the
+# current city package outside the Git repository first; the user can restore it
+# if preparation/training is interrupted or the new run is not desired.
+RUN_BACKUP_ROOT=""
+if [[ -d "${PREPARED_ROOT}" ]]; then
+  RUN_BACKUP_ROOT="${REPO_ROOT%/*}/$(basename "${REPO_ROOT}")_bearing_run_backup_${CITY}_$(date +%Y%m%d_%H%M%S)"
+  mv "${PREPARED_ROOT}" "${RUN_BACKUP_ROOT}"
+  echo "[SAFE-BACKUP] previous ${CITY} package moved to: ${RUN_BACKUP_ROOT}"
+fi
 
 # ---------------------------------------------------------------------------
 # DATA PREPARATION
@@ -91,9 +99,6 @@ python3 v39_otherdata/bearing_runner_multicity_v39.py \
 # ---------------------------------------------------------------------------
 # STRUCTURAL/METRIC AUDIT
 # ---------------------------------------------------------------------------
-# Hard errors are reserved for corrupt/misaligned outputs. Quality observations
-# are WARNINGS only: a weak scientific result must still be plotted and reported,
-# rather than disappearing before the user can inspect it.
 python3 - "${PREPARED_ROOT}" "${OUTPUT_DIR}" <<'PY'
 import csv, json, math, sys
 from pathlib import Path
@@ -152,10 +157,10 @@ python3 v39_otherdata/bearing_plot_final_vs_gt.py \
 
 test -s "${OUTPUT_DIR}/test_01_final_result.jpg"
 test -s "${OUTPUT_DIR}/test_02_final_result.jpg"
-echo "[FINAL-IMAGES] PASS: GT waypoint routes + raw model predictions"
+test -s "${OUTPUT_DIR}/paper_figures_waypoint_gt/test_01_waypoint_gt_green.jpg"
+test -s "${OUTPUT_DIR}/paper_figures_waypoint_gt/test_02_waypoint_gt_green.jpg"
+echo "[FINAL-IMAGES] PASS: sparse official waypoint GT + raw model predictions"
 
-# Bearing-UAV paper-comparison metrics. Directly comparable fields are marked
-# separately from derived/incompatible protocols inside the JSON.
 python3 v39_otherdata/bearing_paper_metrics.py \
   --prepared-root "${PREPARED_ROOT}" \
   --output-dir "${OUTPUT_DIR}"
@@ -163,11 +168,14 @@ python3 v39_otherdata/bearing_paper_metrics.py \
 echo ""
 echo "================================================================================"
 echo "DONE ${CITY}"
-echo "Final figures:"
-echo "  ${OUTPUT_DIR}/test_01_final_result.jpg"
-echo "  ${OUTPUT_DIR}/test_02_final_result.jpg"
+echo "Paper figures:"
+echo "  ${OUTPUT_DIR}/paper_figures_waypoint_gt/test_01_waypoint_gt_green.jpg"
+echo "  ${OUTPUT_DIR}/paper_figures_waypoint_gt/test_02_waypoint_gt_green.jpg"
 echo "Paper metrics:"
 echo "  ${OUTPUT_DIR}/bearing_paper_metrics.json"
 echo "  ${OUTPUT_DIR}/bearing_paper_metrics.csv"
 echo "Raw summary: ${OUTPUT_DIR}/bearing_v39_summary.json"
+if [[ -n "${RUN_BACKUP_ROOT}" ]]; then
+  echo "Previous run backup: ${RUN_BACKUP_ROOT}"
+fi
 echo "================================================================================"
