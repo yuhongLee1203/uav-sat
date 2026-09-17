@@ -146,6 +146,29 @@ def _audit(config, runtime: Path, args, prepared_root: Path) -> None:
     print(json.dumps(audit, indent=2), flush=True)
 
 
+def _rewrite_summary_metadata() -> None:
+    """Remove the inherited true-progress text from the exact-v39 summary."""
+    output_dir = os.environ.get("UAVSAT_OUTPUT_DIR")
+    if not output_dir:
+        raise RuntimeError("UAVSAT_OUTPUT_DIR missing after paper-fair run")
+    path = Path(output_dir) / "bearing_v39_summary.json"
+    if not path.exists():
+        raise FileNotFoundError(path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    for route, row in payload.items():
+        adaptation = row.setdefault("BearingAdaptation", {})
+        adaptation["uses_test_statistics"] = False
+        adaptation["uses_current_frame_gt_coordinate_at_inference"] = False
+        adaptation["uses_true_route_progress_at_inference"] = False
+        adaptation["uses_gt_motion_or_progress_cap_at_inference"] = False
+        adaptation["reference_protocol"] = "route_reference"
+        adaptation["final_ms_reference"] = "planned_route_centerline_at_kalman_estimated_progress"
+        adaptation["metric_ground_truth"] = "true_selected_Bearing_sample_coordinate_for_evaluation_only"
+        adaptation["paper_fair"] = True
+    path.write_text(json.dumps(payload, indent=2, default=float), encoding="utf-8")
+    print(f"[PAPER-FAIR] summary metadata corrected: {path}", flush=True)
+
+
 # _train_and_infer resolves these symbols from bearing_runner_exact_v39 globals.
 exact._set_environment = _set_environment
 exact._patch_final_ms_reference = _patch_final_ms_reference
@@ -156,3 +179,4 @@ exact.base.train_and_infer = exact._train_and_infer
 
 if __name__ == "__main__":
     exact.base.main()
+    _rewrite_summary_metadata()
