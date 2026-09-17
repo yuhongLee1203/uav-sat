@@ -1,0 +1,31 @@
+[denseuav] epoch=001/120 loss=5.015662
+[denseuav] epoch=005/120 loss=8.097448
+[denseuav] epoch=010/120 loss=5.257645
+[denseuav] epoch=015/120 loss=5.282283
+[denseuav] epoch=020/120 loss=3.316877
+[denseuav] epoch=025/120 loss=3.248112
+[denseuav] epoch=030/120 loss=2.429697
+[denseuav] epoch=035/120 loss=2.118372
+[denseuav] epoch=040/120 loss=1.673255
+[denseuav] epoch=045/120 loss=1.547290
+[denseuav] epoch=050/120 loss=1.429718
+[denseuav] epoch=055/120 loss=1.501958
+[denseuav] epoch=060/120 loss=1.160111
+[denseuav] epoch=065/120 loss=1.253379
+[denseuav] epoch=070/120 loss=1.332592
+[denseuav] epoch=075/120 loss=1.030212
+[denseuav] epoch=080/120 loss=1.068602
+[denseuav] epoch=085/120 loss=0.972867
+[denseuav] epoch=090/120 loss=0.860839
+[denseuav] epoch=095/120 loss=0.945983
+[denseuav] epoch=100/120 loss=0.971141
+[denseuav] epoch=105/120 loss=0.960693
+[denseuav] epoch=110/120 loss=0.995851
+[denseuav] epoch=115/120 loss=0.987058
+[denseuav] epoch=120/120 loss=0.984638
+[4RST] saved /yh/study/uav-sat/v39_otherdata/generated/native_four_rst_baselines/denseuav/citya/checkpoint.pt
+[4RST] denseuav/test_01: R1=24.07% MLE=66.974m LSR15=0.62%
+[4RST] denseuav/test_02: R1=27.32% MLE=64.809m LSR15=6.34%
+[4RST] DONE denseuav/citya: R1=25.89% MLE=65.765m
+/yh/study/uav-sat/v39_otherdata/external/native_baseline_env/lib/python3.8/site-packages/timm/models/layers/__init__.py:49: FutureWarning: Importing from timm.models.layers is deprecated, please import via timm.layers
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)

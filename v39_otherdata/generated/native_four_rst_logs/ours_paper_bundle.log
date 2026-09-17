@@ -1,0 +1,39 @@
+[PAPER-BUNDLE] code compile: PASS
+[PAPER-BUNDLE] reusing existing four-city inference outputs (RUN_MODEL=0)
+[PAPER-BUNDLE] render citya
+[FINAL-PLOT-AUDIT] test_01: PASS frames=162 MLE=3.890m
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/generated/citya/v39_output_bearing_adapted/test_01_final_result.jpg | purple=true GT red=prediction gray=planned route
+[FINAL-PLOT-AUDIT] test_02: PASS frames=205 MLE=4.151m
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/generated/citya/v39_output_bearing_adapted/test_02_final_result.jpg | purple=true GT red=prediction gray=planned route
+[PAPER-BUNDLE] render cityb
+[FINAL-PLOT-AUDIT] test_01: PASS frames=160 MLE=3.486m
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/generated/cityb/v39_output_bearing_adapted/test_01_final_result.jpg | purple=true GT red=prediction gray=planned route
+[FINAL-PLOT-AUDIT] test_02: PASS frames=186 MLE=3.841m
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/generated/cityb/v39_output_bearing_adapted/test_02_final_result.jpg | purple=true GT red=prediction gray=planned route
+[PAPER-BUNDLE] render cityc
+[FINAL-PLOT-AUDIT] test_01: PASS frames=159 MLE=4.090m
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/generated/cityc/v39_output_bearing_adapted/test_01_final_result.jpg | purple=true GT red=prediction gray=planned route
+[FINAL-PLOT-AUDIT] test_02: PASS frames=227 MLE=4.000m
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/generated/cityc/v39_output_bearing_adapted/test_02_final_result.jpg | purple=true GT red=prediction gray=planned route
+[PAPER-BUNDLE] render cityd
+[FINAL-PLOT-AUDIT] test_01: PASS frames=140 MLE=4.804m
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/generated/cityd/v39_output_bearing_adapted/test_01_final_result.jpg | purple=true GT red=prediction gray=planned route
+[FINAL-PLOT-AUDIT] test_02: PASS frames=235 MLE=4.123m
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/generated/cityd/v39_output_bearing_adapted/test_02_final_result.jpg | purple=true GT red=prediction gray=planned route
+[PUBLISHED-REFERENCE] exported paper reference tables
+  our pooled MLE   = 4.039 m
+  our pooled MedLE = 3.598 m
+  our LSR@15       = 100.00%
+  our Recall@1*    = 96.68% (derived)
+[PUBLISHED-REFERENCE] external rows are REPORTED values, not re-runs
+[PAPER-BUNDLE] figures=8: PASS
+
+================================================================================
+BEARING PAPER BUNDLE COMPLETE
+High-contrast final figures (8): /yh/study/uav-sat/v39_otherdata/generated/paper_bundle/city*_test_0*_final_result.jpg
+Published main-paper rows       : /yh/study/uav-sat/v39_otherdata/generated/paper_bundle/bearinguav_published_uav_reference.csv
+Bearing-UAV backbone supplement: /yh/study/uav-sat/v39_otherdata/generated/paper_bundle/bearinguav_backbone_supplement.csv
+Our results + published rows    : /yh/study/uav-sat/v39_otherdata/generated/paper_bundle/ours_vs_bearinguav_published.csv
+Our route-level results         : /yh/study/uav-sat/v39_otherdata/generated/paper_bundle/bearing_multicity_summary.csv
+Figure manifest                 : /yh/study/uav-sat/v39_otherdata/generated/paper_bundle/figure_manifest.csv
+================================================================================

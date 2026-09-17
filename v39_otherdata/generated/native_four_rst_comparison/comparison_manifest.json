@@ -1,0 +1,13 @@
+{
+  "candidate_protocol_for_M2T": "four adjacent RSTs p1/p2/p3/p4 from official metadata",
+  "paper_recall_definition": "retrieve the RST closest to UVP from the four adjacent RSTs",
+  "route_note": "the 8 routes are the official Bearing-UAV navigation routes; route results are not numerically identical to the full static localization benchmark",
+  "methods": [
+    "Bearing-UAV-official-pretrained",
+    "Ours-v39",
+    "denseuav",
+    "gtauav",
+    "sues200",
+    "university1652"
+  ]
+}

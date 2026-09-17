@@ -1,0 +1,67 @@
+{
+  "paper_navigation_step_m": 25.0,
+  "paper_waypoint_arrival_threshold_m": 20.0,
+  "official_route_length_range_m": [
+    524.3000707227156,
+    1119.7335563431486
+  ],
+  "length_source": "official Bearing-UAV waypoint JSON total_length",
+  "cities": {
+    "citya": {
+      "test_01": {
+        "official_total_length_m": 771.721426809399,
+        "map_plane_0p25mpp_polyline_m": 750.8491472570564,
+        "waypoints": 13,
+        "nearest_RST_center_oracle_MLE_m": 25.656594224918035
+      },
+      "test_02": {
+        "official_total_length_m": 1119.7335563431486,
+        "map_plane_0p25mpp_polyline_m": 1052.8979954325384,
+        "waypoints": 10,
+        "nearest_RST_center_oracle_MLE_m": 23.910073594349186
+      }
+    },
+    "cityb": {
+      "test_01": {
+        "official_total_length_m": 644.3947002838131,
+        "map_plane_0p25mpp_polyline_m": 750.8491472570564,
+        "waypoints": 13,
+        "nearest_RST_center_oracle_MLE_m": 25.941789683699607
+      },
+      "test_02": {
+        "official_total_length_m": 757.4896581660938,
+        "map_plane_0p25mpp_polyline_m": 847.2626075191283,
+        "waypoints": 11,
+        "nearest_RST_center_oracle_MLE_m": 25.766500983186948
+      }
+    },
+    "cityc": {
+      "test_01": {
+        "official_total_length_m": 524.3000707227156,
+        "map_plane_0p25mpp_polyline_m": 750.8491472570564,
+        "waypoints": 13,
+        "nearest_RST_center_oracle_MLE_m": 25.77152522105091
+      },
+      "test_02": {
+        "official_total_length_m": 821.7919470879535,
+        "map_plane_0p25mpp_polyline_m": 1164.7307744629352,
+        "waypoints": 11,
+        "nearest_RST_center_oracle_MLE_m": 23.959507185982186
+      }
+    },
+    "cityd": {
+      "test_01": {
+        "official_total_length_m": 721.1506052477557,
+        "map_plane_0p25mpp_polyline_m": 750.8491472570564,
+        "waypoints": 13,
+        "nearest_RST_center_oracle_MLE_m": 26.862849548459053
+      },
+      "test_02": {
+        "official_total_length_m": 1115.449659747041,
+        "map_plane_0p25mpp_polyline_m": 1164.7307744629352,
+        "waypoints": 11,
+        "nearest_RST_center_oracle_MLE_m": 24.039697906818795
+      }
+    }
+  }
+}

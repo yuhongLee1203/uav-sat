@@ -1,0 +1,6 @@
+/yh/study/uav-sat/v39_otherdata/external/bearinguav/cvphr/utils/utils_transform.py:8: FutureWarning: In the future `np.bool` will be defined as the corresponding NumPy scalar.
+  if not hasattr(np, "bool"):
+[PAPER-VERIFY] measured: {'frames': 9000, 'Recall@1_pct': 83.63333333333334, 'LSR@15_pct': 52.21111111111111, 'HSR@15_pct': 77.95555555555555, 'MLE_m': 17.17592196351573, 'MedLE_m': 14.46552185990108, 'MHE_deg': 12.631002992753993, 'MedHE_deg': 7.1283923281509844}
+[PAPER-VERIFY] published: {'Recall@1_pct': 83.17, 'LSR@15_pct': 89.36, 'HSR@15_pct': 77.21, 'MLE_m': 8.61, 'MedLE_m': 7.3, 'MHE_deg': 12.9, 'MedHE_deg': 7.2}
+[PAPER-VERIFY] checks: {'MLE_within_3m': False, 'Recall_within_10pp': True, 'LSR15_within_10pp': False}
+[PAPER-VERIFY] WARNING: official paper-scale mismatch; inspect dataset/checkpoint before claiming reproduction

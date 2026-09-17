@@ -1,0 +1,33 @@
+[university1652] epoch=001/120 loss=4.171811
+[university1652] epoch=005/120 loss=2.149933
+[university1652] epoch=010/120 loss=2.255488
+[university1652] epoch=015/120 loss=1.679214
+[university1652] epoch=020/120 loss=1.693843
+[university1652] epoch=025/120 loss=1.359295
+[university1652] epoch=030/120 loss=1.098203
+[university1652] epoch=035/120 loss=1.390160
+[university1652] epoch=040/120 loss=0.782930
+[university1652] epoch=045/120 loss=0.919965
+[university1652] epoch=050/120 loss=1.050709
+[university1652] epoch=055/120 loss=1.054125
+[university1652] epoch=060/120 loss=1.208597
+[university1652] epoch=065/120 loss=1.029207
+[university1652] epoch=070/120 loss=1.248890
+[university1652] epoch=075/120 loss=0.951963
+[university1652] epoch=080/120 loss=0.727789
+[university1652] epoch=085/120 loss=1.104990
+[university1652] epoch=090/120 loss=0.591367
+[university1652] epoch=095/120 loss=0.622963
+[university1652] epoch=100/120 loss=0.499525
+[university1652] epoch=105/120 loss=0.664417
+[university1652] epoch=110/120 loss=0.572621
+[university1652] epoch=115/120 loss=0.770598
+[university1652] epoch=120/120 loss=0.515235
+[4RST] saved /yh/study/uav-sat/v39_otherdata/generated/native_four_rst_baselines/university1652/cityc/checkpoint.pt
+[4RST] university1652/test_01: R1=35.22% MLE=58.533m LSR15=1.89%
+[4RST] university1652/test_02: R1=30.40% MLE=59.779m LSR15=4.41%
+[4RST] DONE university1652/cityc: R1=32.38% MLE=59.266m
+/usr/local/lib/python3.8/dist-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/usr/local/lib/python3.8/dist-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=ResNet50_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet50_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)

@@ -1,0 +1,5 @@
+/yh/study/uav-sat/v39_otherdata/external/bearinguav/cvphr/utils/utils_transform.py:8: FutureWarning: In the future `np.bool` will be defined as the corresponding NumPy scalar.
+  if not hasattr(np, "bool"):
+[BEARING-OFFICIAL] cityc/test_01: R1=94.34% MLE=6.693m LSR15=92.45%
+[BEARING-OFFICIAL] cityc/test_02: R1=92.07% MLE=7.268m LSR15=92.95%
+[BEARING-OFFICIAL] DONE cityc: MLE=7.031m

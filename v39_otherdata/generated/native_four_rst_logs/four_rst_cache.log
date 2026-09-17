@@ -1,0 +1,31 @@
+[4RST-CACHE] citya/train: 100/197
+[4RST-CACHE] citya/train: 197/197
+[4RST-CACHE] citya/test_01: 100/162
+[4RST-CACHE] citya/test_01: 162/162
+[4RST-CACHE] citya/test_02: 100/205
+[4RST-CACHE] citya/test_02: 200/205
+[4RST-CACHE] citya/test_02: 205/205
+[4RST-CACHE] PASS citya: train=197 classes=17 routes={'test_01': {'frames': 162, 'oracle_nearest_RST_center_MLE_m': 25.656594224918035, 'oracle_nearest_RST_center_MedLE_m': 26.49970054626465}, 'test_02': {'frames': 205, 'oracle_nearest_RST_center_MLE_m': 23.910073594349186, 'oracle_nearest_RST_center_MedLE_m': 24.929555892944336}}
+[4RST-CACHE] cityb/train: 100/197
+[4RST-CACHE] cityb/train: 197/197
+[4RST-CACHE] cityb/test_01: 100/160
+[4RST-CACHE] cityb/test_01: 160/160
+[4RST-CACHE] cityb/test_02: 100/186
+[4RST-CACHE] cityb/test_02: 186/186
+[4RST-CACHE] PASS cityb: train=197 classes=17 routes={'test_01': {'frames': 160, 'oracle_nearest_RST_center_MLE_m': 25.941789683699607, 'oracle_nearest_RST_center_MedLE_m': 26.599796295166016}, 'test_02': {'frames': 186, 'oracle_nearest_RST_center_MLE_m': 25.766500983186948, 'oracle_nearest_RST_center_MedLE_m': 26.04521942138672}}
+[4RST-CACHE] cityc/train: 100/194
+[4RST-CACHE] cityc/train: 194/194
+[4RST-CACHE] cityc/test_01: 100/159
+[4RST-CACHE] cityc/test_01: 159/159
+[4RST-CACHE] cityc/test_02: 100/227
+[4RST-CACHE] cityc/test_02: 200/227
+[4RST-CACHE] cityc/test_02: 227/227
+[4RST-CACHE] PASS cityc: train=194 classes=16 routes={'test_01': {'frames': 159, 'oracle_nearest_RST_center_MLE_m': 25.77152522105091, 'oracle_nearest_RST_center_MedLE_m': 26.429563522338867}, 'test_02': {'frames': 227, 'oracle_nearest_RST_center_MLE_m': 23.959507185982186, 'oracle_nearest_RST_center_MedLE_m': 25.701791763305664}}
+[4RST-CACHE] cityd/train: 100/198
+[4RST-CACHE] cityd/train: 198/198
+[4RST-CACHE] cityd/test_01: 100/140
+[4RST-CACHE] cityd/test_01: 140/140
+[4RST-CACHE] cityd/test_02: 100/235
+[4RST-CACHE] cityd/test_02: 200/235
+[4RST-CACHE] cityd/test_02: 235/235
+[4RST-CACHE] PASS cityd: train=198 classes=18 routes={'test_01': {'frames': 140, 'oracle_nearest_RST_center_MLE_m': 26.862849548459053, 'oracle_nearest_RST_center_MedLE_m': 27.808297157287598}, 'test_02': {'frames': 235, 'oracle_nearest_RST_center_MLE_m': 24.039697906818795, 'oracle_nearest_RST_center_MedLE_m': 24.610288619995117}}
