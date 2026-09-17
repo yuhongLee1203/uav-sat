@@ -19,6 +19,8 @@ echo "==========================================================================
 echo "Bearing-v39 ${CITY}"
 echo "Train: auto-selected COMPLETE city-specific Route A -> 60 epochs"
 echo "Test : TWO OFFICIAL Bearing-UAV navigation routes"
+echo "Model: selected low-error Bearing-adapted v39 (architecture unchanged)"
+echo "Plot : green solid waypoint GT + red solid smoothed prediction"
 echo "================================================================================"
 
 python3 -m py_compile \
@@ -39,8 +41,8 @@ rm -rf "${PREPARED_ROOT}"
 # ---------------------------------------------------------------------------
 # DATA PREPARATION
 # ---------------------------------------------------------------------------
-# Probe three TRAIN-ONLY route candidates.  Only a full-route candidate can be
-# renamed to canonical train_01 / Route A.  The two test routes are fixed to the
+# Probe three TRAIN-ONLY route candidates. Only a full-route candidate can be
+# renamed to canonical train_01 / Route A. The two test routes are fixed to the
 # official Bearing-UAV navigation waypoints and never take part in Route-A choice.
 python3 v39_otherdata/bearing_prepare_multicity.py \
   --dataset-root "${DATASET_ROOT}" \
@@ -69,6 +71,10 @@ PY
 # ---------------------------------------------------------------------------
 # MODEL: selected v39 method + external-data physical adaptation
 # ---------------------------------------------------------------------------
+# IMPORTANT: do not replace this with bearing_runner.py. This entry point is the
+# audited low-error Bearing-adapted v39 path used by the committed official-route
+# results. Model topology remains Weighted Centroid -> 3-frame Context-GRU ->
+# Constant Velocity -> fixed-R constrained Kalman -> one final 6x6 MS (BW 7 m).
 python3 v39_otherdata/bearing_runner_multicity_v39.py \
   --dataset-root "${DATASET_ROOT}" \
   --city "${CITY}" \
@@ -85,7 +91,7 @@ python3 v39_otherdata/bearing_runner_multicity_v39.py \
 # ---------------------------------------------------------------------------
 # STRUCTURAL/METRIC AUDIT
 # ---------------------------------------------------------------------------
-# Hard errors are reserved for corrupt/misaligned outputs.  Quality observations
+# Hard errors are reserved for corrupt/misaligned outputs. Quality observations
 # are WARNINGS only: a weak scientific result must still be plotted and reported,
 # rather than disappearing before the user can inspect it.
 python3 - "${PREPARED_ROOT}" "${OUTPUT_DIR}" <<'PY'
@@ -134,18 +140,21 @@ print("[RESULT-AUDIT] structural/metric consistency: PASS")
 PY
 
 # ---------------------------------------------------------------------------
-# ALWAYS render the two scientific final-result figures after valid inference.
+# PAPER-STYLE RENDERING ONLY. This does NOT alter inference or metrics.
+# GT is the official waypoint polyline (green solid); prediction is display-only
+# smoothed (red solid). Raw predictions remain unchanged in CSV/metrics.
 # ---------------------------------------------------------------------------
 python3 v39_otherdata/bearing_plot_final_vs_gt.py \
   --prepared-root "${PREPARED_ROOT}" \
   --output-dir "${OUTPUT_DIR}" \
-  --routes test_01 test_02
+  --routes test_01 test_02 \
+  --smooth-window 9
 
 test -s "${OUTPUT_DIR}/test_01_final_result.jpg"
 test -s "${OUTPUT_DIR}/test_02_final_result.jpg"
-echo "[FINAL-IMAGES] PASS: two result figures exist"
+echo "[FINAL-IMAGES] PASS: two paper-style result figures exist"
 
-# Bearing-UAV paper-comparison metrics.  Directly comparable fields are marked
+# Bearing-UAV paper-comparison metrics. Directly comparable fields are marked
 # separately from derived/incompatible protocols inside the JSON.
 python3 v39_otherdata/bearing_paper_metrics.py \
   --prepared-root "${PREPARED_ROOT}" \
