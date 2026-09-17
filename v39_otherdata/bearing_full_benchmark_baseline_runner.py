@@ -1,12 +1,25 @@
 #!/usr/bin/env python3
 """Train public M2T baselines on Bearing-UAV's full 85% training split.
 
-This replaces the invalid train_01-only baseline experiment.  Each method keeps
+This replaces the invalid train_01-only baseline experiment. Each method keeps
 its own public architecture/objective, but all four are trained on the released
 Bearing-UAV 85% train split and evaluated on the released 10% test split with
-the native four-adjacent-RST candidate protocol.  The same trained checkpoint is
+the native four-adjacent-RST candidate protocol. The same trained checkpoint is
 then evaluated on the eight official navigation-route frame sets without giving
 it waypoint/temporal/local-prior information.
+
+Important DenseUAV detail
+-------------------------
+DenseUAV's official Sampler_University with sample_num=1 yields one identity /
+RST class per batch entry. Its hard-triplet implementation assumes that class
+multiplicity is uniform after the two views are concatenated. Random row-level
+batches can contain the same RST class multiple times and make
+hard_example_mining().view(N, -1) invalid. Therefore DenseUAV uses a faithful
+class-balanced sampler here: each epoch shuffles the RST classes and picks one
+UAV observation for every selected class. GTA-UAV uses the same unique-class
+batching to avoid InfoNCE false negatives. University-1652 and SUES-200 keep
+ordinary shuffled row batches because their CE objectives do not require this
+constraint.
 """
 from __future__ import annotations
 import argparse,csv,json,math,random
@@ -46,6 +59,26 @@ def batches(n,batch,rng):
  order=rng.permutation(n); end=(len(order)//batch)*batch
  for s in range(0,end,batch): yield order[s:s+batch]
 
+def unique_class_batches(labels,batch,rng):
+ """Match DenseUAV Sampler_University(sample_num=1): one sample per class.
+
+ We intentionally drop the final incomplete class chunk because DenseUAV stores
+ opt.batchsize inside its loss object and hard_example_mining expects a fixed,
+ uniformly repeated label multiplicity after concatenating both views.
+ """
+ labels=np.asarray(labels,dtype=np.int64)
+ classes=np.unique(labels).copy(); rng.shuffle(classes)
+ end=(len(classes)//batch)*batch
+ for s in range(0,end,batch):
+  cls_chunk=classes[s:s+batch]
+  idx=np.empty(batch,dtype=np.int64)
+  for j,c in enumerate(cls_chunk):
+   candidates=np.flatnonzero(labels==c)
+   idx[j]=int(rng.choice(candidates))
+  if len(np.unique(labels[idx]))!=batch:
+   raise RuntimeError('class-balanced sampler produced duplicate labels')
+  yield idx
+
 def metrics(pred,gt,choice,true):
  e=np.linalg.norm(pred-gt,axis=1)
  return {'frames':int(len(e)),'Recall@1_pct':float(100*np.mean(choice==true)),'MLE_m':float(e.mean()),'MedLE_m':float(np.median(e)),'P90_m':float(np.percentile(e,90)),'LSR@5_pct':float(100*np.mean(e<=5)),'LSR@10_pct':float(100*np.mean(e<=10)),'LSR@15_pct':float(100*np.mean(e<=15)),'LSR@20_pct':float(100*np.mean(e<=20)),'distance_errors_m':e.tolist()}
@@ -54,14 +87,24 @@ def train(adapter,cache,ckpt,force,seed):
  if ckpt.exists() and not force:
   obj=torch.load(ckpt,map_location='cpu'); adapter.model.load_state_dict(obj['model_state_dict'],strict=True); print(f'[FULL-{adapter.method}] checkpoint hit {ckpt}',flush=True); return
  u=np.load(cache/'train_uav.npy',mmap_mode='r'); g=np.load(cache/'sat_gallery.npy',mmap_mode='r'); pos=np.load(cache/'train_positive_sat_index.npy'); lab=np.load(cache/'train_labels.npy'); rng=np.random.default_rng(seed)
- adapter.prepare_scheduler(max(1,len(u)//adapter.batch)); scaler=torch.cuda.amp.GradScaler(enabled=adapter.amp)
+ if not (len(u)==len(pos)==len(lab)): raise RuntimeError('full benchmark training cache length mismatch')
+ nclasses=int(len(np.unique(lab)))
+ if adapter.method in ('denseuav','gtauav'):
+  steps=max(1,nclasses//adapter.batch)
+ else:
+  steps=max(1,len(u)//adapter.batch)
+ adapter.prepare_scheduler(steps); scaler=torch.cuda.amp.GradScaler(enabled=adapter.amp)
  start=1
  last=ckpt.with_name(ckpt.stem+'_resume.pt')
  if last.exists() and not force:
   obj=torch.load(last,map_location='cpu'); adapter.model.load_state_dict(obj['model']); adapter.optimizer.load_state_dict(obj['optimizer']); start=int(obj['epoch'])+1; print(f'[FULL-{adapter.method}] resume epoch {start}',flush=True)
+ print(f'[FULL-{adapter.method}] train rows={len(u)} unique RST classes={nclasses} batch={adapter.batch} sampler={"unique-class" if adapter.method in ("denseuav","gtauav") else "row-shuffle"}',flush=True)
  for ep in range(start,adapter.epochs+1):
   adapter.model.train(); total=0.; seen=0
-  for idx in batches(len(u),adapter.batch,rng):
+  iterator=unique_class_batches(lab,adapter.batch,rng) if adapter.method in ('denseuav','gtauav') else batches(len(u),adapter.batch,rng)
+  for idx in iterator:
+   if adapter.method=='denseuav' and len(np.unique(lab[idx]))!=len(idx):
+    raise RuntimeError('DenseUAV batch violates official one-class-per-entry sampler')
    xu=prep(raw(u,idx,adapter.device),adapter.input_size,adapter.mean,adapter.std,True,False); xs=prep(raw(g,pos[idx],adapter.device),adapter.input_size,adapter.mean,adapter.std,True,True); y=torch.as_tensor(lab[idx],device=adapter.device,dtype=torch.long)
    adapter.optimizer.zero_grad(set_to_none=True)
    with torch.cuda.amp.autocast(enabled=adapter.amp): loss=adapter.train_step(xs,xu,y)
@@ -69,11 +112,12 @@ def train(adapter,cache,ckpt,force,seed):
    scaler.scale(loss).backward(); scaler.unscale_(adapter.optimizer); torch.nn.utils.clip_grad_norm_(adapter.model.parameters(),100.); scaler.step(adapter.optimizer); scaler.update()
    if adapter.scheduler_per_step and adapter.scheduler is not None: adapter.scheduler.step()
    total+=float(loss.detach())*len(idx); seen+=len(idx)
+  if seen==0: raise RuntimeError(f'{adapter.method}: no training batches; classes={nclasses} batch={adapter.batch}')
   if not adapter.scheduler_per_step and adapter.scheduler is not None: adapter.scheduler.step()
-  avg=total/max(seen,1); print(f'[FULL-{adapter.method}] epoch={ep:03d}/{adapter.epochs} loss={avg:.6f}',flush=True)
+  avg=total/seen; print(f'[FULL-{adapter.method}] epoch={ep:03d}/{adapter.epochs} loss={avg:.6f} samples={seen}',flush=True)
   if ep%5==0 or ep==adapter.epochs:
    torch.save({'epoch':ep,'model':adapter.model.state_dict(),'optimizer':adapter.optimizer.state_dict()},last)
- adapter.model.eval(); ckpt.parent.mkdir(parents=True,exist_ok=True); torch.save({'model_state_dict':adapter.model.state_dict(),'config':adapter.config(),'training_scope':'Bearing-UAV official 85% split'},ckpt)
+ adapter.model.eval(); ckpt.parent.mkdir(parents=True,exist_ok=True); torch.save({'model_state_dict':adapter.model.state_dict(),'config':adapter.config(),'training_scope':'Bearing-UAV official 85% split','sampler':'unique-class sample_num=1' if adapter.method in ('denseuav','gtauav') else 'row-shuffle'},ckpt)
  if last.exists(): last.unlink()
 
 def gallery_features(adapter,arr,batch=64):
@@ -93,7 +137,7 @@ def eval_full(adapter,cache):
  gf=gallery_features(adapter,gallery,max(32,adapter.batch)); qf=query_features(adapter,q,max(16,adapter.batch)); cf=gf[torch.as_tensor(cand,device=gf.device)]; sim=torch.einsum('nd,nkd->nk',qf,cf); choice=sim.argmax(1).cpu().numpy(); pred=cxy[np.arange(len(choice)),choice]; return metrics(pred,gt,choice,true)
 def eval_route(adapter,cache,prepared,route,outdir):
  q=np.load(cache/f'{route}_uav.npy',mmap_mode='r'); cand=np.load(cache/f'{route}_candidates.npy',mmap_mode='r'); cxy=np.load(cache/f'{route}_candidate_xy_m.npy'); gt=np.load(cache/f'{route}_gt_m.npy'); true=np.load(cache/f'{route}_true_index.npy')
- qf=query_features(adapter,q,max(16,adapter.batch)); flat=cand.reshape((-1,)+cand.shape[2:]); sf=query_features(adapter,flat,max(16,adapter.batch)).reshape(len(q),4,-1) if False else None
+ qf=query_features(adapter,q,max(16,adapter.batch)); flat=cand.reshape((-1,)+cand.shape[2:])
  # Satellite branch must be used for RST candidates.
  sat=[]
  with torch.inference_mode():
