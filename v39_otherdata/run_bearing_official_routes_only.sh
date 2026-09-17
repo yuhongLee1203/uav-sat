@@ -63,7 +63,9 @@ mkdir -p "$OUT" "$LOG"
 # training; it is NOT an evaluation route and is never reported as a test path.
 # ---------------------------------------------------------------------------
 python3 - <<'PY'
-from v39_otherdata.bearing_multicity_routes import OFFICIAL_TEST_ROUTE_SOURCE, OFFICIAL_TEST_ROUTES
+import sys
+sys.path.insert(0, 'v39_otherdata')
+from bearing_multicity_routes import OFFICIAL_TEST_ROUTE_SOURCE, OFFICIAL_TEST_ROUTES
 expected = {
     'citya': ('wps34bc_50.json','wps34bc_51.json'),
     'cityb': ('wps36bc_50.json','wps36bc_51.json'),
