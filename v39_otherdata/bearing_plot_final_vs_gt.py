@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""Render readable paper-style Bearing-v39 route figures.
+"""Render Bearing-v39 navigation figures without inventing a continuous GT flight path.
 
-No numerical trajectory is smoothed, projected, shifted, or cosmetically moved.
-Visual semantics:
-  red solid        = final prediction (dominant foreground trajectory)
-  cyan thin dashed = true per-frame GT trajectory
-  cyan rings       = sparse GT samples, so overlap remains readable
-  gray dotted      = planned waypoint/reference route (context only)
+Bearing-UAV-90K UAV samples are independent observations selected along an official
+navigation route.  Connecting every selected GT observation with a polyline makes
+an artificial zig-zag that is easy to misread as the real flight trajectory.
 
-The previous renderer used two very thick haloed trajectories.  Because v39 is
-usually only a few metres from GT, those strokes visually merged.  This version
-keeps the prediction clearly visible and encodes GT with a different line style
-and sparse hollow markers instead of another heavy stroke.
+Visual semantics used here:
+  green solid line + waypoint markers = official Bearing-UAV waypoint route
+  blue dots                           = per-frame GT UAV observations (NOT connected)
+  red solid line                      = final v39 prediction trajectory
+
+No prediction or GT coordinate is smoothed, projected, shifted or cosmetically moved.
 """
 from __future__ import annotations
 import argparse,csv,json,math
@@ -21,11 +20,11 @@ import numpy as np
 from PIL import Image,ImageDraw,ImageEnhance,ImageFont
 
 Point=Tuple[float,float]
-PRED=(238,45,45,255)
-GT=(0,215,255,255)
-REF=(225,225,225,165)
-HALO=(255,255,255,225)
-DARK=(0,0,0,185)
+PRED=(230,45,45,255)
+GT=(40,125,255,235)
+ROUTE=(35,190,90,245)
+HALO=(255,255,255,220)
+TEXTBG=(0,0,0,170)
 
 
 def _rows(p:Path)->List[Dict[str,str]]:
@@ -51,7 +50,8 @@ def _find_csv(route,out,summary):
 
 def _waypoints(root,route):
     p=json.loads((root/"routes"/route/"waypoints.json").read_text())
-    return [(float(x["pixel_x"]),float(x["pixel_y"])) for x in sorted(p["waypoints"],key=lambda x:int(x["waypoint_order"]))]
+    return [(float(x["pixel_x"]),float(x["pixel_y"]))
+            for x in sorted(p["waypoints"],key=lambda x:int(x["waypoint_order"]))]
 
 
 def _abs_px(x,y,ox,oy,mpp):
@@ -61,12 +61,11 @@ def _abs_px(x,y,ox,oy,mpp):
 def _audit_points(route,root,out,summary,mpp,size,ox,oy):
     rows=_rows(_find_csv(route,out,summary)); man=_rows(root/"routes"/route/"manifest.csv")
     if not rows or len(rows)!=len(man): raise RuntimeError(f"{route}: CSV/manifest count mismatch")
-    pred=[];gt=[];errs=[];mx=0.;w,h=size
+    pred=[]; gt=[]; errs=[]; mx=0.; w,h=size
     for i,(r,m) in enumerate(zip(rows,man)):
         gx_rel,gy_rel=float(r["gt_x"]),float(r["gt_y"])
         gx_abs,gy_abs=gx_rel+ox,gy_rel+oy
-        ex=math.hypot(gx_abs-float(m["x_m"]),gy_abs-float(m["y_m"]))
-        mx=max(mx,ex)
+        mx=max(mx,math.hypot(gx_abs-float(m["x_m"]),gy_abs-float(m["y_m"])))
         fx,fy=float(r["final_x"]),float(r["final_y"])
         errs.append(math.hypot(fx-gx_rel,fy-gy_rel))
         pp=_abs_px(fx,fy,ox,oy,mpp); gg=(gx_abs/mpp,gy_abs/mpp)
@@ -79,110 +78,93 @@ def _audit_points(route,root,out,summary,mpp,size,ox,oy):
     return pred,gt
 
 
-def _dash(draw,pts,fill,width,dash,gap):
-    for a,b in zip(pts[:-1],pts[1:]):
-        dx,dy=b[0]-a[0],b[1]-a[1]; L=math.hypot(dx,dy)
-        if L<=1e-9: continue
-        ux,uy=dx/L,dy/L; s=0.
-        while s<L:
-            e=min(L,s+dash)
-            draw.line((a[0]+ux*s,a[1]+uy*s,a[0]+ux*e,a[1]+uy*e),fill=fill,width=width)
-            s+=dash+gap
-
-
 def _font(size,bold=False):
     names=[
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
     ]
     for n in names:
-        try: return ImageFont.truetype(n,size)
-        except OSError: pass
+        try:return ImageFont.truetype(n,size)
+        except OSError:pass
     return ImageFont.load_default()
 
 
-def _filled_circle(draw,p,r,fill,outline=HALO,width=3):
+def _circle(draw,p,r,fill,outline=None,width=2):
     draw.ellipse((p[0]-r,p[1]-r,p[0]+r,p[1]+r),fill=fill,outline=outline,width=width)
 
 
-def _ring(draw,p,r,outline,width=3):
+def _ring(draw,p,r,outline,width=2):
     draw.ellipse((p[0]-r,p[1]-r,p[0]+r,p[1]+r),fill=None,outline=outline,width=width)
 
 
 def _bounds(groups,w,h):
-    p=[q for g in groups for q in g]; xs=[q[0] for q in p]; ys=[q[1] for q in p]
-    m=max(220,int(.06*max(max(xs)-min(xs),max(ys)-min(ys),1)))
-    return(max(0,int(min(xs))-m),max(0,int(min(ys))-m),min(w,int(max(xs))+m),min(h,int(max(ys))+m))
+    pts=[q for g in groups for q in g]
+    xs=[q[0] for q in pts]; ys=[q[1] for q in pts]
+    margin=max(180,int(.05*max(max(xs)-min(xs),max(ys)-min(ys),1)))
+    return (max(0,int(min(xs))-margin),max(0,int(min(ys))-margin),
+            min(w,int(max(xs))+margin),min(h,int(max(ys))+margin))
 
 
 def _legend(img,route,s):
     ov=Image.new("RGBA",img.size,(0,0,0,0)); d=ImageDraw.Draw(ov,"RGBA")
-    sc=max(1.,min(img.size)/1200.); tf=_font(max(21,int(26*sc)),True); bf=_font(max(17,int(20*sc)))
-    pad=max(16,int(20*sc)); lh=max(28,int(32*sc)); bw=min(img.width-2*pad,max(650,int(735*sc))); bh=pad*2+lh*5
-    d.rounded_rectangle((pad,pad,pad+bw,pad+bh),radius=13,fill=(0,0,0,175),outline=(255,255,255,150),width=2)
-    x=pad+18; y=pad+12
-    d.text((x,y),f"{route} - Bearing-v39",font=tf,fill="white"); y+=lh
-    d.text((x,y),f"MLE {float(s['MLE_m']):.2f} m   P90 {float(s['P90_m']):.2f} m   LSR@15 {float(s['LSR@15_pct']):.1f}%",font=bf,fill="white"); y+=lh
-    sw=max(95,int(105*sc)); pw=max(6,int(7*sc)); gw=max(3,int(4*sc))
-    d.line((x,y+9,x+sw,y+9),fill=HALO,width=pw+4); d.line((x,y+9,x+sw,y+9),fill=PRED,width=pw)
-    d.text((x+sw+16,y-3),"Prediction",font=bf,fill="white"); y+=lh
-    _dash(d,[(x,y+9),(x+sw,y+9)],GT,gw,18*sc,12*sc); _ring(d,(x+sw*.5,y+9),max(4,int(5*sc)),GT,max(2,int(2*sc)))
-    d.text((x+sw+16,y-3),"Ground truth",font=bf,fill="white"); y+=lh
-    _dash(d,[(x,y+9),(x+sw,y+9)],REF,max(2,int(2*sc)),12*sc,12*sc)
-    d.text((x+sw+16,y-3),"Waypoints (context)",font=bf,fill=(225,225,225,255))
+    sc=max(1.,min(img.size)/1200.); title=_font(max(20,int(25*sc)),True); body=_font(max(16,int(19*sc)))
+    pad=max(14,int(18*sc)); lh=max(27,int(31*sc)); bw=min(img.width-2*pad,max(625,int(700*sc))); bh=pad*2+lh*5
+    d.rounded_rectangle((pad,pad,pad+bw,pad+bh),radius=12,fill=TEXTBG,outline=(255,255,255,130),width=2)
+    x=pad+17; y=pad+11
+    d.text((x,y),f"{route} - Bearing-v39",font=title,fill="white"); y+=lh
+    d.text((x,y),f"MLE {float(s['MLE_m']):.2f} m   P90 {float(s['P90_m']):.2f} m   LSR@15 {float(s['LSR@15_pct']):.1f}%",font=body,fill="white"); y+=lh
+    sw=max(90,int(100*sc))
+    d.line((x,y+9,x+sw,y+9),fill=ROUTE,width=max(4,int(5*sc))); _circle(d,(x+sw*.5,y+9),max(4,int(5*sc)),ROUTE,HALO,1)
+    d.text((x+sw+14,y-3),"Official waypoint route",font=body,fill="white"); y+=lh
+    for xx in np.linspace(x,x+sw,6): _circle(d,(float(xx),y+9),max(2,int(3*sc)),GT,HALO,1)
+    d.text((x+sw+14,y-3),"GT observations (points only)",font=body,fill="white"); y+=lh
+    d.line((x,y+9,x+sw,y+9),fill=HALO,width=max(7,int(8*sc))); d.line((x,y+9,x+sw,y+9),fill=PRED,width=max(4,int(5*sc)))
+    d.text((x+sw+14,y-3),"Prediction trajectory",font=body,fill="white")
     img.alpha_composite(ov)
 
 
 def render(route,root,out,summary):
     sm=json.loads((root/"bearing_satellite.json").read_text()); mpp=float(sm["mpp"])
     src=Image.open(sm["satellite_image"]).convert("RGB")
-    base=ImageEnhance.Brightness(src).enhance(.80).convert("RGBA")
+    base=ImageEnhance.Brightness(src).enhance(.82).convert("RGBA")
     ox,oy=_origin(root); ref=_waypoints(root,route); pred,gt=_audit_points(route,root,out,summary,mpp,base.size,ox,oy)
     d=ImageDraw.Draw(base,"RGBA"); sc=max(1.,base.width/4096.)
 
-    # Context route: thin and visually subordinate.
-    _dash(d,ref,REF,max(2,int(2*sc)),15*sc,15*sc)
+    # 1) Official Bearing-UAV navigation route: the only continuous reference line.
+    rw=max(4,int(5*sc))
+    d.line(ref,fill=HALO,width=rw+4,joint="curve")
+    d.line(ref,fill=ROUTE,width=rw,joint="curve")
+    for i,p in enumerate(ref):
+        _circle(d,p,max(6,int(7*sc)),ROUTE,HALO,max(1,int(2*sc)))
 
-    # GT: thin cyan dashed line.  No heavy halo, so it cannot bury prediction.
-    _dash(d,gt,DARK,max(4,int(5*sc)),28*sc,18*sc)
-    _dash(d,gt,GT,max(2,int(3*sc)),28*sc,18*sc)
+    # 2) Per-frame GT observations are independent samples.  Plot points only.
+    #    Use every point, but keep markers compact so density is visible without a fake zig-zag.
+    gr=max(2,int(3*sc))
+    for p in gt:
+        _circle(d,p,gr,GT,HALO,max(1,int(1*sc)))
 
-    # Prediction: foreground solid red.  Thin halo only for contrast with satellite imagery.
-    pw=max(7,int(8*sc)); hw=pw+5
-    d.line(pred,fill=HALO,width=hw,joint="curve")
+    # 3) v39 prediction is temporal, therefore it is the only estimated continuous trajectory.
+    pw=max(4,int(5*sc))
+    d.line(pred,fill=HALO,width=pw+5,joint="curve")
     d.line(pred,fill=PRED,width=pw,joint="curve")
 
-    # Sparse hollow GT markers are drawn last.  Their centres remain transparent, so
-    # an overlapping red prediction remains visible through the rings.
-    marker_step=max(1,len(gt)//18)
-    rr=max(5,int(6*sc)); rw=max(2,int(2*sc))
-    for p in gt[::marker_step]: _ring(d,p,rr,GT,rw)
-
-    # Distinct endpoints.  Prediction is filled red; GT is a hollow cyan ring.
-    _filled_circle(d,pred[0],max(8,int(9*sc)),PRED)
-    _filled_circle(d,pred[-1],max(8,int(9*sc)),PRED)
-    _ring(d,gt[0],max(10,int(11*sc)),GT,max(3,int(3*sc)))
-    _ring(d,gt[-1],max(10,int(11*sc)),GT,max(3,int(3*sc)))
-
-    # Small gray waypoint rings only; do not cover either trajectory.
-    for p in ref: _ring(d,p,max(4,int(4*sc)),REF,max(2,int(2*sc)))
+    # Start/end markers: route is green, prediction red; GT remains observations only.
+    _circle(d,ref[0],max(9,int(10*sc)),ROUTE,HALO,max(2,int(2*sc)))
+    _ring(d,ref[-1],max(10,int(11*sc)),ROUTE,max(3,int(3*sc)))
+    _circle(d,pred[0],max(7,int(8*sc)),PRED,HALO,max(2,int(2*sc)))
+    _ring(d,pred[-1],max(8,int(9*sc)),PRED,max(3,int(3*sc)))
 
     crop=base.crop(_bounds((ref,gt,pred),*base.size)).convert("RGBA")
     _legend(crop,route,summary)
     dest=out/f"{route}_final_result.jpg"
     crop.convert("RGB").save(dest,quality=98,subsampling=0)
-    print(f"[FINAL-PLOT] {dest} | red=prediction cyan-dashed/rings=GT gray=waypoints",flush=True)
+    print(f"[FINAL-PLOT] {dest} | green=official route blue=GT observations red=prediction",flush=True)
 
 
 def main():
-    p=argparse.ArgumentParser()
-    p.add_argument("--prepared-root",required=True)
-    p.add_argument("--output-dir",required=True)
-    p.add_argument("--routes",nargs="+",default=["test_01","test_02"])
-    a=p.parse_args()
-    root=Path(a.prepared_root).resolve(); out=Path(a.output_dir).resolve()
-    s=json.loads((out/"bearing_v39_summary.json").read_text())
-    for r in a.routes: render(r,root,out,s[r])
+    p=argparse.ArgumentParser(); p.add_argument("--prepared-root",required=True); p.add_argument("--output-dir",required=True); p.add_argument("--routes",nargs="+",default=["test_01","test_02"]); a=p.parse_args()
+    root=Path(a.prepared_root).resolve(); out=Path(a.output_dir).resolve(); s=json.loads((out/"bearing_v39_summary.json").read_text())
+    for r in a.routes:render(r,root,out,s[r])
 
 
-if __name__=="__main__": main()
+if __name__=="__main__":main()
