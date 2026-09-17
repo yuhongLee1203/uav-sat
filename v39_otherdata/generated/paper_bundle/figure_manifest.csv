@@ -1,9 +1,0 @@
-city,route,figure,prediction_style,ground_truth_style,planned_route_style
-citya,test_01,citya_test_01_final_result.jpg,red solid + white halo,purple dashed + white halo (true per-frame GT),gray dotted (context only)
-citya,test_02,citya_test_02_final_result.jpg,red solid + white halo,purple dashed + white halo (true per-frame GT),gray dotted (context only)
-cityb,test_01,cityb_test_01_final_result.jpg,red solid + white halo,purple dashed + white halo (true per-frame GT),gray dotted (context only)
-cityb,test_02,cityb_test_02_final_result.jpg,red solid + white halo,purple dashed + white halo (true per-frame GT),gray dotted (context only)
-cityc,test_01,cityc_test_01_final_result.jpg,red solid + white halo,purple dashed + white halo (true per-frame GT),gray dotted (context only)
-cityc,test_02,cityc_test_02_final_result.jpg,red solid + white halo,purple dashed + white halo (true per-frame GT),gray dotted (context only)
-cityd,test_01,cityd_test_01_final_result.jpg,red solid + white halo,purple dashed + white halo (true per-frame GT),gray dotted (context only)
-cityd,test_02,cityd_test_02_final_result.jpg,red solid + white halo,purple dashed + white halo (true per-frame GT),gray dotted (context only)

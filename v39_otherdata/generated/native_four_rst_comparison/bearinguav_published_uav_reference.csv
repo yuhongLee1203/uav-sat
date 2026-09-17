@@ -1,7 +1,0 @@
-method,kind,Recall@1_pct,LSR@15_pct,HSR@15_pct,MLE_m,MedLE_m,MHE_deg,MedHE_deg,SR@20_pct,SPL_pct,NE_m,source
-University-1652,published external baseline,60.2,15.11,,33.15,,,,0.0,,602.96,"Bearing-UAV CVPR 2026 main comparison table, UAV view"
-SUES-200,published external baseline,66.6,15.76,,30.83,,,,0.0,,618.85,"Bearing-UAV CVPR 2026 main comparison table, UAV view"
-DenseUAV,published external baseline,73.43,16.54,,28.79,,,,0.0,,651.93,"Bearing-UAV CVPR 2026 main comparison table, UAV view"
-GTA-UAV,published external baseline,70.71,27.96,,28.43,,,,0.0,,661.91,"Bearing-UAV CVPR 2026 main comparison table, UAV view"
-Bearing-UAV VGG-16,published Bearing-UAV,83.17,89.36,77.21,8.61,7.3,12.9,7.2,50.0,,275.61,"Bearing-UAV CVPR 2026 main table + supplementary Table 2, UAV view"
-Bearing-UAV VGG-16 + weather augmentation,published Bearing-UAV,86.52,92.88,,7.48,,9.63,,25.0,,248.77,"Bearing-UAV CVPR 2026 main comparison/weather table, UAV view"

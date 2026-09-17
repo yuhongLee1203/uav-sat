@@ -1,9 +1,0 @@
-[gtauav] epoch=001/20 loss=2.391824
-[gtauav] epoch=005/20 loss=2.528148
-[gtauav] epoch=010/20 loss=2.070528
-[gtauav] epoch=015/20 loss=1.331048
-[gtauav] epoch=020/20 loss=1.038056
-[4RST] saved /yh/study/uav-sat/v39_otherdata/generated/native_four_rst_baselines/gtauav/cityb/checkpoint.pt
-[4RST] gtauav/test_01: R1=33.75% MLE=62.867m LSR15=3.12%
-[4RST] gtauav/test_02: R1=27.96% MLE=62.551m LSR15=1.61%
-[4RST] DONE gtauav/cityb: R1=30.64% MLE=62.697m

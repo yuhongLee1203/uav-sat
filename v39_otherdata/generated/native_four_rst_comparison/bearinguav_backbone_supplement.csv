@@ -1,5 +1,0 @@
-method,Recall@1_pct,LSR@15_pct,HSR@15_pct,MLE_m,MedLE_m,MHE_deg,MedHE_deg,source
-Bearing-UAV ResNet18,75.34,71.83,46.83,12.09,10.56,26.52,16.16,"Bearing-UAV CVPR 2026 supplementary Table 2, UAV view"
-Bearing-UAV ViT-Small,81.39,85.47,51.57,9.46,8.02,24.89,14.45,"Bearing-UAV CVPR 2026 supplementary Table 2, UAV view"
-Bearing-UAV MobileNet-V3-Small,79.76,81.2,64.94,10.34,8.72,19.53,10.14,"Bearing-UAV CVPR 2026 supplementary Table 2, UAV view"
-Bearing-UAV VGG-16,83.17,89.36,77.21,8.61,7.3,12.9,7.2,"Bearing-UAV CVPR 2026 supplementary Table 2, UAV view"

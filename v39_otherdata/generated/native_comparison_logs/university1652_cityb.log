@@ -1,35 +1,0 @@
-/usr/local/lib/python3.8/dist-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
-  warnings.warn(
-/usr/local/lib/python3.8/dist-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=ResNet50_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet50_Weights.DEFAULT` to get the most up-to-date weights.
-  warnings.warn(msg)
-Downloading: "https://download.pytorch.org/models/resnet50-0676ba61.pth" to /yh/study/uav-sat/v39_otherdata/external/torch_cache/hub/checkpoints/resnet50-0676ba61.pth
-  0%|          | 0.00/97.8M [00:00<?, ?B/s]  2%|▏         | 2.27M/97.8M [00:00<00:04, 22.5MB/s]  5%|▌         | 5.08M/97.8M [00:00<00:03, 26.5MB/s]  9%|▉         | 8.94M/97.8M [00:00<00:02, 32.0MB/s] 13%|█▎        | 12.4M/97.8M [00:00<00:02, 33.8MB/s] 16%|█▌        | 15.8M/97.8M [00:00<00:02, 33.6MB/s] 19%|█▉        | 19.0M/97.8M [00:00<00:02, 32.4MB/s] 23%|██▎       | 22.8M/97.8M [00:00<00:02, 34.4MB/s] 27%|██▋       | 26.3M/97.8M [00:00<00:02, 34.5MB/s] 30%|███       | 29.6M/97.8M [00:00<00:02, 34.6MB/s] 34%|███▎      | 32.9M/97.8M [00:01<00:02, 33.6MB/s] 38%|███▊      | 36.7M/97.8M [00:01<00:01, 33.1MB/s] 42%|████▏     | 41.2M/97.8M [00:01<00:01, 36.9MB/s] 46%|████▌     | 44.8M/97.8M [00:01<00:01, 37.0MB/s] 50%|████▉     | 48.7M/97.8M [00:01<00:01, 38.0MB/s] 54%|█████▎    | 52.4M/97.8M [00:01<00:01, 36.8MB/s] 58%|█████▊    | 56.6M/97.8M [00:01<00:01, 38.9MB/s] 62%|██████▏   | 60.4M/97.8M [00:01<00:01, 38.8MB/s] 66%|██████▌   | 64.2M/97.8M [00:01<00:00, 39.1MB/s] 69%|██████▉   | 67.9M/97.8M [00:01<00:00, 38.5MB/s] 74%|███████▍  | 72.2M/97.8M [00:02<00:00, 40.4MB/s] 78%|███████▊  | 76.1M/97.8M [00:02<00:00, 39.5MB/s] 82%|████████▏ | 80.4M/97.8M [00:02<00:00, 40.9MB/s] 86%|████████▌ | 84.3M/97.8M [00:02<00:00, 40.4MB/s] 90%|█████████ | 88.1M/97.8M [00:02<00:00, 38.9MB/s] 96%|█████████▌| 93.8M/97.8M [00:02<00:00, 44.8MB/s]100%|██████████| 97.8M/97.8M [00:02<00:00, 38.4MB/s][university1652] epoch=001/120 loss=3.672712
-[university1652] epoch=005/120 loss=0.775741
-[university1652] epoch=010/120 loss=0.115794
-[university1652] epoch=015/120 loss=0.112998
-[university1652] epoch=020/120 loss=0.218674
-[university1652] epoch=025/120 loss=0.141357
-[university1652] epoch=030/120 loss=0.066210
-[university1652] epoch=035/120 loss=0.301679
-[university1652] epoch=040/120 loss=0.101640
-[university1652] epoch=045/120 loss=0.299080
-[university1652] epoch=050/120 loss=0.096954
-[university1652] epoch=055/120 loss=0.036126
-[university1652] epoch=060/120 loss=0.038347
-[university1652] epoch=065/120 loss=0.162918
-[university1652] epoch=070/120 loss=0.145293
-[university1652] epoch=075/120 loss=0.015794
-[university1652] epoch=080/120 loss=0.034929
-[university1652] epoch=085/120 loss=0.017078
-[university1652] epoch=090/120 loss=0.047944
-[university1652] epoch=095/120 loss=0.017369
-[university1652] epoch=100/120 loss=0.002662
-[university1652] epoch=105/120 loss=0.017992
-[university1652] epoch=110/120 loss=0.000860
-[university1652] epoch=115/120 loss=0.001671
-[university1652] epoch=120/120 loss=0.001966
-[M2T] saved /yh/study/uav-sat/v39_otherdata/generated/native_m2t_baselines/university1652/cityb/checkpoint.pt
-[university1652] test_01: R1=14.37% MLE=538.200m MedLE=645.634m LSR15=2.50%
-[university1652] test_02: R1=31.72% MLE=227.534m MedLE=106.652m LSR15=2.15%
-[M2T-DONE] university1652/cityb: R1=23.70% MLE=371.195m LSR15=2.31%
-
