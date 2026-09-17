@@ -1,17 +1,26 @@
 #!/usr/bin/env python3
-"""Render Bearing-v39 final navigation figures.
+"""Render Bearing-v39 paper figures with an unambiguous waypoint-route GT.
 
-Visualization policy:
-  - GT is the predefined Bearing-UAV waypoint route polyline, drawn as a GREEN
-    SOLID line. Per-frame independently sampled GT observations are NOT joined,
-    because that would create artificial zig-zag motion that is not the route.
-  - Prediction is the RAW model output from the inference CSV (final_x/final_y),
-    drawn as a RED SOLID polyline in frame order.
+Visualization contract (paper-facing and intentionally strict):
+  - GT display is ONLY the predefined Bearing-UAV waypoint route from
+    routes/<route>/waypoints.json.
+  - GT is drawn as a GREEN SOLID waypoint-to-waypoint polyline. The sparse
+    official waypoints are also marked with small green dots so the source is
+    visually obvious.
+  - Per-frame sampled GT observations are NEVER joined for display. They are
+    used only for numeric metric auditing.
+  - Prediction is ONLY the RAW model output final_x/final_y from the inference
+    CSV, drawn as a RED SOLID polyline in frame order.
   - Prediction receives NO moving average, interpolation, spline fitting,
-    resampling, denoising, corner rounding, or other display post-processing.
+    resampling, denoising, corner rounding, or any other display processing.
+
+The script writes two copies for each route:
+  1) legacy: <output-dir>/<route>_final_result.jpg
+  2) explicit paper figure:
+       <output-dir>/paper_figures_waypoint_gt/<route>_waypoint_gt_green.jpg
 
 This file never changes inference, saved CSV values, evaluation GT, MLE/P90/LSR,
-or any model component. It only renders the already-produced results.
+or any model component. It only renders already-produced results.
 """
 from __future__ import annotations
 
@@ -26,10 +35,11 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
 Point = Tuple[float, float]
-PRED = (228, 44, 52, 255)
-GT = (40, 180, 70, 255)
-HALO = (255, 255, 255, 220)
-TEXTBG = (0, 0, 0, 170)
+PRED = (228, 44, 52, 255)       # red
+GT = (40, 180, 70, 255)         # green
+GT_DOT = (18, 145, 52, 255)     # darker green waypoint markers
+HALO = (255, 255, 255, 230)
+TEXTBG = (0, 0, 0, 175)
 
 
 def _rows(p: Path) -> List[Dict[str, str]]:
@@ -57,18 +67,15 @@ def _find_csv(route: str, out: Path, summary: dict) -> Path:
     return matches[-1]
 
 
-def _official_trajectory(root: Path, route: str) -> List[Point]:
-    """Return the official/predefined route as straight waypoint-to-waypoint legs."""
-    payload = json.loads(
-        (root / "routes" / route / "waypoints.json").read_text(encoding="utf-8")
-    )
-    pts = [
-        (float(wp["pixel_x"]), float(wp["pixel_y"]))
-        for wp in sorted(payload["waypoints"], key=lambda x: int(x["waypoint_order"]))
-    ]
+def _official_waypoint_trajectory(root: Path, route: str) -> Tuple[List[Point], Path]:
+    """Return ONLY the official/predefined sparse waypoint route."""
+    wp_path = root / "routes" / route / "waypoints.json"
+    payload = json.loads(wp_path.read_text(encoding="utf-8"))
+    ordered = sorted(payload["waypoints"], key=lambda x: int(x["waypoint_order"]))
+    pts = [(float(wp["pixel_x"]), float(wp["pixel_y"])) for wp in ordered]
     if len(pts) < 2:
         raise RuntimeError(f"{route}: predefined trajectory has <2 waypoints")
-    return pts
+    return pts, wp_path
 
 
 def _abs_px(x: float, y: float, ox: float, oy: float, mpp: float) -> Point:
@@ -85,7 +92,7 @@ def _audit_and_raw_prediction(
     ox: float,
     oy: float,
 ) -> List[Point]:
-    """Validate metrics/coordinates and return raw final_x/final_y prediction pixels."""
+    """Validate metric coordinates and return raw final_x/final_y pixels."""
     rows = _rows(_find_csv(route, out, summary))
     manifest = _rows(root / "routes" / route / "manifest.csv")
     if not rows or len(rows) != len(manifest):
@@ -97,6 +104,7 @@ def _audit_and_raw_prediction(
     width, height = size
 
     for i, (row, man) in enumerate(zip(rows, manifest)):
+        # Per-frame GT exists ONLY for metric audit. It is never plotted.
         gx_rel = float(row["gt_x"])
         gy_rel = float(row["gt_y"])
         gx_abs = gx_rel + ox
@@ -106,7 +114,7 @@ def _audit_and_raw_prediction(
             math.hypot(gx_abs - float(man["x_m"]), gy_abs - float(man["y_m"])),
         )
 
-        # IMPORTANT: these are the model's saved final outputs. Do not modify.
+        # IMPORTANT: exact saved model output; do not smooth or alter.
         fx = float(row["final_x"])
         fy = float(row["final_y"])
         errors.append(math.hypot(fx - gx_rel, fy - gy_rel))
@@ -166,7 +174,6 @@ def _bounds(groups: Tuple[List[Point], ...], width: int, height: int):
 
 
 def _legend(img: Image.Image) -> None:
-    """Minimal, high-visibility legend: only GT and Predict."""
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay, "RGBA")
     scale = max(1.0, min(img.size) / 1200.0)
@@ -192,7 +199,11 @@ def _legend(img: Image.Image) -> None:
 
     draw.line((x, y + 14, x + swatch, y + 14), fill=HALO, width=gt_w + 4)
     draw.line((x, y + 14, x + swatch, y + 14), fill=GT, width=gt_w)
-    draw.text((x + swatch + 18, y), "GT", font=font, fill="white")
+    r = max(4, int(5 * scale))
+    cx = x + swatch // 2
+    cy = y + 14
+    draw.ellipse((cx-r, cy-r, cx+r, cy+r), fill=GT_DOT, outline=HALO, width=2)
+    draw.text((x + swatch + 18, y), "GT (waypoints)", font=font, fill="white")
 
     y += line_h
     draw.line((x, y + 14, x + swatch, y + 14), fill=HALO, width=pred_w + 4)
@@ -202,41 +213,77 @@ def _legend(img: Image.Image) -> None:
     img.alpha_composite(overlay)
 
 
-def render(route: str, root: Path, out: Path, summary: dict) -> None:
+def render(route: str, root: Path, out: Path, summary: dict) -> dict:
     sat_meta = json.loads((root / "bearing_satellite.json").read_text(encoding="utf-8"))
     mpp = float(sat_meta["mpp"])
     src = Image.open(sat_meta["satellite_image"]).convert("RGB")
     base = ImageEnhance.Brightness(src).enhance(0.84).convert("RGBA")
     ox, oy = _origin(root)
 
-    # GT display: official waypoint geometry, joined as clean route legs.
-    gt = _official_trajectory(root, route)
+    # DISPLAY GT = sparse official waypoint geometry ONLY.
+    gt, waypoint_path = _official_waypoint_trajectory(root, route)
 
-    # Prediction display: EXACT frame-order final_x/final_y from model inference.
+    # DISPLAY PREDICTION = exact frame-order final_x/final_y ONLY.
     pred = _audit_and_raw_prediction(route, root, out, summary, mpp, base.size, ox, oy)
 
     draw = ImageDraw.Draw(base, "RGBA")
     scale = max(1.0, base.width / 4096.0)
 
-    # Keep GT visually clean/prominent. This is route geometry, not model output.
-    gt_w = max(5, int(6 * scale))
-    draw.line(gt, fill=HALO, width=gt_w + 5, joint="curve")
+    # Green SOLID waypoint-to-waypoint route. Never dashed. Never per-frame GT.
+    gt_w = max(5, int(7 * scale))
+    draw.line(gt, fill=HALO, width=gt_w + 6, joint="curve")
     draw.line(gt, fill=GT, width=gt_w, joint="curve")
 
-    # RAW PREDICTION: no joint='curve' and no smoothing of any kind.
+    # Mark only the sparse official waypoints, making the GT source obvious.
+    radius = max(5, int(7 * scale))
+    for x, y in gt:
+        draw.ellipse(
+            (x-radius, y-radius, x+radius, y+radius),
+            fill=GT_DOT,
+            outline=HALO,
+            width=max(2, int(2 * scale)),
+        )
+
+    # RAW PREDICTION. No joint='curve'; no smoothing/interpolation.
     pred_w = max(4, int(5 * scale))
     draw.line(pred, fill=HALO, width=pred_w + 4)
     draw.line(pred, fill=PRED, width=pred_w)
 
     crop = base.crop(_bounds((gt, pred), *base.size)).convert("RGBA")
     _legend(crop)
-    dest = out / f"{route}_final_result.jpg"
-    crop.convert("RGB").save(dest, quality=98, subsampling=0)
+
+    # Legacy output kept for existing scripts.
+    legacy_dest = out / f"{route}_final_result.jpg"
+    crop.convert("RGB").save(legacy_dest, quality=98, subsampling=0)
+
+    # Unambiguous paper-facing output: open THESE files, not old intermediate plots.
+    paper_dir = out / "paper_figures_waypoint_gt"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    paper_dest = paper_dir / f"{route}_waypoint_gt_green.jpg"
+    crop.convert("RGB").save(paper_dest, quality=98, subsampling=0)
+
     print(
-        f"[FINAL-PLOT] {dest} | GT=official waypoint polyline | "
-        f"PRED=raw CSV final_x/final_y | prediction_postprocess=NONE",
+        f"[FINAL-PLOT] {paper_dest} | GT=GREEN SOLID official waypoint polyline "
+        f"({len(gt)} sparse waypoints from {waypoint_path}) | "
+        f"PRED=RED raw CSV final_x/final_y | prediction_postprocess=NONE",
         flush=True,
     )
+
+    return {
+        "route": route,
+        "gt_display_source": str(waypoint_path),
+        "gt_display_definition": "official sparse waypoints joined in waypoint_order",
+        "gt_waypoint_count": len(gt),
+        "gt_color": "green",
+        "gt_line_style": "solid",
+        "per_frame_gt_plotted": False,
+        "prediction_source": "raw inference CSV final_x/final_y",
+        "prediction_color": "red",
+        "prediction_line_style": "solid",
+        "prediction_postprocess": "none",
+        "legacy_output": str(legacy_dest),
+        "paper_output": str(paper_dest),
+    }
 
 
 def main() -> None:
@@ -251,8 +298,14 @@ def main() -> None:
     summaries = json.loads(
         (out / "bearing_v39_summary.json").read_text(encoding="utf-8")
     )
+
+    audit = {}
     for route in args.routes:
-        render(route, root, out, summaries[route])
+        audit[route] = render(route, root, out, summaries[route])
+
+    audit_path = out / "paper_figures_waypoint_gt" / "plot_source_audit.json"
+    audit_path.write_text(json.dumps(audit, indent=2), encoding="utf-8")
+    print(f"[FINAL-PLOT-AUDIT] wrote {audit_path}", flush=True)
 
 
 if __name__ == "__main__":
