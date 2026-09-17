@@ -5,128 +5,261 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATASET_ROOT="${DATASET_ROOT:-/yh/study/cvpr_data/Bearing_UAV_90K}"
 CPU_THREADS="${CPU_THREADS:-2}"
 GPU_IDS=(0 5 6)
+FORCE_OURS="${FORCE_OURS:-0}"
+FORCE_BASELINES="${FORCE_BASELINES:-1}"
+FORCE_OFFICIAL="${FORCE_OFFICIAL:-0}"
 cd "$ROOT"
-
-# First run ours + the four native full-city matching-to-tile baselines + the
-# authors' official Bearing-UAV checkpoint.  This stage also creates the shared
-# mmap image cache and isolated helper environment.
-DATASET_ROOT="$DATASET_ROOT" CPU_THREADS="$CPU_THREADS" \
-  FORCE_OURS="${FORCE_OURS:-0}" \
-  FORCE_BASELINES="${FORCE_BASELINES:-0}" \
-  FORCE_OFFICIAL="${FORCE_OFFICIAL:-0}" \
-  bash v39_otherdata/run_bearing_fair_comparison.sh
 
 GEN="$ROOT/v39_otherdata/generated"
 EXT="$ROOT/v39_otherdata/external"
-PY="$EXT/native_baseline_env/bin/python"
-BEARING="$EXT/bearinguav"
-CACHE="$GEN/native_m2t_cache"
-BASE="$GEN/native_m2t_baselines"
+CACHE="$GEN/native_four_rst_cache"
+BASE="$GEN/native_four_rst_baselines"
 OFF="$GEN/official_bearinguav_same_routes"
-OUT="$GEN/native_comparison"
-LOG="$GEN/native_comparison_logs"
-BEARING_COMMIT="d16e558a14bd0a9142c6901793fe6a6813e4e954"
+OUT="$GEN/native_four_rst_comparison"
+LOG="$GEN/native_four_rst_logs"
+VENV="$EXT/native_baseline_env"
+BEARING="$EXT/bearinguav"
+UNI="$EXT/University1652-Baseline"
+SUES="$EXT/SUES-200-Benchmark"
+DENSE="$EXT/DenseUAV"
+GTA="$EXT/GTA-UAV"
 
+BEARING_COMMIT="d16e558a14bd0a9142c6901793fe6a6813e4e954"
+UNI_COMMIT="c81e4b5c76ba29882a7b1e06b91f3c05ff41dc88"
+SUES_COMMIT="85b7488d06db1e6c4c1c52d4a5dc55553f768fb0"
+DENSE_COMMIT="b8de18751675fcc0a7a40938b4cd66549647d690"
+GTA_COMMIT="1fbc3dbe452db75e82539474f6e2c79d54ad52ac"
+
+mkdir -p "$GEN" "$EXT" "$LOG" "$OUT"
 export OMP_NUM_THREADS="$CPU_THREADS" MKL_NUM_THREADS="$CPU_THREADS" OPENBLAS_NUM_THREADS="$CPU_THREADS" NUMEXPR_NUM_THREADS="$CPU_THREADS"
 export TOKENIZERS_PARALLELISM=false
-export TORCH_HOME="$EXT/torch_cache"
-export HF_HOME="$EXT/hf_cache"
-mkdir -p "$LOG" "$TORCH_HOME" "$HF_HOME"
+export TORCH_HOME="$EXT/torch_cache" HF_HOME="$EXT/hf_cache"
+mkdir -p "$TORCH_HOME" "$HF_HOME"
 
-"$PY" -m py_compile v39_otherdata/bearinguav_route_adapted.py v39_otherdata/bearing_native_comparison.py
+for g in "${GPU_IDS[@]}"; do nvidia-smi -i "$g" >/dev/null 2>&1 || { echo "GPU $g unavailable" >&2; exit 2; }; done
 
-# Same-training-scope Bearing-UAV comparison:
-# train only on selected train_01, but use Bearing-UAV's OWN four-RST input,
-# position+heading regression and loss.  No v39 waypoint/temporal/local prior.
-br_ok(){
-  local d="$BASE/bearinguav_route_adapted/$1"
+clone_pin(){
+  local url="$1" dir="$2" sha="$3"
+  if [[ ! -d "$dir/.git" ]]; then git clone --filter=blob:none "$url" "$dir"; fi
+  if [[ "$(git -C "$dir" rev-parse HEAD)" != "$sha" ]]; then
+    git -C "$dir" fetch --depth 1 origin "$sha"
+    git -C "$dir" checkout --detach "$sha"
+  fi
+}
+clone_pin https://github.com/liukejia121/bearinguav.git "$BEARING" "$BEARING_COMMIT"
+clone_pin https://github.com/layumi/University1652-Baseline.git "$UNI" "$UNI_COMMIT"
+clone_pin https://github.com/Reza-Zhu/SUES-200-Benchmark.git "$SUES" "$SUES_COMMIT"
+clone_pin https://github.com/Dmmm1997/DenseUAV.git "$DENSE" "$DENSE_COMMIT"
+clone_pin https://github.com/Yux1angJi/GTA-UAV.git "$GTA" "$GTA_COMMIT"
+
+if [[ ! -x "$VENV/bin/python" ]]; then python3 -m venv --system-site-packages "$VENV"; fi
+PY="$VENV/bin/python"
+if ! "$PY" - <<'PY' >/dev/null 2>&1
+from packaging.version import Version
+import torch,torchvision,timm,pytorch_metric_learning,transformers,einops,yaml,scipy
+assert Version(timm.__version__) >= Version('1.0.7')
+PY
+then
+  PIP_DISABLE_PIP_VERSION_CHECK=1 "$PY" -m pip install -q --upgrade \
+    'timm>=1.0.7,<2' pytorch-metric-learning transformers einops pyyaml scipy tqdm thop yacs omegaconf packaging
+fi
+if ! "$PY" - <<'PY' >/dev/null 2>&1
+import cv2,pandas,albumentations,imgaug,skimage,imageio
+PY
+then
+  PIP_DISABLE_PIP_VERSION_CHECK=1 "$PY" -m pip install -q opencv-python-headless pandas albumentations imgaug scikit-image imageio
+fi
+
+"$PY" -m py_compile \
+  v39_otherdata/bearing_four_rst_route_cache.py \
+  v39_otherdata/bearing_four_rst_baseline_runner.py \
+  v39_otherdata/bearinguav_official_paper_eval.py \
+  v39_otherdata/bearing_route_protocol_audit.py \
+  v39_otherdata/bearing_native_comparison_v2.py \
+  v39_otherdata/bearinguav_official_route_eval.py
+
+echo "================================================================================"
+echo "[PROTOCOL] Bearing-UAV paper/native comparison"
+echo "[PROTOCOL] M2T Recall@1 candidate set = FOUR adjacent RSTs (p1,p2,p3,p4), NOT whole-city 256 tiles."
+echo "[PROTOCOL] M2T prediction = retrieved RST center. No waypoint/temporal/local prior."
+echo "[PROTOCOL] Navigation routes = official 8 Bearing-UAV routes (524..1119m)."
+echo "[PROTOCOL] Paper navigation step=25m; waypoint-arrival threshold=20m."
+echo "[RESOURCE] GPUs=${GPU_IDS[*]} CPU_THREADS/job=$CPU_THREADS; route JPEGs decoded once into mmap cache."
+echo "================================================================================"
+
+# ---------------------------------------------------------------------------
+# 1) OUR METHOD: keep current four-city results unless explicitly forced/missing.
+# ---------------------------------------------------------------------------
+ours_ok(){ local d="$GEN/$1/v39_output_bearing_adapted"; [[ -s "$d/bearing_v39_summary.json" && -s "$d/bearing_paper_metrics.json" ]]; }
+need_ours=0
+for c in citya cityb cityc cityd; do ours_ok "$c" || need_ours=1; done
+if [[ "$FORCE_OURS" == 1 || "$need_ours" == 1 ]]; then
+  echo "[OURS] rebuilding four cities"
+  DATASET_ROOT="$DATASET_ROOT" GPU=0 bash v39_otherdata/run_bearing_v39_all_cities.sh
+else
+  echo "[OURS] cache hit: all four cities"
+fi
+for c in citya cityb cityc cityd; do ours_ok "$c" || { echo "missing ours/$c" >&2; exit 3; }; done
+RUN_MODEL=0 DATASET_ROOT="$DATASET_ROOT" GPU=0 bash v39_otherdata/run_bearing_paper_bundle.sh > >(tee "$LOG/ours_paper_bundle.log") 2>&1
+
+# ---------------------------------------------------------------------------
+# 2) NATIVE FOUR-RST CACHE. This is the critical correction.
+# ---------------------------------------------------------------------------
+CACHE_FORCE=(); [[ "$FORCE_BASELINES" == 1 ]] && CACHE_FORCE+=(--force)
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 "$PY" v39_otherdata/bearing_four_rst_route_cache.py \
+  --dataset-root "$DATASET_ROOT" --generated-root "$GEN" --cache-root "$CACHE" \
+  --cities citya cityb cityc cityd "${CACHE_FORCE[@]}" > >(tee "$LOG/four_rst_cache.log") 2>&1
+
+"$PY" v39_otherdata/bearing_route_protocol_audit.py \
+  --generated-root "$GEN" --cache-root "$CACHE" --output "$OUT/route_protocol_audit.json" \
+  > >(tee "$LOG/route_protocol_audit.log") 2>&1
+
+# ---------------------------------------------------------------------------
+# 3) UNIVERSITY-1652 / SUES-200 / DenseUAV / GTA-UAV.
+#    Each test UAV sees ONLY its official p1..p4 RSTs.
+# ---------------------------------------------------------------------------
+declare -A RDIR RCOM
+RDIR[university1652]="$UNI";  RCOM[university1652]="$UNI_COMMIT"
+RDIR[sues200]="$SUES";        RCOM[sues200]="$SUES_COMMIT"
+RDIR[denseuav]="$DENSE";      RCOM[denseuav]="$DENSE_COMMIT"
+RDIR[gtauav]="$GTA";          RCOM[gtauav]="$GTA_COMMIT"
+
+base_ok(){
+  local d="$BASE/$1/$2"
   [[ -s "$d/result.json" && -s "$d/test_01_final_result.jpg" && -s "$d/test_02_final_result.jpg" ]] \
-    && grep -q '"training_scope": "selected train_01 only"' "$d/result.json"
+    && grep -q '"candidate_scope": "four adjacent p1/p2/p3/p4 RSTs from official metadata"' "$d/result.json"
 }
-run_br(){
-  local city="$1" gpu="$2"; local force=()
-  [[ "${FORCE_BEARING_ROUTE:-0}" == 1 ]] && force+=(--force)
-  echo "[BEARING-ROUTE] START $city GPU$gpu"
-  CUDA_VISIBLE_DEVICES="$gpu" \
-  OMP_NUM_THREADS="$CPU_THREADS" MKL_NUM_THREADS="$CPU_THREADS" OPENBLAS_NUM_THREADS="$CPU_THREADS" \
-  "$PY" v39_otherdata/bearinguav_route_adapted.py \
-    --official-root "$BEARING" \
-    --dataset-root "$DATASET_ROOT" \
-    --prepared-root "$GEN/$city" \
-    --cache-root "$CACHE/$city" \
-    --output-root "$BASE" \
-    --city "$city" \
-    --repo-commit "$BEARING_COMMIT" \
-    --epochs 100 --batch-size 16 --cpu-threads "$CPU_THREADS" "${force[@]}" \
-    > >(tee "$LOG/bearinguav_route_${city}.log") 2>&1
-  echo "[BEARING-ROUTE] DONE $city"
+run_base(){
+  local m="$1" c="$2" g="$3"; local ff=(); [[ "$FORCE_BASELINES" == 1 ]] && ff+=(--force)
+  echo "[4RST] START $m/$c GPU$g"
+  CUDA_VISIBLE_DEVICES="$g" OMP_NUM_THREADS="$CPU_THREADS" MKL_NUM_THREADS="$CPU_THREADS" OPENBLAS_NUM_THREADS="$CPU_THREADS" \
+  "$PY" v39_otherdata/bearing_four_rst_baseline_runner.py \
+    --method "$m" --repo-dir "${RDIR[$m]}" --repo-commit "${RCOM[$m]}" \
+    --cache-dir "$CACHE/$c" --prepared-root "$GEN/$c" --output-root "$BASE" \
+    --city "$c" --cpu-threads "$CPU_THREADS" "${ff[@]}" \
+    > >(tee "$LOG/${m}_${c}.log") 2>&1
+  echo "[4RST] DONE $m/$c"
 }
 
-pending=()
-for city in citya cityb cityc cityd; do
-  if [[ "${FORCE_BEARING_ROUTE:-0}" == 1 ]] || ! br_ok "$city"; then pending+=("$city"); else echo "[BEARING-ROUTE] cache hit $city"; fi
+tasks=()
+for m in university1652 sues200 denseuav gtauav; do
+  for c in citya cityb cityc cityd; do
+    if [[ "$FORCE_BASELINES" == 1 ]] || ! base_ok "$m" "$c"; then tasks+=("$m:$c"); else echo "[4RST] cache hit $m/$c"; fi
+  done
 done
-for ((base=0;base<${#pending[@]};base+=3)); do
+for ((b=0;b<${#tasks[@]};b+=3)); do
   pids=(); names=()
   for slot in 0 1 2; do
-    idx=$((base+slot)); ((idx<${#pending[@]})) || break
-    city="${pending[$idx]}"; run_br "$city" "${GPU_IDS[$slot]}" & pids+=("$!"); names+=("$city")
+    idx=$((b+slot)); ((idx<${#tasks[@]})) || break
+    IFS=: read -r m c <<<"${tasks[$idx]}"
+    run_base "$m" "$c" "${GPU_IDS[$slot]}" & pids+=("$!"); names+=("$m/$c")
   done
-  for i in "${!pids[@]}"; do
-    wait "${pids[$i]}" || { echo "[BEARING-ROUTE] FAILED ${names[$i]} -- see $LOG" >&2; exit 30; }
-  done
+  for i in "${!pids[@]}"; do wait "${pids[$i]}" || { echo "[4RST] FAILED ${names[$i]} -- see $LOG" >&2; exit 4; }; done
 done
-for city in citya cityb cityc cityd; do br_ok "$city" || { echo "missing Bearing route-adapted result: $city" >&2; exit 31; }; done
+for m in university1652 sues200 denseuav gtauav; do for c in citya cityb cityc cityd; do base_ok "$m" "$c" || exit 5; done; done
 
-# Rebuild final table now that the same-training-scope Bearing-UAV row exists.
-"$PY" v39_otherdata/bearing_native_comparison.py \
+# ---------------------------------------------------------------------------
+# 4) BEARING-UAV AUTHORS' OFFICIAL VGG-16 CHECKPOINT.
+# ---------------------------------------------------------------------------
+WEIGHT_ZIP="$EXT/Bearing_UAV.zip"; WEIGHT_DIR="$BEARING/Bearing_UAV/cross_view"
+if [[ ! -s "$WEIGHT_DIR/best_model.pth" || ! -s "$WEIGHT_DIR/training_configure.json" ]]; then
+  tmp="$WEIGHT_ZIP.part"; rm -f "$tmp"; URL='https://huggingface.co/HaoyZhou/bearinguav/resolve/main/Bearing_UAV.zip?download=true'
+  if command -v curl >/dev/null 2>&1; then curl -L --fail --retry 4 --retry-delay 3 -o "$tmp" "$URL"; else wget -O "$tmp" "$URL"; fi
+  mv "$tmp" "$WEIGHT_ZIP"
+  "$PY" - "$WEIGHT_ZIP" "$BEARING" <<'PY'
+import sys,zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:z.extractall(sys.argv[2])
+PY
+fi
+
+off_ok(){ local d="$OFF/$1"; [[ -s "$d/official_bearinguav_same_route.json" && -s "$d/test_01_final_result.jpg" && -s "$d/test_02_final_result.jpg" ]]; }
+run_off(){
+  local c="$1" g="$2"
+  echo "[BEARING-OFFICIAL] START $c GPU$g"
+  CUDA_VISIBLE_DEVICES="$g" OMP_NUM_THREADS="$CPU_THREADS" MKL_NUM_THREADS="$CPU_THREADS" \
+  "$PY" v39_otherdata/bearinguav_official_route_eval.py \
+    --official-root "$BEARING" --weights-dir "$WEIGHT_DIR" --dataset-root "$DATASET_ROOT" \
+    --generated-root "$GEN" --city "$c" --output-root "$OFF" --workers 1 --batch-size 8 --cpu-threads "$CPU_THREADS" \
+    > >(tee "$LOG/bearinguav_route_${c}.log") 2>&1
+}
+pending=(); for c in citya cityb cityc cityd; do if [[ "$FORCE_OFFICIAL" == 1 ]] || ! off_ok "$c"; then pending+=("$c"); fi; done
+for ((b=0;b<${#pending[@]};b+=3)); do
+  pids=(); names=()
+  for slot in 0 1 2; do idx=$((b+slot)); ((idx<${#pending[@]})) || break; c="${pending[$idx]}"; run_off "$c" "${GPU_IDS[$slot]}" & pids+=("$!"); names+=("$c"); done
+  for i in "${!pids[@]}"; do wait "${pids[$i]}" || { echo "official Bearing failed ${names[$i]}" >&2; exit 6; }; done
+done
+for c in citya cityb cityc cityd; do off_ok "$c" || exit 7; done
+
+# Paper-protocol verification is deliberately separate from route evaluation.
+# It uses the full metadata 85/5/10 split with seed=42, as in the released code.
+CUDA_VISIBLE_DEVICES="${GPU_IDS[0]}" OMP_NUM_THREADS="$CPU_THREADS" MKL_NUM_THREADS="$CPU_THREADS" \
+"$PY" v39_otherdata/bearinguav_official_paper_eval.py \
+  --official-root "$BEARING" --weights-dir "$WEIGHT_DIR" --dataset-root "$DATASET_ROOT" \
+  --output "$OUT/bearinguav_official_paper_protocol.json" --workers 1 --batch-size 16 --cpu-threads "$CPU_THREADS" \
+  > >(tee "$LOG/bearinguav_paper_verify.log") 2>&1
+
+# ---------------------------------------------------------------------------
+# 5) TABLES + HIGH-CONTRAST FIGURES.
+# ---------------------------------------------------------------------------
+rm -rf "$OUT/figures"
+mkdir -p "$OUT/figures/ours" "$OUT/figures/bearinguav_official" \
+  "$OUT/figures/university1652" "$OUT/figures/sues200" "$OUT/figures/denseuav" "$OUT/figures/gtauav"
+
+"$PY" v39_otherdata/bearing_native_comparison_v2.py \
   --generated-root "$GEN" --baseline-root "$BASE" --official-root "$OFF" --output-dir "$OUT"
+"$PY" v39_otherdata/bearing_published_reference.py --generated-root "$GEN" --output-dir "$OUT"
 
-mkdir -p "$OUT/figures/bearinguav_route_adapted"
-for city in citya cityb cityc cityd; do
-  for route in test_01 test_02; do
-    cp "$BASE/bearinguav_route_adapted/$city/${route}_final_result.jpg" \
-       "$OUT/figures/bearinguav_route_adapted/${city}_${route}_final_result.jpg"
+for c in citya cityb cityc cityd; do
+  for r in test_01 test_02; do
+    cp "$GEN/paper_bundle/${c}_${r}_final_result.jpg" "$OUT/figures/ours/${c}_${r}_final_result.jpg"
+    cp "$OFF/$c/${r}_final_result.jpg" "$OUT/figures/bearinguav_official/${c}_${r}_final_result.jpg"
+    for m in university1652 sues200 denseuav gtauav; do
+      cp "$BASE/$m/$c/${r}_final_result.jpg" "$OUT/figures/$m/${c}_${r}_final_result.jpg"
+    done
   done
 done
 
-# Final paper-artifact audit: 7 experimental rows/families, 8 route figures each
-# where a trajectory figure is meaningful.
-for method in ours bearinguav_route_adapted bearinguav_official university1652 sues200 denseuav gtauav; do
-  dir="$OUT/figures/$method"
-  count=$(find "$dir" -maxdepth 1 -type f -name '*_final_result.jpg' | wc -l)
-  [[ "$count" -eq 8 ]] || { echo "figure audit failed $method: $count/8" >&2; exit 32; }
+for method in ours bearinguav_official university1652 sues200 denseuav gtauav; do
+  count=$(find "$OUT/figures/$method" -maxdepth 1 -type f -name '*_final_result.jpg' | wc -l)
+  [[ "$count" -eq 8 ]] || { echo "figure audit failed $method: $count/8" >&2; exit 8; }
 done
-for f in same_frames_pooled.csv same_frames_route_level.csv bearinguav_published_uav_reference.csv comparison_manifest.json; do
-  test -s "$OUT/$f" || { echo "missing final artifact: $OUT/$f" >&2; exit 33; }
+for f in same_routes_pooled.csv same_routes_route_level.csv bearinguav_published_uav_reference.csv comparison_manifest.json route_protocol_audit.json bearinguav_official_paper_protocol.json; do
+  test -s "$OUT/$f" || { echo "missing artifact $f" >&2; exit 9; }
 done
-grep -q 'Bearing-UAV-route-adapted' "$OUT/same_frames_pooled.csv" || { echo "final table missing Bearing-UAV-route-adapted" >&2; exit 34; }
 
 cat > "$OUT/README_FINAL.txt" <<'EOF'
-Primary rerun table: same_frames_pooled.csv
-Per-route table:      same_frames_route_level.csv
-Published references: bearinguav_published_uav_reference.csv
+CORRECTED PROTOCOL
+==================
+1. The 8 test routes are exactly the official Bearing-UAV navigation waypoint routes.
+   Official lengths: 524..1119 m; navigation step=25 m; waypoint arrival threshold=20 m.
+2. University-1652 / SUES-200 / DenseUAV / GTA-UAV route evaluation uses ONLY
+   the four adjacent p1/p2/p3/p4 RSTs for each UAV frame. Prediction is the
+   retrieved tile centre. They receive no waypoint, route, previous-frame,
+   temporal, Kalman, or v39 local prior.
+3. Bearing-UAV official uses the authors' released VGG-16 checkpoint and native
+   four-RST pose regression.
+4. Ours retains its own temporal controlled-local-prior protocol.
+5. Published Table values are kept separately. Route-selected results are not
+   expected to exactly equal the full static localization benchmark.
+6. bearinguav_official_paper_protocol.json verifies the official checkpoint on
+   the released code's full-metadata 85/5/10 seed-42 test protocol.
 
-Native-input rules:
-- University-1652 / SUES-200 / DenseUAV / GTA-UAV:
-  independent UAV->satellite matching against ALL 256 city RST tiles.
-  They receive NO waypoint, planned route, previous position, temporal state,
-  local prior, or endpoint correction. Their failures/drift/jumps are retained.
-- Bearing-UAV-route-adapted:
-  official four-neighbour RST pose-regression architecture/objective, trained
-  on selected train_01 only; no v39 prior.
-- Bearing-UAV-official-pretrained:
-  authors' released full-data checkpoint, shown separately because training
-  scope differs.
-- Ours-v39:
-  retains its own temporal controlled-local-prior protocol.
+KEY FILES
+=========
+same_routes_pooled.csv
+same_routes_route_level.csv
+bearinguav_published_uav_reference.csv
+bearinguav_official_paper_protocol.json
+route_protocol_audit.json
+figures/
 EOF
 
 echo "================================================================================"
-echo "ALL-METHOD PAPER BUNDLE: PASS"
-echo "Main table : $OUT/same_frames_pooled.csv"
-echo "Route table: $OUT/same_frames_route_level.csv"
-echo "Figures    : $OUT/figures/"
-echo "Published  : $OUT/bearinguav_published_uav_reference.csv"
-echo "Logs       : $LOG/"
+echo "CORRECTED BEARING ALL-METHOD BUNDLE: PASS"
+echo "Route comparison : $OUT/same_routes_pooled.csv"
+echo "Paper references : $OUT/bearinguav_published_uav_reference.csv"
+echo "Paper verification: $OUT/bearinguav_official_paper_protocol.json"
+echo "Route audit      : $OUT/route_protocol_audit.json"
+echo "Figures          : $OUT/figures/"
+echo "Logs             : $LOG/"
 echo "================================================================================"
