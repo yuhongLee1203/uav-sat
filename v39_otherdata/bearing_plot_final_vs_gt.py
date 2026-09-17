@@ -2,15 +2,16 @@
 """Render Bearing-v39 final navigation figures.
 
 Visualization policy:
-  - GT is the predefined route polyline from route waypoints, drawn as a GREEN
-    SOLID line.  We do not connect per-frame sample GT, because Bearing-UAV-90K
-    observations are independently sampled and doing so creates artificial
-    zig-zag trajectories.
-  - Prediction is drawn as a RED SOLID line after display-only centered moving
-    average smoothing.  Raw predictions are still used for all metric audits.
+  - GT is the predefined Bearing-UAV waypoint route polyline, drawn as a GREEN
+    SOLID line.  Per-frame independently sampled GT observations are NOT joined,
+    because that would create artificial zig-zag motion that is not the route.
+  - Prediction is the RAW model output from the inference CSV (final_x/final_y),
+    drawn as a RED SOLID polyline in frame order.
+  - Prediction receives NO moving average, interpolation, spline fitting,
+    resampling, denoising, corner rounding, or other display post-processing.
 
-Nothing in this file changes inference, evaluation GT, MLE/P90/LSR, or saved
-frame CSV values; smoothing is only for the rendered trajectory figure.
+This file never changes inference, saved CSV values, evaluation GT, MLE/P90/LSR,
+or any model component.  It only renders the already-produced results.
 """
 from __future__ import annotations
 
@@ -36,103 +37,104 @@ def _rows(p: Path) -> List[Dict[str, str]]:
         return list(csv.DictReader(f))
 
 
-def _origin(root: Path):
-    r = _rows(root / "routes" / "train_01" / "manifest.csv")
-    if not r:
+def _origin(root: Path) -> Tuple[float, float]:
+    rows = _rows(root / "routes" / "train_01" / "manifest.csv")
+    if not rows:
         raise RuntimeError("train_01 manifest is empty")
-    return float(r[0]["x_m"]), float(r[0]["y_m"])
+    return float(rows[0]["x_m"]), float(rows[0]["y_m"])
 
 
-def _find_csv(route, out, summary):
+def _find_csv(route: str, out: Path, summary: dict) -> Path:
     p = Path(str(summary.get("CSV", "")))
     if p.exists():
         return p
     q = out / p.name
     if q.exists():
         return q
-    m = sorted(out.glob(f"{route}_*_frames.csv"))
-    if not m:
+    matches = sorted(out.glob(f"{route}_*_frames.csv"))
+    if not matches:
         raise FileNotFoundError(f"No inference CSV for {route}")
-    return m[-1]
+    return matches[-1]
 
 
 def _official_trajectory(root: Path, route: str) -> List[Point]:
-    """Predefined route polyline: adjacent waypoints form straight route legs."""
-    p = json.loads((root / "routes" / route / "waypoints.json").read_text(encoding="utf-8"))
+    """Return the official/predefined route as straight waypoint-to-waypoint legs."""
+    payload = json.loads(
+        (root / "routes" / route / "waypoints.json").read_text(encoding="utf-8")
+    )
     pts = [
-        (float(x["pixel_x"]), float(x["pixel_y"]))
-        for x in sorted(p["waypoints"], key=lambda x: int(x["waypoint_order"]))
+        (float(wp["pixel_x"]), float(wp["pixel_y"]))
+        for wp in sorted(payload["waypoints"], key=lambda x: int(x["waypoint_order"]))
     ]
     if len(pts) < 2:
         raise RuntimeError(f"{route}: predefined trajectory has <2 waypoints")
     return pts
 
 
-def _abs_px(x, y, ox, oy, mpp):
+def _abs_px(x: float, y: float, ox: float, oy: float, mpp: float) -> Point:
     return ((x + ox) / mpp, (y + oy) / mpp)
 
 
-def _audit_and_prediction(route, root, out, summary, mpp, size, ox, oy):
-    """Audit raw numerical results and return raw prediction pixels for plotting."""
+def _audit_and_raw_prediction(
+    route: str,
+    root: Path,
+    out: Path,
+    summary: dict,
+    mpp: float,
+    size: Tuple[int, int],
+    ox: float,
+    oy: float,
+) -> List[Point]:
+    """Validate metrics/coordinates and return raw final_x/final_y prediction pixels."""
     rows = _rows(_find_csv(route, out, summary))
-    man = _rows(root / "routes" / route / "manifest.csv")
-    if not rows or len(rows) != len(man):
+    manifest = _rows(root / "routes" / route / "manifest.csv")
+    if not rows or len(rows) != len(manifest):
         raise RuntimeError(f"{route}: CSV/manifest count mismatch")
 
-    pred = []
-    errs = []
-    mx = 0.0
-    w, h = size
-    for i, (r, m) in enumerate(zip(rows, man)):
-        gx_rel, gy_rel = float(r["gt_x"]), float(r["gt_y"])
-        gx_abs, gy_abs = gx_rel + ox, gy_rel + oy
-        mx = max(mx, math.hypot(gx_abs - float(m["x_m"]), gy_abs - float(m["y_m"])))
+    pred: List[Point] = []
+    errors: List[float] = []
+    max_contract_error = 0.0
+    width, height = size
 
-        fx, fy = float(r["final_x"]), float(r["final_y"])
-        errs.append(math.hypot(fx - gx_rel, fy - gy_rel))
-        pp = _abs_px(fx, fy, ox, oy, mpp)
-        if not (-1 <= pp[0] <= w and -1 <= pp[1] <= h):
+    for i, (row, man) in enumerate(zip(rows, manifest)):
+        gx_rel = float(row["gt_x"])
+        gy_rel = float(row["gt_y"])
+        gx_abs = gx_rel + ox
+        gy_abs = gy_rel + oy
+        max_contract_error = max(
+            max_contract_error,
+            math.hypot(gx_abs - float(man["x_m"]), gy_abs - float(man["y_m"])),
+        )
+
+        # IMPORTANT: these are the model's saved final outputs.  Do not modify.
+        fx = float(row["final_x"])
+        fy = float(row["final_y"])
+        errors.append(math.hypot(fx - gx_rel, fy - gy_rel))
+        point = _abs_px(fx, fy, ox, oy, mpp)
+        if not (-1 <= point[0] <= width and -1 <= point[1] <= height):
             raise RuntimeError(f"{route}: pred {i} outside RSI")
-        pred.append(pp)
+        pred.append(point)
 
-    if mx > 1e-3:
-        raise RuntimeError(f"{route}: sample-GT coordinate contract mismatch {mx:.6f}m")
+    if max_contract_error > 1e-3:
+        raise RuntimeError(
+            f"{route}: sample-GT coordinate contract mismatch {max_contract_error:.6f}m"
+        )
 
-    mle = float(np.mean(errs))
+    mle = float(np.mean(errors))
     if abs(mle - float(summary["MLE_m"])) > 1e-5:
-        raise RuntimeError(f"{route}: MLE mismatch")
+        raise RuntimeError(
+            f"{route}: MLE mismatch raw-CSV={mle:.9f} summary={float(summary['MLE_m']):.9f}"
+        )
 
     print(
-        f"[FINAL-PLOT-AUDIT] {route}: PASS frames={len(rows)} sample-MLE={mle:.3f}m",
+        f"[FINAL-PLOT-AUDIT] {route}: PASS frames={len(rows)} "
+        f"raw-model-MLE={mle:.3f}m pred_source=CSV(final_x,final_y) postprocess=NONE",
         flush=True,
     )
     return pred
 
 
-def _smooth_polyline(points: List[Point], window: int) -> List[Point]:
-    """Centered moving-average smoothing for display only; endpoints stay fixed."""
-    arr = np.asarray(points, dtype=np.float64)
-    n = len(arr)
-    if n < 3 or window <= 1:
-        return [(float(x), float(y)) for x, y in arr]
-
-    w = min(int(window), n if n % 2 == 1 else n - 1)
-    if w % 2 == 0:
-        w -= 1
-    if w < 3:
-        return [(float(x), float(y)) for x, y in arr]
-
-    pad = w // 2
-    kernel = np.ones(w, dtype=np.float64) / float(w)
-    xs = np.convolve(np.pad(arr[:, 0], (pad, pad), mode="edge"), kernel, mode="valid")
-    ys = np.convolve(np.pad(arr[:, 1], (pad, pad), mode="edge"), kernel, mode="valid")
-    sm = np.stack([xs, ys], axis=1)
-    sm[0] = arr[0]
-    sm[-1] = arr[-1]
-    return [(float(x), float(y)) for x, y in sm]
-
-
-def _font(size, bold=False):
+def _font(size: int, bold: bool = False):
     names = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
         if bold
@@ -141,132 +143,138 @@ def _font(size, bold=False):
         if bold
         else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
     ]
-    for n in names:
+    for name in names:
         try:
-            return ImageFont.truetype(n, size)
+            return ImageFont.truetype(name, size)
         except OSError:
             pass
     return ImageFont.load_default()
 
 
-def _bounds(groups, w, h):
-    pts = [q for g in groups for q in g]
-    xs = [q[0] for q in pts]
-    ys = [q[1] for q in pts]
-    margin = max(180, int(0.05 * max(max(xs) - min(xs), max(ys) - min(ys), 1)))
+def _bounds(groups: Tuple[List[Point], ...], width: int, height: int):
+    pts = [p for group in groups for p in group]
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    span = max(max(xs) - min(xs), max(ys) - min(ys), 1)
+    margin = max(180, int(0.05 * span))
     return (
         max(0, int(min(xs)) - margin),
         max(0, int(min(ys)) - margin),
-        min(w, int(max(xs)) + margin),
-        min(h, int(max(ys)) + margin),
+        min(width, int(max(xs)) + margin),
+        min(height, int(max(ys)) + margin),
     )
 
 
 def _city_traj_title(root: Path, route: str) -> str:
-    city_map = {"citya": "City A", "cityb": "City B", "cityc": "City C", "cityd": "City D"}
+    city_map = {
+        "citya": "City A",
+        "cityb": "City B",
+        "cityc": "City C",
+        "cityd": "City D",
+    }
     traj = "#1" if route == "test_01" else "#2"
     return f"{city_map.get(root.name, root.name)} / Traj. {traj}"
 
 
-def _legend(img, root, route, s):
-    ov = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    d = ImageDraw.Draw(ov, "RGBA")
-    sc = max(1.0, min(img.size) / 1200.0)
-    title = _font(max(20, int(25 * sc)), True)
-    body = _font(max(16, int(19 * sc)))
-    pad = max(14, int(18 * sc))
-    lh = max(27, int(31 * sc))
-    bw = min(img.width - 2 * pad, max(600, int(670 * sc)))
-    bh = pad * 2 + lh * 4
-    d.rounded_rectangle(
-        (pad, pad, pad + bw, pad + bh), radius=12, fill=TEXTBG,
-        outline=(255, 255, 255, 120), width=2
+def _legend(img: Image.Image, root: Path, route: str, summary: dict) -> None:
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay, "RGBA")
+    scale = max(1.0, min(img.size) / 1200.0)
+    title_font = _font(max(20, int(25 * scale)), True)
+    body_font = _font(max(16, int(19 * scale)))
+    pad = max(14, int(18 * scale))
+    line_h = max(27, int(31 * scale))
+    box_w = min(img.width - 2 * pad, max(600, int(720 * scale)))
+    box_h = pad * 2 + line_h * 4
+
+    draw.rounded_rectangle(
+        (pad, pad, pad + box_w, pad + box_h),
+        radius=12,
+        fill=TEXTBG,
+        outline=(255, 255, 255, 120),
+        width=2,
     )
+
     x = pad + 17
     y = pad + 11
-    d.text((x, y), _city_traj_title(root, route), font=title, fill="white")
-    y += lh
-    d.text(
+    draw.text((x, y), _city_traj_title(root, route), font=title_font, fill="white")
+    y += line_h
+    draw.text(
         (x, y),
-        f"MLE {float(s['MLE_m']):.2f} m   P90 {float(s['P90_m']):.2f} m   LSR@15 {float(s['LSR@15_pct']):.1f}%",
-        font=body,
+        f"MLE {float(summary['MLE_m']):.2f} m   "
+        f"P90 {float(summary['P90_m']):.2f} m   "
+        f"LSR@15 {float(summary['LSR@15_pct']):.1f}%",
+        font=body_font,
         fill="white",
     )
-    y += lh
+    y += line_h
 
-    sw = max(95, int(105 * sc))
-    gw = max(4, int(5 * sc))
-    pw = max(4, int(5 * sc))
+    swatch = max(95, int(105 * scale))
+    gt_w = max(4, int(5 * scale))
+    pred_w = max(4, int(5 * scale))
 
-    d.line((x, y + 9, x + sw, y + 9), fill=HALO, width=gw + 4)
-    d.line((x, y + 9, x + sw, y + 9), fill=GT, width=gw)
-    d.text((x + sw + 15, y - 3), "GT trajectory", font=body, fill="white")
-    y += lh
+    draw.line((x, y + 9, x + swatch, y + 9), fill=HALO, width=gt_w + 4)
+    draw.line((x, y + 9, x + swatch, y + 9), fill=GT, width=gt_w)
+    draw.text((x + swatch + 15, y - 3), "GT waypoint trajectory", font=body_font, fill="white")
+    y += line_h
 
-    d.line((x, y + 9, x + sw, y + 9), fill=HALO, width=pw + 4)
-    d.line((x, y + 9, x + sw, y + 9), fill=PRED, width=pw)
-    d.text((x + sw + 15, y - 3), "Prediction", font=body, fill="white")
-    img.alpha_composite(ov)
+    draw.line((x, y + 9, x + swatch, y + 9), fill=HALO, width=pred_w + 4)
+    draw.line((x, y + 9, x + swatch, y + 9), fill=PRED, width=pred_w)
+    draw.text((x + swatch + 15, y - 3), "Raw model prediction", font=body_font, fill="white")
+    img.alpha_composite(overlay)
 
 
-def render(route, root, out, summary, smooth_window):
-    sm = json.loads((root / "bearing_satellite.json").read_text(encoding="utf-8"))
-    mpp = float(sm["mpp"])
-    src = Image.open(sm["satellite_image"]).convert("RGB")
+def render(route: str, root: Path, out: Path, summary: dict) -> None:
+    sat_meta = json.loads((root / "bearing_satellite.json").read_text(encoding="utf-8"))
+    mpp = float(sat_meta["mpp"])
+    src = Image.open(sat_meta["satellite_image"]).convert("RGB")
     base = ImageEnhance.Brightness(src).enhance(0.84).convert("RGBA")
     ox, oy = _origin(root)
 
-    # GT for the figure is the predefined route geometry, not frame-wise sample GT.
-    # Adjacent waypoints are intentionally connected by straight solid segments.
+    # GT display: official waypoint geometry, joined as clean route legs.
     gt = _official_trajectory(root, route)
 
-    raw_pred = _audit_and_prediction(route, root, out, summary, mpp, base.size, ox, oy)
-    pred = _smooth_polyline(raw_pred, smooth_window)
+    # Prediction display: EXACT frame-order final_x/final_y from model inference.
+    pred = _audit_and_raw_prediction(route, root, out, summary, mpp, base.size, ox, oy)
 
-    d = ImageDraw.Draw(base, "RGBA")
-    sc = max(1.0, base.width / 4096.0)
+    draw = ImageDraw.Draw(base, "RGBA")
+    scale = max(1.0, base.width / 4096.0)
 
-    # Paper-style GT requested by the experiment: prominent green solid route.
-    gw = max(5, int(6 * sc))
-    d.line(gt, fill=HALO, width=gw + 5, joint="curve")
-    d.line(gt, fill=GT, width=gw, joint="curve")
+    # Keep GT visually clean/prominent.  This is route geometry, not model output.
+    gt_w = max(5, int(6 * scale))
+    draw.line(gt, fill=HALO, width=gt_w + 5, joint="curve")
+    draw.line(gt, fill=GT, width=gt_w, joint="curve")
 
-    # Prediction: display-only smoothing, solid red line.
-    pw = max(4, int(5 * sc))
-    d.line(pred, fill=HALO, width=pw + 4, joint="curve")
-    d.line(pred, fill=PRED, width=pw, joint="curve")
+    # RAW PREDICTION: no joint='curve' and no smoothing of any kind.
+    pred_w = max(4, int(5 * scale))
+    draw.line(pred, fill=HALO, width=pred_w + 4)
+    draw.line(pred, fill=PRED, width=pred_w)
 
     crop = base.crop(_bounds((gt, pred), *base.size)).convert("RGBA")
     _legend(crop, root, route, summary)
     dest = out / f"{route}_final_result.jpg"
     crop.convert("RGB").save(dest, quality=98, subsampling=0)
     print(
-        f"[FINAL-PLOT] {dest} | green-solid=waypoint GT red-solid=smoothed prediction window={smooth_window}",
+        f"[FINAL-PLOT] {dest} | GT=official waypoint polyline | "
+        f"PRED=raw CSV final_x/final_y | prediction_postprocess=NONE",
         flush=True,
     )
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--prepared-root", required=True)
-    p.add_argument("--output-dir", required=True)
-    p.add_argument("--routes", nargs="+", default=["test_01", "test_02"])
-    p.add_argument(
-        "--smooth-window",
-        type=int,
-        default=9,
-        help="Odd centered moving-average window for prediction display only (default: 9)",
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--prepared-root", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--routes", nargs="+", default=["test_01", "test_02"])
+    args = parser.parse_args()
+
+    root = Path(args.prepared_root).resolve()
+    out = Path(args.output_dir).resolve()
+    summaries = json.loads(
+        (out / "bearing_v39_summary.json").read_text(encoding="utf-8")
     )
-    a = p.parse_args()
-
-    if a.smooth_window < 1:
-        p.error("--smooth-window must be >= 1")
-
-    root = Path(a.prepared_root).resolve()
-    out = Path(a.output_dir).resolve()
-    s = json.loads((out / "bearing_v39_summary.json").read_text(encoding="utf-8"))
-    for r in a.routes:
-        render(r, root, out, s[r], a.smooth_window)
+    for route in args.routes:
+        render(route, root, out, summaries[route])
 
 
 if __name__ == "__main__":
