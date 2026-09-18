@@ -1,6 +1,5 @@
-# Install a JetPack-compatible CUDA build of torch/torchvision first.
+# Jetson: install PyTorch/torchvision from the NVIDIA JetPack-compatible build first.
 numpy
 Pillow
-open_clip_torch==2.32.0
+open-clip-torch
 timm
-huggingface_hub

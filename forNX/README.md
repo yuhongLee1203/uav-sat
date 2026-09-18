@@ -1,40 +1,71 @@
-# V36 Orin NX benchmark package
+# forNX — V39 DirectFinalMS deployment / latency package
 
-This is the standalone package for measuring the existing V36 backbone comparison on Orin NX.  It contains the real inference code, trained checkpoints, pretrained backbone files, and the actual Route B+C evaluation data.  It does not train anything and does not change any checkpoint.
+This folder is the deployment copy of the selected `v39_DirectFinalMS` runtime. The old V36 four-backbone benchmark is no longer the main `forNX` workflow.
 
-## Included models
+## Exact V39 pipeline
 
-| Backbone | Trained V36 checkpoint | Included |
-|---|---:|---:|
-| MobileCLIP2-S2 | yes | yes |
-| ResNet-18 | yes | yes |
-| MobileNetV3-Small | yes | yes |
-| VGG16 | yes | yes |
-| ResNet-50 | no completed V36 checkpoint | no |
-
-The package is about 3.5 GB.  The supplied V36 checkpoint protocol is SoftMS + 3-frame GRU + quadratic motion + learned external Kalman + forward 3x6 local search with the controlled smooth-jitter prior.  This is intentionally the same protocol as the completed backbone-comparison table; it is not a new 4x6 retraining.
-
-## On Orin NX
-
-Install a JetPack-compatible CUDA PyTorch and torchvision build, then install the Python packages:
-
-```bash
-cd forNX
-python3 -m pip install -r requirements.txt
+```text
+MobileNetV3-Small UAV encoder
+-> forward local SAT scoring
+-> posterior Weighted Centroid visual observation
+-> 3-frame GRU
+-> Constant-Velocity motion
+-> fixed-R external Kalman
+-> exactly one final local Soft MeanShift (6x6, bandwidth 7 m)
+-> final XY
 ```
 
-Run all four models:
+`src/` is copied from `v39_DirectFinalMS/base_src/`; `patch_direct_finalms.py` is the same patch used by the formal V39 run. The benchmark creates a fresh runtime directory and applies that patch before evaluation, so it measures the same selected method instead of an older V36 implementation.
+
+## 1. Prepare the portable folder on the workstation
+
+From the repository root:
 
 ```bash
-bash scripts/run_benchmark.sh
+bash forNX/scripts/prepare_v39_package.sh
 ```
 
-Run one model only:
+The preparation script does not train anything and does not delete prior results. It copies the existing visual/temporal checkpoints into:
+
+```text
+forNX/weights/v39_directfinalms/checkpoints/
+  visual_retrieval_A_only.pt
+  controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt
+```
+
+It also overlays the existing prepared `v36_GvsK/v36_training_data` into the Git-ignored `forNX/data/` directory so the entire `forNX/` folder is portable.
+
+`forNX/data/`, `forNX/weights/`, and `forNX/pretrained_cache/` are intentionally Git-ignored because they are deployment assets, not source code.
+
+## 2. Copy the complete `forNX/` directory to Jetson Xavier NX
+
+Use your preferred SCP/rsync/USB method. Do not copy only `src/`; the NX needs the local weights, data, and pretrained cache too.
+
+## 3. One command on the NX
 
 ```bash
-BACKBONES=resnet18 bash scripts/run_benchmark.sh
+cd ~/forNX && bash run_v39_nx_latency.sh
 ```
 
-The output table is `runs/v36_backbone_comparison.md`.  Per-model timing logs and raw predictions are under `runs/v36_<backbone>/`.  Timing is from a prepared UAV tensor through the real backbone, visual retrieval, GRU, external Kalman, and final XY; feature-cache creation is excluded.
+That one command validates CUDA/dependencies, reconstructs the V39 runtime, applies DirectFinalMS, runs Route B + Route C evaluation, warms up 30 frames per route, and prints the final latency as:
 
-The package sets `TORCH_HOME` and `HF_HOME` to `pretrained_cache/`, so the included pretrained weights are used offline.  Do not omit `pretrained_cache/` when transferring this folder.
+```text
+V39_FULL_PIPELINE_MEAN_MS = ... ms
+V39_FULL_PIPELINE_FPS     = ... FPS
+```
+
+It also prints Route-B/Route-C mean, median and P90 latency and saves a JSON result under `forNX/runs/v39_nx_latency_*/v39_nx_latency_result.json`.
+
+## Timing definition
+
+The measured per-frame interval is the V39 online inference path after the UAV image has already been transformed into a tensor. It includes the backbone/local visual retrieval, Weighted Centroid observation, 3-frame GRU, fixed-R Kalman and the final 6x6/BW7 MeanShift through final XY.
+
+The reported number excludes image disk I/O, image preprocessing, model/checkpoint loading, and one-time satellite gallery / feature-cache construction. This makes the number suitable for device-to-device inference comparison.
+
+Run the same `bash run_v39_nx_latency.sh` command on the 3090 package if you want a directly matched 3090 reference; do not mix it with older 5x5 timing logs.
+
+## Jetson environment
+
+Use the NVIDIA/JetPack-compatible PyTorch + torchvision build for your Jetson. Do not replace a working Jetson PyTorch installation with a generic desktop PyPI CUDA wheel. The Python runtime also needs `numpy`, `Pillow`, `open_clip_torch` (`import open_clip`) and its normal dependencies.
+
+The launcher fails before inference if CUDA, source files, weights or deployment data are missing.

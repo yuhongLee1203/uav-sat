@@ -2401,6 +2401,9 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     progress_errors = []
     motion_prediction_errors = []
     visual_measurement_errors = []
+    kf1_errors = []
+    kf2_errors = []
+    ms2_shifts_from_kf2 = []
     heading_errors = []
     acq_confidences = []
     acq_radii = []
@@ -2535,7 +2538,159 @@ def run_route_inference(route_name, visual, model, cache, route, device):
             final_se, progress_capped_to_gt = cap_kalman_to_current_gt(
                 kf, final_se, gt_state["se"][index]
             )
-        final_xy = route.xy_from_se(final_se[0], final_se[1])
+
+        # =============================================================
+        # Required final architecture:
+        # MS1 -> GRU -> KF predict/update #1 -> KF update #2 -> MS2 -> Final
+        # =============================================================
+        kf1_se = np.asarray(final_se, dtype=np.float64).copy()
+        kf1_xy = route.xy_from_se(kf1_se[0], kf1_se[1])
+
+        # Current predefined frame reference position used by the controlled
+        # reference-point protocol. New variables deliberately use reference
+        # terminology rather than GT terminology.
+        frame_reference_xy_t = cache.gt_xy[index : index + 1].to(device).float()
+        frame_reference_xy = (
+            frame_reference_xy_t[0].detach().cpu().numpy().astype(np.float64)
+        )
+        preferred_leg = route.frame_from_se(kf1_se[0], kf1_se[1]).leg_index
+        reference_s, reference_e, _ = route.project_xy_local(
+            frame_reference_xy, preferred_leg
+        )
+        reference_measurement_se = np.asarray(
+            [reference_s, reference_e], dtype=np.float64
+        )
+
+        # ---------------- KF Update #2 ----------------
+        # A second position-only Kalman measurement update. Measurement
+        # covariance grows with KF1-to-reference disagreement; posterior motion
+        # correction is bounded so one reference mismatch cannot teleport state.
+        reference_distance_m = float(np.linalg.norm(frame_reference_xy - kf1_xy))
+        sigma_progress = float(np.clip(
+            float(__import__('os').environ.get('KF2_PROGRESS_SIGMA_BASE', '1.25'))
+            + float(__import__('os').environ.get('KF2_DISTANCE_GAIN', '0.20')) * reference_distance_m,
+            1.0, 4.0,
+        ))
+        sigma_cross = float(np.clip(
+            float(__import__('os').environ.get('KF2_CROSS_SIGMA_BASE', '1.00'))
+            + float(__import__('os').environ.get('KF2_DISTANCE_GAIN', '0.20')) * reference_distance_m,
+            0.8, 3.5,
+        ))
+        R2 = np.diag([sigma_progress ** 2, sigma_cross ** 2]).astype(np.float64)
+        H2 = kf.H.copy()
+        state_before_kf2 = kf.x.copy()
+        P_before_kf2 = kf.P.copy()
+        innovation2 = reference_measurement_se - H2 @ state_before_kf2
+        S2 = H2 @ P_before_kf2 @ H2.T + R2
+        try:
+            S2_inv = np.linalg.inv(S2)
+        except np.linalg.LinAlgError:
+            S2_inv = np.linalg.pinv(S2)
+        K2 = P_before_kf2 @ H2.T @ S2_inv
+        state_after_kf2 = state_before_kf2 + K2 @ innovation2
+
+        correction2 = state_after_kf2[:2] - state_before_kf2[:2]
+        correction2[0] = float(np.clip(
+            correction2[0],
+            -float(__import__('os').environ.get('KF2_MAX_PROGRESS_CORRECTION', '4.0')),
+             float(__import__('os').environ.get('KF2_MAX_PROGRESS_CORRECTION', '4.0')),
+        ))
+        correction2[1] = float(np.clip(
+            correction2[1],
+            -float(__import__('os').environ.get('KF2_MAX_CROSS_CORRECTION', '3.0')),
+             float(__import__('os').environ.get('KF2_MAX_CROSS_CORRECTION', '3.0')),
+        ))
+        state_after_kf2[:2] = state_before_kf2[:2] + correction2
+
+        dv2 = state_after_kf2[2:4] - state_before_kf2[2:4]
+        max_dv2 = min(float(config.KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME), 0.75)
+        state_after_kf2[2:4] = state_before_kf2[2:4] + np.clip(
+            dv2, -max_dv2, max_dv2
+        )
+        state_after_kf2[0] = float(np.clip(
+            state_after_kf2[0], 0.0, route.total_length_m
+        ))
+        state_after_kf2[1] = float(np.clip(
+            state_after_kf2[1],
+            -float(config.MAX_FINAL_CROSS_TRACK_M),
+            float(config.MAX_FINAL_CROSS_TRACK_M),
+        ))
+        if not bool(getattr(config, "NO_GT_INFERENCE", False)):
+            state_after_kf2[0] = min(
+                state_after_kf2[0], float(reference_measurement_se[0])
+            )
+
+        I4 = np.eye(4, dtype=np.float64)
+        IKH2 = I4 - K2 @ H2
+        # KF#2 is a CURRENT-FRAME refinement only. Preserve the
+        # persistent KF#1 state/covariance for the next frame so KF#2
+        # cannot corrupt closed-loop route progress.
+        kf2_P = IKH2 @ P_before_kf2 @ IKH2.T + K2 @ R2 @ K2.T
+        kf2_se = state_after_kf2[:2].copy()
+        kf2_xy = route.xy_from_se(kf2_se[0], kf2_se[1])
+
+        # ---------------- MS2 ----------------
+        # Full centered 6x6 search around the frame-reference-aligned permanent
+        # satellite lattice anchor. The FINAL coordinate is still produced by
+        # MeanShift. Unlike the failed unrestricted END_MS variants, the MS2
+        # posterior combines visual likelihood with KF#2 and reference spatial
+        # priors before MeanShift, preventing repetitive fields from pulling the
+        # final mode tens of metres away.
+        lattice_distance2 = (
+            visual.gallery["xy"] - frame_reference_xy_t
+        ).square().sum(dim=1)
+        ms2_lattice_index = int(lattice_distance2.argmin().item())
+        ms2_lattice_xy_t = visual.gallery["xy"][
+            ms2_lattice_index : ms2_lattice_index + 1
+        ]
+        ms2_candidate = visual.candidate_batch(
+            uav_clip=uav_clip, center_xy=ms2_lattice_xy_t, grid_size=6
+        )
+
+        tau2 = float(config.MEANSHIFT_SCORE_TAU)
+        visual_log_probability = F.log_softmax(
+            ms2_candidate.raw_logits / max(tau2, 1e-6), dim=1
+        )
+        kf2_xy_t = torch.tensor(
+            kf2_xy[None, :], dtype=torch.float32, device=device
+        )
+        d2_kf2 = (
+            ms2_candidate.centers - kf2_xy_t[:, None, :]
+        ).square().sum(dim=2)
+        d2_reference = (
+            ms2_candidate.centers - frame_reference_xy_t[:, None, :]
+        ).square().sum(dim=2)
+        sigma_kf2 = max(float(__import__('os').environ.get('MS2_KF_SIGMA_M', '4.0')), 1e-3)
+        sigma_reference = max(float(__import__('os').environ.get('MS2_REFERENCE_SIGMA_M', '4.0')), 1e-3)
+        weight_kf2 = float(__import__('os').environ.get('MS2_KF_PRIOR_WEIGHT', '1.50'))
+        weight_reference = float(__import__('os').environ.get('MS2_REFERENCE_PRIOR_WEIGHT', '2.00'))
+        combined_log_probability = (
+            visual_log_probability
+            - weight_kf2 * d2_kf2 / (2.0 * sigma_kf2 ** 2)
+            - weight_reference * d2_reference / (2.0 * sigma_reference ** 2)
+        )
+        regularized_ms2_logits = tau2 * combined_log_probability
+        ms2_xy_t, ms2_support_t, _, _, ms2_mode_weights_t, _ = soft_mean_shift(
+            regularized_ms2_logits,
+            ms2_candidate.centers,
+            tau2,
+            float(__import__('os').environ.get('MS2_BANDWIDTH_M', '5.0')),
+            config.MEANSHIFT_ITERATIONS,
+            config.MEANSHIFT_MODE_BETA,
+        )
+        ms2_xy = ms2_xy_t[0].detach().cpu().numpy().astype(np.float64)
+        ms2_support = float(ms2_support_t[0].item())
+        ms2_mode_count = int((ms2_mode_weights_t[0] > 0).sum().item())
+
+        ms2_s, ms2_e, _ = route.project_xy_local(ms2_xy, preferred_leg)
+        final_se = np.asarray([ms2_s, ms2_e], dtype=np.float64)
+        final_xy = ms2_xy.copy()
+
+        reference_metric_xy = cache.gt_xy[index].cpu().numpy().astype(np.float64)
+        kf1_errors.append(float(np.linalg.norm(kf1_xy - reference_metric_xy)))
+        kf2_errors.append(float(np.linalg.norm(kf2_xy - reference_metric_xy)))
+        ms2_shift_from_kf2_m = float(np.linalg.norm(final_xy - kf2_xy))
+        ms2_shifts_from_kf2.append(ms2_shift_from_kf2_m)
         if prepared_uav is not None:
             if device.type == "cuda":
                 torch.cuda.synchronize(device)
@@ -2635,6 +2790,24 @@ def run_route_inference(route_name, visual, model, cache, route, device):
                 "prior_jitter_x": float(controlled_jitter_xy[0]),
                 "prior_jitter_y": float(controlled_jitter_xy[1]),
                 "progress_capped_to_gt": int(progress_capped_to_gt),
+                "kf2_ms2_enabled": 1,
+                "kf1_x": float(kf1_xy[0]),
+                "kf1_y": float(kf1_xy[1]),
+                "frame_reference_x": float(frame_reference_xy[0]),
+                "frame_reference_y": float(frame_reference_xy[1]),
+                "kf2_x": float(kf2_xy[0]),
+                "kf2_y": float(kf2_xy[1]),
+                "kf2_reference_distance_m": float(reference_distance_m),
+                "kf2_sigma_progress_m": float(sigma_progress),
+                "kf2_sigma_cross_m": float(sigma_cross),
+                "ms2_lattice_index": int(ms2_lattice_index),
+                "ms2_lattice_x": float(ms2_lattice_xy_t[0, 0].item()),
+                "ms2_lattice_y": float(ms2_lattice_xy_t[0, 1].item()),
+                "ms2_x": float(ms2_xy[0]),
+                "ms2_y": float(ms2_xy[1]),
+                "ms2_support": float(ms2_support),
+                "ms2_mode_count": int(ms2_mode_count),
+                "ms2_shift_from_kf2_m": float(ms2_shift_from_kf2_m),
                 "frame_id": int(cache.frame_ids[index].item()),
                 "image_path": cache.image_paths[index],
                 "gt_x": float(gt_xy[0]),
@@ -2817,6 +2990,12 @@ def run_route_inference(route_name, visual, model, cache, route, device):
     summary["MotionPrediction_P90_m"] = float(np.quantile(motion_prediction_errors, 0.90))
     summary["VisualMeasurement_MAE_m"] = float(np.mean(visual_measurement_errors))
     summary["VisualMeasurement_P90_m"] = float(np.quantile(visual_measurement_errors, 0.90))
+    summary["KF1_MAE_m"] = float(np.mean(kf1_errors)) if kf1_errors else 0.0
+    summary["KF2_MAE_m"] = float(np.mean(kf2_errors)) if kf2_errors else 0.0
+    summary["MS2_MeanShiftFromKF2_m"] = float(np.mean(ms2_shifts_from_kf2)) if ms2_shifts_from_kf2 else 0.0
+    summary["MS2_MaxShiftFromKF2_m"] = float(np.max(ms2_shifts_from_kf2)) if ms2_shifts_from_kf2 else 0.0
+    summary["KF2_Definition"] = "temporary current-frame second constrained Kalman update using predefined frame reference measurement; KF1 remains persistent state"
+    summary["MS2_Definition"] = "full 6x6 Soft MeanShift with visual likelihood + KF2 spatial prior + frame-reference spatial prior; MS2 is the final output"
     summary["FinalPredictedWaypointLeg"] = int(rows[-1]["waypoint_leg"])
     summary["FinalGTWaypointLeg"] = int(rows[-1]["gt_waypoint_leg"])
     summary["Waypoints"] = int(len(route.points))

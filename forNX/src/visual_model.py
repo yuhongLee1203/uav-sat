@@ -174,15 +174,15 @@ class ThreeFrameRouteStateGRU(nn.Module):
         self.delta_recent_projection = projection(config.EMBED_DIM)
         self.delta_accel_projection = projection(config.EMBED_DIM)
         self.sat_projection = projection(config.EMBED_DIM)
-        self.numeric_projection = nn.Sequential(
-            nn.Linear(int(config.RNN_NUMERIC_DIM), feature_dim),
+        self.previous_state_projection = nn.Sequential(
+            nn.Linear(int(config.RNN_PREVIOUS_STATE_DIM), feature_dim),
             nn.GELU(),
             nn.Linear(feature_dim, feature_dim),
             nn.GELU(),
             nn.LayerNorm(feature_dim),
         )
 
-        self.gru = nn.GRUCell(feature_dim * 5, hidden_dim)
+        self.gru = nn.GRUCell(feature_dim * 4, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
         def head(out_dim):
@@ -354,31 +354,18 @@ class ThreeFrameRouteStateGRU(nn.Module):
         previous_z_uav, previous2_z_uav, delta_recent, delta_accel, clip_mean = (
             self._three_frame_features(z_uav, previous_z_uav, previous2_z_uav)
         )
-        if previous_measurement_se is None:
-            previous_measurement_se = visual_anchor_se.detach()
-
-        innovation_se = visual_anchor_se - predicted_se
-
-        numeric = torch.cat(
+        previous_state = torch.cat(
             [
-                torch.log1p(response_variance_se.clamp_min(0.0)) / 7.0,
-                torch.cat(
-                    [
-                        innovation_se[:, 0:1] / float(config.ROUTE_STEP_SCALE_M),
-                        innovation_se[:, 1:2] / float(config.ROUTE_CROSS_TRACK_SCALE_M),
-                    ],
-                    dim=1,
-                ),
                 previous_velocity_se / float(config.ROUTE_STEP_SCALE_M),
                 previous_heading_state[:, 0:1] / math.radians(float(config.MAX_HEADING_RESIDUAL_DEG)),
                 previous_heading_state[:, 1:2] / math.radians(float(config.MAX_TURN_RATE_DEG_PER_FRAME)),
             ],
             dim=1,
         )
-        if int(numeric.shape[1]) != int(config.RNN_NUMERIC_DIM):
+        if int(previous_state.shape[1]) != int(config.RNN_PREVIOUS_STATE_DIM):
             raise RuntimeError(
-                "RNN numeric dimension mismatch: got %d expected %d"
-                % (int(numeric.shape[1]), int(config.RNN_NUMERIC_DIM))
+                "RNN Previous State dimension mismatch: got %d expected %d"
+                % (int(previous_state.shape[1]), int(config.RNN_PREVIOUS_STATE_DIM))
             )
 
         recurrent_input = torch.cat(
@@ -386,8 +373,7 @@ class ThreeFrameRouteStateGRU(nn.Module):
                 self.clip_mean_projection(clip_mean),
                 self.delta_recent_projection(delta_recent),
                 self.delta_accel_projection(delta_accel),
-                self.sat_projection(sat_context),
-                self.numeric_projection(numeric),
+                self.previous_state_projection(previous_state),
             ],
             dim=1,
         )

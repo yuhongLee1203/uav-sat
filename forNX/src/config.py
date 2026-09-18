@@ -236,10 +236,11 @@ ROUTE_STEP_SCALE_M = 10.0
 TEMPORAL_WINDOW_FRAMES = 3
 RNN_HIDDEN_DIM = 256
 RNN_FEATURE_DIM = 128
-# Only simplify the main GRU input. Everything else remains the v34 protocol:
-# response variance(2) + visual innovation(2) + previous velocity(2)
-# + previous heading residual/turn-rate(2).
-RNN_NUMERIC_DIM = 8
+# Main GRU Previous State only:
+# previous velocity [v_s, v_e] (2) + previous heading residual (1)
+# + previous turn rate (1). No response variance, visual innovation,
+# satellite context, or Kalman final position is fed to the main GRU.
+RNN_PREVIOUS_STATE_DIM = 4
 RNN_DROPOUT = 0.10
 MAX_FORWARD_SPEED_M_PER_FRAME = 14.0
 MAX_CROSS_SPEED_M_PER_FRAME = 5.0
