@@ -1,0 +1,89 @@
+========== BRANCH ==========
+v39_otherdata
+
+========== STATUS ==========
+On branch v39_otherdata
+Your branch and 'origin/v39_otherdata' have diverged,
+and have 1 and 26 different commits each, respectively.
+  (use "git pull" to merge the remote branch into yours)
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   v39_DirectFinalMS/CURRENT_ARCHITECTURE.md
+	new file:   v39_DirectFinalMS/run_softms_5x5_ablation_all.sh
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+  (commit or discard the untracked or modified content in submodules)
+	modified:   v36-exp/others_paper/DenseUAV (untracked content)
+	modified:   v36-exp/others_paper/GTA-UAV (modified content)
+	modified:   v36-exp/others_paper/InfoGeo (untracked content)
+	modified:   v36-exp/others_paper/Sample4Geo (modified content)
+	modified:   v39_DirectFinalMS/run_softms_5x5_ablation_all.sh
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	git_state.txt
+	softms_5x5_results_for_chat.tar.gz
+	v39_DirectFinalMS/softms_5x5_core_ablation_20260918_220846/
+
+
+========== SHORT STATUS ==========
+ ? v36-exp/others_paper/DenseUAV
+ m v36-exp/others_paper/GTA-UAV
+ ? v36-exp/others_paper/InfoGeo
+ m v36-exp/others_paper/Sample4Geo
+M  v39_DirectFinalMS/CURRENT_ARCHITECTURE.md
+AM v39_DirectFinalMS/run_softms_5x5_ablation_all.sh
+?? git_state.txt
+?? softms_5x5_results_for_chat.tar.gz
+?? v39_DirectFinalMS/softms_5x5_core_ablation_20260918_220846/
+
+========== CONFLICT FILES ==========
+
+========== RECENT LOCAL COMMITS ==========
+589fda20 (HEAD -> v39_otherdata) update
+9bb0ae28 Add City C D and four-city Bearing paper results
+a6a4ebab update
+a1fd05ac Preserve Bearing data adapter and resume script during cleanup
+dde2e286 Add preflight checks and resumable city selection
+9907714a Add safe resume path after Bearing preparation
+f0dbb059 Restore Bearing data adapter required by v39 runner
+d1abdf4a Document all-four-city Bearing paper workflow
+250c69e3 Make v39 cleanup preserve all four paper cities
+e870ea8d Add all-four-city Bearing paper experiment runner
+
+========== LOCAL VS REMOTE ==========
+1	26
+
+========== LOCAL-ONLY COMMITS ==========
+589fda20 update
+
+========== REMOTE-ONLY COMMITS ==========
+9cf64b4e Select 5x5 forward-15 as current V39 architecture
+c3d72817 Fix eval-only front-window checkpoint architecture compatibility
+0ceabb30 Add eval-only 18-vs-15 front-window comparison
+0938505a Add validation-based front-window selection runner
+bbaf1504 Add NX 5x5 forward-15 benchmark runner
+6a0f36a4 Add NX 5x5 forward-15 runtime patch
+87533b68 Add 5x5 forward-15 SoftMS ablation suite
+63e1bab9 Add V39 5x5 forward-15 train-eval runner
+20489c01 Add V39 5x5 forward-15 runtime patch
+e3cfc3c6 Document core SoftMS ablation policy
+e476f08a Use core SoftMS ablations and remove ambiguous no-forward test
+40c8e063 Document SoftMS ablation suite
+283a3a7f Add full SoftMS ablation suite
+d8961e04 Document Bearing V39 SoftMS eval architecture
+404109e7 Mark current V39 front decoder as SoftMS
+419868d7 Document NX Forward3x6 SoftMS architecture
+d4b05771 Switch NX benchmark to Forward3x6 SoftMS front decoder
+056315fd Add Forward3x6 SoftMS patch to NX package
+21e4e438 Add one-command four-city SoftMS eval-only runner
+3a3ffeac Add eval-only Bearing V39 Forward3x6 SoftMS runner
+09f79803 Add eval-only V39 Forward3x6 SoftMS runner
+009a73de Restore front Forward3x6 SoftMS decoder for v39
+485044f4 Simplify forNX to one-command V39 runtime
+c72b1d3a Remove legacy V36 NX reference results
+c3737c1f Remove legacy V36 NX benchmark collector
+3d215195 Replace forNX runtime with V39 DirectFinalMS latency package
