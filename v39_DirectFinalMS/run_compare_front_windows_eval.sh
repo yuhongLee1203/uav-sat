@@ -16,6 +16,9 @@ FEATURE_CACHE="${UAVSAT_FEATURE_CACHE_DIR_OVERRIDE:-${ROOT}/output/feature_cache
 VISUAL_CKPT="${V39_VISUAL_CKPT:-${REPO_ROOT}/forNX/weights/v36_${BACKBONE}/checkpoints/visual_retrieval_A_only.pt}"
 TEMPORAL_CKPT="${V39_TEMPORAL_CKPT:-${REPO_ROOT}/PreviousState-exp/output/mobilenetv3_prevstate/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt}"
 CKPT_NAME="controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
+# Eval-only comparison deliberately reuses the existing temporal checkpoint.
+# load_temporal_model() requires this string to match the checkpoint metadata.
+CKPT_ARCH="V36_PreviousStateOnly_MobileNetV3_Forward3x6_PolynomialKalman"
 
 fail() { echo "ERROR: $*" >&2; exit 2; }
 for f in config.py data.py robust_tracker.py visual_localizer.py visual_model.py; do
@@ -62,6 +65,7 @@ run_variant() {
   echo "Front decoder  : SoftMS"
   echo "Final MS       : 5x5 / BW=7m"
   echo "Checkpoint     : SAME existing temporal checkpoint (NO RETRAINING)"
+  echo "Architecture   : ${CKPT_ARCH} (checkpoint-compatible metadata)"
   echo "================================================================================"
 
   (
@@ -73,7 +77,7 @@ run_variant() {
     UAVSAT_FEATURE_CACHE_DIR="${FEATURE_CACHE}" \
     UAVSAT_DATA_ROOT="${DATA_ROOT}" \
     UAVSAT_BACKBONE="${BACKBONE}" \
-    UAVSAT_ARCHITECTURE_NAME="V39_SoftMS_FrontWindowCompare" \
+    UAVSAT_ARCHITECTURE_NAME="${CKPT_ARCH}" \
     UAVSAT_REFERENCE_PROTOCOL=controlled_gt_jitter \
     UAVSAT_EXPERIMENT_ANCHOR=softms \
     UAVSAT_EXPERIMENT_FRAME_COUNT=3 \
