@@ -20,6 +20,11 @@ if [[ -z "${SOURCE_SUITE:-}" ]]; then
   done)"
 fi
 [[ -n "${SOURCE_SUITE:-}" ]] || { echo "No complete Forward18 1/2/3-frame suite found. Set SOURCE_SUITE=/path/to/suite"; exit 2; }
+[[ -d "$SOURCE_SUITE" ]] || { echo "source suite directory not found: $SOURCE_SUITE"; exit 2; }
+# Critical: run_cfg creates checkpoint symlinks inside a different output directory.
+# Resolve the source suite now so ln -sfn always receives an absolute target.
+SOURCE_SUITE="$(cd "$SOURCE_SUITE" && pwd -P)"
+export SOURCE_SUITE
 
 export SOURCE_CKPT1="$SOURCE_SUITE/temporal_1frame/checkpoints/$CKPT_NAME"
 export SOURCE_CKPT2="$SOURCE_SUITE/temporal_2frame/checkpoints/$CKPT_NAME"
