@@ -18,6 +18,7 @@ cd "${REPO_ROOT}"
 keep_top_file() {
   case "$1" in
     README.md|\
+    data.py|\
     bearing_prepare.py|\
     bearing_prepare_sequence_v3.py|\
     bearing_multicity_routes.py|\
@@ -30,6 +31,7 @@ keep_top_file() {
     run_bearing_v39_sequence_fixed.sh|\
     run_bearing_v39_directfinalms_official_routes.sh|\
     run_bearing_all4_cities.sh|\
+    resume_bearing_city_from_prepared.sh|\
     rerender_bearing_waypoint_gt.sh|\
     cleanup_v39_otherdata_latest.sh) return 0 ;;
     *) return 1 ;;
@@ -169,6 +171,7 @@ if [[ "${MODE}" == "--dry-run" ]]; then
 fi
 
 python3 -m py_compile \
+  v39_otherdata/data.py \
   v39_otherdata/bearing_prepare.py \
   v39_otherdata/bearing_prepare_sequence_v3.py \
   v39_otherdata/bearing_multicity_routes.py \
