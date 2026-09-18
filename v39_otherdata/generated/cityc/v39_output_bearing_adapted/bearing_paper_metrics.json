@@ -1,0 +1,99 @@
+{
+  "city": "cityc",
+  "protocol": "v39 controlled-local-prior temporal refinement on Bearing pseudo-flight sequences",
+  "bearing_uav_reference_protocol": "four-adjacent-RST pose regression plus separate closed-loop Bearing-Naver navigation",
+  "same_metric_definition_but_protocol_requires_footnote": [
+    "MLE_m",
+    "MedLE_m",
+    "LSR@15_pct"
+  ],
+  "protocol_footnote": "Metric formulas match Bearing-UAV, but the evaluation protocol differs: this v39 experiment uses a controlled local prior and temporal pseudo-flight refinement, so the values must not be described as a fully apples-to-apples replacement for Bearing-UAV's four-RST pose-regression benchmark.",
+  "derived_same_decision_criterion": {
+    "Recall@1_derived_same_quadrant_pct": "Uses the official Bearing-UAV four-adjacent-RST sign/quadrant criterion, but is derived from this method's continuous final position rather than an RST retrieval head."
+  },
+  "not_available_under_current_protocol": {
+    "HSR@15_pct/MHE_deg/MedHE_deg": "Bearing-UAV evaluates supervised camera heading; v39 temporal heading is route/motion heading.",
+    "SR@20_pct/SPL_pct/NE_m": "Bearing-UAV computes these in closed-loop navigation; this experiment is offline localization replay."
+  },
+  "routes": {
+    "test_01": {
+      "frames": 159,
+      "Recall@1_derived_same_quadrant_pct": 98.74213836477988,
+      "MLE_m": 4.090076466009304,
+      "MedLE_m": 3.4769949286544777,
+      "LSR@5_pct": 72.95597484276729,
+      "LSR@10_pct": 94.9685534591195,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "P90_m": 8.183303610901408,
+      "P95_m": 9.98312055968155,
+      "P99_m": 12.320478966921737,
+      "HSR@15_pct": null,
+      "MHE_deg": null,
+      "MedHE_deg": null,
+      "SR@20_pct": null,
+      "SPL_pct": null,
+      "NE_m": null
+    },
+    "test_02": {
+      "frames": 227,
+      "Recall@1_derived_same_quadrant_pct": 94.27312775330397,
+      "MLE_m": 4.000181110532865,
+      "MedLE_m": 3.6264654950592927,
+      "LSR@5_pct": 71.80616740088107,
+      "LSR@10_pct": 99.55947136563876,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "P90_m": 6.92943809041988,
+      "P95_m": 8.017178380357105,
+      "P99_m": 9.50958741171232,
+      "HSR@15_pct": null,
+      "MHE_deg": null,
+      "MedHE_deg": null,
+      "SR@20_pct": null,
+      "SPL_pct": null,
+      "NE_m": null
+    }
+  },
+  "aggregate_two_routes": {
+    "frames": 386,
+    "Recall@1_derived_same_quadrant_pct": 96.11398963730569,
+    "MLE_m": 4.037210544524456,
+    "MedLE_m": 3.578312857925611,
+    "LSR@5_pct": 72.279792746114,
+    "LSR@10_pct": 97.66839378238342,
+    "LSR@15_pct": 100.0,
+    "LSR@20_pct": 100.0,
+    "P90_m": 7.411354458821072,
+    "P95_m": 8.53356461440909,
+    "P99_m": 10.996796166398768,
+    "HSR@15_pct": null,
+    "MHE_deg": null,
+    "MedHE_deg": null,
+    "SR@20_pct": null,
+    "SPL_pct": null,
+    "NE_m": null
+  },
+  "official_uav_reference_rows": {
+    "Bearing-UAV Mobile-V3S": {
+      "Recall@1_pct": 79.76,
+      "LSR@15_pct": 81.2,
+      "HSR@15_pct": 64.94,
+      "MLE_m": 10.34,
+      "MedLE_m": 8.72,
+      "MHE_deg": 19.53,
+      "MedHE_deg": 10.14,
+      "source": "CVPR 2026 supplementary Table 2, UAV view"
+    },
+    "Bearing-UAV VGG-16": {
+      "Recall@1_pct": 83.17,
+      "LSR@15_pct": 89.36,
+      "HSR@15_pct": 77.21,
+      "MLE_m": 8.61,
+      "MedLE_m": 7.3,
+      "MHE_deg": 12.9,
+      "MedHE_deg": 7.2,
+      "source": "CVPR 2026 supplementary Table 2, UAV view"
+    }
+  }
+}
