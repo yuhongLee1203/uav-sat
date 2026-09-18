@@ -1,2 +1,0 @@
-name, uuid, pstate, temperature.gpu, utilization.gpu [%], memory.used [MiB], clocks.current.sm [MHz], clocks.current.memory [MHz], power.draw [W]
-NVIDIA GeForce RTX 3090, GPU-6281c027-219e-e695-6d3b-7243ba21a7fc, P8, 29, 0 %, 15 MiB, 210 MHz, 405 MHz, 22.77 W

@@ -1,0 +1,21 @@
+{
+  "status": "PASS",
+  "front_grid": 5,
+  "front_candidates": 15,
+  "default_final_ms_grid": 5,
+  "experiments": [
+    "full_model",
+    "abl_no_gru",
+    "abl_no_kalman",
+    "abl_no_final_ms",
+    "temporal_1frame",
+    "temporal_2frame",
+    "temporal_3frame",
+    "ms_window_4x4",
+    "ms_window_5x5",
+    "ms_window_6x6",
+    "ms_window_7x7",
+    "ms_window_8x8"
+  ],
+  "raw_data_saved": true
+}
