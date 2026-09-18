@@ -16,7 +16,7 @@ DEFAULT_MS_BW="${MS_BANDWIDTH_M:-7.0}"
 MS_LATENCY_WARMUP="${MS_LATENCY_WARMUP:-30}"
 E2E_WARMUP="${E2E_WARMUP:-30}"
 TS="$(date +%Y%m%d_%H%M%S)"
-SUITE_ROOT="${SOFTMS_ABLATION_DIR:-${ROOT}/softms_ablation_${TS}}"
+SUITE_ROOT="${SOFTMS_ABLATION_DIR:-${ROOT}/softms_core_ablation_${TS}}"
 FEATURE_CACHE="${UAVSAT_FEATURE_CACHE_DIR_OVERRIDE:-${ROOT}/output/feature_cache}"
 CKPT_NAME="controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt"
 
@@ -48,6 +48,7 @@ GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
 cat > "${SUITE_ROOT}/run_manifest.json" <<EOF
 {
   "method": "Forward 3x6 SoftMS -> 3-frame GRU -> Constant Velocity -> fixed-R Kalman -> final SoftMS",
+  "ablation_policy": "core component ablations only; Forward 3x6 remains fixed because replacing it with full 6x6 changes directionality, candidate count, compute budget, and search semantics simultaneously",
   "git_sha": "${GIT_SHA}",
   "gpu": "${GPU}",
   "temporal_epochs": ${TEMPORAL_EPOCHS},
@@ -72,8 +73,8 @@ make_runtime() {
 }
 
 run_cfg() {
-  local name="$1" category="$2" mode="$3" frames="$4" forward_only="$5" disable_gru="$6"
-  local kalman="$7" ms_enabled="$8" grid="$9" ckpt_source="${10:-}" measure_ms="${11:-0}" measure_e2e="${12:-0}"
+  local name="$1" category="$2" mode="$3" frames="$4" disable_gru="$5"
+  local kalman="$6" ms_enabled="$7" grid="$8" ckpt_source="${9:-}" measure_ms="${10:-0}" measure_e2e="${11:-0}"
   local out="${SUITE_ROOT}/${name}"
   local runtime="${SUITE_ROOT}/runtime_${name}"
   mkdir -p "${out}/checkpoints"
@@ -85,7 +86,7 @@ run_cfg() {
   fi
 
   echo "================================================================================"
-  echo "[RUN] ${name} | category=${category} | frames=${frames} | forward=${forward_only} | gru=$((1-disable_gru)) | kalman=${kalman} | finalMS=${ms_enabled} grid=${grid}"
+  echo "[RUN] ${name} | category=${category} | frames=${frames} | front=Forward3x6-SoftMS | gru=$((1-disable_gru)) | kalman=${kalman} | finalMS=${ms_enabled} grid=${grid}"
   echo "================================================================================"
   (
     cd "${runtime}"
@@ -107,7 +108,7 @@ run_cfg() {
     UAVSAT_EXPERIMENT_MOTION=velocity \
     UAVSAT_EXPERIMENT_KALMAN="${kalman}" \
     UAVSAT_EXPERIMENT_DISABLE_GRU="${disable_gru}" \
-    UAVSAT_EXPERIMENT_FORWARD_ONLY="${forward_only}" \
+    UAVSAT_EXPERIMENT_FORWARD_ONLY=1 \
     UAVSAT_MEASURE_LATENCY="${measure_e2e}" \
     UAVSAT_LATENCY_WARMUP="${E2E_WARMUP}" \
     MS_ENABLED="${ms_enabled}" \
@@ -118,39 +119,37 @@ run_cfg() {
     python3 -u robust_tracker.py "${args[@]}" 2>&1 | tee "${out}/${mode}.log"
   )
 
-  python3 - "${out}" "${name}" "${category}" "${frames}" "${forward_only}" "${disable_gru}" "${kalman}" "${ms_enabled}" "${grid}" <<'PY'
-import csv, json, sys
+  python3 - "${out}" "${name}" "${category}" "${frames}" "${disable_gru}" "${kalman}" "${ms_enabled}" "${grid}" <<'PY'
+import json, sys
 from pathlib import Path
 out=Path(sys.argv[1]); name=sys.argv[2]; category=sys.argv[3]
-frames=int(sys.argv[4]); forward=bool(int(sys.argv[5])); disable=bool(int(sys.argv[6])); kalman=sys.argv[7]; ms=bool(int(sys.argv[8])); grid=int(sys.argv[9])
+frames=int(sys.argv[4]); disable=bool(int(sys.argv[5])); kalman=sys.argv[6]; ms=bool(int(sys.argv[7])); grid=int(sys.argv[8])
 p=out/'robust_tracker_summary.json'
 d=json.loads(p.read_text(encoding='utf-8'))
 d['experiment_tag']=name
 d['experiment_category']=category
 d['experiment_anchor']='softms'
 d['experiment_frame_count']=frames
-d['experiment_forward_only']=forward
+d['experiment_forward_only']=True
 d['experiment_disable_gru']=disable
 d['experiment_kalman']=kalman
 d['ms_enabled']=ms
 d['ms_grid_size']=grid
-d['front_decoder']='forward_3x6_softms' if forward else 'full_6x6_softms'
+d['front_decoder']='forward_3x6_softms'
 d['checkpoint_retrained']=category=='temporal_frames'
-d['final_chain']='SoftMS front -> GRU -> fixed-R Kalman -> final SoftMS' if not disable else 'SoftMS front -> no GRU -> fixed-R Kalman -> final SoftMS'
+d['final_chain']='Forward 3x6 SoftMS -> GRU -> fixed-R Kalman -> final SoftMS' if not disable else 'Forward 3x6 SoftMS -> no GRU -> fixed-R Kalman -> final SoftMS'
 for route in ('route_B','route_C'):
     if route in d:
-        d[route]['VisualObservationDecoder']='forward 3x6 soft mean shift' if forward else 'full 6x6 soft mean shift'
+        d[route]['VisualObservationDecoder']='forward 3x6 soft mean shift'
 p.write_text(json.dumps(d,indent=2,ensure_ascii=False),encoding='utf-8')
 PY
   echo "[DONE] ${name}"
 }
 
-# --------------------------------------------------------------------------------------
-# 1) Fair 1/2/3-frame ablation: each variant is freshly trained on Route A.
-# --------------------------------------------------------------------------------------
-run_cfg temporal_1frame temporal_frames train_eval 1 1 0 fixed 1 "${DEFAULT_MS_GRID}" "" 0 0
-run_cfg temporal_2frame temporal_frames train_eval 2 1 0 fixed 1 "${DEFAULT_MS_GRID}" "" 0 0
-run_cfg temporal_3frame temporal_frames train_eval 3 1 0 fixed 1 "${DEFAULT_MS_GRID}" "" 0 0
+# 1) Fair temporal-input ablation. Each model is freshly trained on Route A.
+run_cfg temporal_1frame temporal_frames train_eval 1 0 fixed 1 "${DEFAULT_MS_GRID}" "" 0 0
+run_cfg temporal_2frame temporal_frames train_eval 2 0 fixed 1 "${DEFAULT_MS_GRID}" "" 0 0
+run_cfg temporal_3frame temporal_frames train_eval 3 0 fixed 1 "${DEFAULT_MS_GRID}" "" 0 0
 
 CKPT1="${SUITE_ROOT}/temporal_1frame/checkpoints/${CKPT_NAME}"
 CKPT2="${SUITE_ROOT}/temporal_2frame/checkpoints/${CKPT_NAME}"
@@ -159,33 +158,25 @@ for ck in "${CKPT1}" "${CKPT2}" "${CKPT3}"; do
   [[ -f "${ck}" && ! -L "${ck}" ]] || fail "expected freshly trained checkpoint missing: ${ck}"
 done
 
-# --------------------------------------------------------------------------------------
-# 2) Full model + w/o ablations. All use the newly trained 3-frame checkpoint.
-# --------------------------------------------------------------------------------------
-run_cfg full_model        module_ablation eval 3 1 0 fixed 1 "${DEFAULT_MS_GRID}" "${CKPT3}" 0 1
-run_cfg abl_no_forward    module_ablation eval 3 0 0 fixed 1 "${DEFAULT_MS_GRID}" "${CKPT3}" 0 0
-run_cfg abl_no_gru        module_ablation eval 3 1 1 fixed 1 "${DEFAULT_MS_GRID}" ""         0 0
-run_cfg abl_no_kalman     module_ablation eval 3 1 0 none  1 "${DEFAULT_MS_GRID}" "${CKPT3}" 0 0
-run_cfg abl_no_final_ms   module_ablation eval 3 1 0 fixed 0 "${DEFAULT_MS_GRID}" "${CKPT3}" 0 0
+# 2) Core component ablations. Forward 3x6 SoftMS is FIXED in every row.
+run_cfg full_model       module_ablation eval 3 0 fixed 1 "${DEFAULT_MS_GRID}" "${CKPT3}" 0 1
+run_cfg abl_no_gru       module_ablation eval 3 1 fixed 1 "${DEFAULT_MS_GRID}" ""         0 0
+run_cfg abl_no_kalman    module_ablation eval 3 0 none  1 "${DEFAULT_MS_GRID}" "${CKPT3}" 0 0
+run_cfg abl_no_final_ms  module_ablation eval 3 0 fixed 0 "${DEFAULT_MS_GRID}" "${CKPT3}" 0 0
 
-# --------------------------------------------------------------------------------------
-# 3) Final-MS local window sensitivity. Front remains Forward-3x6 SoftMS.
-#    Pure final-MS latency is measured; no concurrent jobs are used.
-# --------------------------------------------------------------------------------------
+# 3) Final-MS window sensitivity. Front search remains Forward 3x6 SoftMS.
 for g in 4 5 6 7 8; do
-  run_cfg "ms_window_${g}x${g}" ms_window eval 3 1 0 fixed 1 "${g}" "${CKPT3}" 1 0
+  run_cfg "ms_window_${g}x${g}" ms_window eval 3 0 fixed 1 "${g}" "${CKPT3}" 1 0
 done
 
-# --------------------------------------------------------------------------------------
-# Aggregate every raw frame result and write CSV/JSON/Markdown paper tables.
-# --------------------------------------------------------------------------------------
+# Aggregate raw frame errors and save CSV/JSON/Markdown tables.
 python3 - "${SUITE_ROOT}" <<'PY'
 import csv, json, sys
 from pathlib import Path
 import numpy as np
 suite=Path(sys.argv[1])
 names=[
- 'full_model','abl_no_forward','abl_no_gru','abl_no_kalman','abl_no_final_ms',
+ 'full_model','abl_no_gru','abl_no_kalman','abl_no_final_ms',
  'temporal_1frame','temporal_2frame','temporal_3frame',
  'ms_window_4x4','ms_window_5x5','ms_window_6x6','ms_window_7x7','ms_window_8x8'
 ]
@@ -209,6 +200,8 @@ rows=[]; payload={}
 for name in names:
     out=suite/name
     d=json.loads((out/'robust_tracker_summary.json').read_text(encoding='utf-8'))
+    if not bool(d.get('experiment_forward_only',False)):
+        raise SystemExit(f'AUDIT FAILED: {name} changed Forward 3x6')
     eb=route_errors(out,'route_B'); ec=route_errors(out,'route_C'); allerr=np.concatenate([eb,ec])
     mb,mc,ma=metrics(eb),metrics(ec),metrics(allerr)
     rb,rc=d['route_B'],d['route_C']
@@ -219,9 +212,10 @@ for name in names:
     if e2b and e2c:
         n1=int(e2b['samples']); n2=int(e2c['samples'])
         e2e=(float(e2b['mean_ms'])*n1+float(e2c['mean_ms'])*n2)/(n1+n2)
-    else: e2e=0.0
+    else:
+        e2e=0.0
     row={
-      'Experiment':name,'Category':d.get('experiment_category'),'FrontSearch':d.get('front_decoder'),
+      'Experiment':name,'Category':d.get('experiment_category'),'FrontSearch':'Forward3x6 SoftMS (fixed)',
       'Frames':d.get('experiment_frame_count'),'GRU':'no' if d.get('experiment_disable_gru') else 'yes',
       'Kalman':d.get('experiment_kalman'),'FinalMS':'yes' if d.get('ms_enabled') else 'no','MS_grid':d.get('ms_grid_size'),
       'B_frames':mb['frames'],'C_frames':mc['frames'],
@@ -233,26 +227,30 @@ for name in names:
       'E2E_mean_ms':e2e,'E2E_FPS':1000.0/e2e if e2e>0 else 0.0,
     }
     rows.append(row)
-    payload[name]={'metadata':{k:d.get(k) for k in ['experiment_category','front_decoder','experiment_frame_count','experiment_forward_only','experiment_disable_gru','experiment_kalman','ms_enabled','ms_grid_size','checkpoint_retrained']},'route_B':mb,'route_C':mc,'combined':ma,'summary_file':str(out/'robust_tracker_summary.json')}
+    payload[name]={
+      'metadata':{k:d.get(k) for k in ['experiment_category','front_decoder','experiment_frame_count','experiment_forward_only','experiment_disable_gru','experiment_kalman','ms_enabled','ms_grid_size','checkpoint_retrained']},
+      'route_B':mb,'route_C':mc,'combined':ma,'summary_file':str(out/'robust_tracker_summary.json')
+    }
 
 with (suite/'experiment_summary.csv').open('w',newline='',encoding='utf-8') as f:
     w=csv.DictWriter(f,fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
 (suite/'experiment_summary.json').write_text(json.dumps(payload,indent=2,ensure_ascii=False),encoding='utf-8')
 by={r['Experiment']:r for r in rows}
 fmt=lambda x,n=3:f'{float(x):.{n}f}'
-md=['# V39 SoftMS Ablation Results','',
+md=['# V39 SoftMS Core Ablation Results','',
     'Main pipeline: **Forward 3x6 SoftMS -> 3-frame GRU -> Constant Velocity -> fixed-R Kalman -> final SoftMS**.','',
-    'All B+C metrics below are recomputed from the concatenated raw per-frame errors, not averages of route percentiles.','']
-md += ['## Table 1. Component removal (w/o)','',
+    '**Forward 3x6 is fixed in all core component ablations.** A full-6x6 replacement is intentionally excluded because it changes directionality, candidate count, compute budget, and search semantics at the same time.','',
+    'All B+C metrics are recomputed from concatenated raw per-frame errors.','']
+md += ['## Table 1. Core component removal (w/o)','',
        '| Setting | Front | GRU | Kalman | Final MS | B MLE | C MLE | B+C MLE | B+C P90 | B+C LSR@5 |','|---|---|:---:|:---:|:---:|---:|---:|---:|---:|---:|']
-for n,label in [('full_model','Full'),('abl_no_forward','w/o Forward 3x6'),('abl_no_gru','w/o GRU'),('abl_no_kalman','w/o Kalman'),('abl_no_final_ms','w/o Final MS')]:
-    r=by[n]; md.append(f"| {label} | {r['FrontSearch']} | {r['GRU']} | {r['Kalman']} | {r['FinalMS']} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_MLE_m'])} | {fmt(r['BC_P90_m'])} | {fmt(r['BC_LSR5_pct'],2)}% |")
-md += ['','## Table 2. Temporal input frames','','Each 1/2/3-frame row is freshly trained on Route A with the same settings.','',
+for n,label in [('full_model','Full'),('abl_no_gru','w/o GRU'),('abl_no_kalman','w/o Kalman'),('abl_no_final_ms','w/o Final MS')]:
+    r=by[n]; md.append(f"| {label} | Forward 3x6 SoftMS | {r['GRU']} | {r['Kalman']} | {r['FinalMS']} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_MLE_m'])} | {fmt(r['BC_P90_m'])} | {fmt(r['BC_LSR5_pct'],2)}% |")
+md += ['','## Table 2. Temporal input frames','','Each 1/2/3-frame row is freshly trained on Route A with identical settings. Forward 3x6 SoftMS is fixed.','',
        '| UAV frames | B MLE | C MLE | B+C MLE | B+C P90 | B+C LSR@5 |','|---:|---:|---:|---:|---:|---:|']
 for n,k in [('temporal_1frame',1),('temporal_2frame',2),('temporal_3frame',3)]:
     r=by[n]; md.append(f"| {k} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_MLE_m'])} | {fmt(r['BC_P90_m'])} | {fmt(r['BC_LSR5_pct'],2)}% |")
 md += ['','## Table 3. Final MeanShift window sensitivity','',
-       'Pure final-MS latency starts after candidate centers and final logits are ready; it does not include the front Forward-3x6 SoftMS.','',
+       'Front Forward-3x6 SoftMS is fixed. Pure final-MS latency starts after final candidate centers/logits are ready.','',
        '| Window | Candidates | B MLE | C MLE | B+C MLE | B+C P90 | B+C LSR@5 | Pure final-MS latency | Pure final-MS FPS |','|---|---:|---:|---:|---:|---:|---:|---:|---:|']
 for g in range(4,9):
     r=by[f'ms_window_{g}x{g}']; md.append(f"| {g}x{g} | {g*g} | {fmt(r['B_MLE_m'])} | {fmt(r['C_MLE_m'])} | {fmt(r['BC_MLE_m'])} | {fmt(r['BC_P90_m'])} | {fmt(r['BC_LSR5_pct'],2)}% | {fmt(r['PureFinalMSLatency_ms'])} ms | {fmt(r['PureFinalMS_FPS'],2)} |")
@@ -261,14 +259,15 @@ md += ['','## Full-model end-to-end runtime','',f"- Mean: **{fmt(r['E2E_mean_ms'
 (suite/'paper_tables.md').write_text('\n'.join(md)+'\n',encoding='utf-8')
 (suite/'audit_report.json').write_text(json.dumps({
   'status':'PASS','experiments':names,
-  'front_decoder':'Soft MeanShift','main_front_search':'Forward 3x6 (18 scored candidates)',
+  'front_decoder':'Soft MeanShift','front_search_fixed':'Forward 3x6 (18 scored candidates)',
+  'excluded_ablation':'w/o Forward 3x6 / full 6x6 excluded from core table because it is confounded by candidate count, compute, and backward-search semantics',
   'temporal_frame_training':'1/2/3 frame variants freshly trained separately',
-  'module_ablation':['w/o Forward 3x6','w/o GRU','w/o Kalman','w/o Final MS'],
+  'module_ablation':['w/o GRU','w/o Kalman','w/o Final MS'],
   'ms_windows':['4x4','5x5','6x6','7x7','8x8'],
   'raw_data_saved':True,'summary_csv':'experiment_summary.csv','summary_json':'experiment_summary.json','paper_tables':'paper_tables.md'
 },indent=2),encoding='utf-8')
 print('\n'+'='*96)
-print('SOFTMS ABLATION SUITE COMPLETE')
+print('SOFTMS CORE ABLATION SUITE COMPLETE')
 print('Results :',suite)
 print('CSV     :',suite/'experiment_summary.csv')
 print('JSON    :',suite/'experiment_summary.json')
@@ -278,6 +277,6 @@ print('='*96)
 PY
 
 echo "================================================================================"
-echo "ALL SOFTMS ABLATIONS COMPLETE"
+echo "ALL SOFTMS CORE ABLATIONS COMPLETE"
 echo "Results: ${SUITE_ROOT}"
 echo "================================================================================"
