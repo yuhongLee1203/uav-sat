@@ -6,6 +6,8 @@ cd "${REPO_ROOT}"
 
 TS="$(date +%Y%m%d_%H%M%S)"
 DATASET_ROOT="${BEARING_DATASET_ROOT:-/yh/study/cvpr_data/Bearing_UAV_90K}"
+CITY="${CITY:-citya}"
+case "${CITY}" in citya|cityb|cityc|cityd) ;; *) echo "ERROR: invalid CITY=${CITY}" >&2; exit 2;; esac
 SUITE_ROOT="${ICLR_SUITE_ROOT:-${REPO_ROOT}/v39_otherdata/iclr_bearing_ablation_${TS}}"
 TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-80}"
 VISUAL_EPOCHS="${VISUAL_EPOCHS:-30}"
@@ -39,8 +41,10 @@ prepare_city(){
   return 1
 }
 
-run_city(){
-  local city="$1" gpu="$2"
+run_phase(){
+  local phase="$1" gpu="$2"
+  shift 2
+  local city="${CITY}"
   local common=(
     --suite-root "${SUITE_ROOT}" --dataset-root "${DATASET_ROOT}"
     --city "${city}" --gpu "${gpu}" --backbone mobilenet_v3_small
@@ -49,46 +53,49 @@ run_city(){
     --jitter-m 8 --max-sample-distance-m 15
     --heading-weight-px-per-deg 0 --ms-bandwidth-m 7 --seed "${SEED}"
   )
-  echo "[TRAIN START] ${city} GPU${gpu}"
-  python3 -u v39_otherdata/bearing_iclr_ablation.py train "${common[@]}" \
-    2>&1 | tee "${SUITE_ROOT}/logs/${city}_train.log"
-  for variant in "${VARIANTS[@]}"; do
+  if [[ "${phase}" == "train" ]]; then
+    echo "[TRAIN START] ${city} GPU${gpu}"
+    python3 -u v39_otherdata/bearing_iclr_ablation.py train "${common[@]}" \
+      2>&1 | tee "${SUITE_ROOT}/logs/${city}_train.log"
+    return
+  fi
+  local variant
+  for variant in "$@"; do
     echo "[EVAL START] ${city} ${variant} GPU${gpu}"
     python3 -u v39_otherdata/bearing_iclr_ablation.py eval \
       "${common[@]}" --variant "${variant}" \
       2>&1 | tee "${SUITE_ROOT}/logs/${city}_${variant}.log"
   done
-  echo "[CITY DONE] ${city}"
 }
 
 echo "================================================================================"
 echo "Bearing-UAV ICLR ablation"
-echo "GPU0: citya then cityd | GPU5: cityb | GPU6: cityc"
-echo "Train: Route A only | Test: B/C with the existing controlled-GT reference protocol"
+echo "ONE CITY: ${CITY} | reuse existing prepared data and GT"
+echo "Train/full baseline: GPU0 | remaining ablations: GPU0/5/6"
 echo "Chain: Forward18 -> 3-frame GRU -> fixed Kalman -> one final 6x6 MeanShift"
 echo "Results are measured and never edited to force Full to win."
 echo "================================================================================"
 
-# Check every city before launching expensive GPU workers. Existing 8 m and
-# v13 4 m preparations are both kept as-is, with their provenance recorded.
-for city in citya cityb cityc cityd; do
-  prepare_city "${city}"
+prepare_city "${CITY}"
   python3 -u v39_otherdata/bearing_iclr_ablation.py check \
     --suite-root "${SUITE_ROOT}" --dataset-root "${DATASET_ROOT}" \
-    --city "${city}" --temporal-epochs "${TEMPORAL_EPOCHS}" \
-    2>&1 | tee "${SUITE_ROOT}/logs/${city}_preflight.log"
-done
+    --city "${CITY}" --temporal-epochs "${TEMPORAL_EPOCHS}" \
+    2>&1 | tee "${SUITE_ROOT}/logs/${CITY}_preflight.log"
 
-( run_city citya 0; run_city cityd 0 ) & p0=$!
-( run_city cityb 5 ) & p5=$!
-( run_city cityc 6 ) & p6=$!
+run_phase train 0
+# Warm both evaluation sequences' shared feature caches before parallel reads.
+run_phase eval 0 full
+
+( run_phase eval 0 no_gru grid4 grid7 ) & p0=$!
+( run_phase eval 5 no_kalman frames1 grid5 ) & p5=$!
+( run_phase eval 6 no_ms frames2 grid8 ) & p6=$!
 status=0
 wait "${p0}" || status=1
 wait "${p5}" || status=1
 wait "${p6}" || status=1
 [[ "${status}" == "0" ]] || { echo "ERROR: city run failed; inspect ${SUITE_ROOT}/logs" >&2; exit 20; }
 
-python3 v39_otherdata/build_iclr_ablation_tables.py --suite-root "${SUITE_ROOT}"
+python3 v39_otherdata/build_iclr_ablation_tables.py --suite-root "${SUITE_ROOT}" --cities "${CITY}"
 printf '%s\n' "${SUITE_ROOT}" > v39_otherdata/LATEST_ICLR_BEARING_ABLATION.txt
 
 if [[ "${UPLOAD_RESULTS}" == "1" ]]; then
@@ -106,7 +113,7 @@ if [[ "${UPLOAD_RESULTS}" == "1" ]]; then
   cp "${SUITE_ROOT}"/paper_ablation_results.{json,csv} "${upload_wt}/${dest}/"
   cp "${SUITE_ROOT}"/paper_ablation_tables.{md,tex} "${upload_wt}/${dest}/"
   cp "${SUITE_ROOT}/paper_trend_audit.json" "${upload_wt}/${dest}/"
-  for city in citya cityb cityc cityd; do
+  for city in "${CITY}"; do
     for variant in "${VARIANTS[@]}"; do
       src="${SUITE_ROOT}/${city}/variants/${variant}"
       dst="${upload_wt}/${dest}/${city}/${variant}"
