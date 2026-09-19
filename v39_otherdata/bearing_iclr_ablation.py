@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import hashlib
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -59,10 +61,83 @@ def _variant_root(args: argparse.Namespace) -> Path:
 
 
 def _lock_prepared(args: argparse.Namespace, prepared_root: Path) -> None:
-    exact.CANONICAL_TEMPORAL_EPOCHS = int(args.temporal_epochs)
+    """Validate existing data without imposing a different preparation recipe.
+
+    Legacy packages can omit the selection version. Keep that fact in the
+    output audit; do not label them v13 or regenerate their routes/GT.
+    """
+    if args.reprepare:
+        raise RuntimeError("This ablation reuses existing prepared data; --reprepare is unsupported.")
+    exp = exact._experiment(prepared_root)
+    errors = []
+    if not exp.get("dataset_root") or Path(exp["dataset_root"]).resolve() != Path(args.dataset_root).resolve():
+        errors.append("dataset_root mismatch")
+    if str(exp.get("city", "")).lower() != args.city.lower():
+        errors.append("city mismatch")
+    routes = ("train_01", "test_01", "test_02")
+    steps = {}
+    fingerprints = {}
+    for name in routes:
+        stats = exp.get("route_stats", {}).get(name, {})
+        try:
+            step = float(stats["sample_step_m"])
+            if not math.isfinite(step) or step <= 0:
+                raise ValueError
+            steps[name] = step
+        except (KeyError, TypeError, ValueError):
+            errors.append(f"{name}: missing/invalid sample_step_m")
+        for filename in ("manifest.csv", "waypoints.json"):
+            relative = f"routes/{name}/{filename}"
+            path = prepared_root / relative
+            if not path.is_file() or path.stat().st_size == 0:
+                errors.append(f"missing/empty {path}")
+            else:
+                fingerprints[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    if len(steps) == 3 and max(steps.values()) - min(steps.values()) > 1e-6:
+        errors.append(f"route sample steps differ: {steps}")
+    step = steps.get("train_01")
+    if args.step_m is not None and step is not None:
+        if not math.isfinite(args.step_m) or abs(args.step_m - step) > 1e-6:
+            errors.append(f"explicit --step-m={args.step_m} differs from prepared step={step}; omit --step-m to reuse it")
+    train = exp.get("route_stats", {}).get("train_01", {})
+    for key in ("actual_step_mean_m", "actual_step_p90_m", "actual_step_p95_m"):
+        try:
+            value = float(train[key])
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            errors.append(f"train_01: missing/invalid {key}")
+    try:
+        mpp = float(exp["mpp"])
+        if not math.isfinite(mpp) or mpp <= 0:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        errors.append("missing/invalid mpp")
+    for path in (prepared_root / "bearing_satellite.json", Path(exp.get("satellite_image", ""))):
+        if not path.is_file():
+            errors.append(f"missing satellite file: {path}")
+    if errors:
+        raise RuntimeError("Bearing ICLR prepared-data validation failed:\n- " + "\n- ".join(errors))
+    args.step_m = step
     args.epochs_per_route = int(args.temporal_epochs)
-    args.reprepare = False
-    exact._require_audited_prepared(args, prepared_root)
+    fingerprints["experiment.json"] = hashlib.sha256((prepared_root / "experiment.json").read_bytes()).hexdigest()
+    fingerprints["bearing_satellite.json"] = hashlib.sha256((prepared_root / "bearing_satellite.json").read_bytes()).hexdigest()
+    args.prepared_data_audit = {
+        "prepared_root": str(prepared_root.resolve()),
+        "selection_version": exp.get("sequence_selection_version"),
+        "selection_version_status": "recorded" if exp.get("sequence_selection_version") else "unrecorded_legacy",
+        "sample_step_m": steps,
+        "sha256": fingerprints,
+        "data_modified": False,
+    }
+    lock = Path(args.suite_root).resolve() / args.city / "prepared_contract.json"
+    if lock.exists() and json.loads(lock.read_text(encoding="utf-8")) != args.prepared_data_audit:
+        raise RuntimeError(f"Prepared data changed within this suite: {lock}; use a new suite directory.")
+    if not lock.exists():
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text(json.dumps(args.prepared_data_audit, indent=2), encoding="utf-8")
+    print(f"[PREPARED] PASS | city={args.city} | step={step:g} m | "
+          f"selection={exp.get('sequence_selection_version') or 'unrecorded_legacy'} | existing GT/routes unchanged", flush=True)
 
 
 def _make_runtime(prepared_root: Path, runtime_root: Path) -> Path:
@@ -327,6 +402,7 @@ def _write_manifest(args, output: Path, variant: dict, audit: dict, training: bo
         "candidate_geometry": "6x6 local geometry; heading-guided forward 3x6 = 18 scored patches",
         "paper_chain": "Forward18 posterior -> 3-frame GRU -> fixed-R Kalman -> one final MeanShift -> XY",
         "architecture_audit": audit,
+        "prepared_data": args.prepared_data_audit,
         "integrity": "Measured outputs are never edited, clipped, or reordered to force Full to win.",
     }
     (output / "experiment_manifest.json").write_text(
@@ -336,7 +412,7 @@ def _write_manifest(args, output: Path, variant: dict, audit: dict, training: bo
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
-    p.add_argument("mode", choices=["train", "eval"])
+    p.add_argument("mode", choices=["check", "train", "eval"])
     p.add_argument("--variant", default="full", choices=sorted(VARIANTS))
     p.add_argument("--suite-root", required=True)
     p.add_argument("--dataset-root", default="/yh/study/cvpr_data/Bearing_UAV_90K")
@@ -348,7 +424,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--epochs-per-route", type=int, default=80)
     p.add_argument("--patience", type=int, default=4)
     p.add_argument("--jitter-m", type=float, default=8.0)
-    p.add_argument("--step-m", type=float, default=4.0)
+    p.add_argument("--step-m", type=float, default=None,
+                   help="Optional assertion; by default use the existing prepared sample_step_m.")
     p.add_argument("--max-sample-distance-m", type=float, default=15.0)
     p.add_argument("--heading-weight-px-per-deg", type=float, default=0.0)
     p.add_argument("--ms-bandwidth-m", type=float, default=7.0)
@@ -361,7 +438,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    if args.mode == "train":
+    if args.mode == "check":
+        _lock_prepared(args, _prepared_root(args))
+    elif args.mode == "train":
         train_full(args)
     else:
         evaluate(args)
