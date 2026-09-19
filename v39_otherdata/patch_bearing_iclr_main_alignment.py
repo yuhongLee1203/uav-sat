@@ -130,17 +130,15 @@ new_audit = (
 replace_once_or_already(old_audit, new_audit, 'runtime SoftMS and motion audit')
 
 replace_once_or_already(
-    '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n'
+    '        "route_a_motion_scale_init": float(getattr(config, "INIT_FORWARD_SPEED_M_PER_FRAME", 0.0)) > 0.0,\n'
     '        "protocol": str(config.REFERENCE_PROTOCOL) == "controlled_gt_jitter",',
-    '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n'
-    '        "motion_training_inference_aligned": str(config.EXPERIMENT_MOTION) == "quadratic",\n'
     '        "route_a_motion_scale_init": float(getattr(config, "INIT_FORWARD_SPEED_M_PER_FRAME", 0.0)) > 0.0,\n'
     '        "forward_origin_backshift_covers_jitter": (\n'
     '            float(config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M)\n'
     '            >= float(config.CONTROLLED_GT_PRIOR_JITTER_M)\n'
     '        ),\n'
     '        "protocol": str(config.REFERENCE_PROTOCOL) == "controlled_gt_jitter",',
-    'backshift and motion audit',
+    'backshift audit',
 )
 
 replace_once_or_already(
