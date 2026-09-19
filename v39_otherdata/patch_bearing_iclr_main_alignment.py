@@ -81,6 +81,15 @@ new_env = (
 )
 replace_once_or_already(old_env, new_env, 'front SoftMS environment')
 
+# Training is dominated by next-step supervision.  Inference must therefore use
+# the same heading-aware polynomial step instead of silently discarding it and
+# falling back to the raw velocity head.
+replace_once_or_already(
+    '        "UAVSAT_EXPERIMENT_MOTION": "velocity",',
+    '        "UAVSAT_EXPERIMENT_MOTION": "quadratic",',
+    'train/inference motion alignment',
+)
+
 replace_once_or_already(
     '    exact._patch_paths_and_scale(config, args, prepared_root)\n'
     '    config.ARCHITECTURE_NAME = ARCH',
@@ -94,8 +103,13 @@ replace_once_or_already(
     '        float(config.CONTROLLED_GT_PRIOR_JITTER_M)\n'
     '        + 0.5 * float(geometry["sat_stride_m"])\n'
     '    )\n'
+    '    # Route-A-only cadence initializes the motion head at the correct scale.\n'
+    '    # The same value is used for the 1/2/3-frame models.\n'
+    '    config.INIT_FORWARD_SPEED_M_PER_FRAME = float(\n'
+    '        args.training_cadence_audit["train_step_mean_m"]\n'
+    '    )\n'
     '    config.ARCHITECTURE_NAME = ARCH',
-    'forward-origin backshift',
+    'forward-origin backshift and Route-A speed init',
 )
 
 old_audit = (
@@ -109,20 +123,24 @@ new_audit = (
     '            and \'getattr(config, "EXPERIMENT_ANCHOR"\' not in tracker_text\n'
     '        ),\n'
     '        "one_final_ms_source": "exactly one final local Soft MeanShift after the Kalman estimator" in tracker_text,\n'
-    '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",'
+    '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n'
+    '        "motion_training_inference_aligned": str(config.EXPERIMENT_MOTION) == "quadratic",\n'
+    '        "route_a_motion_scale_init": float(getattr(config, "INIT_FORWARD_SPEED_M_PER_FRAME", 0.0)) > 0.0,'
 )
-replace_once_or_already(old_audit, new_audit, 'runtime SoftMS audit')
+replace_once_or_already(old_audit, new_audit, 'runtime SoftMS and motion audit')
 
 replace_once_or_already(
     '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n'
     '        "protocol": str(config.REFERENCE_PROTOCOL) == "controlled_gt_jitter",',
     '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n'
+    '        "motion_training_inference_aligned": str(config.EXPERIMENT_MOTION) == "quadratic",\n'
+    '        "route_a_motion_scale_init": float(getattr(config, "INIT_FORWARD_SPEED_M_PER_FRAME", 0.0)) > 0.0,\n'
     '        "forward_origin_backshift_covers_jitter": (\n'
     '            float(config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M)\n'
     '            >= float(config.CONTROLLED_GT_PRIOR_JITTER_M)\n'
     '        ),\n'
     '        "protocol": str(config.REFERENCE_PROTOCOL) == "controlled_gt_jitter",',
-    'backshift audit',
+    'backshift and motion audit',
 )
 
 replace_once_or_already(
@@ -162,6 +180,9 @@ old_summary = (
 new_summary = (
     '            "front_decoder": "forward18_softms",\n'
     '            "front_meanshift_count": 1,\n'
+    '            "motion_predictor": "heading_aware_quadratic_next_step",\n'
+    '            "motion_init_source": "route_A_train_step_mean",\n'
+    '            "motion_init_m_per_frame": float(config.INIT_FORWARD_SPEED_M_PER_FRAME),\n'
     '            "final_meanshift_count": 1 if variant["ms"] else 0,\n'
     '            "online_meanshift_count": 2 if variant["ms"] else 1,\n'
     '            "forward_origin_backshift_m": float(config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M),\n'
@@ -171,7 +192,7 @@ replace_once_or_already(old_summary, new_summary, 'result protocol summary')
 
 replace_once_or_already(
     '        "paper_chain": "Forward18 posterior -> 3-frame GRU -> fixed-R Kalman -> one final MeanShift -> XY",',
-    '        "paper_chain": "Forward18 SoftMS -> temporal GRU -> fixed-R Kalman -> final MeanShift -> XY",',
+    '        "paper_chain": "Forward18 SoftMS -> temporal GRU next-step -> fixed-R Kalman -> final MeanShift -> XY",',
     'manifest chain',
 )
 
@@ -184,16 +205,18 @@ replace_once_or_already(
 
 required = [
     'UAVSAT_EXPERIMENT_ANCHOR": "softms"',
+    'UAVSAT_EXPERIMENT_MOTION": "quadratic"',
     'front_softms_source',
     'tracker_text.count("soft_mean_shift(") == 3',
-    'getattr(config, "EXPERIMENT_ANCHOR"',
+    'motion_training_inference_aligned',
+    'INIT_FORWARD_SPEED_M_PER_FRAME',
     'forward_origin_backshift_covers_jitter',
     'config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M = (',
     'checkpoint_frames = int(variant["frames"])',
     'train_variant["frames"] = int(args.train_frames)',
     'p.add_argument("--train-frames"',
     '"front_decoder": "forward18_softms"',
-    'Forward18 SoftMS -> temporal GRU -> fixed-R Kalman -> final MeanShift -> XY',
+    'Forward18 SoftMS -> temporal GRU next-step -> fixed-R Kalman -> final MeanShift -> XY',
 ]
 missing = [item for item in required if item not in s]
 if missing:
@@ -205,8 +228,9 @@ if legacy_token in s.lower():
 compile(s, str(path), "exec")
 path.write_text(s, encoding="utf-8")
 print(f"[PATCH OK] {path}")
-print("[PATCH OK] active runner = Forward-18 SoftMS -> temporal GRU -> fixed-R Kalman -> final MeanShift")
-print("[PATCH OK] runtime source audit checks the real SoftMS code path")
+print("[PATCH OK] active runner = Forward-18 SoftMS -> temporal GRU next-step -> fixed-R Kalman -> final MeanShift")
+print("[PATCH OK] training/inference motion both use the heading-aware quadratic next-step")
+print("[PATCH OK] motion-head initial speed comes from Route-A train cadence only")
 print("[PATCH OK] 1/2/3-frame rows use separately Route-A-trained temporal checkpoints")
 print("[PATCH OK] forward 3x6 backshift = jitter bound + 0.5 SAT stride")
 print("[PATCH OK] no B/C metric was read or modified")
