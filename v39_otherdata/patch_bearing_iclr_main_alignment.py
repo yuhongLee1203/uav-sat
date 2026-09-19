@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Align bearing_iclr_ablation.py with the current paper-ready main architecture.
 
-This patch only fixes method/protocol mismatches and Route-A-only cadence limits.
-It never reads held-out B/C outputs and never edits measured results.
+This patch only fixes method/protocol mismatches, Route-A-only cadence limits,
+and the forward-only search geometry. It never reads held-out B/C outputs and
+never edits measured results.
 """
 from pathlib import Path
 import sys
@@ -44,12 +45,49 @@ repls = [
         '        "UAVSAT_EXPERIMENT_ANCHOR": "softms",',
     ),
     (
+        '    exact._patch_paths_and_scale(config, args, prepared_root)\n'
+        '    config.ARCHITECTURE_NAME = ARCH',
+        '    exact._patch_paths_and_scale(config, args, prepared_root)\n'
+        '    # The controlled prior is GT + bounded jitter. A forward-only 3x6\n'
+        '    # selector must not discard the true location simply because the\n'
+        '    # jittered prior happens to lie ahead of it. Shift the 6x6 lattice\n'
+        '    # backward by the known jitter bound plus half one physical SAT\n'
+        '    # stride (quantization margin). This uses protocol constants only;\n'
+        '    # no Route-B/C metric or label is inspected.\n'
+        '    geometry = getattr(config, "BEARING_PHYSICAL_SAT_GEOMETRY", None)\n'
+        '    if not isinstance(geometry, dict) or "sat_stride_m" not in geometry:\n'
+        '        raise RuntimeError("missing audited Bearing physical SAT geometry")\n'
+        '    config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M = (\n'
+        '        float(config.CONTROLLED_GT_PRIOR_JITTER_M)\n'
+        '        + 0.5 * float(geometry["sat_stride_m"])\n'
+        '    )\n'
+        '    config.ARCHITECTURE_NAME = ARCH',
+    ),
+    (
         '        "front_decoder_not_ms": str(config.EXPERIMENT_ANCHOR) == "weighted_centroid",',
         '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",',
     ),
     (
+        '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n'
+        '        "protocol": str(config.REFERENCE_PROTOCOL) == "controlled_gt_jitter",',
+        '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n'
+        '        "forward_origin_backshift_covers_jitter": (\n'
+        '            float(config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M)\n'
+        '            >= float(config.CONTROLLED_GT_PRIOR_JITTER_M)\n'
+        '        ),\n'
+        '        "protocol": str(config.REFERENCE_PROTOCOL) == "controlled_gt_jitter",',
+    ),
+    (
         '            "front_decoder": "posterior_weighted_centroid",',
         '            "front_decoder": "forward18_softms",',
+    ),
+    (
+        '            "front_decoder": "forward18_softms",\n'
+        '            "online_meanshift_count": 1 if variant["ms"] else 0,',
+        '            "front_decoder": "forward18_softms",\n'
+        '            "forward_origin_backshift_m": float(config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M),\n'
+        '            "controlled_prior_jitter_m": float(config.CONTROLLED_GT_PRIOR_JITTER_M),\n'
+        '            "online_meanshift_count": 1 if variant["ms"] else 0,',
     ),
     (
         '        "paper_chain": "Forward18 posterior -> 3-frame GRU -> fixed-R Kalman -> one final MeanShift -> XY",',
@@ -70,6 +108,10 @@ for old, new in repls:
 required = [
     'UAVSAT_EXPERIMENT_ANCHOR": "softms"',
     'front_decoder_softms',
+    'forward_origin_backshift_covers_jitter',
+    'config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M = (',
+    '0.5 * float(geometry["sat_stride_m"])',
+    '"forward_origin_backshift_m": float(config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M)',
     '1.10 * p95',
     '"kalman_final_step_max_m": max(7.0, min(30.0, 1.10 * p95))',
     'Forward18 SoftMS -> 3-frame GRU -> fixed-R Kalman -> final MeanShift -> XY',
@@ -82,5 +124,6 @@ compile(s, str(path), "exec")
 path.write_text(s, encoding="utf-8")
 print(f"[PATCH OK] {path}")
 print("[PATCH OK] front decoder aligned to Forward-18 SoftMS")
-print("[PATCH OK] longitudinal Kalman/motion limits now follow Route-A p90/p95 without the stale 14/20 m bottleneck")
+print("[PATCH OK] forward 3x6 origin backshift = jitter bound + 0.5 SAT stride")
+print("[PATCH OK] longitudinal Kalman/motion limits follow Route-A p90/p95 without the stale 14/20 m bottleneck")
 print("[PATCH OK] no B/C metric was read or modified")
