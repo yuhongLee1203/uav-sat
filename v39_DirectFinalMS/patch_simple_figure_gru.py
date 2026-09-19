@@ -10,7 +10,7 @@ This patch only changes the temporal motion parameterization:
   * Motion is predicted as a bounded residual around the previous stable
     motion state instead of as a new absolute velocity every frame.
   * The recurrent/Kalman motion state starts from the training-city cadence,
-    not from zero.
+    not from zero, in training, validation and held-out inference.
   * Acceleration supervision is exposed so the 3-frame second difference has
     a direct training target.
 
@@ -297,6 +297,7 @@ if new_kf_x not in t:
         raise SystemExit("tracker patch failed: RouteKalman initial-state block")
     t = t.replace(old_kf_x, new_kf_x, 1)
 
+# Top-level sequential loops: validation and held-out inference.
 old_state = '''    previous_velocity = torch.zeros(1, 2, device=device)
     previous_acceleration = torch.zeros(1, 2, device=device)
     previous_heading_state = torch.zeros(1, 2, device=device)
@@ -311,8 +312,28 @@ new_state = '''    _init_speed = float(getattr(config, "INIT_FORWARD_SPEED_M_PER
 if new_state not in t:
     count = t.count(old_state)
     if count < 2:
-        raise SystemExit(f"tracker patch failed: motion-state init matches={count}")
+        raise SystemExit(f"tracker patch failed: top-level motion-state init matches={count}")
     t = t.replace(old_state, new_state)
+
+# Epoch training loop has one additional indentation level.  It must use the
+# same cadence baseline or the residual head is trained around zero motion while
+# validation/inference runs around the real city cadence.
+old_train_state = '''        previous_velocity = torch.zeros(1, 2, device=device)
+        previous_acceleration = torch.zeros(1, 2, device=device)
+        previous_heading_state = torch.zeros(1, 2, device=device)
+        previous_poly_step = torch.zeros(1, 2, device=device)
+'''
+new_train_state = '''        _init_speed = float(getattr(config, "INIT_FORWARD_SPEED_M_PER_FRAME", 0.0))
+        previous_velocity = torch.tensor([[_init_speed, 0.0]], dtype=torch.float32, device=device)
+        previous_acceleration = torch.zeros(1, 2, device=device)
+        previous_heading_state = torch.zeros(1, 2, device=device)
+        previous_poly_step = previous_velocity.clone()
+'''
+if new_train_state not in t:
+    count = t.count(old_train_state)
+    if count != 1:
+        raise SystemExit(f"tracker patch failed: training motion-state init matches={count}")
+    t = t.replace(old_train_state, new_train_state, 1)
 
 old_conf = '        confidence_scale = 1.0 / max(confidence * confidence, 0.05)\n'
 new_conf = '''        confidence_power = float(getattr(config, "KALMAN_CONFIDENCE_POWER", 0.5))
@@ -342,11 +363,18 @@ if replacement_stab not in t:
         raise SystemExit("tracker patch failed: stabilize_motion_state")
     t = t.replace(needle_stab, replacement_stab, 1)
 
+# Paper/log wording: these are city-internal training/navigation sequences, not
+# dataset domains called Route A/B/C.
+t = t.replace(
+    '"Route-A GT mean forward step=%.3fm/frame p90=%.3fm/frame"',
+    '"City training-sequence mean forward step=%.3fm/frame p90=%.3fm/frame"',
+)
+
 compile(t, str(tracker), "exec")
 tracker.write_text(t, encoding="utf-8")
 
 print("[PATCH OK] temporal GRU = mean + delta + delta2 + SAT + SoftMS position + visual displacement + previous state")
 print("[PATCH OK] motion head = bounded residual around previous stable motion")
-print("[PATCH OK] recurrent/Kalman motion state starts from training-city cadence")
+print("[PATCH OK] training/validation/inference motion states all start from current-city cadence")
 print("[PATCH OK] acceleration supervision and measurement-trusting Kalman knobs enabled")
 print("[PATCH OK] no split/dual/inference gate; no prediction-position innovation")
