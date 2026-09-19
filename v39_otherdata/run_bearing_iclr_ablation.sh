@@ -14,6 +14,14 @@ VISUAL_EPOCHS="${VISUAL_EPOCHS:-30}"
 PATIENCE="${PATIENCE:-4}"
 SEED="${SEED:-2033}"
 UPLOAD_RESULTS="${UPLOAD_RESULTS:-1}"
+RESUME_EVAL="${RESUME_EVAL:-0}"
+case "${RESUME_EVAL}" in 0|1) ;; *) echo "ERROR: RESUME_EVAL must be 0 or 1" >&2; exit 2;; esac
+if [[ "${RESUME_EVAL}" == "1" ]]; then
+  [[ -n "${ICLR_SUITE_ROOT:-}" && -s "${SUITE_ROOT}/${CITY}/prepared/experiment.json" && -d "${SUITE_ROOT}/${CITY}/train_full/checkpoints" ]] || {
+    echo "ERROR: RESUME_EVAL=1 requires ICLR_SUITE_ROOT pointing to an existing trained suite." >&2
+    exit 2
+  }
+fi
 VARIANTS=(full no_gru no_kalman no_ms frames1 frames2 grid4 grid5 grid7 grid8)
 mkdir -p "${SUITE_ROOT}/logs"
 
@@ -82,7 +90,11 @@ prepare_city "${CITY}"
     --city "${CITY}" --temporal-epochs "${TEMPORAL_EPOCHS}" \
     2>&1 | tee "${SUITE_ROOT}/logs/${CITY}_preflight.log"
 
-run_phase train 0
+if [[ "${RESUME_EVAL}" == "1" ]]; then
+  echo "[RESUME] evaluation only; using ${SUITE_ROOT}/${CITY}/train_full/checkpoints"
+else
+  run_phase train 0
+fi
 # Warm both evaluation sequences' shared feature caches before parallel reads.
 run_phase eval 0 full
 
