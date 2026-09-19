@@ -1,0 +1,114 @@
+{
+  "architecture": "V39_ContextGRU_FixedKalman_FinalMS6x6_BearingAdapted",
+  "canonical_source": "v39_DirectFinalMS/base_src + patch_direct_finalms.py + run.sh Context-GRU patch",
+  "backbone": "mobilenet_v3_small",
+  "reference_protocol": "controlled_gt_jitter",
+  "visual_decoder": "softms",
+  "frame_count": 3,
+  "motion": "velocity",
+  "kalman": "fixed",
+  "forward_only": true,
+  "final_ms_grid": 6,
+  "final_ms_bandwidth_m": 7.0,
+  "losses": {
+    "acquisition": 0.0,
+    "measurement": 1.0,
+    "next_step": 3.0,
+    "velocity": 0.25,
+    "heading": 1.25,
+    "variance_nll": 0.05
+  },
+  "bearing_step_m": 4.0,
+  "route_frames": {
+    "train_01": 194,
+    "test_01": 159,
+    "test_02": 227
+  },
+  "train_routes": [
+    "train_01"
+  ],
+  "test_routes": [
+    "test_01",
+    "test_02"
+  ],
+  "same_v39_architecture_and_training_recipe": true,
+  "exact_same_numeric_limits_as_original_dataset": false,
+  "reason_numeric_limits_differ": "external pseudo-flight has different frame cadence",
+  "training_protocol": "single continuous Route-A-only temporal training for 60 epochs",
+  "route_mapping": {
+    "route_A_train": "train_01",
+    "route_B_eval": "test_01",
+    "route_C_eval": "test_02",
+    "unused_extra_training_routes": []
+  },
+  "test_statistics_used_for_adaptation": false,
+  "training_only_cadence_adaptation": {
+    "source": "train_01_only",
+    "train_step_mean_m": 5.807526922059188,
+    "train_step_p90_m": 11.516145885442926,
+    "train_step_p95_m": 13.307292766755689,
+    "max_forward_speed_m_per_frame": 14.0,
+    "max_polynomial_step_m_per_frame": 14.0,
+    "max_measurement_correction_parallel_m": 6.333880236993609,
+    "kalman_max_measurement_innovation_progress_m": 7.485494825537902,
+    "kalman_max_posterior_correction_progress_m": 5.182265648449317,
+    "kalman_max_velocity_correction_m_per_frame": 2.0729062593797267,
+    "kalman_final_step_max_m": 12.667760473987219
+  },
+  "physical_satellite_geometry_adaptation": {
+    "bearing_mpp": 0.25,
+    "canonical_stride_m": 4.48,
+    "canonical_crop_m": 44.800000000000004,
+    "sat_stride_px": 18,
+    "sat_stride_m": 4.5,
+    "sat_crop_px": 180,
+    "sat_crop_m": 45.0
+  },
+  "final_ms_reference": "planned route centerline at current true-sample route progress; metric GT remains the true Bearing sample coordinate",
+  "selected_v39_final_ms": {
+    "grid": 6,
+    "bandwidth_m": 7.0
+  },
+  "effective_values": {
+    "reference_protocol": "controlled_gt_jitter",
+    "visual_decoder": "softms",
+    "frame_count": 3,
+    "motion": "velocity",
+    "kalman": "fixed",
+    "forward_only": true,
+    "temporal_epochs": 60,
+    "temporal_lr": 0.0002,
+    "loss_measurement": 1.0,
+    "loss_next_step": 3.0,
+    "loss_velocity": 0.25,
+    "teacher_ratio_final": 1.0,
+    "sat_stride_px": 18,
+    "sat_crop_px": 180,
+    "max_forward_speed_m_per_frame": 14.0,
+    "max_cross_speed_m_per_frame": 5.0,
+    "max_polynomial_step_m_per_frame": 14.0,
+    "max_measurement_correction_parallel_m": 6.333880236993609,
+    "max_measurement_correction_cross_m": 4.0,
+    "kalman_max_measurement_innovation_progress_m": 7.485494825537902,
+    "kalman_max_measurement_innovation_cross_m": 3.0,
+    "kalman_max_posterior_correction_progress_m": 5.182265648449317,
+    "kalman_max_posterior_correction_cross_m": 1.75,
+    "kalman_max_velocity_correction_m_per_frame": 2.0729062593797267,
+    "kalman_final_step_max_m": 12.667760473987219,
+    "ms_grid_size": 6,
+    "ms_bandwidth_m": 7.0
+  },
+  "prepared_selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+  "route_a_candidate_source": "train_02",
+  "preparation_profile": {
+    "name": "strict",
+    "max_sample_distance_m": 10.0,
+    "safety_max_step_m": 22.0,
+    "max_cross_track_m": 8.5,
+    "max_same_leg_lateral_jump_m": 4.0
+  },
+  "official_test_route_source": {
+    "test_01": "Bearing-UAV official wps37bc_50.json",
+    "test_02": "Bearing-UAV official wps37bc_51.json"
+  }
+}
