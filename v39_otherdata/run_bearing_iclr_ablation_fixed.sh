@@ -44,6 +44,7 @@ checks={
     'four_city_loop': 'CITIES=(citya cityb cityc cityd)' in s,
     'fresh_prepare_from_raw_dataset': 'bearing_prepare_multicity.py' in s,
     'no_old_generated_reuse': 'ln -s "${existing}"' not in s and 'reuse existing preparation' not in s,
+    'one_shared_visual_checkpoint_per_city': 'share_city_visual_checkpoint' in s,
     'acceleration_supervision_enabled': 'UAVSAT_LOSS_ACCELERATION' in s,
     'residual_motion_knobs_enabled': 'UAVSAT_MOTION_RESIDUAL_FORWARD_M' in s,
 }
