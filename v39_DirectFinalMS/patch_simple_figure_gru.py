@@ -89,11 +89,32 @@ if new not in s:
     else:
         raise SystemExit("could not identify canonical recurrent-input block")
 
+# The canonical model starts at 0.75 m/frame.  For Bearing this is an order of
+# magnitude below Route-A cadence and makes the first epochs a long scale
+# transition rather than useful temporal learning.  The runner installs a
+# Route-A-only initial speed before model construction; all frame-count variants
+# receive the same value.
+old_init = '''        init_speed = 0.75
+        self.motion_head[-1].bias.data[0] = math.log(math.exp(init_speed) - 1.0)
+'''
+new_init = '''        init_speed = float(getattr(config, "INIT_FORWARD_SPEED_M_PER_FRAME", 0.75))
+        init_speed = max(
+            1e-3,
+            min(init_speed, float(config.MAX_FORWARD_SPEED_M_PER_FRAME) - 1e-3),
+        )
+        self.motion_head[-1].bias.data[0] = math.log(math.expm1(init_speed))
+'''
+if new_init not in s:
+    if s.count(old_init) != 1:
+        raise SystemExit("could not identify canonical motion-head initialization")
+    s = s.replace(old_init, new_init, 1)
+
 required = [
     "self.gru = nn.GRUCell(feature_dim * 6, hidden_dim)",
     "self.sat_projection(sat_context)",
     "self.visual_position_projection(visual_position)",
     "self.previous_state_projection(previous_state)",
+    'INIT_FORWARD_SPEED_M_PER_FRAME',
 ]
 missing = [x for x in required if x not in s]
 if missing:
@@ -136,5 +157,6 @@ sub1(r'^SEED\s*=\s*2033\s*$', 'SEED = int(os.environ.get("UAVSAT_SEED", "2033"))
 compile(c, str(cfg), "exec")
 cfg.write_text(c, encoding="utf-8")
 print("[PATCH OK] simple GRU = mean + delta + delta2 + SAT context + direct SoftMS position + previous state")
+print("[PATCH OK] motion-head initial forward speed is supplied by Route-A cadence")
 print("[PATCH OK] no split/dual/inference gate; no position innovation")
 print("[PATCH OK] Route-A-only search knobs exposed through UAVSAT_* environment variables")
