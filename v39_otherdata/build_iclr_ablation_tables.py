@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate measured Bearing-UAV ablations into CSV/JSON/Markdown/LaTeX."""
+"""Aggregate measured Bearing-UAV four-city ablations into paper tables."""
 from __future__ import annotations
 
 import argparse
@@ -39,6 +39,15 @@ def _csv_for(summary: dict, output: Path) -> Path:
     raise FileNotFoundError(f"cannot resolve frame CSV in {output}")
 
 
+def _navigation_keys(summaries: dict) -> list[tuple[str, str]]:
+    """Return paper label + stored key, supporting old result folders too."""
+    if "nav50" in summaries and "nav51" in summaries:
+        return [("nav50", "nav50"), ("nav51", "nav51")]
+    if "test_01" in summaries and "test_02" in summaries:
+        return [("nav50", "test_01"), ("nav51", "test_02")]
+    raise KeyError(f"summary must contain nav50/nav51; got {sorted(summaries)}")
+
+
 def _read_variant(root: Path, cities: list[str], variant: str) -> dict:
     errors, per_route, ms_latency = [], [], []
     for city in cities:
@@ -47,8 +56,8 @@ def _read_variant(root: Path, cities: list[str], variant: str) -> dict:
         if not summary_path.exists():
             raise FileNotFoundError(summary_path)
         summaries = json.loads(summary_path.read_text(encoding="utf-8"))
-        for route in ("test_01", "test_02"):
-            summary = summaries[route]
+        for nav_label, stored_key in _navigation_keys(summaries):
+            summary = summaries[stored_key]
             csv_path = _csv_for(summary, output)
             with csv_path.open(newline="", encoding="utf-8") as handle:
                 rows = list(csv.DictReader(handle))
@@ -56,7 +65,7 @@ def _read_variant(root: Path, cities: list[str], variant: str) -> dict:
                 [float(row["error_final_m"]) for row in rows], dtype=np.float64
             )
             errors.append(route_errors)
-            per_route.append({"city": city, "route": route, "frames": len(rows)})
+            per_route.append({"city": city, "navigation": nav_label, "frames": len(rows)})
             samples = int(summary.get("MS_LatencySamples", len(rows)))
             latency = float(summary.get("MS_LatencyMean_ms", 0.0))
             if latency > 0:
@@ -110,10 +119,12 @@ def _clean(row: dict) -> dict:
     return {k: v for k, v in row.items() if k not in {"errors", "routes"}}
 
 
-def _markdown(rows: dict[str, dict], audit: dict) -> str:
+def _markdown(rows: dict[str, dict], audit: dict, cities: list[str]) -> str:
+    city_text = ", ".join(c.upper() for c in cities)
     lines = [
-        "# Bearing-UAV ICLR ablation (measured)", "",
-        "Evaluation preserves the existing Bearing-UAV controlled-GT reference protocol.", "",
+        "# Bearing-UAV four-city ICLR ablation (measured)", "",
+        f"Dataset domains: {city_text}; held-out navigation trajectories are reported as nav50/nav51.",
+        "The local-search protocol is reported separately from the official Bearing-UAV global-regression benchmark.", "",
         "## Component removal", "",
         "| Variant | MLE (m) | P90 (m) | LSR@3 | LSR@5 | LSR@10 |", "|---|---:|---:|---:|---:|---:|",
     ]
@@ -136,7 +147,7 @@ def _markdown(rows: dict[str, dict], audit: dict) -> str:
 def _latex(rows: dict[str, dict]) -> str:
     out = [
         "% Auto-generated from measured Bearing-UAV outputs. Do not edit values manually.",
-        "\\begin{table}[t]", "\\caption{Component ablation on held-out Bearing-UAV routes.}", "\\label{tab:component-ablation}", "\\centering", "\\small", "\\begin{tabular}{lrrrrr}", "\\toprule", "Variant & MLE$\\downarrow$ & P90$\\downarrow$ & LSR@3$\\uparrow$ & LSR@5$\\uparrow$ & LSR@10$\\uparrow$ \\\\", "\\midrule",
+        "\\begin{table}[t]", "\\caption{Component ablation across Bearing-UAV Cities A--D.}", "\\label{tab:component-ablation}", "\\centering", "\\small", "\\begin{tabular}{lrrrrr}", "\\toprule", "Variant & MLE$\\downarrow$ & P90$\\downarrow$ & LSR@3$\\uparrow$ & LSR@5$\\uparrow$ & LSR@10$\\uparrow$ \\\\", "\\midrule",
     ]
     for key in COMPONENTS:
         r = rows[key]
@@ -184,21 +195,21 @@ def main() -> None:
         "claim_guidance": (
             "Full is numerically best on the predeclared primary metrics; inspect paired confidence intervals before claiming significance."
             if component_ok and temporal_ok else
-            "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; report the measured result and revise the method only through a new train-only validation study."
+            "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; revise only through training/validation data, not held-out navigation results."
         ),
         "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking.",
     }
-    payload = {"rows": {k: _clean(v) for k, v in rows.items()}, "audit": audit}
+    payload = {"cities": args.cities, "rows": {k: _clean(v) for k, v in rows.items()}, "audit": audit}
     (root / "paper_ablation_results.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     fields = list(_clean(next(iter(rows.values()))).keys())
     with (root / "paper_ablation_results.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         writer.writerows(_clean(rows[k]) for k in keys)
-    (root / "paper_ablation_tables.md").write_text(_markdown(rows, audit), encoding="utf-8")
+    (root / "paper_ablation_tables.md").write_text(_markdown(rows, audit, args.cities), encoding="utf-8")
     (root / "paper_ablation_tables.tex").write_text(_latex(rows), encoding="utf-8")
     (root / "paper_trend_audit.json").write_text(json.dumps(audit, indent=2), encoding="utf-8")
-    print(_markdown(rows, audit))
+    print(_markdown(rows, audit, args.cities))
 
 
 if __name__ == "__main__":
