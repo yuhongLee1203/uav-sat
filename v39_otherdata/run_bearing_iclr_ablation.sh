@@ -32,15 +32,11 @@ prepare_city(){
   if [[ -s "${existing}/experiment.json" ]]; then
     mkdir -p "${SUITE_ROOT}/${city}"
     ln -s "${existing}" "${target}"
-    echo "[PREP] ${city}: reuse audited repository preparation"
+    echo "[PREP] ${city}: reuse existing preparation; validate before training"
     return
   fi
-  mkdir -p "${SUITE_ROOT}/${city}"
-  local staging
-  staging="$(mktemp -d "${SUITE_ROOT}/${city}/prepared_staging_XXXXXX")"
-  python3 v39_otherdata/bearing_prepare_multicity.py \
-    --dataset-root "${DATASET_ROOT}" --city "${city}" --output-root "${staging}"
-  mv "${staging}" "${target}"
+  echo "ERROR: missing prepared data for ${city}: ${target} or ${existing}. No routes or GT were regenerated." >&2
+  return 1
 }
 
 run_city(){
@@ -50,10 +46,9 @@ run_city(){
     --city "${city}" --gpu "${gpu}" --backbone mobilenet_v3_small
     --visual-epochs "${VISUAL_EPOCHS}" --temporal-epochs "${TEMPORAL_EPOCHS}"
     --epochs-per-route "${TEMPORAL_EPOCHS}" --patience "${PATIENCE}"
-    --jitter-m 8 --step-m 4 --max-sample-distance-m 15
+    --jitter-m 8 --max-sample-distance-m 15
     --heading-weight-px-per-deg 0 --ms-bandwidth-m 7 --seed "${SEED}"
   )
-  prepare_city "${city}"
   echo "[TRAIN START] ${city} GPU${gpu}"
   python3 -u v39_otherdata/bearing_iclr_ablation.py train "${common[@]}" \
     2>&1 | tee "${SUITE_ROOT}/logs/${city}_train.log"
@@ -73,6 +68,16 @@ echo "Train: Route A only | Test: B/C with the existing controlled-GT reference 
 echo "Chain: Forward18 -> 3-frame GRU -> fixed Kalman -> one final 6x6 MeanShift"
 echo "Results are measured and never edited to force Full to win."
 echo "================================================================================"
+
+# Check every city before launching expensive GPU workers. Existing 8 m and
+# v13 4 m preparations are both kept as-is, with their provenance recorded.
+for city in citya cityb cityc cityd; do
+  prepare_city "${city}"
+  python3 -u v39_otherdata/bearing_iclr_ablation.py check \
+    --suite-root "${SUITE_ROOT}" --dataset-root "${DATASET_ROOT}" \
+    --city "${city}" --temporal-epochs "${TEMPORAL_EPOCHS}" \
+    2>&1 | tee "${SUITE_ROOT}/logs/${city}_preflight.log"
+done
 
 ( run_city citya 0; run_city cityd 0 ) & p0=$!
 ( run_city cityb 5 ) & p5=$!
