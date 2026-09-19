@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""Patch V39 GRU to match the paper figure without any split/residual gates.
+"""Patch V39 to the simple paper-figure GRU, with a conservative residual head.
 
-Main GRU inputs after this patch:
+GRU inputs:
   temporal mean + first difference + second difference
   + satellite context
   + current Forward-18 SoftMS visual position
   + previous recurrent state
 
-The visual position is used directly; no position innovation/difference to a
-motion/Kalman prediction is constructed. Output heads remain the original V39
-correction/variance/motion/heading heads.
+No split gate / dual gate / inference gain / position innovation is added.
+The only stabilization is architectural/training-side: the learned measurement
+correction is kept small because Front SoftMS is already an accurate observation,
+and temporal training emphasizes current-position refinement over aggressive
+motion extrapolation.
 """
 from pathlib import Path
+import re
 import sys
 
 if len(sys.argv) != 2:
@@ -23,7 +26,6 @@ s = p.read_text(encoding="utf-8")
 if "innovation_projection" in s or "visual_anchor_se - predicted_se" in s:
     raise SystemExit("refusing runtime containing position-innovation GRU input")
 
-# Add a direct visual-position projector once.
 needle = "        self.sat_projection = projection(config.EMBED_DIM)\n"
 addition = needle + "        self.visual_position_projection = projection(2)\n"
 if "self.visual_position_projection = projection(2)" not in s:
@@ -31,20 +33,16 @@ if "self.visual_position_projection = projection(2)" not in s:
         raise SystemExit("expected exactly one sat_projection declaration")
     s = s.replace(needle, addition, 1)
 
-# The canonical source has 4 blocks. Bearing's existing context patch may have
-# already made it 5. Both are promoted to the requested six direct input blocks.
 if "self.gru = nn.GRUCell(feature_dim * 6, hidden_dim)" not in s:
     if s.count("self.gru = nn.GRUCell(feature_dim * 5, hidden_dim)") == 1:
         s = s.replace(
             "self.gru = nn.GRUCell(feature_dim * 5, hidden_dim)",
-            "self.gru = nn.GRUCell(feature_dim * 6, hidden_dim)",
-            1,
+            "self.gru = nn.GRUCell(feature_dim * 6, hidden_dim)", 1,
         )
     elif s.count("self.gru = nn.GRUCell(feature_dim * 4, hidden_dim)") == 1:
         s = s.replace(
             "self.gru = nn.GRUCell(feature_dim * 4, hidden_dim)",
-            "self.gru = nn.GRUCell(feature_dim * 6, hidden_dim)",
-            1,
+            "self.gru = nn.GRUCell(feature_dim * 6, hidden_dim)", 1,
         )
     else:
         raise SystemExit("could not identify canonical GRUCell declaration")
@@ -70,8 +68,7 @@ old5 = '''        recurrent_input = torch.cat(
             dim=1,
         )
 '''
-new = '''        # Direct current visual position from the Forward-18 SoftMS decoder.
-        # This is NOT an innovation: no predicted/Kalman position is subtracted.
+new = '''        # Current visual position is a direct input, not an innovation.
         visual_position = torch.cat(
             [
                 visual_anchor_se[:, 0:1] / float(config.ROUTE_PROGRESS_SCALE_M),
@@ -99,7 +96,6 @@ if new not in s:
     else:
         raise SystemExit("could not identify canonical recurrent-input block")
 
-# Final structural audit.
 required = [
     "self.gru = nn.GRUCell(feature_dim * 6, hidden_dim)",
     "self.sat_projection(sat_context)",
@@ -114,5 +110,42 @@ if "visual_anchor_se - predicted_se" in s or "innovation_projection" in s:
 
 compile(s, str(p), "exec")
 p.write_text(s, encoding="utf-8")
-print("[PATCH OK] GRU = mean + delta + delta2 + SAT context + direct visual position + previous state")
+
+# Stabilize the residual at its source.  These are fixed model/training constants,
+# not inference gates and not B/C-tuned gains.
+cfg = p.with_name("config.py")
+if not cfg.exists():
+    raise SystemExit(f"missing sibling config.py: {cfg}")
+c = cfg.read_text(encoding="utf-8")
+
+def sub1(pattern, replacement, label):
+    global c
+    c2, n = re.subn(pattern, replacement, c, count=1, flags=re.MULTILINE)
+    if n != 1:
+        raise SystemExit(f"config patch failed for {label}: matches={n}")
+    c = c2
+
+sub1(r'^MAX_MEASUREMENT_CORRECTION_PARALLEL_M\s*=\s*[0-9.]+\s*$',
+     'MAX_MEASUREMENT_CORRECTION_PARALLEL_M = 0.75', 'parallel correction bound')
+sub1(r'^MAX_MEASUREMENT_CORRECTION_CROSS_M\s*=\s*[0-9.]+\s*$',
+     'MAX_MEASUREMENT_CORRECTION_CROSS_M = 0.50', 'cross correction bound')
+sub1(r'^LOSS_MEASUREMENT\s*=\s*[0-9.]+\s*$',
+     'LOSS_MEASUREMENT = 2.50', 'measurement loss')
+sub1(r'^LOSS_NEXT_STEP\s*=\s*[0-9.]+\s*$',
+     'LOSS_NEXT_STEP = 1.50', 'next-step loss')
+sub1(r'^LOSS_VELOCITY\s*=\s*[0-9.]+\s*$',
+     'LOSS_VELOCITY = 0.10', 'velocity loss')
+sub1(r'^EARLY_STOP_MIN_DELTA\s*=\s*[0-9.]+\s*$',
+     'EARLY_STOP_MIN_DELTA = 0.02', 'early stop delta')
+
+# Allow a Route-A-only seed sweep without editing source.  Default stays 2033.
+sub1(r'^SEED\s*=\s*2033\s*$',
+     'SEED = int(os.environ.get("UAVSAT_SEED", "2033"))', 'seed env')
+
+compile(c, str(cfg), "exec")
+cfg.write_text(c, encoding="utf-8")
+
+print("[PATCH OK] simple GRU inputs = mean + delta + delta2 + SAT context + direct SoftMS position + previous state")
 print("[PATCH OK] no split/dual/residual gate; no position innovation")
+print("[PATCH OK] fixed conservative correction bounds: parallel=0.75m cross=0.50m")
+print("[PATCH OK] temporal losses: measurement=2.50 next_step=1.50 velocity=0.10")
