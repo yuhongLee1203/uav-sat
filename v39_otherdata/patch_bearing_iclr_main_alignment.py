@@ -69,8 +69,6 @@ replace_once_or_already(
     'Route-A cadence bounds',
 )
 
-# Remove the old front-decoder choice from the experiment runner.  Construct the
-# old token so the patched runner itself contains no legacy decoder identifier.
 legacy_token = "weighted" + "_" + "centroid"
 old_env = (
     '        # Forward-18 posterior is summarized without a front MeanShift.  The\n'
@@ -108,7 +106,7 @@ new_audit = (
     '        "front_softms_source": (\n'
     '            "anchor_xy_all = candidate.softms_xy" in tracker_text\n'
     '            and tracker_text.count("soft_mean_shift(") == 3\n'
-    '            and "anchor_xy_all = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)" not in tracker_text\n'
+    '            and \'getattr(config, "EXPERIMENT_ANCHOR"\' not in tracker_text\n'
     '        ),\n'
     '        "one_final_ms_source": "exactly one final local Soft MeanShift after the Kalman estimator" in tracker_text,\n'
     '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",'
@@ -188,7 +186,7 @@ required = [
     'UAVSAT_EXPERIMENT_ANCHOR": "softms"',
     'front_softms_source',
     'tracker_text.count("soft_mean_shift(") == 3',
-    'anchor_xy_all = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)',
+    'getattr(config, "EXPERIMENT_ANCHOR"',
     'forward_origin_backshift_covers_jitter',
     'config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M = (',
     'checkpoint_frames = int(variant["frames"])',
@@ -201,8 +199,6 @@ missing = [item for item in required if item not in s]
 if missing:
     raise SystemExit("PATCH AUDIT FAILED: missing " + repr(missing))
 
-# The patched experiment runner itself must not carry the legacy decoder token.
-# The runtime audit above detects the old centroid formula structurally instead.
 if legacy_token in s.lower():
     raise SystemExit("PATCH AUDIT FAILED: legacy decoder identifier remains in active runner")
 
