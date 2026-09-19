@@ -13,6 +13,7 @@ this runner does not alter the dataset loader, route preparation, or labels.
 from __future__ import annotations
 
 import argparse
+import csv
 import importlib
 import hashlib
 import json
@@ -23,6 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 
 import bearing_runner_multicity_v39 as multi
@@ -58,6 +60,84 @@ def _train_root(args: argparse.Namespace) -> Path:
 
 def _variant_root(args: argparse.Namespace) -> Path:
     return Path(args.suite_root).resolve() / args.city / "variants" / args.variant
+
+
+def _training_step_statistics(prepared_root: Path):
+    """Read cadence metadata, deriving absent legacy fields from Route A GT.
+
+    manifest.csv x_m/y_m are the metric coordinates consumed by RouteDataset.
+    Preserve CSV order, including zero-length steps; never sort, smooth, resample,
+    read test routes, or write back to the prepared package.
+    """
+    exp = exact._experiment(prepared_root)
+    train = exp["route_stats"]["train_01"]
+    keys = ("actual_step_mean_m", "actual_step_p90_m", "actual_step_p95_m")
+    missing = [key for key in keys if train.get(key) is None]
+    values = {}
+    for key in keys:
+        if key in missing:
+            continue
+        try:
+            value = float(train[key])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"train_01: invalid {key}={train[key]!r}") from exc
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"train_01: invalid {key}={value}")
+        values[key] = value
+    if missing:
+        manifest = prepared_root / "routes" / "train_01" / "manifest.csv"
+        coordinates = []
+        with manifest.open("r", newline="", encoding="utf-8-sig") as handle:
+            reader = csv.DictReader(handle)
+            if not {"x_m", "y_m"}.issubset(reader.fieldnames or []):
+                raise ValueError(f"Route A GT requires x_m/y_m columns: {manifest}")
+            for line_number, row in enumerate(reader, start=2):
+                try:
+                    xy = (float(row["x_m"]), float(row["y_m"]))
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"Invalid Route A GT at {manifest}:{line_number}") from exc
+                if not all(math.isfinite(v) for v in xy):
+                    raise ValueError(f"Non-finite Route A GT at {manifest}:{line_number}")
+                coordinates.append(xy)
+        if len(coordinates) < 2:
+            raise ValueError(f"Need at least two Route A GT rows for cadence: {manifest}")
+        steps = np.linalg.norm(np.diff(np.asarray(coordinates, dtype=np.float64), axis=0), axis=1)
+        if not np.isfinite(steps).all():
+            raise ValueError(f"Non-finite Route A GT step distances: {manifest}")
+        derived = dict(zip(keys, (float(steps.mean()), float(np.percentile(steps, 90)),
+                                  float(np.percentile(steps, 95)))))
+        values.update({key: derived[key] for key in missing})
+    return values, {
+        "source": "train_01_manifest_gt" if missing else "experiment_route_stats_train_01",
+        "derived_fields": missing,
+    }
+
+
+def _existing_training_adaptation(prepared_root: Path):
+    """Derive all cadence values from train_01 only. Never inspect B/C stats."""
+    train, provenance = _training_step_statistics(prepared_root)
+    p90 = train["actual_step_p90_m"]
+    p95 = train["actual_step_p95_m"]
+    mean = train["actual_step_mean_m"]
+
+    # Longitudinal limits only. Cross-track limits remain canonical so the
+    # external adapter does not gain extra freedom to wiggle sideways.
+    values = {
+        "source": "train_01_only",
+        "statistics_provenance": provenance,
+        "train_step_mean_m": mean,
+        "train_step_p90_m": p90,
+        "train_step_p95_m": p95,
+        "max_forward_speed_m_per_frame": max(14.0, min(20.0, 1.05 * p95)),
+        "max_polynomial_step_m_per_frame": max(14.0, min(20.0, 1.05 * p95)),
+        "max_measurement_correction_parallel_m": max(4.0, min(8.0, 0.55 * p90)),
+        "kalman_max_measurement_innovation_progress_m": max(5.0, min(10.0, 0.65 * p90)),
+        "kalman_max_posterior_correction_progress_m": max(3.0, min(6.0, 0.45 * p90)),
+        "kalman_max_velocity_correction_m_per_frame": max(1.25, min(2.5, 0.18 * p90)),
+        "kalman_final_step_max_m": max(7.0, min(14.0, 1.10 * p90)),
+    }
+    return values
+
 
 
 def _lock_prepared(args: argparse.Namespace, prepared_root: Path) -> None:
@@ -99,14 +179,10 @@ def _lock_prepared(args: argparse.Namespace, prepared_root: Path) -> None:
     if args.step_m is not None and step is not None:
         if not math.isfinite(args.step_m) or abs(args.step_m - step) > 1e-6:
             errors.append(f"explicit --step-m={args.step_m} differs from prepared step={step}; omit --step-m to reuse it")
-    train = exp.get("route_stats", {}).get("train_01", {})
-    for key in ("actual_step_mean_m", "actual_step_p90_m", "actual_step_p95_m"):
-        try:
-            value = float(train[key])
-            if not math.isfinite(value) or value <= 0:
-                raise ValueError
-        except (KeyError, TypeError, ValueError):
-            errors.append(f"train_01: missing/invalid {key}")
+    try:
+        cadence = _existing_training_adaptation(prepared_root)
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        errors.append(f"train_01 cadence: {exc}")
     try:
         mpp = float(exp["mpp"])
         if not math.isfinite(mpp) or mpp <= 0:
@@ -120,6 +196,7 @@ def _lock_prepared(args: argparse.Namespace, prepared_root: Path) -> None:
         raise RuntimeError("Bearing ICLR prepared-data validation failed:\n- " + "\n- ".join(errors))
     args.step_m = step
     args.epochs_per_route = int(args.temporal_epochs)
+    args.training_cadence_audit = cadence
     fingerprints["experiment.json"] = hashlib.sha256((prepared_root / "experiment.json").read_bytes()).hexdigest()
     fingerprints["bearing_satellite.json"] = hashlib.sha256((prepared_root / "bearing_satellite.json").read_bytes()).hexdigest()
     args.prepared_data_audit = {
@@ -138,6 +215,9 @@ def _lock_prepared(args: argparse.Namespace, prepared_root: Path) -> None:
         lock.write_text(json.dumps(args.prepared_data_audit, indent=2), encoding="utf-8")
     print(f"[PREPARED] PASS | city={args.city} | step={step:g} m | "
           f"selection={exp.get('sequence_selection_version') or 'unrecorded_legacy'} | existing GT/routes unchanged", flush=True)
+    print("[CADENCE] source=%s | mean=%.6f m | p90=%.6f m | p95=%.6f m" % (
+        cadence["statistics_provenance"]["source"], cadence["train_step_mean_m"],
+        cadence["train_step_p90_m"], cadence["train_step_p95_m"]), flush=True)
 
 
 def _make_runtime(prepared_root: Path, runtime_root: Path) -> Path:
@@ -218,6 +298,9 @@ def _set_environment(
 
 
 def _patch_paths(config, args: argparse.Namespace, prepared_root: Path) -> None:
+    # Only this ablation process installs the legacy-metadata adapter.
+    # The existing runner files, GT loader and prepared data stay unchanged.
+    exact._training_only_adaptation = _existing_training_adaptation
     exact._patch_paths_and_scale(config, args, prepared_root)
     config.ARCHITECTURE_NAME = ARCH
     config.TEMPORAL_EPOCHS = int(args.temporal_epochs)
@@ -403,6 +486,7 @@ def _write_manifest(args, output: Path, variant: dict, audit: dict, training: bo
         "paper_chain": "Forward18 posterior -> 3-frame GRU -> fixed-R Kalman -> one final MeanShift -> XY",
         "architecture_audit": audit,
         "prepared_data": args.prepared_data_audit,
+        "training_cadence": args.training_cadence_audit,
         "integrity": "Measured outputs are never edited, clipped, or reordered to force Full to win.",
     }
     (output / "experiment_manifest.json").write_text(
