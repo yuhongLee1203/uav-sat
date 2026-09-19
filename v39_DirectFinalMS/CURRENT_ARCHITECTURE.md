@@ -1,23 +1,33 @@
 # Current V39 architecture
 
-Selected main inference architecture after the same-checkpoint front-window comparison:
+The canonical V39 experiment is now pinned back to the 2026-09-13 pipeline and only the **front decoder** is changed from Weighted Centroid to Soft MeanShift.
 
-`5x5 local SAT geometry -> heading-guided forward 15 candidates -> front Soft MeanShift -> 3-frame GRU -> Constant Velocity -> Fixed-R Kalman -> Final 5x5 Soft MeanShift (BW=7m) -> Final Position`
+Main chain:
 
-The front-window comparison keeps the same visual and temporal checkpoints and fixes the final MeanShift window to 5x5. The selected 5x5/15 front achieved lower MLE and P90 on both Route B and Route C while also reducing end-to-end latency relative to the previous 6x6/18 front.
+`6x6 local SAT geometry -> heading-guided forward 3x6 = 18 candidates -> front Soft MeanShift -> 3-frame GRU -> Polynomial / Constant-Velocity motion -> Fixed-R Kalman -> post-Kalman MeanShift -> Final Position`
 
-Previous 6x6/18 and Weighted-Centroid experiments are retained only for reproducibility and historical comparison.
+This reset intentionally does **not** use split-gate / dual-gate / GRU gate calibration patches. Historical experimental patch files are kept only for reproducibility; the canonical runner below does not load them.
 
-Current comparison entry point:
+The base model/training source remains the same `v39_DirectFinalMS/base_src` tree used by the 2026-09-13 V39 run. The only front-end change is:
+
+`UAVSAT_EXPERIMENT_ANCHOR=weighted_centroid` -> `UAVSAT_EXPERIMENT_ANCHOR=softms`
+
+The forward-search geometry stays at the original 6x6 construction with heading-selected forward 3x6 scoring (18 candidates). No 5x5/15 front-search patch is applied by the canonical runner.
+
+## One-command experiment entry point
 
 ```bash
-GPU=0 bash v39_DirectFinalMS/run_compare_front_windows_eval.sh
+cd /yh/study/uav-sat
+bash v39_DirectFinalMS/run_0913_softms18_everything.sh
 ```
 
-Current full 5x5/15 ablation entry point:
+That command runs:
 
-```bash
-GPU=0 bash v39_DirectFinalMS/run_softms_5x5_ablation_all.sh
-```
+- the main Route-A-trained / Route-B+C-evaluated architecture;
+- progressive module ablations and 1/2/3-frame temporal ablations;
+- MeanShift window/runtime experiments from the 09/13 V39 runner;
+- Bearing-UAV other-data runs for `citya`, `cityb`, `cityc`, and `cityd`;
+- GPU 0/5/6 parallel scheduling;
+- a final integrity audit that reports whether the complete model is actually best on the measured metrics.
 
-The ablation suite keeps the front search fixed at 5x5 -> forward 15 and evaluates: (1) Full / w/o GRU / w/o Kalman / w/o Final MS, (2) 1/2/3-frame temporal input, and (3) final MeanShift window sensitivity from 4x4 to 8x8.
+The audit never edits, suppresses, or degrades ablation baselines to force a preferred ranking. If an ablation beats Full, it is reported as such and the run is marked `FULL_BEST_CHECK=FAIL` rather than altering the experiment.
