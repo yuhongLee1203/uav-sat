@@ -19,7 +19,7 @@ VARIANTS=(full no_gru no_kalman no_ms frames1 frames2 grid4 grid5 grid7 grid8)
 case "${RESUME_EVAL}" in 0|1) ;; *) echo "ERROR: RESUME_EVAL must be 0 or 1" >&2; exit 2;; esac
 mkdir -p "${SUITE_ROOT}/logs"
 
-# Same objective for 1/2/3-frame models.  The 3-frame model alone has a real
+# Same objective for 1/2/3-frame models. The 3-frame model alone has a real
 # second temporal difference available, and acceleration supervision gives that
 # information a direct purpose without changing the main architecture.
 export UAVSAT_LOSS_MEASUREMENT="${UAVSAT_LOSS_MEASUREMENT:-2.0}"
@@ -35,9 +35,9 @@ export UAVSAT_MOTION_RESIDUAL_CROSS_M="${UAVSAT_MOTION_RESIDUAL_CROSS_M:-1.5}"
 export UAVSAT_MOTION_RESIDUAL_ACCEL_FORWARD_M="${UAVSAT_MOTION_RESIDUAL_ACCEL_FORWARD_M:-1.5}"
 export UAVSAT_MOTION_RESIDUAL_ACCEL_CROSS_M="${UAVSAT_MOTION_RESIDUAL_ACCEL_CROSS_M:-1.0}"
 
-# Initial Kalman profile.  After the 3-frame model is trained, a small grid is
+# Initial Kalman profile. After the 3-frame model is trained, a small grid is
 # selected using only that city's training-sequence validation split and saved
-# as kalman_calibration.json.  Held-out nav50/nav51 are never used to select it.
+# as kalman_calibration.json. Held-out nav50/nav51 are never used to select it.
 export UAVSAT_EXPERIMENT_FIXED_VARIANCE_M2="${UAVSAT_EXPERIMENT_FIXED_VARIANCE_M2:-4.0}"
 export UAVSAT_KALMAN_Q_PROGRESS="${UAVSAT_KALMAN_Q_PROGRESS:-1.50}"
 export UAVSAT_KALMAN_Q_CROSS="${UAVSAT_KALMAN_Q_CROSS:-0.40}"
@@ -101,6 +101,23 @@ run_train(){
   echo "[TRAIN DONE] ${city} frames=${frames} GPU${gpu}"
 }
 
+share_city_visual_checkpoint(){
+  local city="$1"
+  local src="${SUITE_ROOT}/${city}/train_frames1/checkpoints/visual_retrieval_A_only.pt"
+  [[ -s "${src}" ]] || {
+    echo "ERROR: shared visual checkpoint source missing: ${src}" >&2
+    exit 19
+  }
+  local f dst
+  for f in 2 3; do
+    dst="${SUITE_ROOT}/${city}/train_frames${f}/checkpoints/visual_retrieval_A_only.pt"
+    mkdir -p "$(dirname "${dst}")"
+    rm -f "${dst}"
+    ln -s "${src}" "${dst}"
+  done
+  echo "[VISUAL FAIRNESS] ${city}: frames1/2/3 share exactly one visual checkpoint"
+}
+
 run_eval_group(){
   local city="$1" gpu="$2"
   shift 2
@@ -121,6 +138,7 @@ echo "Held-out labels : official per-city waypoint trajectories nav50 / nav51"
 echo "Architecture    : 6x6 geometry -> forward 18 -> front SoftMS"
 echo "                  -> residual temporal GRU -> constrained Kalman"
 echo "                  -> final MeanShift -> XY"
+echo "Temporal fairness: one shared visual checkpoint per city; only GRU differs"
 echo "IMPORTANT       : every city is freshly prepared from Bearing_UAV_90K"
 echo "                  old generated/citya/cityb/cityc/cityd data is not reused"
 echo "================================================================================"
@@ -143,11 +161,15 @@ for city in "${CITIES[@]}"; do
     }
     echo "[RESUME] ${city}: 1/2/3-frame checkpoints + calibration found"
   else
-    # Train frame-1 first so it creates the shared feature cache before any
-    # calibration exists.  Then frame-2 and frame-3 train concurrently from the
-    # same uncalibrated filter defaults.  Frame-3 writes the calibration only
-    # after its training finishes, so temporal training remains fair.
+    # Frame-1 trains the single shared visual model for this city. Frames 2/3
+    # reuse that exact visual checkpoint, so temporal ablation is not confounded
+    # by three separately trained retrieval models.
     run_train "${city}" 1 0
+    share_city_visual_checkpoint "${city}"
+
+    # Frames 2 and 3 start before any calibration file exists, therefore all
+    # three temporal models train against the same uncalibrated filter defaults.
+    # Frame-3 writes the city validation calibration only after its own training.
     ( run_train "${city}" 2 5 ) & p2=$!
     ( run_train "${city}" 3 6 ) & p3=$!
     status=0
@@ -167,7 +189,6 @@ for city in "${CITIES[@]}"; do
   wait "${p5}" || status=1
   wait "${p6}" || status=1
   [[ "${status}" == "0" ]] || { echo "ERROR: ${city} evaluation failed; inspect logs" >&2; exit 21; }
-
 done
 
 python3 v39_otherdata/build_iclr_ablation_tables.py \
