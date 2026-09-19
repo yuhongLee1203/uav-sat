@@ -1,0 +1,15 @@
+{
+  "full": {
+    "mle": 1.9549252122770355,
+    "p90": 3.6875597381412106,
+    "lsr5": 97.50990379173741
+  },
+  "component_full_best_mle": false,
+  "component_full_best_p90": false,
+  "component_full_best_lsr5": false,
+  "three_frame_best_mle": false,
+  "three_frame_best_p90": true,
+  "three_frame_best_lsr5": true,
+  "integrity": "Measured results only; no metric value is edited to force a ranking.",
+  "PAPER_TREND_CHECK": "FAIL"
+}
