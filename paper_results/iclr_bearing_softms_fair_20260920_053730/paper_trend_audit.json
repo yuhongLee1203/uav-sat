@@ -1,0 +1,69 @@
+{
+  "FULL_TREND_CHECK": "FAIL",
+  "component_full_best": false,
+  "three_frame_full_best": false,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.10810694964115708,
+      "MLE_95CI": [
+        -0.3102238061953107,
+        0.09270188101956814
+      ],
+      "full_minus_ablation_LSR@5_pct": -1.0000000000000009,
+      "LSR@5_95CI": [
+        -5.500000000000005,
+        3.500000000000003
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": 0.5899171518310249,
+      "MLE_95CI": [
+        0.31297918929749036,
+        0.8566473158118176
+      ],
+      "full_minus_ablation_LSR@5_pct": -6.000000000000005,
+      "LSR@5_95CI": [
+        -10.999999999999998,
+        -0.5000000000000004
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": -0.8835698212062244,
+      "MLE_95CI": [
+        -1.2585384957229857,
+        -0.5129360379293328
+      ],
+      "full_minus_ablation_LSR@5_pct": 9.499999999999996,
+      "LSR@5_95CI": [
+        3.499999999999992,
+        16.000000000000004
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": 0.012783588150163006,
+      "MLE_95CI": [
+        0.003487360262714434,
+        0.023176362877108978
+      ],
+      "full_minus_ablation_LSR@5_pct": -0.5000000000000004,
+      "LSR@5_95CI": [
+        -1.5000000000000013,
+        0.0
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": 0.01760571458830018,
+      "MLE_95CI": [
+        0.0051709861419347415,
+        0.031682978005242904
+      ],
+      "full_minus_ablation_LSR@5_pct": -0.5000000000000004,
+      "LSR@5_95CI": [
+        -1.5000000000000013,
+        0.0
+      ]
+    }
+  },
+  "claim_guidance": "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; report the measured result and revise the method only through a new train-only validation study.",
+  "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+}
