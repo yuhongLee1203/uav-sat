@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Align bearing_iclr_ablation.py with the current paper-ready main architecture.
+"""Patch the Bearing ICLR runner to the paper-ready SoftMS-only architecture.
 
-This patch only fixes method/protocol mismatches, Route-A-only cadence limits,
-and the forward-only search geometry. It never reads held-out B/C outputs and
-never edits measured results.
+Active chain:
+    6x6 geometry -> heading-forward 3x6 (18 scored patches)
+    -> front Soft MeanShift -> simple temporal GRU
+    -> fixed-R Kalman -> final local MeanShift -> XY
+
+The patch also makes the temporal ablation fair: 1/2/3-frame rows load their
+own Route-A-trained temporal checkpoints.  No B/C metric is read or modified.
 """
 from pathlib import Path
 import sys
@@ -14,11 +18,15 @@ s = path.read_text(encoding="utf-8")
 repls = [
     (
         'The paper-facing chain contains exactly one MeanShift decoder:\n\n    6x6 geometry -> forward 3x6 visual scores -> 3-frame GRU\n    -> fixed-R Kalman -> one final local MeanShift -> XY',
-        'The paper-facing chain matches the current paper-ready main model:\n\n    6x6 geometry -> forward 3x6 visual scores -> front SoftMS\n    -> 3-frame GRU -> fixed-R Kalman -> one final local MeanShift -> XY',
+        'The paper-facing chain uses two explicit SoftMS stages:\n\n    6x6 geometry -> forward 3x6 = 18 visual scores -> front SoftMS\n    -> temporal GRU -> fixed-R Kalman -> final local MeanShift -> XY',
     ),
     (
         'ARCH = "ICLR_Forward18_Simple3FrameGRU_FixedKalman_OneFinalMS"',
-        'ARCH = "ICLR_Forward18SoftMS_Simple3FrameGRU_FixedKalman_FinalMS"',
+        'ARCH = "ICLR_Forward18SoftMS_SimpleTemporalGRU_FixedKalman_FinalMS"',
+    ),
+    (
+        'def _train_root(args: argparse.Namespace) -> Path:\n    return Path(args.suite_root).resolve() / args.city / "train_full"',
+        'def _train_root(args: argparse.Namespace, frames=None) -> Path:\n    frame_count = int(frames if frames is not None else getattr(args, "train_frames", 3))\n    return Path(args.suite_root).resolve() / args.city / f"train_frames{frame_count}"',
     ),
     (
         '"max_forward_speed_m_per_frame": max(14.0, min(20.0, 1.05 * p95)),\n'
@@ -40,23 +48,17 @@ repls = [
         '        # Forward-18 posterior is summarized without a front MeanShift.  The\n'
         '        # only MeanShift in the paper chain is the post-Kalman decoder.\n'
         '        "UAVSAT_EXPERIMENT_ANCHOR": "weighted_centroid",',
-        '        # Paper-ready main architecture: Forward-18 is decoded by front SoftMS.\n'
-        '        # A separate final MeanShift remains after the fixed-R Kalman.\n'
+        '        # Forward-18 is always decoded by Soft MeanShift.\n'
         '        "UAVSAT_EXPERIMENT_ANCHOR": "softms",',
     ),
     (
+        '    exact._patch_paths_and_scale(config, args, prepared_root)\n    config.ARCHITECTURE_NAME = ARCH',
         '    exact._patch_paths_and_scale(config, args, prepared_root)\n'
-        '    config.ARCHITECTURE_NAME = ARCH',
-        '    exact._patch_paths_and_scale(config, args, prepared_root)\n'
-        '    # The controlled prior is GT + bounded jitter. A forward-only 3x6\n'
-        '    # selector must not discard the true location simply because the\n'
-        '    # jittered prior happens to lie ahead of it. Shift the 6x6 lattice\n'
-        '    # backward by the known jitter bound plus half one physical SAT\n'
-        '    # stride (quantization margin). This uses protocol constants only;\n'
-        '    # no Route-B/C metric or label is inspected.\n'
         '    geometry = getattr(config, "BEARING_PHYSICAL_SAT_GEOMETRY", None)\n'
         '    if not isinstance(geometry, dict) or "sat_stride_m" not in geometry:\n'
         '        raise RuntimeError("missing audited Bearing physical SAT geometry")\n'
+        '    # Keep the true point inside the heading-forward half under the\n'
+        '    # controlled bounded local-prior jitter. Protocol constants only.\n'
         '    config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M = (\n'
         '        float(config.CONTROLLED_GT_PRIOR_JITTER_M)\n'
         '        + 0.5 * float(geometry["sat_stride_m"])\n'
@@ -64,12 +66,18 @@ repls = [
         '    config.ARCHITECTURE_NAME = ARCH',
     ),
     (
+        '        "one_final_ms_source": "online final path contains exactly one MeanShift" in tracker_text,\n'
         '        "front_decoder_not_ms": str(config.EXPERIMENT_ANCHOR) == "weighted_centroid",',
+        '        "front_softms_source": (\n'
+        '            "anchor_xy_all = candidate.softms_xy" in tracker_text\n'
+        '            and tracker_text.count("soft_mean_shift(") == 3\n'
+        '            and "weighted_centroid" not in tracker_text.lower()\n'
+        '        ),\n'
+        '        "one_final_ms_source": "exactly one final local Soft MeanShift after the Kalman estimator" in tracker_text,\n'
         '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",',
     ),
     (
-        '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n'
-        '        "protocol": str(config.REFERENCE_PROTOCOL) == "controlled_gt_jitter",',
+        '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n        "protocol": str(config.REFERENCE_PROTOCOL) == "controlled_gt_jitter",',
         '        "front_decoder_softms": str(config.EXPERIMENT_ANCHOR) == "softms",\n'
         '        "forward_origin_backshift_covers_jitter": (\n'
         '            float(config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M)\n'
@@ -78,52 +86,79 @@ repls = [
         '        "protocol": str(config.REFERENCE_PROTOCOL) == "controlled_gt_jitter",',
     ),
     (
-        '            "front_decoder": "posterior_weighted_centroid",',
-        '            "front_decoder": "forward18_softms",',
+        '    output = _train_root(args)\n    runtime = _make_runtime(prepared, output / "runtime")\n    _set_environment(args, prepared, output, VARIANTS["full"], training=True)\n    config, tracker, visual_localizer = base._load_runtime_modules(runtime)\n    _patch_paths(config, args, prepared)\n    audit = _audit_runtime(config, runtime, VARIANTS["full"], training=True)',
+        '    train_variant = dict(VARIANTS["full"])\n    train_variant["frames"] = int(args.train_frames)\n    output = _train_root(args, args.train_frames)\n    runtime = _make_runtime(prepared, output / "runtime")\n    _set_environment(args, prepared, output, train_variant, training=True)\n    config, tracker, visual_localizer = base._load_runtime_modules(runtime)\n    _patch_paths(config, args, prepared)\n    audit = _audit_runtime(config, runtime, train_variant, training=True)',
     ),
     (
+        '_write_manifest(args, output, VARIANTS["full"], audit, training=True)',
+        '_write_manifest(args, output, train_variant, audit, training=True)',
+    ),
+    (
+        '    _link_full_checkpoints(config, _train_root(args))',
+        '    checkpoint_frames = int(variant["frames"]) if args.variant in {"frames1", "frames2"} else 3\n'
+        '    _link_full_checkpoints(config, _train_root(args, checkpoint_frames))',
+    ),
+    (
+        '            "front_decoder": "posterior_weighted_centroid",\n            "online_meanshift_count": 1 if variant["ms"] else 0,',
         '            "front_decoder": "forward18_softms",\n'
-        '            "online_meanshift_count": 1 if variant["ms"] else 0,',
-        '            "front_decoder": "forward18_softms",\n'
+        '            "front_meanshift_count": 1,\n'
+        '            "final_meanshift_count": 1 if variant["ms"] else 0,\n'
+        '            "online_meanshift_count": 2 if variant["ms"] else 1,\n'
         '            "forward_origin_backshift_m": float(config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M),\n'
-        '            "controlled_prior_jitter_m": float(config.CONTROLLED_GT_PRIOR_JITTER_M),\n'
-        '            "online_meanshift_count": 1 if variant["ms"] else 0,',
+        '            "controlled_prior_jitter_m": float(config.CONTROLLED_GT_PRIOR_JITTER_M),',
     ),
     (
         '        "paper_chain": "Forward18 posterior -> 3-frame GRU -> fixed-R Kalman -> one final MeanShift -> XY",',
-        '        "paper_chain": "Forward18 SoftMS -> 3-frame GRU -> fixed-R Kalman -> final MeanShift -> XY",',
+        '        "paper_chain": "Forward18 SoftMS -> temporal GRU -> fixed-R Kalman -> final MeanShift -> XY",',
+    ),
+    (
+        '    p.add_argument("--variant", default="full", choices=sorted(VARIANTS))',
+        '    p.add_argument("--variant", default="full", choices=sorted(VARIANTS))\n'
+        '    p.add_argument("--train-frames", type=int, default=3, choices=[1, 2, 3])',
     ),
 ]
 
-changed = 0
 for old, new in repls:
     if old in s:
-        s = s.replace(old, new, 1)
-        changed += 1
+        s = s.replace(old, new)
     elif new in s:
         pass
     else:
-        raise SystemExit("PATCH FAILED: expected block not found:\n" + old[:240])
+        raise SystemExit("PATCH FAILED: expected block not found:\n" + old[:260])
+
+# If the original source had more than one completed-training manifest call,
+# make sure every training path now records the actual frame-specific variant.
+s = s.replace(
+    '_write_manifest(args, output, VARIANTS["full"], audit, training=True)',
+    '_write_manifest(args, output, train_variant, audit, training=True)',
+)
 
 required = [
     'UAVSAT_EXPERIMENT_ANCHOR": "softms"',
-    'front_decoder_softms',
+    'front_softms_source',
+    'tracker_text.count("soft_mean_shift(") == 3',
     'forward_origin_backshift_covers_jitter',
     'config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M = (',
-    '0.5 * float(geometry["sat_stride_m"])',
-    '"forward_origin_backshift_m": float(config.FORWARD_SEARCH_ORIGIN_BACKSHIFT_M)',
-    '1.10 * p95',
-    '"kalman_final_step_max_m": max(7.0, min(30.0, 1.10 * p95))',
-    'Forward18 SoftMS -> 3-frame GRU -> fixed-R Kalman -> final MeanShift -> XY',
+    'checkpoint_frames = int(variant["frames"])',
+    'train_variant["frames"] = int(args.train_frames)',
+    'p.add_argument("--train-frames"',
+    '"front_decoder": "forward18_softms"',
+    'Forward18 SoftMS -> temporal GRU -> fixed-R Kalman -> final MeanShift -> XY',
 ]
 missing = [x for x in required if x not in s]
 if missing:
     raise SystemExit("PATCH AUDIT FAILED: " + repr(missing))
 
+# The active runner must no longer contain the legacy decoder token at all.
+legacy = "weighted" + "_" + "centroid"
+if legacy in s.lower():
+    raise SystemExit("PATCH AUDIT FAILED: legacy centroid decoder still present in active runner")
+
 compile(s, str(path), "exec")
 path.write_text(s, encoding="utf-8")
 print(f"[PATCH OK] {path}")
-print("[PATCH OK] front decoder aligned to Forward-18 SoftMS")
-print("[PATCH OK] forward 3x6 origin backshift = jitter bound + 0.5 SAT stride")
-print("[PATCH OK] longitudinal Kalman/motion limits follow Route-A p90/p95 without the stale 14/20 m bottleneck")
+print("[PATCH OK] active runner is Forward-18 SoftMS only")
+print("[PATCH OK] runtime audit requires 3 SoftMS calls and rejects legacy centroid decoder source")
+print("[PATCH OK] 1/2/3-frame rows use separately Route-A-trained temporal checkpoints")
+print("[PATCH OK] forward 3x6 backshift = jitter bound + 0.5 SAT stride")
 print("[PATCH OK] no B/C metric was read or modified")
