@@ -1,0 +1,13 @@
+============================================================================================================
+V39_MobileNetV3_Forward18of6x6_SoftMS_GRU_CV_Kalman_Final5x5MS
+device=cuda:0
+Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> Forward-3x6 Soft MeanShift visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final 6x6 MeanShift -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+route_B: reuse UAV backbone cache
+route_B final MLE=5.210m P90=9.325m LSR@15=99.82% selected_capture=89.59% bank_capture=89.59% acq_acc=100.00% speed_mae=0.580m/frame progress_mae=4.853m heading_mae=12.3deg jump_rate=0.18% max_step=11.37m final_leg=14 gt_leg=14
+route_C: reuse UAV backbone cache
+route_C final MLE=4.065m P90=7.637m LSR@15=98.81% selected_capture=91.73% bank_capture=91.73% acq_acc=100.00% speed_mae=1.186m/frame progress_mae=7.290m heading_mae=33.0deg jump_rate=0.24% max_step=11.57m final_leg=10 gt_leg=10
+summary: /yh/study/uav-sat/v39_DirectFinalMS/forward18_no_finalgt_eval_20260919_030227/ms_window_8x8/robust_tracker_summary.json

@@ -1,0 +1,10 @@
+{
+  "mode": "eval_only",
+  "source_suite": "/yh/study/uav-sat/v39_DirectFinalMS/softms_forward18_final5x5_ablation_20260919_005429",
+  "front": "6x6 -> heading-forward 18 -> Front SoftMS",
+  "checkpoint_training": "reused existing 1/2/3-frame checkpoints; no retraining",
+  "final_ms_default_grid": 5,
+  "final_ms_bandwidth_m": 7.0,
+  "final_ms_reference_prior_weight": 0.0,
+  "important_scope": "only the direct current-frame GT/reference prior inside Final MS is disabled; the front controlled GT+jitter local prior remains active"
+}

@@ -1,0 +1,18 @@
+============================================================================================================
+V39_MobileNetV3_Forward18of6x6_SoftMS_GRU_CV_Kalman_Final5x5MS
+device=cuda:0
+Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> Forward-3x6 Soft MeanShift visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final 6x6 MeanShift -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+Traceback (most recent call last):
+  File "robust_tracker.py", line 3245, in <module>
+    main()
+  File "robust_tracker.py", line 3240, in main
+    eval_pipeline(device)
+  File "robust_tracker.py", line 3091, in eval_pipeline
+    model = load_temporal_model(device)
+  File "robust_tracker.py", line 3037, in load_temporal_model
+    raise FileNotFoundError("Temporal checkpoint missing: %s" % config.TEMPORAL_CHECKPOINT)
+FileNotFoundError: Temporal checkpoint missing: /yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033851/temporal_1frame/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt

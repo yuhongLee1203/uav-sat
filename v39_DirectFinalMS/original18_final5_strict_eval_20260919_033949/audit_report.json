@@ -1,0 +1,37 @@
+{
+  "status": "PASS",
+  "experiments": [
+    "full_model",
+    "abl_no_gru",
+    "abl_no_kalman",
+    "abl_no_final_ms",
+    "temporal_1frame",
+    "temporal_2frame",
+    "temporal_3frame",
+    "ms_window_4x4",
+    "ms_window_5x5",
+    "ms_window_6x6",
+    "ms_window_7x7",
+    "ms_window_8x8"
+  ],
+  "front_decoder": "Soft MeanShift",
+  "front_search_fixed": "Forward 3x6 (18 scored candidates)",
+  "excluded_ablation": "w/o Forward 3x6 / full 6x6 excluded from core table because it is confounded by candidate count, compute, and backward-search semantics",
+  "temporal_frame_training": "1/2/3 frame variants freshly trained separately",
+  "module_ablation": [
+    "w/o GRU",
+    "w/o Kalman",
+    "w/o Final MS"
+  ],
+  "ms_windows": [
+    "4x4",
+    "5x5",
+    "6x6",
+    "7x7",
+    "8x8"
+  ],
+  "raw_data_saved": true,
+  "summary_csv": "experiment_summary.csv",
+  "summary_json": "experiment_summary.json",
+  "paper_tables": "paper_tables.md"
+}

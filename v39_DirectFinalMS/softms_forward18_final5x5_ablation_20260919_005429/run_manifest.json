@@ -1,0 +1,13 @@
+{
+  "method": "6x6 local geometry -> heading-forward 18 -> front SoftMS -> temporal GRU -> constant velocity -> fixed-R Kalman -> final 5x5 SoftMS",
+  "git_sha": "2cca690ae96ed72320946d9128386aba6d7a9e78",
+  "front_grid": 6,
+  "front_candidates": 18,
+  "front_rows": 3,
+  "front_cols": 6,
+  "final_ms_grid": 5,
+  "final_ms_bandwidth_m": 7.0,
+  "temporal_epochs": 60,
+  "patience": 10,
+  "jitter_m": 8
+}
