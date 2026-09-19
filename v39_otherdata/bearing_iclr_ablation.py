@@ -445,7 +445,7 @@ def evaluate(args: argparse.Namespace) -> None:
         )
         print(f"\n=== {args.city} {args.variant}: {external_name} ===", flush=True)
         result = tracker.run_route_inference(
-            external_name, visual, model, cache, route, device
+            canonical_name, visual, model, cache, route, device
         )
         result["ICLRProtocol"] = {
             "uses_controlled_gt_reference": True,
