@@ -20,6 +20,8 @@ legacy='weighted'+'_'+'centroid'
 checks={
     'active_runner_has_no_legacy_centroid_decoder': legacy not in s.lower(),
     'runner_requests_front_softms': 'UAVSAT_EXPERIMENT_ANCHOR": "softms"' in s,
+    'temporal_motion_uses_trained_next_step': 'UAVSAT_EXPERIMENT_MOTION": "quadratic"' in s,
+    'route_a_motion_scale_initialization': 'INIT_FORWARD_SPEED_M_PER_FRAME' in s,
     'fair_train_frames_argument': '--train-frames' in s,
     'separate_temporal_checkpoint_selection': 'checkpoint_frames = int(variant["frames"])' in s,
     'forward_backshift_enabled': 'FORWARD_SEARCH_ORIGIN_BACKSHIFT_M' in s,
