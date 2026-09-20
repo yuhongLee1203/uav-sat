@@ -7,9 +7,8 @@ python3 v39_otherdata/patch_bearing_iclr_main_alignment.py \
   v39_otherdata/bearing_iclr_ablation.py
 
 # -----------------------------------------------------------------------------
-# V5: make the third-frame second difference directly supervised by both the
-# acceleration target and the next-step target.  This edits the existing patch
-# file only; no new project file is introduced.
+# V5: directly supervise the third-frame second difference through acceleration
+# and next-step outputs. No new project file is introduced.
 # -----------------------------------------------------------------------------
 python3 - <<'PY'
 from pathlib import Path
@@ -21,8 +20,8 @@ old_delta2 = '''        # Explicit second-order residual exists only for the 3-f
             delta2_raw = self.delta2_motion_head(accel_h)
             raw_motion = raw_motion + float(config.TEMPORAL_DELTA2_SCALE) * delta2_raw
 '''
-new_delta2 = '''        # Explicit second-order state exists only for the 3-frame model.  V5
-        # does not mix it back into generic raw_motion.  The four outputs are
+new_delta2 = '''        # Explicit second-order state exists only for the 3-frame model. V5
+        # does not mix it back into generic raw_motion. The four outputs are
         # directly supervised later: [accel_s, accel_e, step_s, step_e].
         if frame_count >= 3:
             delta2_direct = torch.tanh(self.delta2_motion_head(accel_h))
@@ -39,9 +38,8 @@ if new_delta2 not in s:
 old_accel = '''        velocity = torch.cat([v_parallel, v_cross], dim=1)
         acceleration = torch.cat([a_parallel, a_cross], dim=1)
 '''
-new_accel = '''        # Frame-3-only direct acceleration correction.  Because acceleration
-        # itself is supervised, the second-order branch receives an explicit
-        # training signal instead of depending on a long indirect path.
+new_accel = '''        # Frame-3-only direct acceleration correction. Acceleration itself is
+        # supervised, so delta2 now receives an explicit training signal.
         if frame_count >= 3:
             d2_scale = float(config.TEMPORAL_DELTA2_SCALE)
             a_parallel = (
@@ -68,11 +66,11 @@ if new_accel not in s:
         raise SystemExit(f'V5 patch failed: acceleration output matches={s.count(old_accel)}')
     s = s.replace(old_accel, new_accel, 1)
 
-marker = '''    s = s.replace(old_motion, new_motion, 1)\n\nold_init ='''
-insert = r'''    s = s.replace(old_motion, new_motion, 1)
+boundary = "    s = s.replace(old_motion, new_motion, 1)\n\nold_init ="
+insertion = r"""    s = s.replace(old_motion, new_motion, 1)
 
-# V5 short gradient path: the second-order feature directly adjusts next_step,
-# so LOSS_NEXT_STEP trains a signal that only the 3-frame model can use.
+# V5 short gradient path: delta2 directly adjusts next_step, so LOSS_NEXT_STEP
+# trains a signal that only the 3-frame model can use.
 old_next_step = '''        base_forward = (v_parallel + 0.5 * a_parallel).clamp(
             min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
         )
@@ -100,8 +98,8 @@ new_next_step = '''        base_forward = (v_parallel + 0.5 * a_parallel).clamp(
         next_parallel = base_forward * cos_h - base_cross * sin_h
         next_cross = base_forward * sin_h + base_cross * cos_h
 
-        # Direct second-order next-step residual.  This branch is unavailable to
-        # the 1-frame and 2-frame ablations and is directly trained by next_loss.
+        # Direct second-order next-step residual. This branch is unavailable to
+        # 1-frame/2-frame and is directly trained by next_loss.
         if frame_count >= 3:
             d2_scale = float(config.TEMPORAL_DELTA2_SCALE)
             next_parallel = next_parallel + (
@@ -126,11 +124,11 @@ if new_next_step not in s:
         raise SystemExit(f"V5 patch failed: canonical next-step block matches={s.count(old_next_step)}")
     s = s.replace(old_next_step, new_next_step, 1)
 
-old_init ='''
+old_init ="""
 if 'V5 short gradient path' not in s:
-    if marker not in s:
+    if boundary not in s:
         raise SystemExit('V5 patch failed: could not locate old_motion -> old_init boundary')
-    s = s.replace(marker, insert, 1)
+    s = s.replace(boundary, insertion, 1)
 
 old_cfg = 'TEMPORAL_DELTA2_SCALE = float(os.environ.get("UAVSAT_TEMPORAL_DELTA2_SCALE", "1.00"))\n'
 new_cfg = old_cfg + '''TEMPORAL_DIRECT_ACCEL_FORWARD_M = float(os.environ.get("UAVSAT_TEMPORAL_DIRECT_ACCEL_FORWARD_M", "1.25"))
@@ -154,8 +152,7 @@ print('[TEMPORAL V5] direct delta2 acceleration + next-step supervision: PASS')
 PY
 
 # -----------------------------------------------------------------------------
-# Upgrade the generated experiment runner.  All selection stays on the current
-# city's training-validation split; nav50/nav51 are never used for selection.
+# Upgrade the generated experiment runner. Selection is train/validation only.
 # -----------------------------------------------------------------------------
 python3 - <<'PY'
 from pathlib import Path
@@ -245,8 +242,6 @@ helper = r'''def _calibrate_kalman_on_training_validation(args, config, tracker,
             "val_speed_mae": float(result["speed_mae"]),
             "val_progress_mae": float(result["progress_mae"]),
         })
-        # Primary objective is localization; motion terms break near-ties and
-        # reward the direct second-order branch only when it models dynamics too.
         row["objective"] = float(
             row["val_mle_m"]
             + 0.08 * row["val_p90_m"]
@@ -265,8 +260,6 @@ helper = r'''def _calibrate_kalman_on_training_validation(args, config, tracker,
 
     baseline = evaluate("baseline", {})
 
-    # The V5 delta2 output is directly supervised during training.  Validation
-    # only chooses how strongly that learned correction is applied.
     temporal_rows = []
     for temporal_scale in (0.90, 1.00, 1.10):
         for delta2_scale in (0.00, 0.50, 1.00, 1.50, 2.00):
@@ -276,9 +269,6 @@ helper = r'''def _calibrate_kalman_on_training_validation(args, config, tracker,
             }))
     temporal_best = choose(temporal_rows + [baseline])
 
-    # V4 already showed that the step limiter should disappear.  We still
-    # re-select the smooth residual blend on training validation, now including
-    # a small nonzero base blend that can improve near-threshold localization.
     blend_rows = []
     for base in (0.00, 0.02, 0.05):
         for gain in (0.10, 0.20, 0.30):
@@ -358,9 +348,8 @@ print('[PATCH ORDER] legacy 5-block Context-GRU prepatch disabled: PASS')
 print('[CALIBRATION V5] direct delta2 + residual Kalman train-validation search: PASS')
 PY
 
-# Keep patience=4, promote the output naming to V5, and strengthen the losses
-# that directly supervise the new 3-frame-only branch.  The same loss weights
-# still apply to all frame-count models; only 3-frame has the extra information.
+# Keep patience=4, promote output naming to V5, and strengthen the two losses
+# that directly supervise the new second-order branch.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('v39_otherdata/run_bearing_iclr_ablation.sh')
@@ -369,7 +358,6 @@ s = s.replace('ablation_v4_', 'ablation_v5_')
 s = s.replace('PATIENCE="${PATIENCE:-14}"', 'PATIENCE="${PATIENCE:-4}"')
 s = s.replace('UAVSAT_LOSS_NEXT_STEP:-2.5', 'UAVSAT_LOSS_NEXT_STEP:-3.0')
 s = s.replace('UAVSAT_LOSS_ACCELERATION:-0.25', 'UAVSAT_LOSS_ACCELERATION:-0.50')
-compile(s, str(p), 'exec') if False else None
 p.write_text(s, encoding='utf-8')
 print('[RUNNER V5] patience=4, next-step=3.0, acceleration=0.50: PASS')
 PY
