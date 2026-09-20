@@ -14,6 +14,10 @@ Visualization contract (paper-facing and intentionally strict):
   - Prediction receives NO moving average, interpolation, spline fitting,
     resampling, denoising, corner rounding, or any other display processing.
 
+Formal naming compatibility:
+  - internal test_01 <-> paper nav50
+  - internal test_02 <-> paper nav51
+
 The script writes two copies for each route:
   1) legacy: <output-dir>/<route>_final_result.jpg
   2) explicit paper figure:
@@ -35,11 +39,17 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
 Point = Tuple[float, float]
-PRED = (228, 44, 52, 255)       # red
-GT = (40, 180, 70, 255)         # green
-GT_DOT = (18, 145, 52, 255)     # darker green waypoint markers
+PRED = (228, 44, 52, 255)
+GT = (40, 180, 70, 255)
+GT_DOT = (18, 145, 52, 255)
 HALO = (255, 255, 255, 230)
 TEXTBG = (0, 0, 0, 175)
+
+ROUTE_TO_PAPER = {
+    "test_01": "nav50",
+    "test_02": "nav51",
+}
+PAPER_TO_ROUTE = {value: key for key, value in ROUTE_TO_PAPER.items()}
 
 
 def _rows(p: Path) -> List[Dict[str, str]]:
@@ -54,21 +64,48 @@ def _origin(root: Path) -> Tuple[float, float]:
     return float(rows[0]["x_m"]), float(rows[0]["y_m"])
 
 
+def _internal_route(route_or_paper_name: str) -> str:
+    return PAPER_TO_ROUTE.get(route_or_paper_name, route_or_paper_name)
+
+
+def _summary_for_route(summaries: dict, internal_route: str) -> Tuple[str, dict]:
+    """Resolve both legacy internal keys and formal paper-facing keys."""
+    paper_name = ROUTE_TO_PAPER.get(internal_route, internal_route)
+    for key in (internal_route, paper_name):
+        if key in summaries:
+            return key, summaries[key]
+    raise KeyError(
+        f"No summary for {internal_route}. Tried keys "
+        f"{[internal_route, paper_name]}; available={sorted(summaries.keys())}"
+    )
+
+
 def _find_csv(route: str, out: Path, summary: dict) -> Path:
     p = Path(str(summary.get("CSV", "")))
     if p.exists():
         return p
-    q = out / p.name
-    if q.exists():
-        return q
-    matches = sorted(out.glob(f"{route}_*_frames.csv"))
-    if not matches:
-        raise FileNotFoundError(f"No inference CSV for {route}")
-    return matches[-1]
+    if p.name:
+        q = out / p.name
+        if q.exists():
+            return q
+
+    paper_name = ROUTE_TO_PAPER.get(route, route)
+    patterns = (
+        f"{route}_*_frames.csv",
+        f"{paper_name}_*_frames.csv",
+        f"*{route}*_frames.csv",
+        f"*{paper_name}*_frames.csv",
+    )
+    for pattern in patterns:
+        matches = sorted(out.glob(pattern))
+        if matches:
+            return matches[-1]
+    raise FileNotFoundError(
+        f"No inference CSV for internal={route} paper={paper_name} in {out}"
+    )
 
 
 def _official_waypoint_trajectory(root: Path, route: str) -> Tuple[List[Point], Path]:
-    """Return ONLY the official/predefined sparse waypoint route."""
     wp_path = root / "routes" / route / "waypoints.json"
     payload = json.loads(wp_path.read_text(encoding="utf-8"))
     ordered = sorted(payload["waypoints"], key=lambda x: int(x["waypoint_order"]))
@@ -92,7 +129,6 @@ def _audit_and_raw_prediction(
     ox: float,
     oy: float,
 ) -> List[Point]:
-    """Validate metric coordinates and return raw final_x/final_y pixels."""
     rows = _rows(_find_csv(route, out, summary))
     manifest = _rows(root / "routes" / route / "manifest.csv")
     if not rows or len(rows) != len(manifest):
@@ -104,7 +140,6 @@ def _audit_and_raw_prediction(
     width, height = size
 
     for i, (row, man) in enumerate(zip(rows, manifest)):
-        # Per-frame GT exists ONLY for metric audit. It is never plotted.
         gx_rel = float(row["gt_x"])
         gy_rel = float(row["gt_y"])
         gx_abs = gx_rel + ox
@@ -114,7 +149,6 @@ def _audit_and_raw_prediction(
             math.hypot(gx_abs - float(man["x_m"]), gy_abs - float(man["y_m"])),
         )
 
-        # IMPORTANT: exact saved model output; do not smooth or alter.
         fx = float(row["final_x"])
         fy = float(row["final_y"])
         errors.append(math.hypot(fx - gx_rel, fy - gy_rel))
@@ -220,21 +254,16 @@ def render(route: str, root: Path, out: Path, summary: dict) -> dict:
     base = ImageEnhance.Brightness(src).enhance(0.84).convert("RGBA")
     ox, oy = _origin(root)
 
-    # DISPLAY GT = sparse official waypoint geometry ONLY.
     gt, waypoint_path = _official_waypoint_trajectory(root, route)
-
-    # DISPLAY PREDICTION = exact frame-order final_x/final_y ONLY.
     pred = _audit_and_raw_prediction(route, root, out, summary, mpp, base.size, ox, oy)
 
     draw = ImageDraw.Draw(base, "RGBA")
     scale = max(1.0, base.width / 4096.0)
 
-    # Green SOLID waypoint-to-waypoint route. Never dashed. Never per-frame GT.
     gt_w = max(5, int(7 * scale))
     draw.line(gt, fill=HALO, width=gt_w + 6, joint="curve")
     draw.line(gt, fill=GT, width=gt_w, joint="curve")
 
-    # Mark only the sparse official waypoints, making the GT source obvious.
     radius = max(5, int(7 * scale))
     for x, y in gt:
         draw.ellipse(
@@ -244,7 +273,6 @@ def render(route: str, root: Path, out: Path, summary: dict) -> dict:
             width=max(2, int(2 * scale)),
         )
 
-    # RAW PREDICTION. No joint='curve'; no smoothing/interpolation.
     pred_w = max(4, int(5 * scale))
     draw.line(pred, fill=HALO, width=pred_w + 4)
     draw.line(pred, fill=PRED, width=pred_w)
@@ -252,11 +280,9 @@ def render(route: str, root: Path, out: Path, summary: dict) -> dict:
     crop = base.crop(_bounds((gt, pred), *base.size)).convert("RGBA")
     _legend(crop)
 
-    # Legacy output kept for existing scripts.
     legacy_dest = out / f"{route}_final_result.jpg"
     crop.convert("RGB").save(legacy_dest, quality=98, subsampling=0)
 
-    # Unambiguous paper-facing output: open THESE files, not old intermediate plots.
     paper_dir = out / "paper_figures_waypoint_gt"
     paper_dir.mkdir(parents=True, exist_ok=True)
     paper_dest = paper_dir / f"{route}_waypoint_gt_green.jpg"
@@ -271,6 +297,7 @@ def render(route: str, root: Path, out: Path, summary: dict) -> dict:
 
     return {
         "route": route,
+        "paper_name": ROUTE_TO_PAPER.get(route, route),
         "gt_display_source": str(waypoint_path),
         "gt_display_definition": "official sparse waypoints joined in waypoint_order",
         "gt_waypoint_count": len(gt),
@@ -300,8 +327,17 @@ def main() -> None:
     )
 
     audit = {}
-    for route in args.routes:
-        audit[route] = render(route, root, out, summaries[route])
+    for requested in args.routes:
+        route = _internal_route(requested)
+        summary_key, summary = _summary_for_route(summaries, route)
+        print(
+            f"[FINAL-PLOT-ALIAS] requested={requested} internal={route} "
+            f"summary_key={summary_key}",
+            flush=True,
+        )
+        row = render(route, root, out, summary)
+        row["summary_key"] = summary_key
+        audit[ROUTE_TO_PAPER.get(route, route)] = row
 
     audit_path = out / "paper_figures_waypoint_gt" / "plot_source_audit.json"
     audit_path.write_text(json.dumps(audit, indent=2), encoding="utf-8")
