@@ -8,6 +8,18 @@ cd "${ROOT}"
 # copies base_src into each city runtime.
 python3 -u v39_otherdata/patch_formal_v5_smooth.py
 
+# Make the inherited formal result uploader target the smooth branch, not the
+# original formal branch. This changes only where artifacts are committed.
+python3 - <<'PY'
+from pathlib import Path
+p = Path('v39_otherdata/run_bearing_iclr_ablation.sh')
+s = p.read_text(encoding='utf-8')
+s = s.replace('bearing-v5-formal-allcities', 'bearing-v5-formal-smooth-v1')
+s = s.replace('formal_bearing_v5_allcities_', 'formal_bearing_v5_smooth_')
+p.write_text(s, encoding='utf-8')
+print('[SMOOTH RUNNER] result upload branch: bearing-v5-formal-smooth-v1')
+PY
+
 # Resource-safe defaults inherited from the current formal pipeline.
 export CPU_THREADS_PER_CITY="${CPU_THREADS_PER_CITY:-2}"
 export CACHE_BATCH_SIZE="${CACHE_BATCH_SIZE:-128}"
@@ -43,10 +55,9 @@ printf '%s\n' \
   "Kalman final step max  : ${UAVSAT_KALMAN_FINAL_STEP_MAX_M} m" \
   "Route-frame smooth     : ${UAVSAT_ROUTE_FRAME_SMOOTH_RADIUS_M} m" \
   "CPU threads/city       : ${CPU_THREADS_PER_CITY}" \
+  "Results branch         : bearing-v5-formal-smooth-v1" \
   "================================================================================"
 
-# Prevent the inherited formal script from pushing results to the old formal
-# branch. The suite remains complete locally for inspection/comparison first.
-export UPLOAD_RESULTS=0
+export UPLOAD_RESULTS="${UPLOAD_RESULTS:-1}"
 
 exec nice -n "${CPU_NICE}" bash v39_otherdata/run_bearing_iclr_ablation_fixed.sh
