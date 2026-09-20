@@ -6,10 +6,10 @@ Main chain remains:
 
 Changes:
   1) keep current-frame feature explicitly;
-  2) add zero-initialized temporal residual adapter using delta and delta2;
+  2) add a temporal residual adapter plus a dedicated 3-frame delta2 head;
   3) initialize recurrent/Kalman motion from current-city training cadence;
-  4) make Kalman measurement-preserving residual fusion;
-  5) relax the final step corridor for high-confidence visual measurements.
+  4) use confidence-adaptive measurement-preserving residual Kalman fusion;
+  5) continuously relax the final step corridor as visual confidence rises.
 
 No held-out nav50/nav51 metric is read here.
 '''
@@ -51,10 +51,17 @@ if new_gru not in s:
 
 old_motion_head = "        self.motion_head = head(4)\n"
 new_motion_head = '''        self.motion_head = head(4)
-        # Zero-initialized temporal adapter: the base path remains stable and
-        # delta/delta2 only learn residual motion corrections.
+        # Shared temporal residual uses first + second difference.
         self.temporal_motion_head = nn.Sequential(
             nn.Linear(feature_dim * 2, hidden_dim // 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim // 2, 4),
+        )
+        # 3-frame-only residual: this branch receives delta2 alone and therefore
+        # cannot help the 1-frame or 2-frame ablations.
+        self.delta2_motion_head = nn.Sequential(
+            nn.Linear(feature_dim, hidden_dim // 2),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim // 2, 4),
@@ -76,7 +83,7 @@ old_recurrent = '''        recurrent_input = torch.cat(
         )
         new_hidden = self.gru(recurrent_input, hidden)
 '''
-new_recurrent = '''        # Current-frame feature is the base.  Temporal history enters only as
+new_recurrent = '''        # Current-frame feature is the base. Temporal history enters as
         # residual first/second differences, so 3-frame context cannot blur the
         # strongest current visual evidence.
         current_h = self.uav_projection(z_uav)
@@ -134,8 +141,8 @@ old_motion = '''        raw_motion = self.motion_head(h)
 '''
 new_motion = '''        raw_motion = self.motion_head(h)
 
-        # Dedicated temporal residual. Frame-1 has no temporal correction,
-        # Frame-2 uses first difference, and Frame-3 additionally uses delta2.
+        # Shared temporal residual. Frame-1 has no temporal correction;
+        # Frame-2 gets first difference; Frame-3 gets first + second difference.
         temporal_input = torch.cat([recent_h, accel_h], dim=1)
         temporal_raw = self.temporal_motion_head(temporal_input)
         frame_count = int(getattr(config, "EXPERIMENT_FRAME_COUNT", 3))
@@ -146,6 +153,11 @@ new_motion = '''        raw_motion = self.motion_head(h)
         else:
             temporal_scale = float(config.TEMPORAL_ADAPTER_3FRAME_SCALE)
         raw_motion = raw_motion + temporal_scale * temporal_raw
+
+        # Explicit second-order residual exists only for the 3-frame model.
+        if frame_count >= 3:
+            delta2_raw = self.delta2_motion_head(accel_h)
+            raw_motion = raw_motion + float(config.TEMPORAL_DELTA2_SCALE) * delta2_raw
 
         dv_parallel = torch.tanh(raw_motion[:, 0:1]) * float(
             config.MOTION_RESIDUAL_FORWARD_M
@@ -190,11 +202,13 @@ old_init = '''        # Avoid a large arbitrary initial speed. A small positive 
         init_speed = 0.75
         self.motion_head[-1].bias.data[0] = math.log(math.exp(init_speed) - 1.0)
 '''
-new_init = '''        # Both motion heads predict residuals around the city-cadence state.
+new_init = '''        # All motion heads start as zero residual around the city-cadence state.
         nn.init.zeros_(self.motion_head[-1].weight)
         nn.init.zeros_(self.motion_head[-1].bias)
         nn.init.zeros_(self.temporal_motion_head[-1].weight)
         nn.init.zeros_(self.temporal_motion_head[-1].bias)
+        nn.init.zeros_(self.delta2_motion_head[-1].weight)
+        nn.init.zeros_(self.delta2_motion_head[-1].bias)
 '''
 if new_init not in s:
     if s.count(old_init) != 1:
@@ -206,7 +220,8 @@ required_model = [
     "current_h = self.uav_projection(z_uav)",
     "self.visual_motion_projection(visual_motion)",
     "self.temporal_motion_head",
-    "TEMPORAL_ADAPTER_3FRAME_SCALE",
+    "self.delta2_motion_head",
+    "TEMPORAL_DELTA2_SCALE",
     "MOTION_RESIDUAL_FORWARD_M",
 ]
 missing = [x for x in required_model if x not in s]
@@ -247,7 +262,7 @@ sub1(r'^EARLY_SCORE_PROGRESS_WEIGHT\s*=\s*[0-9.]+\s*$', 'EARLY_SCORE_PROGRESS_WE
 sub1(r'^EARLY_SCORE_HEADING_WEIGHT\s*=\s*[0-9.]+\s*$', 'EARLY_SCORE_HEADING_WEIGHT = float(os.environ.get("UAVSAT_EARLY_HEADING_WEIGHT", "0.002"))', 'early heading weight')
 sub1(r'^EARLY_SCORE_MISS_WEIGHT\s*=\s*[0-9.]+\s*$', 'EARLY_SCORE_MISS_WEIGHT = float(os.environ.get("UAVSAT_EARLY_MISS_WEIGHT", "0.02"))', 'early miss weight')
 sub1(r'^EARLY_STOP_MIN_DELTA\s*=\s*[0-9.]+\s*$', 'EARLY_STOP_MIN_DELTA = float(os.environ.get("UAVSAT_EARLY_MIN_DELTA", "0.003"))', 'early stop delta')
-sub1(r'^EARLY_STOP_MIN_EPOCH\s*=\s*[0-9]+\s*$', 'EARLY_STOP_MIN_EPOCH = int(os.environ.get("UAVSAT_EARLY_MIN_EPOCH", "18"))', 'early stop min epoch')
+sub1(r'^EARLY_STOP_MIN_EPOCH\s*=\s*[0-9]+\s*$', 'EARLY_STOP_MIN_EPOCH = int(os.environ.get("UAVSAT_EARLY_MIN_EPOCH", "10"))', 'early stop min epoch')
 sub1(r'^SEED\s*=\s*2033\s*$', 'SEED = int(os.environ.get("UAVSAT_SEED", "2033"))', 'seed env')
 
 c += '''
@@ -258,21 +273,24 @@ MOTION_RESIDUAL_ACCEL_FORWARD_M = float(os.environ.get("UAVSAT_MOTION_RESIDUAL_A
 MOTION_RESIDUAL_ACCEL_CROSS_M = float(os.environ.get("UAVSAT_MOTION_RESIDUAL_ACCEL_CROSS_M", "0.75"))
 TEMPORAL_ADAPTER_2FRAME_SCALE = float(os.environ.get("UAVSAT_TEMPORAL_ADAPTER_2FRAME_SCALE", "0.45"))
 TEMPORAL_ADAPTER_3FRAME_SCALE = float(os.environ.get("UAVSAT_TEMPORAL_ADAPTER_3FRAME_SCALE", "1.00"))
+TEMPORAL_DELTA2_SCALE = float(os.environ.get("UAVSAT_TEMPORAL_DELTA2_SCALE", "1.00"))
 
-# Measurement-preserving residual Kalman.
-KALMAN_CONFIDENCE_POWER = float(os.environ.get("UAVSAT_KALMAN_CONFIDENCE_POWER", "0.35"))
-KALMAN_PRIOR_BLEND_BASE = float(os.environ.get("UAVSAT_KALMAN_PRIOR_BLEND_BASE", "0.08"))
+# Confidence-adaptive measurement-preserving residual Kalman.
+KALMAN_CONFIDENCE_POWER = float(os.environ.get("UAVSAT_KALMAN_CONFIDENCE_POWER", "0.50"))
+KALMAN_PRIOR_BLEND_BASE = float(os.environ.get("UAVSAT_KALMAN_PRIOR_BLEND_BASE", "0.00"))
 KALMAN_PRIOR_BLEND_LOWCONF_GAIN = float(os.environ.get("UAVSAT_KALMAN_PRIOR_BLEND_LOWCONF_GAIN", "0.18"))
 KALMAN_PRIOR_BLEND_MAX = float(os.environ.get("UAVSAT_KALMAN_PRIOR_BLEND_MAX", "0.30"))
-KALMAN_STEP_RELAX_CONFIDENCE = float(os.environ.get("UAVSAT_KALMAN_STEP_RELAX_CONFIDENCE", "0.52"))
-KALMAN_STEP_VISUAL_SLACK_M = float(os.environ.get("UAVSAT_KALMAN_STEP_VISUAL_SLACK_M", "1.5"))
+KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF = float(os.environ.get("UAVSAT_KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF", "0.60"))
+KALMAN_STEP_RELAX_CONFIDENCE = float(os.environ.get("UAVSAT_KALMAN_STEP_RELAX_CONFIDENCE", "0.55"))
+KALMAN_STEP_RELAX_WIDTH = float(os.environ.get("UAVSAT_KALMAN_STEP_RELAX_WIDTH", "0.08"))
+KALMAN_STEP_VISUAL_SLACK_M = float(os.environ.get("UAVSAT_KALMAN_STEP_VISUAL_SLACK_M", "3.0"))
 '''
 
 compile(c, str(cfg), "exec")
 cfg.write_text(c, encoding="utf-8")
 
 # -----------------------------------------------------------------------------
-# Tracker: cadence initialization + measurement-preserving residual Kalman.
+# Tracker: cadence initialization + confidence-adaptive residual Kalman.
 # -----------------------------------------------------------------------------
 tracker = p.with_name("robust_tracker.py")
 t = tracker.read_text(encoding="utf-8")
@@ -322,7 +340,7 @@ if new_train_state not in t:
     t = t.replace(old_train_state, new_train_state, 1)
 
 old_conf = '        confidence_scale = 1.0 / max(confidence * confidence, 0.05)\n'
-new_conf = '''        confidence_power = float(getattr(config, "KALMAN_CONFIDENCE_POWER", 0.35))
+new_conf = '''        confidence_power = float(getattr(config, "KALMAN_CONFIDENCE_POWER", 0.50))
         confidence_scale = 1.0 / max(confidence ** confidence_power, 0.25)
 '''
 if new_conf not in t:
@@ -344,10 +362,17 @@ old_post = '''        candidate_x[:2] = prior_position + bounded_correction
 '''
 new_post = '''        candidate_x[:2] = prior_position + bounded_correction
 
-        # Measurement-preserving residual Kalman: keep the current visual
-        # measurement as anchor and use Kalman only as a small residual.
+        # Smooth confidence-adaptive residual fusion. High-confidence visual
+        # measurements stay almost untouched; the prior contributes gradually
+        # only as confidence falls below the validation-selected cutoff.
+        blend_cutoff = max(
+            float(config.KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF), 1e-3
+        )
+        lowconf = float(np.clip(
+            (blend_cutoff - confidence) / blend_cutoff, 0.0, 1.0
+        ))
         prior_blend = float(config.KALMAN_PRIOR_BLEND_BASE) + (
-            1.0 - confidence
+            lowconf * lowconf
         ) * float(config.KALMAN_PRIOR_BLEND_LOWCONF_GAIN)
         prior_blend = float(np.clip(
             prior_blend, 0.0, float(config.KALMAN_PRIOR_BLEND_MAX)
@@ -366,16 +391,19 @@ if new_post not in t:
 old_allowed = '''        step_norm = float(np.linalg.norm(total_step))
         self.last_step_limited = bool(step_norm > allowed_step + 1e-9)
 '''
-new_allowed = '''        # High-confidence local visual evidence may relax the motion corridor.
-        # Low-confidence observations still receive the full constrained filter.
-        if confidence >= float(config.KALMAN_STEP_RELAX_CONFIDENCE):
-            visual_step = float(np.linalg.norm(raw_z - self.last_previous_position))
-            allowed_step = max(
-                allowed_step,
-                min(
-                    float(config.KALMAN_FINAL_STEP_MAX_M),
-                    visual_step + float(config.KALMAN_STEP_VISUAL_SLACK_M),
-                ),
+new_allowed = '''        # Continuous confidence relaxation instead of a hard inference gate.
+        # At high confidence the allowed corridor approaches the observed visual
+        # step; at low confidence the original motion constraint remains active.
+        visual_step = float(np.linalg.norm(raw_z - self.last_previous_position))
+        relax_center = float(config.KALMAN_STEP_RELAX_CONFIDENCE)
+        relax_width = max(float(config.KALMAN_STEP_RELAX_WIDTH), 1e-3)
+        visual_weight = 1.0 / (
+            1.0 + math.exp(-(confidence - relax_center) / relax_width)
+        )
+        visual_allowed = visual_step + float(config.KALMAN_STEP_VISUAL_SLACK_M)
+        if visual_allowed > allowed_step:
+            allowed_step = allowed_step + visual_weight * (
+                visual_allowed - allowed_step
             )
 
         step_norm = float(np.linalg.norm(total_step))
@@ -409,8 +437,8 @@ t = t.replace(
 )
 
 required_tracker = [
-    "KALMAN_PRIOR_BLEND_BASE",
-    "KALMAN_STEP_RELAX_CONFIDENCE",
+    "KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF",
+    "KALMAN_STEP_RELAX_WIDTH",
     "self.last_used_measurement = raw_z.copy()",
     "INIT_FORWARD_SPEED_M_PER_FRAME",
 ]
@@ -422,8 +450,8 @@ compile(t, str(tracker), "exec")
 tracker.write_text(t, encoding="utf-8")
 
 print("[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state")
-print("[PATCH OK] 3-frame has a unique second-difference temporal residual path; 1-frame adapter is zero")
+print("[PATCH OK] 3-frame has dedicated delta2-only residual head")
 print("[PATCH OK] training/validation/inference motion starts from current-city cadence")
-print("[PATCH OK] Kalman is measurement-preserving residual fusion")
-print("[PATCH OK] high-confidence visual measurements relax the final step corridor")
+print("[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion")
+print("[PATCH OK] step corridor = continuous confidence relaxation")
 print("[PATCH OK] no held-out navigation result is read by this patch")
