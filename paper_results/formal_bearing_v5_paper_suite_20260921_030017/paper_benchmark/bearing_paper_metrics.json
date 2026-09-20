@@ -1,0 +1,402 @@
+{
+  "suite": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151",
+  "localization_comparison": [
+    {
+      "Method": "University-1652",
+      "Recall@1_UAV_pct": 60.2,
+      "LSR@15_UAV_pct": 15.11,
+      "MLE_UAV_m": 33.15,
+      "MedLE_UAV_m": null
+    },
+    {
+      "Method": "SUES-200",
+      "Recall@1_UAV_pct": 66.6,
+      "LSR@15_UAV_pct": 15.76,
+      "MLE_UAV_m": 30.83,
+      "MedLE_UAV_m": null
+    },
+    {
+      "Method": "DenseUAV",
+      "Recall@1_UAV_pct": 73.43,
+      "LSR@15_UAV_pct": 16.54,
+      "MLE_UAV_m": 28.79,
+      "MedLE_UAV_m": null
+    },
+    {
+      "Method": "GTA-UAV",
+      "Recall@1_UAV_pct": 70.71,
+      "LSR@15_UAV_pct": 27.96,
+      "MLE_UAV_m": 28.43,
+      "MedLE_UAV_m": null
+    },
+    {
+      "Method": "Bearing-UAV (VGG-16)",
+      "Recall@1_UAV_pct": 83.17,
+      "LSR@15_UAV_pct": 89.36,
+      "MLE_UAV_m": 8.61,
+      "MedLE_UAV_m": 7.3
+    },
+    {
+      "Method": "Yours (Forward-18 + GRU + Kalman + SoftMS)",
+      "Recall@1_UAV_pct": 97.28629579375848,
+      "LSR@15_UAV_pct": 100.0,
+      "MLE_UAV_m": 3.6584105667685822,
+      "MedLE_UAV_m": 3.36603027111308
+    }
+  ],
+  "camera_heading_reference": [
+    {
+      "Method": "University-1652",
+      "HSR@15_camera_pct": null,
+      "MHE_camera_deg": null,
+      "MedHE_camera_deg": null
+    },
+    {
+      "Method": "SUES-200",
+      "HSR@15_camera_pct": null,
+      "MHE_camera_deg": null,
+      "MedHE_camera_deg": null
+    },
+    {
+      "Method": "DenseUAV",
+      "HSR@15_camera_pct": null,
+      "MHE_camera_deg": null,
+      "MedHE_camera_deg": null
+    },
+    {
+      "Method": "GTA-UAV",
+      "HSR@15_camera_pct": null,
+      "MHE_camera_deg": null,
+      "MedHE_camera_deg": null
+    },
+    {
+      "Method": "Bearing-UAV (VGG-16)",
+      "HSR@15_camera_pct": 77.21,
+      "MHE_camera_deg": 12.9,
+      "MedHE_camera_deg": 7.2
+    },
+    {
+      "Method": "Yours (current model)",
+      "HSR@15_camera_pct": null,
+      "MHE_camera_deg": null,
+      "MedHE_camera_deg": null
+    }
+  ],
+  "motion_heading_diagnostic": [
+    {
+      "Method": "Yours (motion/ground-track heading diagnostic)",
+      "MotionMHE_deg": 37.40367984197248,
+      "MotionMedHE_deg": 23.69805325300426,
+      "MotionHSR@15_pct": 37.381275440976935
+    }
+  ],
+  "per_city": [
+    {
+      "City": "citya",
+      "Recall@1_4RST_derived_pct": 97.82016348773843,
+      "MLE_m": 4.064654038251479,
+      "MedLE_m": 3.903859964503799,
+      "LSR@15_pct": 100.0,
+      "MotionMHE_deg": 36.73909908253828,
+      "MotionHSR@15_pct": 40.59945504087194
+    },
+    {
+      "City": "cityb",
+      "Recall@1_4RST_derived_pct": 97.10982658959537,
+      "MLE_m": 3.3995808821858313,
+      "MedLE_m": 3.0710916167041082,
+      "LSR@15_pct": 100.0,
+      "MotionMHE_deg": 39.06901213352922,
+      "MotionHSR@15_pct": 36.127167630057805
+    },
+    {
+      "City": "cityc",
+      "Recall@1_4RST_derived_pct": 97.40932642487047,
+      "MLE_m": 3.674137038863192,
+      "MedLE_m": 3.3444943218607106,
+      "LSR@15_pct": 100.0,
+      "MotionMHE_deg": 37.41868351666673,
+      "MotionHSR@15_pct": 35.49222797927461
+    },
+    {
+      "City": "cityd",
+      "Recall@1_4RST_derived_pct": 96.8,
+      "MLE_m": 3.483459363042953,
+      "MedLE_m": 3.2560471505007955,
+      "LSR@15_pct": 100.0,
+      "MotionMHE_deg": 36.50209250171044,
+      "MotionHSR@15_pct": 37.333333333333336
+    }
+  ],
+  "per_route": [
+    {
+      "City": "citya",
+      "Route": "nav50",
+      "Frames": 162,
+      "MLE_m": 4.093728116836183,
+      "MedLE_m": 4.002118509287238,
+      "P90_m": 7.133331549353188,
+      "P95_m": 7.791433888302857,
+      "P99_m": 8.98066352268895,
+      "LSR@5_pct": 67.28395061728395,
+      "LSR@10_pct": 99.38271604938271,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "MotionMHE_deg": 37.76437061978556,
+      "MotionMedHE_deg": 22.85892233998113,
+      "MotionHSR@15_pct": 38.88888888888889,
+      "NE_m_route_replay": 2.7060048213575154,
+      "SR@20_pct_route_replay": 100.0,
+      "SPL_pct_route_replay": 100.0,
+      "JumpRate_pct": 0.0,
+      "MaxFinalStep_m": 21.15033674396723,
+      "InferenceMean_ms": 46.24387326673317,
+      "FPS": 21.62448621533132,
+      "Recall@1_4RST_derived_pct": 98.14814814814815,
+      "CSV": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "citya",
+      "Route": "nav51",
+      "Frames": 205,
+      "MLE_m": 4.041678424930884,
+      "MedLE_m": 3.826211748626154,
+      "P90_m": 6.790272779297475,
+      "P95_m": 8.283545456055718,
+      "P99_m": 10.528010690819288,
+      "LSR@5_pct": 67.8048780487805,
+      "LSR@10_pct": 98.53658536585365,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "MotionMHE_deg": 35.92888450188435,
+      "MotionMedHE_deg": 21.269892762791315,
+      "MotionHSR@15_pct": 41.951219512195124,
+      "NE_m_route_replay": 6.48364316149166,
+      "SR@20_pct_route_replay": 100.0,
+      "SPL_pct_route_replay": 100.0,
+      "JumpRate_pct": 1.951219512195122,
+      "MaxFinalStep_m": 19.902982667705473,
+      "InferenceMean_ms": 48.384848748129315,
+      "FPS": 20.667626868186968,
+      "Recall@1_4RST_derived_pct": 97.5609756097561,
+      "CSV": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "cityb",
+      "Route": "nav50",
+      "Frames": 160,
+      "MLE_m": 3.3724184006961124,
+      "MedLE_m": 3.195504202327932,
+      "P90_m": 6.100990232290828,
+      "P95_m": 6.898397927915922,
+      "P99_m": 8.655490024664772,
+      "LSR@5_pct": 81.875,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "MotionMHE_deg": 38.189080673984584,
+      "MotionMedHE_deg": 25.08697910561176,
+      "MotionHSR@15_pct": 35.625,
+      "NE_m_route_replay": 9.127827629090648,
+      "SR@20_pct_route_replay": 100.0,
+      "SPL_pct_route_replay": 100.0,
+      "JumpRate_pct": 0.625,
+      "MaxFinalStep_m": 22.75752437354344,
+      "InferenceMean_ms": 48.13959190796595,
+      "FPS": 20.77292225309712,
+      "Recall@1_4RST_derived_pct": 96.875,
+      "CSV": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "cityb",
+      "Route": "nav51",
+      "Frames": 186,
+      "MLE_m": 3.4229464576608586,
+      "MedLE_m": 2.964070037672862,
+      "P90_m": 6.13163569107329,
+      "P95_m": 7.162371226571375,
+      "P99_m": 9.565165565295464,
+      "LSR@5_pct": 80.64516129032258,
+      "LSR@10_pct": 99.46236559139786,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "MotionMHE_deg": 39.825942421309556,
+      "MotionMedHE_deg": 26.688795285446055,
+      "MotionHSR@15_pct": 36.55913978494624,
+      "NE_m_route_replay": 10.665703021641137,
+      "SR@20_pct_route_replay": 100.0,
+      "SPL_pct_route_replay": 100.0,
+      "JumpRate_pct": 2.150537634408602,
+      "MaxFinalStep_m": 22.662491983770973,
+      "InferenceMean_ms": 41.2273177356329,
+      "FPS": 24.25576183278343,
+      "Recall@1_4RST_derived_pct": 97.31182795698925,
+      "CSV": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "cityc",
+      "Route": "nav50",
+      "Frames": 159,
+      "MLE_m": 3.9396763275513917,
+      "MedLE_m": 3.5540690953423706,
+      "P90_m": 6.995719344511485,
+      "P95_m": 8.49227369299725,
+      "P99_m": 11.304828697453761,
+      "LSR@5_pct": 76.10062893081762,
+      "LSR@10_pct": 96.85534591194968,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "MotionMHE_deg": 38.683479614432855,
+      "MotionMedHE_deg": 22.67577526082032,
+      "MotionHSR@15_pct": 34.59119496855346,
+      "NE_m_route_replay": 0.7308557332910001,
+      "SR@20_pct_route_replay": 100.0,
+      "SPL_pct_route_replay": 100.0,
+      "JumpRate_pct": 0.0,
+      "MaxFinalStep_m": 19.881883400347657,
+      "InferenceMean_ms": 65.0538065406324,
+      "FPS": 15.371890642177922,
+      "Recall@1_4RST_derived_pct": 98.11320754716981,
+      "CSV": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "cityc",
+      "Route": "nav51",
+      "Frames": 227,
+      "MLE_m": 3.4881425591212376,
+      "MedLE_m": 3.197699656734791,
+      "P90_m": 6.2451347800669295,
+      "P95_m": 7.018135997444872,
+      "P99_m": 8.239450434624954,
+      "LSR@5_pct": 78.41409691629956,
+      "LSR@10_pct": 99.55947136563876,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "MotionMHE_deg": 36.53276906933275,
+      "MotionMedHE_deg": 24.002865230999248,
+      "MotionHSR@15_pct": 36.12334801762114,
+      "NE_m_route_replay": 6.817728111794928,
+      "SR@20_pct_route_replay": 100.0,
+      "SPL_pct_route_replay": 100.0,
+      "JumpRate_pct": 0.44052863436123346,
+      "MaxFinalStep_m": 24.65652906844877,
+      "InferenceMean_ms": 52.96759952951042,
+      "FPS": 18.87946610536615,
+      "Recall@1_4RST_derived_pct": 96.91629955947137,
+      "CSV": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "cityd",
+      "Route": "nav50",
+      "Frames": 140,
+      "MLE_m": 3.4676479269289464,
+      "MedLE_m": 3.3137608497165347,
+      "P90_m": 5.797503208294357,
+      "P95_m": 6.278453738903129,
+      "P99_m": 8.134320746813167,
+      "LSR@5_pct": 77.14285714285715,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "MotionMHE_deg": 33.783448083754934,
+      "MotionMedHE_deg": 25.139814288602043,
+      "MotionHSR@15_pct": 37.142857142857146,
+      "NE_m_route_replay": 1.0357817699378777,
+      "SR@20_pct_route_replay": 100.0,
+      "SPL_pct_route_replay": 100.0,
+      "JumpRate_pct": 0.0,
+      "MaxFinalStep_m": 22.4488972689812,
+      "InferenceMean_ms": 40.68141710013151,
+      "FPS": 24.58124793289876,
+      "Recall@1_4RST_derived_pct": 97.85714285714286,
+      "CSV": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "cityd",
+      "Route": "nav51",
+      "Frames": 235,
+      "MLE_m": 3.492878942004489,
+      "MedLE_m": 3.2216645211807804,
+      "P90_m": 5.94658478572964,
+      "P95_m": 6.701944798385787,
+      "P99_m": 9.359733012666744,
+      "LSR@5_pct": 83.82978723404256,
+      "LSR@10_pct": 99.57446808510639,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "MotionMHE_deg": 38.12171045283287,
+      "MotionMedHE_deg": 24.063704078715862,
+      "MotionHSR@15_pct": 37.4468085106383,
+      "NE_m_route_replay": 8.282970940393673,
+      "SR@20_pct_route_replay": 100.0,
+      "SPL_pct_route_replay": 100.0,
+      "JumpRate_pct": 0.425531914893617,
+      "MaxFinalStep_m": 22.654499195873594,
+      "InferenceMean_ms": 39.36063091448964,
+      "FPS": 25.406096822291403,
+      "Recall@1_4RST_derived_pct": 96.17021276595744,
+      "CSV": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    }
+  ],
+  "bearing_naver_reference": [
+    {
+      "Method": "University-1652",
+      "SR@20_UAV_pct": 0.0,
+      "SPL_UAV_pct": 0.0,
+      "NE_UAV_m": 602.96
+    },
+    {
+      "Method": "SUES-200",
+      "SR@20_UAV_pct": 0.0,
+      "SPL_UAV_pct": 0.0,
+      "NE_UAV_m": 618.85
+    },
+    {
+      "Method": "DenseUAV",
+      "SR@20_UAV_pct": 0.0,
+      "SPL_UAV_pct": 0.0,
+      "NE_UAV_m": 651.93
+    },
+    {
+      "Method": "GTA-UAV",
+      "SR@20_UAV_pct": 0.0,
+      "SPL_UAV_pct": 0.0,
+      "NE_UAV_m": 661.91
+    },
+    {
+      "Method": "Bearing-UAV (VGG-16)",
+      "SR@20_UAV_pct": 50.0,
+      "SPL_UAV_pct": 29.82,
+      "NE_UAV_m": 275.61
+    },
+    {
+      "Method": "Yours (current offline replay)",
+      "SR@20_UAV_pct": null,
+      "SPL_UAV_pct": null,
+      "NE_UAV_m": null
+    }
+  ],
+  "route_replay_diagnostic": [
+    {
+      "Method": "Yours route-replay diagnostic",
+      "SR@20_pct_route_replay": 100.0,
+      "SPL_pct_route_replay": 100.0,
+      "NE_m_route_replay": 5.731314398624805
+    }
+  ],
+  "efficiency": [
+    {
+      "Method": "Yours",
+      "OnDiskCheckpointSize_MB_per_city": 64.1939811706543,
+      "EndToEndInferenceMean_ms": 47.553164354655664,
+      "FPS": 21.029094773628785,
+      "GFLOPs": null
+    }
+  ],
+  "protocol_notes": {
+    "controlled_prior": "Current results use controlled_gt_jitter local prior and are not fully GT-free deployment results.",
+    "Recall@1": "Ours is a 4-RST-derived decision from continuous XY, not a retrieval-head output.",
+    "heading": "Current heading_error_deg is causal ground-track/motion heading derived from GT(t)-GT(t-1), NOT Bearing-UAV camera yaw. Therefore current MotionMHE/HSR are not inserted into the Bearing camera-heading comparison.",
+    "navigation": "Route-replay SR/SPL/NE are not Bearing-Naver closed-loop navigation metrics."
+  }
+}

@@ -1,0 +1,1565 @@
+{
+  "suite": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151",
+  "protocol_notes": {
+    "temporal_context": "frames1/frames2 are separately trained temporal checkpoints on the same training split; Full is the 3-frame trained checkpoint.",
+    "decoder": "Top-1 and posterior-weighted rows change only the front visual anchor; Full preserves the formal front SoftMS.",
+    "other_rows": "Other rows are inference/component or sensitivity ablations reusing the Full checkpoint unless the row explicitly says otherwise.",
+    "selection": "No nav50/nav51 metric is used to select ablation settings.",
+    "controlled_prior": "This remains a controlled local-prior/jitter experiment and must not be described as fully GT-free deployment."
+  },
+  "groups": {
+    "core_components": [
+      {
+        "Variant": "no_gru",
+        "Label": "w/o GRU (inference removal)",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 4.157999723472594,
+        "MedLE_m": 3.921729777351425,
+        "P90_m": 7.052564735224077,
+        "LSR@5_pct": 68.79240162822252,
+        "LSR@10_pct": 98.50746268656717,
+        "LSR@15_pct": 99.93215739484395,
+        "MHE_deg": 37.72534167085608,
+        "MedHE_deg": 23.96434777361425,
+        "HSR@15_pct": 37.04206241519674,
+        "JumpRate_pct": 0.8819538670284939,
+        "MaxFinalStep_m": 24.670323636744648,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 54.92347198585238,
+        "FPS": 18.20715194876223,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/no_gru/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/no_gru/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/no_gru/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/no_gru/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/no_gru/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/no_gru/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/no_gru/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/no_gru/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.4995891567040118,
+        "DeltaLSR15_pp_vsFull": -0.06784260515604501,
+        "DeltaMHE_deg_vsFull": 0.32166182888359884,
+        "DeltaHSR15_pp_vsFull": -0.33921302578019663,
+        "DeltaLatency_ms_vsFull": 7.370307631196717
+      },
+      {
+        "Variant": "no_kalman",
+        "Label": "w/o Kalman",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 3.6576294392411848,
+        "MedLE_m": 3.3500432830029525,
+        "P90_m": 6.5347195624079255,
+        "LSR@5_pct": 76.52645861601086,
+        "LSR@10_pct": 99.1180461329715,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.374029710634815,
+        "MedHE_deg": 23.672479594589817,
+        "HSR@15_pct": 37.3134328358209,
+        "JumpRate_pct": 0.7462686567164178,
+        "MaxFinalStep_m": 24.925672435056864,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 50.57686563515517,
+        "FPS": 19.771885573409595,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/no_kalman/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/no_kalman/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/no_kalman/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/no_kalman/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/no_kalman/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/no_kalman/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/no_kalman/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/no_kalman/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": -0.0007811275273974516,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": -0.02965013133766803,
+        "DeltaHSR15_pp_vsFull": -0.0678426051560379,
+        "DeltaLatency_ms_vsFull": 3.023701280499509
+      },
+      {
+        "Variant": "no_ms",
+        "Label": "w/o final MeanShift",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 6.658384911767318,
+        "MedLE_m": 6.47511385340378,
+        "P90_m": 11.4967657047217,
+        "LSR@5_pct": 34.599728629579374,
+        "LSR@10_pct": 83.10719131614654,
+        "LSR@15_pct": 98.16824966078698,
+        "MHE_deg": 38.612648967395145,
+        "MedHE_deg": 24.31128266946554,
+        "HSR@15_pct": 36.702849389416556,
+        "JumpRate_pct": 7.598371777476255,
+        "MaxFinalStep_m": 27.167677074108415,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 44.41838344246948,
+        "FPS": 22.513201123025926,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/no_ms/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/no_ms/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/no_ms/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/no_ms/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/no_ms/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/no_ms/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/no_ms/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/no_ms/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 2.999974344998736,
+        "DeltaLSR15_pp_vsFull": -1.8317503392130163,
+        "DeltaMHE_deg_vsFull": 1.2089691254226622,
+        "DeltaHSR15_pp_vsFull": -0.678426051560379,
+        "DeltaLatency_ms_vsFull": -3.134780912186187
+      },
+      {
+        "Variant": "no_heading_feedback",
+        "Label": "w/o learned heading feedback",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 3.6593962567204366,
+        "MedLE_m": 3.38314133630922,
+        "P90_m": 6.501972440085692,
+        "LSR@5_pct": 76.93351424694708,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.39830784903372,
+        "MedHE_deg": 23.614649559122235,
+        "HSR@15_pct": 37.24559023066486,
+        "JumpRate_pct": 0.7462686567164178,
+        "MaxFinalStep_m": 24.656582133427634,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 50.75529312463465,
+        "FPS": 19.702378578415477,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/no_heading_feedback/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/no_heading_feedback/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/no_heading_feedback/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/no_heading_feedback/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/no_heading_feedback/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/no_heading_feedback/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/no_heading_feedback/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/no_heading_feedback/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.0009856899518543294,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": -0.00537199293876256,
+        "DeltaHSR15_pp_vsFull": -0.1356852103120758,
+        "DeltaLatency_ms_vsFull": 3.2021287699789838
+      },
+      {
+        "Variant": "full",
+        "Label": "SoftMS visual anchor (Full)",
+        "AblationProtocol": "trained Full baseline",
+        "Frames": 1474,
+        "MLE_m": 3.6584105667685822,
+        "MedLE_m": 3.36603027111308,
+        "P90_m": 6.502063682134365,
+        "LSR@5_pct": 76.86567164179104,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.40367984197248,
+        "MedHE_deg": 23.69805325300426,
+        "HSR@15_pct": 37.381275440976935,
+        "JumpRate_pct": 0.7462686567164178,
+        "MaxFinalStep_m": 24.65652906844877,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 47.553164354655664,
+        "FPS": 21.029094773628785,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.0,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.0,
+        "DeltaHSR15_pp_vsFull": 0.0,
+        "DeltaLatency_ms_vsFull": 0.0
+      }
+    ],
+    "temporal_context_retrained": [
+      {
+        "Variant": "frames1",
+        "Label": "1 frame (retrained temporal)",
+        "AblationProtocol": "retrained temporal-context ablation",
+        "Frames": 1474,
+        "MLE_m": 3.6406830093161173,
+        "MedLE_m": 3.342086859177507,
+        "P90_m": 6.392362007179105,
+        "LSR@5_pct": 76.93351424694708,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.53717820610277,
+        "MedHE_deg": 23.945518295768082,
+        "HSR@15_pct": 37.58480325644505,
+        "JumpRate_pct": 0.47489823609226595,
+        "MaxFinalStep_m": 24.5748297935125,
+        "SelectedCapture_pct": 98.98236092265942,
+        "InferenceMean_ms": 53.500967362157624,
+        "FPS": 18.691250818528587,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/frames1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/frames1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/frames1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/frames1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/frames1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/frames1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/frames1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/frames1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": -0.017727557452464904,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.13349836413028981,
+        "DeltaHSR15_pp_vsFull": 0.20352781546811372,
+        "DeltaLatency_ms_vsFull": 5.94780300750196
+      },
+      {
+        "Variant": "frames2",
+        "Label": "2 frames (retrained temporal)",
+        "AblationProtocol": "retrained temporal-context ablation",
+        "Frames": 1474,
+        "MLE_m": 3.6341163280703572,
+        "MedLE_m": 3.356107478738991,
+        "P90_m": 6.379333148748826,
+        "LSR@5_pct": 77.54409769335142,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.467815240527486,
+        "MedHE_deg": 24.085571486522717,
+        "HSR@15_pct": 37.58480325644505,
+        "JumpRate_pct": 0.5427408412483039,
+        "MaxFinalStep_m": 24.622035982659284,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 52.92109576820963,
+        "FPS": 18.89605620374763,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/frames2/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/frames2/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/frames2/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/frames2/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/frames2/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/frames2/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/frames2/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/frames2/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": -0.024294238698225,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.06413539855500261,
+        "DeltaHSR15_pp_vsFull": 0.20352781546811372,
+        "DeltaLatency_ms_vsFull": 5.367931413553968
+      },
+      {
+        "Variant": "full",
+        "Label": "SoftMS visual anchor (Full)",
+        "AblationProtocol": "trained Full baseline",
+        "Frames": 1474,
+        "MLE_m": 3.6584105667685822,
+        "MedLE_m": 3.36603027111308,
+        "P90_m": 6.502063682134365,
+        "LSR@5_pct": 76.86567164179104,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.40367984197248,
+        "MedHE_deg": 23.69805325300426,
+        "HSR@15_pct": 37.381275440976935,
+        "JumpRate_pct": 0.7462686567164178,
+        "MaxFinalStep_m": 24.65652906844877,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 47.553164354655664,
+        "FPS": 21.029094773628785,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.0,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.0,
+        "DeltaHSR15_pp_vsFull": 0.0,
+        "DeltaLatency_ms_vsFull": 0.0
+      }
+    ],
+    "search_policy": [
+      {
+        "Variant": "full36",
+        "Label": "Full 6x6 scoring (36 candidates)",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 3.4475975539509456,
+        "MedLE_m": 3.05388684472011,
+        "P90_m": 6.2731964758090495,
+        "LSR@5_pct": 77.34056987788331,
+        "LSR@10_pct": 99.32157394843962,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.462821724775864,
+        "MedHE_deg": 23.530478703801386,
+        "HSR@15_pct": 37.10990502035278,
+        "JumpRate_pct": 0.5427408412483039,
+        "MaxFinalStep_m": 26.051171408161323,
+        "SelectedCapture_pct": 100.0,
+        "InferenceMean_ms": 60.09882238941214,
+        "FPS": 16.63926114093334,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full36/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full36/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full36/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full36/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full36/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full36/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full36/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full36/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": -0.21081301281763665,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.05914188280338095,
+        "DeltaHSR15_pp_vsFull": -0.2713704206241587,
+        "DeltaLatency_ms_vsFull": 12.545658034756478
+      },
+      {
+        "Variant": "full",
+        "Label": "SoftMS visual anchor (Full)",
+        "AblationProtocol": "trained Full baseline",
+        "Frames": 1474,
+        "MLE_m": 3.6584105667685822,
+        "MedLE_m": 3.36603027111308,
+        "P90_m": 6.502063682134365,
+        "LSR@5_pct": 76.86567164179104,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.40367984197248,
+        "MedHE_deg": 23.69805325300426,
+        "HSR@15_pct": 37.381275440976935,
+        "JumpRate_pct": 0.7462686567164178,
+        "MaxFinalStep_m": 24.65652906844877,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 47.553164354655664,
+        "FPS": 21.029094773628785,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.0,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.0,
+        "DeltaHSR15_pp_vsFull": 0.0,
+        "DeltaLatency_ms_vsFull": 0.0
+      }
+    ],
+    "visual_anchor": [
+      {
+        "Variant": "front_top1",
+        "Label": "Top-1 visual anchor",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 4.348475895874922,
+        "MedLE_m": 3.9772053807763728,
+        "P90_m": 7.657060342193921,
+        "LSR@5_pct": 66.21438263229308,
+        "LSR@10_pct": 97.15061058344641,
+        "LSR@15_pct": 99.79647218453188,
+        "MHE_deg": 37.81063498389911,
+        "MedHE_deg": 24.19395436389579,
+        "HSR@15_pct": 36.77069199457259,
+        "JumpRate_pct": 3.0529172320217097,
+        "MaxFinalStep_m": 26.045088363748434,
+        "SelectedCapture_pct": 98.98236092265942,
+        "InferenceMean_ms": 53.542134638248946,
+        "FPS": 18.676879559554003,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/front_top1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/front_top1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/front_top1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/front_top1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/front_top1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/front_top1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/front_top1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/front_top1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.6900653291063401,
+        "DeltaLSR15_pp_vsFull": -0.20352781546812082,
+        "DeltaMHE_deg_vsFull": 0.4069551419266233,
+        "DeltaHSR15_pp_vsFull": -0.6105834464043483,
+        "DeltaLatency_ms_vsFull": 5.988970283593282
+      },
+      {
+        "Variant": "front_weighted",
+        "Label": "Posterior-weighted visual anchor",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 3.8844265305089185,
+        "MedLE_m": 3.5759674948312092,
+        "P90_m": 6.875227384400019,
+        "LSR@5_pct": 73.33785617367707,
+        "LSR@10_pct": 98.7788331071913,
+        "LSR@15_pct": 99.86431478968792,
+        "MHE_deg": 37.55967866630697,
+        "MedHE_deg": 23.78504453126533,
+        "HSR@15_pct": 36.90637720488466,
+        "JumpRate_pct": 1.0854816824966078,
+        "MaxFinalStep_m": 25.46869204431303,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 54.17225072084543,
+        "FPS": 18.459635453455526,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/front_weighted/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/front_weighted/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/front_weighted/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/front_weighted/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/front_weighted/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/front_weighted/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/front_weighted/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/front_weighted/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.22601596374033628,
+        "DeltaLSR15_pp_vsFull": -0.1356852103120758,
+        "DeltaMHE_deg_vsFull": 0.15599882433448897,
+        "DeltaHSR15_pp_vsFull": -0.47489823609227244,
+        "DeltaLatency_ms_vsFull": 6.619086366189769
+      },
+      {
+        "Variant": "full",
+        "Label": "SoftMS visual anchor (Full)",
+        "AblationProtocol": "trained Full baseline",
+        "Frames": 1474,
+        "MLE_m": 3.6584105667685822,
+        "MedLE_m": 3.36603027111308,
+        "P90_m": 6.502063682134365,
+        "LSR@5_pct": 76.86567164179104,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.40367984197248,
+        "MedHE_deg": 23.69805325300426,
+        "HSR@15_pct": 37.381275440976935,
+        "JumpRate_pct": 0.7462686567164178,
+        "MaxFinalStep_m": 24.65652906844877,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 47.553164354655664,
+        "FPS": 21.029094773628785,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.0,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.0,
+        "DeltaHSR15_pp_vsFull": 0.0,
+        "DeltaLatency_ms_vsFull": 0.0
+      }
+    ],
+    "prior_jitter_sensitivity": [
+      {
+        "Variant": "jitter0",
+        "Label": "Prior jitter 0 m",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 3.049705734239866,
+        "MedLE_m": 2.682554526710579,
+        "P90_m": 5.882132335617084,
+        "LSR@5_pct": 83.0393487109905,
+        "LSR@10_pct": 99.59294436906377,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.512740836952034,
+        "MedHE_deg": 23.438693636995144,
+        "HSR@15_pct": 37.51696065128901,
+        "JumpRate_pct": 0.13568521031207598,
+        "MaxFinalStep_m": 23.79602225891463,
+        "SelectedCapture_pct": 99.93215739484395,
+        "InferenceMean_ms": 52.056264240936635,
+        "FPS": 19.209983939139605,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/jitter0/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/jitter0/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/jitter0/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/jitter0/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/jitter0/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/jitter0/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/jitter0/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/jitter0/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": -0.6087048325287161,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.10906099497955069,
+        "DeltaHSR15_pp_vsFull": 0.1356852103120758,
+        "DeltaLatency_ms_vsFull": 4.503099886280971
+      },
+      {
+        "Variant": "jitter4",
+        "Label": "Prior jitter 4 m",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 3.1014919136878936,
+        "MedLE_m": 2.725183899492028,
+        "P90_m": 5.893212354910338,
+        "LSR@5_pct": 83.10719131614654,
+        "LSR@10_pct": 99.38941655359565,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.33479214843279,
+        "MedHE_deg": 23.426431773593322,
+        "HSR@15_pct": 37.3134328358209,
+        "JumpRate_pct": 0.40705563093622793,
+        "MaxFinalStep_m": 25.09815132887118,
+        "SelectedCapture_pct": 99.93215739484395,
+        "InferenceMean_ms": 58.48119504057286,
+        "FPS": 17.099513772012077,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/jitter4/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/jitter4/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/jitter4/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/jitter4/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/jitter4/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/jitter4/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/jitter4/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/jitter4/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": -0.5569186530806887,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": -0.06888769353969337,
+        "DeltaHSR15_pp_vsFull": -0.0678426051560379,
+        "DeltaLatency_ms_vsFull": 10.928030685917193
+      },
+      {
+        "Variant": "full",
+        "Label": "SoftMS visual anchor (Full)",
+        "AblationProtocol": "trained Full baseline",
+        "Frames": 1474,
+        "MLE_m": 3.6584105667685822,
+        "MedLE_m": 3.36603027111308,
+        "P90_m": 6.502063682134365,
+        "LSR@5_pct": 76.86567164179104,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.40367984197248,
+        "MedHE_deg": 23.69805325300426,
+        "HSR@15_pct": 37.381275440976935,
+        "JumpRate_pct": 0.7462686567164178,
+        "MaxFinalStep_m": 24.65652906844877,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 47.553164354655664,
+        "FPS": 21.029094773628785,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.0,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.0,
+        "DeltaHSR15_pp_vsFull": 0.0,
+        "DeltaLatency_ms_vsFull": 0.0
+      },
+      {
+        "Variant": "jitter12",
+        "Label": "Prior jitter 12 m",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 4.81026609125317,
+        "MedLE_m": 4.55530635259486,
+        "P90_m": 8.137911028447236,
+        "LSR@5_pct": 55.76662143826323,
+        "LSR@10_pct": 96.74355495251018,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.75393419662399,
+        "MedHE_deg": 23.875342841291534,
+        "HSR@15_pct": 37.04206241519674,
+        "JumpRate_pct": 1.3568521031207599,
+        "MaxFinalStep_m": 22.663639243372785,
+        "SelectedCapture_pct": 70.82767978290366,
+        "InferenceMean_ms": 52.051878081548715,
+        "FPS": 19.211602671344895,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/jitter12/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/jitter12/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/jitter12/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/jitter12/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/jitter12/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/jitter12/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/jitter12/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/jitter12/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 1.1518555244845876,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.35025435465150423,
+        "DeltaHSR15_pp_vsFull": -0.33921302578019663,
+        "DeltaLatency_ms_vsFull": 4.498713726893051
+      },
+      {
+        "Variant": "jitter16",
+        "Label": "Prior jitter 16 m",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 6.49304410677285,
+        "MedLE_m": 6.135463386620511,
+        "P90_m": 11.032216667183393,
+        "LSR@5_pct": 36.77069199457259,
+        "LSR@10_pct": 85.0067842605156,
+        "LSR@15_pct": 98.5753052917232,
+        "MHE_deg": 38.329659236900376,
+        "MedHE_deg": 24.256222701476958,
+        "HSR@15_pct": 36.49932157394844,
+        "JumpRate_pct": 2.8493894165535956,
+        "MaxFinalStep_m": 31.85084030468517,
+        "SelectedCapture_pct": 36.36363636363637,
+        "InferenceMean_ms": 53.045228737807015,
+        "FPS": 18.85183689079407,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/jitter16/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/jitter16/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/jitter16/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/jitter16/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/jitter16/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/jitter16/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/jitter16/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/jitter16/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 2.834633540004268,
+        "DeltaLSR15_pp_vsFull": -1.4246947082768031,
+        "DeltaMHE_deg_vsFull": 0.9259793949278929,
+        "DeltaHSR15_pp_vsFull": -0.8819538670284928,
+        "DeltaLatency_ms_vsFull": 5.492064383151352
+      }
+    ],
+    "final_ms_grid": [
+      {
+        "Variant": "grid4",
+        "Label": "Final MS grid 4x4",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 4.131238677022896,
+        "MedLE_m": 3.7237282644770313,
+        "P90_m": 7.456754976620645,
+        "LSR@5_pct": 68.86024423337857,
+        "LSR@10_pct": 97.42198100407056,
+        "LSR@15_pct": 99.86431478968792,
+        "MHE_deg": 37.64691986817484,
+        "MedHE_deg": 23.72991684523241,
+        "HSR@15_pct": 37.10990502035278,
+        "JumpRate_pct": 2.03527815468114,
+        "MaxFinalStep_m": 25.114405860558886,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 52.93864189214964,
+        "FPS": 18.889793244739277,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/grid4/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/grid4/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/grid4/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/grid4/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/grid4/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/grid4/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/grid4/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/grid4/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.4728281102543139,
+        "DeltaLSR15_pp_vsFull": -0.1356852103120758,
+        "DeltaMHE_deg_vsFull": 0.24324002620235774,
+        "DeltaHSR15_pp_vsFull": -0.2713704206241587,
+        "DeltaLatency_ms_vsFull": 5.385477537493976
+      },
+      {
+        "Variant": "grid5",
+        "Label": "Final MS grid 5x5",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 3.658732212403166,
+        "MedLE_m": 3.3629716206614395,
+        "P90_m": 6.502319049227985,
+        "LSR@5_pct": 76.66214382632293,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.40385302381109,
+        "MedHE_deg": 23.69805325300426,
+        "HSR@15_pct": 37.381275440976935,
+        "JumpRate_pct": 0.7462686567164178,
+        "MaxFinalStep_m": 24.65728138751793,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 52.67374490872986,
+        "FPS": 18.984790273270765,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/grid5/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/grid5/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/grid5/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/grid5/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/grid5/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/grid5/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/grid5/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/grid5/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.0003216456345835894,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.00017318183860481895,
+        "DeltaHSR15_pp_vsFull": 0.0,
+        "DeltaLatency_ms_vsFull": 5.120580554074195
+      },
+      {
+        "Variant": "full",
+        "Label": "SoftMS visual anchor (Full)",
+        "AblationProtocol": "trained Full baseline",
+        "Frames": 1474,
+        "MLE_m": 3.6584105667685822,
+        "MedLE_m": 3.36603027111308,
+        "P90_m": 6.502063682134365,
+        "LSR@5_pct": 76.86567164179104,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.40367984197248,
+        "MedHE_deg": 23.69805325300426,
+        "HSR@15_pct": 37.381275440976935,
+        "JumpRate_pct": 0.7462686567164178,
+        "MaxFinalStep_m": 24.65652906844877,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 47.553164354655664,
+        "FPS": 21.029094773628785,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": 0.0,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": 0.0,
+        "DeltaHSR15_pp_vsFull": 0.0,
+        "DeltaLatency_ms_vsFull": 0.0
+      },
+      {
+        "Variant": "grid7",
+        "Label": "Final MS grid 7x7",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 3.6360785951913077,
+        "MedLE_m": 3.3504741644952847,
+        "P90_m": 6.433665645427844,
+        "LSR@5_pct": 77.54409769335142,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.383700386763465,
+        "MedHE_deg": 23.67377278151941,
+        "HSR@15_pct": 37.381275440976935,
+        "JumpRate_pct": 0.5427408412483039,
+        "MaxFinalStep_m": 24.64695540613052,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 53.811321930335566,
+        "FPS": 18.583449804385136,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/grid7/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/grid7/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/grid7/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/grid7/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/grid7/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/grid7/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/grid7/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/grid7/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": -0.022331971577274512,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": -0.019979455209018226,
+        "DeltaHSR15_pp_vsFull": 0.0,
+        "DeltaLatency_ms_vsFull": 6.258157575679903
+      },
+      {
+        "Variant": "grid8",
+        "Label": "Final MS grid 8x8",
+        "AblationProtocol": "inference/component or sensitivity ablation using Full checkpoint",
+        "Frames": 1474,
+        "MLE_m": 3.6365924131042817,
+        "MedLE_m": 3.3533451887539325,
+        "P90_m": 6.435371225271153,
+        "LSR@5_pct": 77.54409769335142,
+        "LSR@10_pct": 99.18588873812755,
+        "LSR@15_pct": 100.0,
+        "MHE_deg": 37.38400126577598,
+        "MedHE_deg": 23.67377278151941,
+        "HSR@15_pct": 37.381275440976935,
+        "JumpRate_pct": 0.5427408412483039,
+        "MaxFinalStep_m": 24.646316213663834,
+        "SelectedCapture_pct": 99.05020352781547,
+        "InferenceMean_ms": 58.061567263733316,
+        "FPS": 17.223096914654327,
+        "Sources": [
+          {
+            "city": "citya",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/grid8/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "citya",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants/grid8/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/grid8/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityb",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants/grid8/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/grid8/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityc",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants/grid8/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav50",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/grid8/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          },
+          {
+            "city": "cityd",
+            "route": "nav51",
+            "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants/grid8/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+          }
+        ],
+        "DeltaMLE_m_vsFull": -0.02181815366430051,
+        "DeltaLSR15_pp_vsFull": 0.0,
+        "DeltaMHE_deg_vsFull": -0.019678576196504594,
+        "DeltaHSR15_pp_vsFull": 0.0,
+        "DeltaLatency_ms_vsFull": 10.508402909077653
+      }
+    ]
+  }
+}
