@@ -1,242 +1,82 @@
 #!/usr/bin/env python3
-"""Export paper-ready Bearing-UAV comparison metrics.
-
-Same mathematical metric definitions as Bearing-UAV:
-  MLE, MedLE, LSR@15
-
-IMPORTANT protocol note: this v39 experiment is controlled-local-prior temporal
-refinement on pseudo-flight sequences, whereas Bearing-UAV's paper evaluates its
-four-adjacent-RST pose-regression protocol.  Therefore equal metric names do NOT
-by themselves imply a fully apples-to-apples experimental protocol.
-
-Recall@1 is additionally derived using the SAME four-adjacent-RST quadrant
-criterion used by the official Bearing-UAV test code, but from our continuous
-final position.  It is exported with an explicit ``derived`` label.
-
-HSR/MHE/MedHE are NOT silently fabricated: v39's temporal heading represents
-route/motion heading, whereas Bearing-UAV supervises UAV camera heading.
-SR@20/SPL/NE are also left N/A because the current experiment is offline
-localization replay, not Bearing-Naver closed-loop flight.
-"""
 from __future__ import annotations
-
-import argparse
-import csv
-import json
-import math
+import argparse, csv, json, math
 from pathlib import Path
-
 import numpy as np
-import pandas as pd
 
-import bearing_prepare as bearing
+CITIES=('citya','cityb','cityc','cityd')
+LITERATURE=[
+ {'Method':'University-1652','Recall@1_UAV_pct':60.20,'LSR@15_UAV_pct':15.11,'MLE_UAV_m':33.15,'MHE_UAV_deg':None,'SR@20_UAV_pct':0.0,'SPL_UAV_pct':None,'NE_UAV_m':602.96},
+ {'Method':'SUES-200','Recall@1_UAV_pct':66.60,'LSR@15_UAV_pct':15.76,'MLE_UAV_m':30.83,'MHE_UAV_deg':None,'SR@20_UAV_pct':0.0,'SPL_UAV_pct':None,'NE_UAV_m':618.85},
+ {'Method':'DenseUAV','Recall@1_UAV_pct':73.43,'LSR@15_UAV_pct':16.54,'MLE_UAV_m':28.79,'MHE_UAV_deg':None,'SR@20_UAV_pct':0.0,'SPL_UAV_pct':None,'NE_UAV_m':651.93},
+ {'Method':'GTA-UAV','Recall@1_UAV_pct':70.71,'LSR@15_UAV_pct':27.96,'MLE_UAV_m':28.43,'MHE_UAV_deg':None,'SR@20_UAV_pct':0.0,'SPL_UAV_pct':None,'NE_UAV_m':661.91},
+ {'Method':'Bearing-UAV (VGG-16)','Recall@1_UAV_pct':83.17,'LSR@15_UAV_pct':89.36,'MLE_UAV_m':8.61,'MHE_UAV_deg':12.90,'SR@20_UAV_pct':50.0,'SPL_UAV_pct':None,'NE_UAV_m':275.61},
+]
 
-OFFICIAL_UAV_REFERENCES = {
-    "Bearing-UAV Mobile-V3S": {
-        "Recall@1_pct": 79.76,
-        "LSR@15_pct": 81.20,
-        "HSR@15_pct": 64.94,
-        "MLE_m": 10.34,
-        "MedLE_m": 8.72,
-        "MHE_deg": 19.53,
-        "MedHE_deg": 10.14,
-        "source": "CVPR 2026 supplementary Table 2, UAV view",
-    },
-    "Bearing-UAV VGG-16": {
-        "Recall@1_pct": 83.17,
-        "LSR@15_pct": 89.36,
-        "HSR@15_pct": 77.21,
-        "MLE_m": 8.61,
-        "MedLE_m": 7.30,
-        "MHE_deg": 12.90,
-        "MedHE_deg": 7.20,
-        "source": "CVPR 2026 supplementary Table 2, UAV view",
-    },
-}
-
-
-def _read_csv(path: Path):
-    with path.open("r", newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def _find_result_csv(output_dir: Path, route: str, summary: dict) -> Path:
-    p = Path(str(summary.get("CSV", "")))
-    if p.exists():
-        return p
-    q = output_dir / p.name
-    if q.exists():
-        return q
-    matches = sorted(output_dir.glob(f"{route}_*_frames.csv"))
-    if not matches:
-        raise FileNotFoundError(f"No result CSV for {route}")
-    return matches[-1]
-
-
-def _same_quadrant_recall(
-    result_rows, manifest_rows, city_rows: pd.DataFrame,
-    origin_x_m: float, origin_y_m: float,
-) -> float:
-    if len(result_rows) != len(manifest_rows):
-        raise RuntimeError("result/manifest length mismatch")
-    good = 0
-    total = 0
-    for pred, man in zip(result_rows, manifest_rows):
-        source_index = int(man["source_index"])
-        if source_index < 0 or source_index >= len(city_rows):
-            raise RuntimeError(f"source_index out of range: {source_index}")
-        meta = city_rows.iloc[source_index]
-
-        # Official Bearing global coordinate conversion:
-        # block*256 + 256 + normalized_offset*256.
-        center_x_px = float(meta["block_x"]) * bearing.PATCH_SIZE + bearing.PATCH_SIZE
-        center_y_px = float(meta["block_y"]) * bearing.PATCH_SIZE + bearing.PATCH_SIZE
-        final_abs_x_px = (float(pred["final_x"]) + origin_x_m) / bearing.MPP
-        final_abs_y_px = (float(pred["final_y"]) + origin_y_m) / bearing.MPP
-        pred_rel = np.asarray([
-            final_abs_x_px - center_x_px,
-            final_abs_y_px - center_y_px,
-        ], dtype=np.float64)
-        gt_rel = np.asarray([
-            float(meta["x_norm"]), float(meta["y_norm"])
-        ], dtype=np.float64)
-        # Scale does not affect sign. Match official RECALL_AT_K_PHR sign rule.
-        if np.array_equal(np.sign(pred_rel), np.sign(gt_rel)):
-            good += 1
-        total += 1
-    return 100.0 * good / max(total, 1)
-
-
-def compute(prepared_root: Path, output_dir: Path) -> dict:
-    exp = json.loads((prepared_root / "experiment.json").read_text(encoding="utf-8"))
-    summaries = json.loads((output_dir / "bearing_v39_summary.json").read_text(encoding="utf-8"))
-    city = str(exp["city"])
-    metadata = pd.read_csv(exp["metadata_csv"])
-    city_rows = bearing._city_rows(metadata, city)
-    train = _read_csv(prepared_root / "routes" / "train_01" / "manifest.csv")
-    if not train:
-        raise RuntimeError("empty train_01 manifest")
-    origin_x_m = float(train[0]["x_m"])
-    origin_y_m = float(train[0]["y_m"])
-
-    route_metrics = {}
-    flat_rows = []
-    all_errors = []
-    total_frames = 0
-    recall_good_equivalent = 0.0
-
-    for route in ("test_01", "test_02"):
-        s = summaries[route]
-        result_path = _find_result_csv(output_dir, route, s)
-        result = _read_csv(result_path)
-        manifest = _read_csv(prepared_root / "routes" / route / "manifest.csv")
-        if len(result) != len(manifest):
-            raise RuntimeError(f"{route}: result/manifest length mismatch")
-        errors = np.asarray([
-            math.hypot(
-                float(r["final_x"]) - float(r["gt_x"]),
-                float(r["final_y"]) - float(r["gt_y"]),
-            ) for r in result
-        ], dtype=np.float64)
-        recall = _same_quadrant_recall(
-            result, manifest, city_rows, origin_x_m, origin_y_m
-        )
-        metrics = {
-            "frames": len(result),
-            "Recall@1_derived_same_quadrant_pct": float(recall),
-            "MLE_m": float(errors.mean()),
-            "MedLE_m": float(np.median(errors)),
-            "LSR@5_pct": float(100.0 * np.mean(errors <= 5.0)),
-            "LSR@10_pct": float(100.0 * np.mean(errors <= 10.0)),
-            "LSR@15_pct": float(100.0 * np.mean(errors <= 15.0)),
-            "LSR@20_pct": float(100.0 * np.mean(errors <= 20.0)),
-            "P90_m": float(np.percentile(errors, 90)),
-            "P95_m": float(np.percentile(errors, 95)),
-            "P99_m": float(np.percentile(errors, 99)),
-            "HSR@15_pct": None,
-            "MHE_deg": None,
-            "MedHE_deg": None,
-            "SR@20_pct": None,
-            "SPL_pct": None,
-            "NE_m": None,
-        }
-        route_metrics[route] = metrics
-        flat_rows.append({"city": city, "route": route, **metrics})
-        all_errors.extend(errors.tolist())
-        total_frames += len(result)
-        recall_good_equivalent += recall * len(result) / 100.0
-
-    all_errors_arr = np.asarray(all_errors, dtype=np.float64)
-    aggregate = {
-        "frames": int(total_frames),
-        "Recall@1_derived_same_quadrant_pct": float(100.0 * recall_good_equivalent / max(total_frames, 1)),
-        "MLE_m": float(all_errors_arr.mean()),
-        "MedLE_m": float(np.median(all_errors_arr)),
-        "LSR@5_pct": float(100.0 * np.mean(all_errors_arr <= 5.0)),
-        "LSR@10_pct": float(100.0 * np.mean(all_errors_arr <= 10.0)),
-        "LSR@15_pct": float(100.0 * np.mean(all_errors_arr <= 15.0)),
-        "LSR@20_pct": float(100.0 * np.mean(all_errors_arr <= 20.0)),
-        "P90_m": float(np.percentile(all_errors_arr, 90)),
-        "P95_m": float(np.percentile(all_errors_arr, 95)),
-        "P99_m": float(np.percentile(all_errors_arr, 99)),
-        "HSR@15_pct": None,
-        "MHE_deg": None,
-        "MedHE_deg": None,
-        "SR@20_pct": None,
-        "SPL_pct": None,
-        "NE_m": None,
+def q(a,p): return float(np.percentile(np.asarray(a,float),p))
+def plen(x,y): return float(np.hypot(np.diff(x),np.diff(y)).sum())
+def read_csv(p):
+    with p.open(newline='',encoding='utf-8') as f:return list(csv.DictReader(f))
+def find_csv(full,nav):
+    prefix='route_B' if nav=='nav50' else 'route_C'
+    m=sorted(full.glob(prefix+'_*_frames.csv'))
+    if not m: raise FileNotFoundError(f'{full}: {nav} frames csv missing')
+    return m[-1]
+def metrics(rows):
+    err=np.asarray([float(r['error_final_m']) for r in rows])
+    he=np.asarray([abs(float(r['heading_error_deg'])) for r in rows if r.get('heading_error_deg','')!=''])
+    gx=np.asarray([float(r['gt_x']) for r in rows]); gy=np.asarray([float(r['gt_y']) for r in rows])
+    px=np.asarray([float(r['final_x']) for r in rows]); py=np.asarray([float(r['final_y']) for r in rows])
+    lat=np.asarray([float(r['end_to_end_latency_ms']) for r in rows if r.get('end_to_end_latency_ms','')!=''])
+    ne=float(math.hypot(px[-1]-gx[-1],py[-1]-gy[-1])); sr=float(ne<=20.0)
+    gl=plen(gx,gy); pl=plen(px,py); spl=sr*gl/max(gl,pl,1e-9)
+    return {
+      'Frames':len(rows),'MLE_m':float(err.mean()),'MedLE_m':float(np.median(err)),
+      'P90_m':q(err,90),'P95_m':q(err,95),'P99_m':q(err,99),
+      'LSR@5_pct':float((err<=5).mean()*100),'LSR@10_pct':float((err<=10).mean()*100),
+      'LSR@15_pct':float((err<=15).mean()*100),'LSR@20_pct':float((err<=20).mean()*100),
+      'MHE_deg':float(he.mean()) if len(he) else None,'MedHE_deg':float(np.median(he)) if len(he) else None,
+      'HSR@15_pct':float((he<=15).mean()*100) if len(he) else None,
+      'NE_m_route_replay':ne,'SR@20_pct_route_replay':100*sr,'SPL_pct_route_replay':100*spl,
+      'GTPath_m':gl,'PredPath_m':pl,'JumpRate_pct':100*sum(int(float(r.get('abnormal_jump','0') or 0))!=0 for r in rows)/len(rows),
+      'MaxFinalStep_m':max(float(r['final_step_m']) for r in rows),
+      'InferenceMean_ms':float(lat.mean()) if len(lat) else None,'FPS':float(1000/lat.mean()) if len(lat) and lat.mean()>0 else None,
     }
-
-    payload = {
-        "city": city,
-        "protocol": "v39 controlled-local-prior temporal refinement on Bearing pseudo-flight sequences",
-        "bearing_uav_reference_protocol": "four-adjacent-RST pose regression plus separate closed-loop Bearing-Naver navigation",
-        "same_metric_definition_but_protocol_requires_footnote": ["MLE_m", "MedLE_m", "LSR@15_pct"],
-        "protocol_footnote": (
-            "Metric formulas match Bearing-UAV, but the evaluation protocol differs: this v39 experiment uses a "
-            "controlled local prior and temporal pseudo-flight refinement, so the values must not be described as "
-            "a fully apples-to-apples replacement for Bearing-UAV's four-RST pose-regression benchmark."
-        ),
-        "derived_same_decision_criterion": {
-            "Recall@1_derived_same_quadrant_pct": (
-                "Uses the official Bearing-UAV four-adjacent-RST sign/quadrant criterion, "
-                "but is derived from this method's continuous final position rather than an RST retrieval head."
-            )
-        },
-        "not_available_under_current_protocol": {
-            "HSR@15_pct/MHE_deg/MedHE_deg": (
-                "Bearing-UAV evaluates supervised camera heading; v39 temporal heading is route/motion heading."
-            ),
-            "SR@20_pct/SPL_pct/NE_m": (
-                "Bearing-UAV computes these in closed-loop navigation; this experiment is offline localization replay."
-            ),
-        },
-        "routes": route_metrics,
-        "aggregate_two_routes": aggregate,
-        "official_uav_reference_rows": OFFICIAL_UAV_REFERENCES,
-    }
-    (output_dir / "bearing_paper_metrics.json").write_text(
-        json.dumps(payload, indent=2), encoding="utf-8"
-    )
-    with (output_dir / "bearing_paper_metrics.csv").open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(flat_rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(flat_rows)
-
-    print("[PAPER-METRICS]", city, json.dumps(aggregate, indent=2), flush=True)
-    print("[PAPER-METRICS] same metric definitions: MLE, MedLE, LSR@15 (protocol footnote REQUIRED)", flush=True)
-    print("[PAPER-METRICS] Recall@1*: derived with official same-quadrant criterion", flush=True)
-    print("[PAPER-METRICS] heading/navigation fields intentionally N/A (different task/protocol)", flush=True)
-    return payload
-
+def md(headers,rows):
+    def f(v):
+        if v is None:return '—'
+        if isinstance(v,float):return f'{v:.3f}'
+        return str(v)
+    return '\n'.join(['| '+' | '.join(headers)+' |','| '+' | '.join(['---']*len(headers))+' |']+['| '+' | '.join(f(r.get(h)) for h in headers)+' |' for r in rows])
+def write_csv(p,rows):
+    keys=[]
+    for r in rows:
+        for k in r:
+            if k not in keys: keys.append(k)
+    with p.open('w',newline='',encoding='utf-8') as f:
+        w=csv.DictWriter(f,fieldnames=keys);w.writeheader();w.writerows(rows)
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--prepared-root", required=True)
-    p.add_argument("--output-dir", required=True)
-    a = p.parse_args()
-    compute(Path(a.prepared_root).resolve(), Path(a.output_dir).resolve())
-
-
-if __name__ == "__main__":
-    main()
+    a=argparse.ArgumentParser();a.add_argument('--suite-root',required=True);a.add_argument('--output-dir');x=a.parse_args()
+    root=Path(x.suite_root).resolve();out=Path(x.output_dir or root/'paper_benchmark');out.mkdir(parents=True,exist_ok=True)
+    routes=[]; pooled=[]
+    for city in CITIES:
+        full=root/city/'variants'/'full'
+        if not (full/'bearing_v39_summary.json').is_file(): raise RuntimeError(f'missing summary: {city}')
+        for nav in ('nav50','nav51'):
+            cp=find_csv(full,nav); rows=read_csv(cp); pooled+=rows
+            r={'City':city,'Route':nav,**metrics(rows),'CSV':str(cp)};routes.append(r)
+    pm=metrics(pooled)
+    ours={'Method':'Yours (Forward-18 + GRU + Kalman + SoftMS)','Recall@1_UAV_pct':None,'LSR@15_UAV_pct':pm['LSR@15_pct'],'MLE_UAV_m':pm['MLE_m'],'MedLE_UAV_m':pm['MedLE_m'],'MHE_UAV_deg':pm['MHE_deg'],'MedHE_UAV_deg':pm['MedHE_deg'],'HSR@15_UAV_pct':pm['HSR@15_pct'],'SR@20_UAV_pct':float(np.mean([r['SR@20_pct_route_replay'] for r in routes])),'SPL_UAV_pct':float(np.mean([r['SPL_pct_route_replay'] for r in routes])),'NE_UAV_m':float(np.mean([r['NE_m_route_replay'] for r in routes]))}
+    cities=[]
+    for c in CITIES:
+        rr=[r for r in routes if r['City']==c]
+        cities.append({'City':c,'MLE_m':float(np.mean([r['MLE_m'] for r in rr])),'MedLE_m':float(np.mean([r['MedLE_m'] for r in rr])),'LSR@15_pct':float(np.mean([r['LSR@15_pct'] for r in rr])),'MHE_deg':float(np.mean([r['MHE_deg'] for r in rr])),'MedHE_deg':float(np.mean([r['MedHE_deg'] for r in rr])),'HSR@15_pct':float(np.mean([r['HSR@15_pct'] for r in rr]))})
+    comparison=LITERATURE+[ours]
+    payload={'suite':str(root),'ours_main':ours,'per_route':routes,'per_city':cities,'literature_comparison':comparison,'fairness':{'localization_heading':'MLE/MedLE/LSR/heading are computed from raw frame predictions. Heading uses the model recurrent heading output already logged as heading_error_deg.','Recall@1':'NOT filled for ours because Bearing-UAV Recall@1 is a four-adjacent-RST retrieval decision; Forward-18 top-1 is not substituted.','navigation':'SR@20/SPL/NE are exported as route-replay diagnostics only. They are NOT claimed as Bearing-Naver closed-loop equivalents.'}}
+    (out/'bearing_paper_metrics.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+    write_csv(out/'table_route_metrics.csv',routes);write_csv(out/'table_city_metrics.csv',cities);write_csv(out/'table_literature_comparison.csv',comparison)
+    lines=['# Bearing-UAV aligned paper tables','','## A. Localization + heading','',md(['Method','MLE_UAV_m','MedLE_UAV_m','LSR@15_UAV_pct','MHE_UAV_deg','MedHE_UAV_deg','HSR@15_UAV_pct'],[ours]),'','## B. Multi-city results','',md(['City','MLE_m','MedLE_m','LSR@15_pct','MHE_deg','MedHE_deg','HSR@15_pct'],cities),'','## C. Route-level navigation diagnostics','',md(['City','Route','NE_m_route_replay','SR@20_pct_route_replay','SPL_pct_route_replay','JumpRate_pct','MaxFinalStep_m'],routes),'','## D. Literature comparison','',md(['Method','Recall@1_UAV_pct','LSR@15_UAV_pct','MLE_UAV_m','MHE_UAV_deg','SR@20_UAV_pct','SPL_UAV_pct','NE_UAV_m'],comparison),'','## Protocol notes','','- Do not fill our Recall@1 with Forward-18 top-1. Bearing-UAV Recall@1 uses four adjacent RSTs.','- SR@20/SPL/NE here are route-replay diagnostics. They are not Bearing-Naver closed-loop results.','- MLE/MedLE/LSR@15/MHE/MedHE/HSR@15 are calculated directly from raw per-frame outputs.']
+    (out/'PAPER_TABLES.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    print('[PAPER BENCHMARK DONE]',out);print(json.dumps(ours,indent=2))
+if __name__=='__main__':main()
