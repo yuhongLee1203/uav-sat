@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate measured Bearing-UAV four-city ablations into paper tables."""
+"""Aggregate measured Bearing-UAV ablations into paper tables."""
 from __future__ import annotations
 
 import argparse
@@ -121,9 +121,10 @@ def _clean(row: dict) -> dict:
 
 def _markdown(rows: dict[str, dict], audit: dict, cities: list[str]) -> str:
     city_text = ", ".join(c.upper() for c in cities)
+    scope = "single-city" if len(cities) == 1 else f"{len(cities)}-city"
     lines = [
-        "# Bearing-UAV four-city ICLR ablation (measured)", "",
-        f"Dataset domains: {city_text}; held-out navigation trajectories are reported as nav50/nav51.",
+        f"# Bearing-UAV {scope} ICLR ablation (measured)", "",
+        f"Dataset domain(s): {city_text}; held-out navigation trajectories are reported as nav50/nav51.",
         "The local-search protocol is reported separately from the official Bearing-UAV global-regression benchmark.", "",
         "## Component removal", "",
         "| Variant | MLE (m) | P90 (m) | LSR@3 | LSR@5 | LSR@10 |", "|---|---:|---:|---:|---:|---:|",
@@ -144,10 +145,11 @@ def _markdown(rows: dict[str, dict], audit: dict, cities: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _latex(rows: dict[str, dict]) -> str:
+def _latex(rows: dict[str, dict], cities: list[str]) -> str:
+    city_text = ", ".join(c.upper() for c in cities)
     out = [
         "% Auto-generated from measured Bearing-UAV outputs. Do not edit values manually.",
-        "\\begin{table}[t]", "\\caption{Component ablation across Bearing-UAV Cities A--D.}", "\\label{tab:component-ablation}", "\\centering", "\\small", "\\begin{tabular}{lrrrrr}", "\\toprule", "Variant & MLE$\\downarrow$ & P90$\\downarrow$ & LSR@3$\\uparrow$ & LSR@5$\\uparrow$ & LSR@10$\\uparrow$ \\\\", "\\midrule",
+        "\\begin{table}[t]", f"\\caption{{Component ablation on Bearing-UAV {city_text}.}}", "\\label{tab:component-ablation}", "\\centering", "\\small", "\\begin{tabular}{lrrrrr}", "\\toprule", "Variant & MLE$\\downarrow$ & P90$\\downarrow$ & LSR@3$\\uparrow$ & LSR@5$\\uparrow$ & LSR@10$\\uparrow$ \\\\", "\\midrule",
     ]
     for key in COMPONENTS:
         r = rows[key]
@@ -168,7 +170,7 @@ def _latex(rows: dict[str, dict]) -> str:
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--suite-root", required=True)
-    p.add_argument("--cities", nargs="+", default=["citya", "cityb", "cityc", "cityd"])
+    p.add_argument("--cities", nargs="+", default=["citya"])
     args = p.parse_args()
     root = Path(args.suite_root).resolve()
     keys = sorted(set(COMPONENTS + TEMPORAL + WINDOWS))
@@ -207,7 +209,7 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(_clean(rows[k]) for k in keys)
     (root / "paper_ablation_tables.md").write_text(_markdown(rows, audit, args.cities), encoding="utf-8")
-    (root / "paper_ablation_tables.tex").write_text(_latex(rows), encoding="utf-8")
+    (root / "paper_ablation_tables.tex").write_text(_latex(rows, args.cities), encoding="utf-8")
     (root / "paper_trend_audit.json").write_text(json.dumps(audit, indent=2), encoding="utf-8")
     print(_markdown(rows, audit, args.cities))
 
