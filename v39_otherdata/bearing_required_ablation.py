@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
 """Paper-required inference/component ablations for the completed Bearing V5 suite.
 
-This runner deliberately reuses the already trained full checkpoint.  Therefore
+This runner deliberately reuses the already trained full checkpoint. Therefore
 these rows are *inference/component ablations*, not retrained architectural
-ablations.  The distinction is written into every output manifest/table.
-
-Added experiments:
-  - full36: score the complete 6x6 local bank instead of heading-guided 3x6
-  - front_top1 / front_softms: visual anchor decoder sensitivity
-  - no_heading_feedback: remove learned recurrent heading correction at inference
-  - jitter{0,4,12,16}: controlled local-prior sensitivity
-
-Existing bearing_iclr_ablation variants remain available:
-  no_gru, no_kalman, no_ms, frames1, frames2, grid4/5/7/8, full.
+ablations. The distinction is written into every output manifest/table.
 """
 from __future__ import annotations
 
@@ -51,8 +42,7 @@ EXTRA = {
                      heading_feedback=True),
 }
 
-# Enrich every canonical variant with explicit values used by this wrapper.
-for name, row in list(ab.VARIANTS.items()):
+for _, row in list(ab.VARIANTS.items()):
     row.setdefault("forward_only", True)
     row.setdefault("anchor", "weighted_centroid")
     row.setdefault("prior_jitter_m", 8.0)
@@ -80,8 +70,6 @@ def _patch_paths(config, args, prepared_root):
     v = _variant(args)
     config.CONTROLLED_GT_PRIOR_JITTER_M = float(v.get("prior_jitter_m", 8.0))
     if not bool(v.get("heading_feedback", True)):
-        # Remove the learned recurrent heading correction while leaving the
-        # waypoint route tangent available as the geometric route frame.
         config.HEADING_STATE_EMA_ALPHA = 0.0
         config.TURN_RATE_EMA_ALPHA = 0.0
         config.MAX_HEADING_DELTA_DEG_PER_FRAME = 0.0
@@ -91,11 +79,10 @@ def _patch_paths(config, args, prepared_root):
 def _patch_top1_anchor(runtime: Path) -> None:
     path = runtime / "robust_tracker.py"
     s = path.read_text(encoding="utf-8")
-    marker = "PAPER_TOP1_ANCHOR_PATCH"
-    if marker in s:
+    if "PAPER_TOP1_ANCHOR_PATCH" in s:
         return
     pattern = re.compile(
-        r'(?P<indent>\s*)if str\(getattr\(config, "EXPERIMENT_ANCHOR", "softms"\)\) == "weighted_centroid":\n'
+        r'(?P<indent>[ \t]*)if str\(getattr\(config, "EXPERIMENT_ANCHOR", "softms"\)\) == "weighted_centroid":\n'
         r'(?P=indent)    anchor_xy_all = \(posterior\.unsqueeze\(-1\) \* candidate\.centers\)\.sum\(dim=1\)\n'
         r'(?P=indent)else:\n'
         r'(?P=indent)    anchor_xy_all = candidate\.softms_xy\n'
@@ -130,10 +117,9 @@ def _make_runtime(prepared_root, runtime_root):
 def _audit_runtime(config, runtime, variant, training):
     tracker_text = (runtime / "robust_tracker.py").read_text(encoding="utf-8")
     model_text = (runtime / "visual_model.py").read_text(encoding="utf-8")
-    expected_forward = bool(variant.get("forward_only", True))
     checks = {
         "base_geometry_6x6": int(config.ACQ_LOCAL_GRID_SIZE) == 6,
-        "forward_policy": bool(config.FORWARD_ONLY_LOCAL_SEARCH) == expected_forward,
+        "forward_policy": bool(config.FORWARD_ONLY_LOCAL_SEARCH) == bool(variant.get("forward_only", True)),
         "frame_count": int(config.EXPERIMENT_FRAME_COUNT) == int(variant["frames"]),
         "gru_flag": bool(config.EXPERIMENT_DISABLE_GRU) == bool(variant["disable_gru"]),
         "kalman_flag": str(config.EXPERIMENT_KALMAN) == str(variant["kalman"]),
@@ -163,8 +149,7 @@ def _postprocess(args) -> None:
     data = json.loads(p.read_text(encoding="utf-8"))
     v = _variant(args)
     for _, row in data.items():
-        proto = row.setdefault("PaperAblationProtocol", {})
-        proto.update({
+        row.setdefault("PaperAblationProtocol", {}).update({
             "ablation_type": "inference_component_ablation_reusing_full_checkpoint",
             "variant": args.variant,
             "base_candidate_geometry": "6x6",
@@ -204,8 +189,6 @@ def build_parser():
 
 def main():
     args = build_parser().parse_args()
-    # The jitter value used by the variant is explicit and independent of the
-    # visual-retrieval training jitter argument.
     args.jitter_m = float(_variant(args).get("prior_jitter_m", args.jitter_m))
     ab.evaluate(args)
     _postprocess(args)
