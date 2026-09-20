@@ -20,10 +20,24 @@ p.write_text(s, encoding='utf-8')
 print('[SMOOTH RUNNER] result upload branch: bearing-v5-formal-smooth-v1')
 PY
 
-# Resource-safe defaults inherited from the current formal pipeline.
+# Resource-safe defaults. Keep the three GPU jobs, but bound CPU thread pools
+# and serialize the expensive SAT backbone cache builder through the lock used
+# by visual_localizer.py.
 export CPU_THREADS_PER_CITY="${CPU_THREADS_PER_CITY:-2}"
 export CACHE_BATCH_SIZE="${CACHE_BATCH_SIZE:-128}"
 export CPU_NICE="${CPU_NICE:-5}"
+export OMP_NUM_THREADS="${CPU_THREADS_PER_CITY}"
+export MKL_NUM_THREADS="${CPU_THREADS_PER_CITY}"
+export OPENBLAS_NUM_THREADS="${CPU_THREADS_PER_CITY}"
+export NUMEXPR_NUM_THREADS="${CPU_THREADS_PER_CITY}"
+export VECLIB_MAXIMUM_THREADS="${CPU_THREADS_PER_CITY}"
+export BLIS_NUM_THREADS="${CPU_THREADS_PER_CITY}"
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
+export TOKENIZERS_PARALLELISM=false
+export UAVSAT_VISUAL_CACHE_BATCH_SIZE="${UAVSAT_VISUAL_CACHE_BATCH_SIZE:-${CACHE_BATCH_SIZE}}"
+if [[ -n "${FORMAL_SUITE_ROOT:-}" ]]; then
+  export UAVSAT_SAT_CACHE_LOCK="${UAVSAT_SAT_CACHE_LOCK:-${FORMAL_SUITE_ROOT}/.sat_backbone_cache.lock}"
+fi
 
 # Explicit smooth-v1 profile. These are estimator/training constraints, not
 # display post-processing. The plotter still draws raw final_x/final_y.
@@ -62,6 +76,7 @@ printf '%s\n' \
   "Kalman final step max  : ${UAVSAT_KALMAN_FINAL_STEP_MAX_M} m" \
   "Route-frame smooth     : ${UAVSAT_ROUTE_FRAME_SMOOTH_RADIUS_M} m" \
   "CPU threads/city       : ${CPU_THREADS_PER_CITY}" \
+  "SAT cache batch        : ${UAVSAT_VISUAL_CACHE_BATCH_SIZE}" \
   "Results branch         : bearing-v5-formal-smooth-v1" \
   "================================================================================"
 
