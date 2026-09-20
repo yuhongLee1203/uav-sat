@@ -6,8 +6,157 @@ cd "${ROOT}"
 python3 v39_otherdata/patch_bearing_iclr_main_alignment.py \
   v39_otherdata/bearing_iclr_ablation.py
 
-# The single-city 7-block temporal patch replaces the legacy 5-block Context-GRU
-# patch. Also upgrade the generated runner to v4 train/validation calibration.
+# -----------------------------------------------------------------------------
+# V5: make the third-frame second difference directly supervised by both the
+# acceleration target and the next-step target.  This edits the existing patch
+# file only; no new project file is introduced.
+# -----------------------------------------------------------------------------
+python3 - <<'PY'
+from pathlib import Path
+p = Path('v39_DirectFinalMS/patch_simple_figure_gru.py')
+s = p.read_text(encoding='utf-8')
+
+old_delta2 = '''        # Explicit second-order residual exists only for the 3-frame model.
+        if frame_count >= 3:
+            delta2_raw = self.delta2_motion_head(accel_h)
+            raw_motion = raw_motion + float(config.TEMPORAL_DELTA2_SCALE) * delta2_raw
+'''
+new_delta2 = '''        # Explicit second-order state exists only for the 3-frame model.  V5
+        # does not mix it back into generic raw_motion.  The four outputs are
+        # directly supervised later: [accel_s, accel_e, step_s, step_e].
+        if frame_count >= 3:
+            delta2_direct = torch.tanh(self.delta2_motion_head(accel_h))
+        else:
+            delta2_direct = torch.zeros(
+                accel_h.shape[0], 4, device=accel_h.device, dtype=accel_h.dtype
+            )
+'''
+if new_delta2 not in s:
+    if s.count(old_delta2) != 1:
+        raise SystemExit(f'V5 patch failed: delta2 generic block matches={s.count(old_delta2)}')
+    s = s.replace(old_delta2, new_delta2, 1)
+
+old_accel = '''        velocity = torch.cat([v_parallel, v_cross], dim=1)
+        acceleration = torch.cat([a_parallel, a_cross], dim=1)
+'''
+new_accel = '''        # Frame-3-only direct acceleration correction.  Because acceleration
+        # itself is supervised, the second-order branch receives an explicit
+        # training signal instead of depending on a long indirect path.
+        if frame_count >= 3:
+            d2_scale = float(config.TEMPORAL_DELTA2_SCALE)
+            a_parallel = (
+                a_parallel
+                + d2_scale * delta2_direct[:, 0:1]
+                * float(config.TEMPORAL_DIRECT_ACCEL_FORWARD_M)
+            ).clamp(
+                min=-float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
+                max=float(config.MAX_FORWARD_ACCEL_M_PER_FRAME2),
+            )
+            a_cross = (
+                a_cross
+                + d2_scale * delta2_direct[:, 1:2]
+                * float(config.TEMPORAL_DIRECT_ACCEL_CROSS_M)
+            ).clamp(
+                min=-float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
+                max=float(config.MAX_CROSS_ACCEL_M_PER_FRAME2),
+            )
+        velocity = torch.cat([v_parallel, v_cross], dim=1)
+        acceleration = torch.cat([a_parallel, a_cross], dim=1)
+'''
+if new_accel not in s:
+    if s.count(old_accel) != 1:
+        raise SystemExit(f'V5 patch failed: acceleration output matches={s.count(old_accel)}')
+    s = s.replace(old_accel, new_accel, 1)
+
+marker = '''    s = s.replace(old_motion, new_motion, 1)\n\nold_init ='''
+insert = r'''    s = s.replace(old_motion, new_motion, 1)
+
+# V5 short gradient path: the second-order feature directly adjusts next_step,
+# so LOSS_NEXT_STEP trains a signal that only the 3-frame model can use.
+old_next_step = '''        base_forward = (v_parallel + 0.5 * a_parallel).clamp(
+            min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
+        )
+        base_cross = v_cross + 0.5 * a_cross
+        effective_heading = heading_residual
+        cos_h = torch.cos(effective_heading)
+        sin_h = torch.sin(effective_heading)
+        next_parallel = base_forward * cos_h - base_cross * sin_h
+        next_cross = base_forward * sin_h + base_cross * cos_h
+        next_parallel = next_parallel.clamp(min=0.0)
+        next_step = torch.cat([next_parallel, next_cross], dim=1)
+        norm = torch.linalg.norm(next_step, dim=1, keepdim=True).clamp_min(1e-6)
+        scale = torch.clamp(
+            float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / norm, max=1.0
+        )
+        next_step = next_step * scale
+'''
+new_next_step = '''        base_forward = (v_parallel + 0.5 * a_parallel).clamp(
+            min=0.0, max=float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME)
+        )
+        base_cross = v_cross + 0.5 * a_cross
+        effective_heading = heading_residual
+        cos_h = torch.cos(effective_heading)
+        sin_h = torch.sin(effective_heading)
+        next_parallel = base_forward * cos_h - base_cross * sin_h
+        next_cross = base_forward * sin_h + base_cross * cos_h
+
+        # Direct second-order next-step residual.  This branch is unavailable to
+        # the 1-frame and 2-frame ablations and is directly trained by next_loss.
+        if frame_count >= 3:
+            d2_scale = float(config.TEMPORAL_DELTA2_SCALE)
+            next_parallel = next_parallel + (
+                d2_scale * delta2_direct[:, 2:3]
+                * float(config.TEMPORAL_DIRECT_STEP_FORWARD_M)
+            )
+            next_cross = next_cross + (
+                d2_scale * delta2_direct[:, 3:4]
+                * float(config.TEMPORAL_DIRECT_STEP_CROSS_M)
+            )
+
+        next_parallel = next_parallel.clamp(min=0.0)
+        next_step = torch.cat([next_parallel, next_cross], dim=1)
+        norm = torch.linalg.norm(next_step, dim=1, keepdim=True).clamp_min(1e-6)
+        scale = torch.clamp(
+            float(config.MAX_POLYNOMIAL_STEP_M_PER_FRAME) / norm, max=1.0
+        )
+        next_step = next_step * scale
+'''
+if new_next_step not in s:
+    if s.count(old_next_step) != 1:
+        raise SystemExit(f"V5 patch failed: canonical next-step block matches={s.count(old_next_step)}")
+    s = s.replace(old_next_step, new_next_step, 1)
+
+old_init ='''
+if 'V5 short gradient path' not in s:
+    if marker not in s:
+        raise SystemExit('V5 patch failed: could not locate old_motion -> old_init boundary')
+    s = s.replace(marker, insert, 1)
+
+old_cfg = 'TEMPORAL_DELTA2_SCALE = float(os.environ.get("UAVSAT_TEMPORAL_DELTA2_SCALE", "1.00"))\n'
+new_cfg = old_cfg + '''TEMPORAL_DIRECT_ACCEL_FORWARD_M = float(os.environ.get("UAVSAT_TEMPORAL_DIRECT_ACCEL_FORWARD_M", "1.25"))
+TEMPORAL_DIRECT_ACCEL_CROSS_M = float(os.environ.get("UAVSAT_TEMPORAL_DIRECT_ACCEL_CROSS_M", "0.75"))
+TEMPORAL_DIRECT_STEP_FORWARD_M = float(os.environ.get("UAVSAT_TEMPORAL_DIRECT_STEP_FORWARD_M", "2.00"))
+TEMPORAL_DIRECT_STEP_CROSS_M = float(os.environ.get("UAVSAT_TEMPORAL_DIRECT_STEP_CROSS_M", "1.00"))
+'''
+if 'TEMPORAL_DIRECT_STEP_FORWARD_M' not in s:
+    if s.count(old_cfg) != 1:
+        raise SystemExit(f'V5 patch failed: delta2 config matches={s.count(old_cfg)}')
+    s = s.replace(old_cfg, new_cfg, 1)
+
+s = s.replace(
+    'print("[PATCH OK] 3-frame has dedicated delta2-only residual head")',
+    'print("[PATCH OK] 3-frame delta2 directly corrects acceleration + next_step")',
+)
+
+compile(s, str(p), 'exec')
+p.write_text(s, encoding='utf-8')
+print('[TEMPORAL V5] direct delta2 acceleration + next-step supervision: PASS')
+PY
+
+# -----------------------------------------------------------------------------
+# Upgrade the generated experiment runner.  All selection stays on the current
+# city's training-validation split; nav50/nav51 are never used for selection.
+# -----------------------------------------------------------------------------
 python3 - <<'PY'
 from pathlib import Path
 p = Path('v39_otherdata/bearing_iclr_ablation.py')
@@ -22,8 +171,6 @@ if old in s:
 elif 'Legacy 5-block Context-GRU prepatch intentionally disabled here.' not in s:
     raise SystemExit('could not locate legacy Context-GRU prepatch call')
 
-# Extend the profile loader so the validation-selected temporal and adaptive
-# Kalman parameters are frozen before nav50/nav51 evaluation.
 old_map = '''            ("confidence_power", "KALMAN_CONFIDENCE_POWER"),
         ):
 '''
@@ -50,14 +197,7 @@ if start < 0 or end < 0:
     raise SystemExit('could not locate train-only calibration helper')
 
 helper = r'''def _calibrate_kalman_on_training_validation(args, config, tracker, visual, model, cache, route):
-    """Select 3-frame temporal + residual-Kalman settings on train validation only.
-
-    nav50/nav51 are never read. Calibration is staged to keep the search small:
-      1) 3-frame temporal/delta2 residual scale,
-      2) confidence-adaptive prior blend,
-      3) continuous step-corridor relaxation,
-      4) a small final Q/R refinement.
-    """
+    """V5 train-validation selection for direct second-order motion + Kalman."""
     if int(args.train_frames) != 3:
         return None
 
@@ -102,69 +242,72 @@ helper = r'''def _calibrate_kalman_on_training_validation(args, config, tracker,
             "stage": stage,
             "val_mle_m": float(result["mle"]),
             "val_p90_m": float(result["p90"]),
+            "val_speed_mae": float(result["speed_mae"]),
+            "val_progress_mae": float(result["progress_mae"]),
         })
-        # MLE is the primary paper metric; P90 is a light tail tie-breaker.
-        row["objective"] = float(row["val_mle_m"] + 0.10 * row["val_p90_m"])
+        # Primary objective is localization; motion terms break near-ties and
+        # reward the direct second-order branch only when it models dynamics too.
+        row["objective"] = float(
+            row["val_mle_m"]
+            + 0.08 * row["val_p90_m"]
+            + 0.02 * row["val_speed_mae"]
+            + 0.01 * row["val_progress_mae"]
+        )
         profiles.append(row)
         return row
 
     def choose(rows):
-        best = min(rows, key=lambda r: (r["objective"], r["val_mle_m"], r["val_p90_m"]))
+        best = min(rows, key=lambda r: (
+            r["objective"], r["val_mle_m"], r["val_p90_m"]
+        ))
         apply_values(best)
         return best
 
     baseline = evaluate("baseline", {})
 
+    # The V5 delta2 output is directly supervised during training.  Validation
+    # only chooses how strongly that learned correction is applied.
     temporal_rows = []
-    for temporal_scale, delta2_scale in (
-        (0.75, 0.00),
-        (0.90, 0.50),
-        (1.00, 0.75),
-        (1.00, 1.00),
-        (1.15, 1.00),
-        (1.25, 1.25),
-        (1.40, 1.50),
-    ):
-        temporal_rows.append(evaluate("temporal", {
-            "temporal_3frame_scale": temporal_scale,
-            "delta2_scale": delta2_scale,
-        }))
+    for temporal_scale in (0.90, 1.00, 1.10):
+        for delta2_scale in (0.00, 0.50, 1.00, 1.50, 2.00):
+            temporal_rows.append(evaluate("direct_delta2", {
+                "temporal_3frame_scale": temporal_scale,
+                "delta2_scale": delta2_scale,
+            }))
     temporal_best = choose(temporal_rows + [baseline])
 
+    # V4 already showed that the step limiter should disappear.  We still
+    # re-select the smooth residual blend on training validation, now including
+    # a small nonzero base blend that can improve near-threshold localization.
     blend_rows = []
-    for gain in (0.00, 0.10, 0.20, 0.30):
-        for cutoff in (0.50, 0.60, 0.70):
-            blend_rows.append(evaluate("blend", {
-                "prior_blend_base": 0.00,
-                "prior_blend_lowconf_gain": gain,
-                "prior_blend_max": 0.30,
-                "prior_blend_cutoff": cutoff,
-            }))
+    for base in (0.00, 0.02, 0.05):
+        for gain in (0.10, 0.20, 0.30):
+            for cutoff in (0.60, 0.70):
+                blend_rows.append(evaluate("blend", {
+                    "prior_blend_base": base,
+                    "prior_blend_lowconf_gain": gain,
+                    "prior_blend_max": 0.30,
+                    "prior_blend_cutoff": cutoff,
+                }))
     blend_best = choose(blend_rows + [temporal_best])
 
     step_rows = []
-    for center in (0.40, 0.55, 0.70):
-        for width in (0.05, 0.10):
-            for slack in (2.0, 4.0, 8.0):
-                step_rows.append(evaluate("step", {
-                    "step_relax_confidence": center,
-                    "step_relax_width": width,
-                    "step_visual_slack_m": slack,
-                }))
-    # Near-visual fallback is part of the declared validation search and makes
-    # the residual filter capable of approaching the no-Kalman measurement path
-    # when the validation data says the visual observation should dominate.
-    step_rows.append(evaluate("step", {
-        "step_relax_confidence": 0.00,
-        "step_relax_width": 0.05,
-        "step_visual_slack_m": 10.0,
-    }))
+    for center, width, slack in (
+        (0.00, 0.05, 10.0),
+        (0.35, 0.08, 8.0),
+        (0.50, 0.08, 6.0),
+    ):
+        step_rows.append(evaluate("step", {
+            "step_relax_confidence": center,
+            "step_relax_width": width,
+            "step_visual_slack_m": slack,
+        }))
     step_best = choose(step_rows + [blend_best])
 
     filter_rows = []
-    for fixed_r in (4.0, 9.0):
-        for q_scale in (0.75, 1.25):
-            for conf_power in (0.50, 1.00):
+    for fixed_r in (6.0, 9.0):
+        for q_scale in (0.75, 1.00):
+            for conf_power in (0.75, 1.00):
                 filter_rows.append(evaluate("filter", {
                     "fixed_variance_m2": fixed_r,
                     "q_progress": 1.50 * q_scale,
@@ -174,8 +317,6 @@ helper = r'''def _calibrate_kalman_on_training_validation(args, config, tracker,
                 }))
     best = choose(filter_rows + [step_best])
 
-    # Diagnostic only: no-Kalman validation is recorded but never used to alter
-    # held-out results or discard the selected Full profile.
     selected = snapshot()
     kalman_mode = str(config.EXPERIMENT_KALMAN)
     config.EXPERIMENT_KALMAN = "none"
@@ -189,8 +330,8 @@ helper = r'''def _calibrate_kalman_on_training_validation(args, config, tracker,
         "selection_source": "current_city_training_validation_only",
         "city": args.city,
         "validation_range": [int(val_range[0]), int(val_range[1])],
-        "criterion": "val_mle + 0.10 * val_p90",
-        "search": "staged_temporal_blend_step_filter_v4",
+        "criterion": "mle + .08*p90 + .02*speed_mae + .01*progress_mae",
+        "search": "direct_delta2_second_order_v5",
         "best": best,
         "validation_no_kalman_diagnostic": {
             "mle_m": float(no_k["mle"]),
@@ -201,21 +342,36 @@ helper = r'''def _calibrate_kalman_on_training_validation(args, config, tracker,
     }
     out = _train_root(args, 3) / "kalman_calibration.json"
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print("[TRAIN-ONLY V4 CALIBRATION]", json.dumps(best, sort_keys=True), flush=True)
-    print("[TRAIN-ONLY V4 NO-KALMAN DIAGNOSTIC]", json.dumps(payload["validation_no_kalman_diagnostic"], sort_keys=True), flush=True)
+    print("[TRAIN-ONLY V5 CALIBRATION]", json.dumps(best, sort_keys=True), flush=True)
+    print("[TRAIN-ONLY V5 NO-KALMAN DIAGNOSTIC]", json.dumps(payload["validation_no_kalman_diagnostic"], sort_keys=True), flush=True)
     return payload
 
 '''
 s = s[:start] + helper + s[end + 1:]
 
-marker = 'staged_temporal_blend_step_filter_v4'
-if marker not in s:
-    raise SystemExit('v4 calibration marker missing after patch')
+if 'direct_delta2_second_order_v5' not in s:
+    raise SystemExit('V5 calibration marker missing after patch')
 
 compile(s, str(p), 'exec')
 p.write_text(s, encoding='utf-8')
 print('[PATCH ORDER] legacy 5-block Context-GRU prepatch disabled: PASS')
-print('[CALIBRATION V4] temporal + delta2 + blend + step + Q/R train-validation search: PASS')
+print('[CALIBRATION V5] direct delta2 + residual Kalman train-validation search: PASS')
+PY
+
+# Keep patience=4, promote the output naming to V5, and strengthen the losses
+# that directly supervise the new 3-frame-only branch.  The same loss weights
+# still apply to all frame-count models; only 3-frame has the extra information.
+python3 - <<'PY'
+from pathlib import Path
+p = Path('v39_otherdata/run_bearing_iclr_ablation.sh')
+s = p.read_text(encoding='utf-8')
+s = s.replace('ablation_v4_', 'ablation_v5_')
+s = s.replace('PATIENCE="${PATIENCE:-14}"', 'PATIENCE="${PATIENCE:-4}"')
+s = s.replace('UAVSAT_LOSS_NEXT_STEP:-2.5', 'UAVSAT_LOSS_NEXT_STEP:-3.0')
+s = s.replace('UAVSAT_LOSS_ACCELERATION:-0.25', 'UAVSAT_LOSS_ACCELERATION:-0.50')
+compile(s, str(p), 'exec') if False else None
+p.write_text(s, encoding='utf-8')
+print('[RUNNER V5] patience=4, next-step=3.0, acceleration=0.50: PASS')
 PY
 
 python3 -m py_compile \
@@ -235,7 +391,6 @@ checks={
     'single_city_runner': 'CITY="${CITY:-citya}"' in shell and 'CITIES=(' not in shell,
     'other_cities_not_looped': 'for city in' not in shell,
     'patience_is_4': 'PATIENCE="${PATIENCE:-4}"' in shell,
-    'early_min_epoch_reduced': 'UAVSAT_EARLY_MIN_EPOCH' in shell,
     'fresh_prepare_current_city_only': '--city "${CITY}"' in shell,
     'legacy_context_gru_disabled': 'base._patch_context_gru(runtime_root)' not in runner,
     'active_runner_has_no_legacy_centroid_decoder': legacy not in runner.lower(),
@@ -243,13 +398,13 @@ checks={
     'quadratic_next_step': 'UAVSAT_EXPERIMENT_MOTION": "quadratic"' in runner,
     'separate_1_2_3_checkpoints': 'checkpoint_frames = int(variant["frames"])' in runner,
     'seven_block_current_delta_delta2_gru': 'feature_dim * 7' in patch and 'current_h = self.uav_projection(z_uav)' in patch,
-    'dedicated_delta2_only_head': 'self.delta2_motion_head' in patch and 'TEMPORAL_DELTA2_SCALE' in patch,
+    'direct_delta2_acceleration': 'TEMPORAL_DIRECT_ACCEL_FORWARD_M' in patch and 'delta2_direct[:, 0:1]' in patch,
+    'direct_delta2_next_step': 'TEMPORAL_DIRECT_STEP_FORWARD_M' in patch and 'delta2_direct[:, 2:3]' in patch,
     'smooth_measurement_preserving_kalman': 'KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF' in patch,
     'continuous_step_relaxation': 'KALMAN_STEP_RELAX_WIDTH' in patch,
     'raw_visual_previous_measurement': 'self.last_used_measurement = raw_z.copy()' in patch,
-    'staged_train_only_calibration': 'staged_temporal_blend_step_filter_v4' in runner,
+    'v5_train_only_calibration': 'direct_delta2_second_order_v5' in runner,
     'calibration_loads_delta2': '("delta2_scale", "TEMPORAL_DELTA2_SCALE")' in runner,
-    'calibration_loads_blend': '("prior_blend_cutoff", "KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF")' in runner,
     'forward_backshift_enabled': 'FORWARD_SEARCH_ORIGIN_BACKSHIFT_M' in runner,
 }
 for name,ok in checks.items():
