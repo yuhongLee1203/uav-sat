@@ -28,8 +28,8 @@ if "innovation_projection" in s or "visual_anchor_se - predicted_se" in s:
 
 # -----------------------------------------------------------------------------
 # GRU inputs:
-# current + mean + delta + delta2 + SAT + SoftMS position
-# + causal visual displacement + previous recurrent state = 8 blocks.
+# current + delta + delta2 + SAT + SoftMS position
+# + causal visual displacement + previous recurrent state = 7 blocks.
 # -----------------------------------------------------------------------------
 needle = "        self.sat_projection = projection(config.EMBED_DIM)\n"
 addition = (
@@ -43,7 +43,7 @@ if "self.visual_motion_projection = projection(2)" not in s:
     s = s.replace(needle, addition, 1)
 
 old_gru = "        self.gru = nn.GRUCell(feature_dim * 4, hidden_dim)\n"
-new_gru = "        self.gru = nn.GRUCell(feature_dim * 8, hidden_dim)\n"
+new_gru = "        self.gru = nn.GRUCell(feature_dim * 7, hidden_dim)\n"
 if new_gru not in s:
     if s.count(old_gru) != 1:
         raise SystemExit("could not identify canonical GRUCell declaration")
@@ -76,10 +76,10 @@ old_recurrent = '''        recurrent_input = torch.cat(
         )
         new_hidden = self.gru(recurrent_input, hidden)
 '''
-new_recurrent = '''        # Keep current-frame evidence explicitly instead of relying only on the
-        # 3-frame mean, which can blur the strongest current observation.
+new_recurrent = '''        # Current-frame feature is the base.  Temporal history enters only as
+        # residual first/second differences, so 3-frame context cannot blur the
+        # strongest current visual evidence.
         current_h = self.uav_projection(z_uav)
-        mean_h = self.clip_mean_projection(clip_mean)
         recent_h = self.delta_recent_projection(delta_recent)
         accel_h = self.delta_accel_projection(delta_accel)
 
@@ -100,7 +100,6 @@ new_recurrent = '''        # Keep current-frame evidence explicitly instead of r
         recurrent_input = torch.cat(
             [
                 current_h,
-                mean_h,
                 recent_h,
                 accel_h,
                 self.sat_projection(sat_context),
@@ -203,7 +202,7 @@ if new_init not in s:
     s = s.replace(old_init, new_init, 1)
 
 required_model = [
-    "self.gru = nn.GRUCell(feature_dim * 8, hidden_dim)",
+    "self.gru = nn.GRUCell(feature_dim * 7, hidden_dim)",
     "current_h = self.uav_projection(z_uav)",
     "self.visual_motion_projection(visual_motion)",
     "self.temporal_motion_head",
@@ -422,8 +421,8 @@ if missing:
 compile(t, str(tracker), "exec")
 tracker.write_text(t, encoding="utf-8")
 
-print("[PATCH OK] GRU keeps current frame and adds dedicated delta/delta2 temporal residual adapter")
-print("[PATCH OK] 3-frame has a unique second-difference motion path; 1-frame adapter is zero")
+print("[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state")
+print("[PATCH OK] 3-frame has a unique second-difference temporal residual path; 1-frame adapter is zero")
 print("[PATCH OK] training/validation/inference motion starts from current-city cadence")
 print("[PATCH OK] Kalman is measurement-preserving residual fusion")
 print("[PATCH OK] high-confidence visual measurements relax the final step corridor")
