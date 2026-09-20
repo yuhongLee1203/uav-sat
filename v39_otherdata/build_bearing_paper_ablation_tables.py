@@ -14,12 +14,12 @@ GROUPS = {
     "core_components": ["no_gru", "no_kalman", "no_ms", "no_heading_feedback", "full"],
     "temporal_context_retrained": ["frames1", "frames2", "full"],
     "search_policy": ["full36", "full"],
-    "visual_anchor": ["front_top1", "full", "front_softms"],
+    "visual_anchor": ["front_top1", "front_weighted", "full"],
     "prior_jitter_sensitivity": ["jitter0", "jitter4", "full", "jitter12", "jitter16"],
     "final_ms_grid": ["grid4", "grid5", "full", "grid7", "grid8"],
 }
 LABELS = {
-    "full": "Full: Forward-18 + 3f GRU + Kalman + final SoftMS",
+    "full": "SoftMS visual anchor (Full)",
     "no_gru": "w/o GRU (inference removal)",
     "no_kalman": "w/o Kalman",
     "no_ms": "w/o final MeanShift",
@@ -28,7 +28,7 @@ LABELS = {
     "frames2": "2 frames (retrained temporal)",
     "full36": "Full 6x6 scoring (36 candidates)",
     "front_top1": "Top-1 visual anchor",
-    "front_softms": "Front SoftMS visual anchor",
+    "front_weighted": "Posterior-weighted visual anchor",
     "jitter0": "Prior jitter 0 m",
     "jitter4": "Prior jitter 4 m",
     "jitter12": "Prior jitter 12 m",
@@ -172,6 +172,7 @@ def main():
         "suite": str(root),
         "protocol_notes": {
             "temporal_context": "frames1/frames2 are separately trained temporal checkpoints on the same training split; Full is the 3-frame trained checkpoint.",
+            "decoder": "Top-1 and posterior-weighted rows change only the front visual anchor; Full preserves the formal front SoftMS.",
             "other_rows": "Other rows are inference/component or sensitivity ablations reusing the Full checkpoint unless the row explicitly says otherwise.",
             "selection": "No nav50/nav51 metric is used to select ablation settings.",
             "controlled_prior": "This remains a controlled local-prior/jitter experiment and must not be described as fully GT-free deployment.",
@@ -182,7 +183,7 @@ def main():
     text = [
         "# Paper-facing ablation tables", "",
         "> 1/2/3-frame temporal-context rows use separately trained temporal checkpoints.",
-        "> Kalman / MeanShift / search-policy / decoder / heading-feedback / jitter / grid rows are inference-component or sensitivity ablations using the Full checkpoint.",
+        "> Kalman / MeanShift / search-policy / decoder / heading-feedback / jitter / grid rows are one-factor inference-component or sensitivity ablations using the Full checkpoint.",
         "> All held-out nav50/nav51 results are measured outputs; no row is edited to force Full to win.", "",
     ]
     for group, variants in GROUPS.items():
