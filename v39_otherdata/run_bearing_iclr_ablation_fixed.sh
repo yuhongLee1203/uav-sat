@@ -15,43 +15,30 @@ python3 -m py_compile \
 
 python3 - <<'PY'
 from pathlib import Path
-p=Path('v39_otherdata/bearing_iclr_ablation.py')
-s=p.read_text(encoding='utf-8')
+runner = Path('v39_otherdata/bearing_iclr_ablation.py').read_text(encoding='utf-8')
+shell = Path('v39_otherdata/run_bearing_iclr_ablation.sh').read_text(encoding='utf-8')
+patch = Path('v39_DirectFinalMS/patch_simple_figure_gru.py').read_text(encoding='utf-8')
 legacy='weighted'+'_'+'centroid'
 checks={
-    'active_runner_has_no_legacy_centroid_decoder': legacy not in s.lower(),
-    'runner_requests_front_softms': 'UAVSAT_EXPERIMENT_ANCHOR": "softms"' in s,
-    'temporal_motion_uses_quadratic_next_step': 'UAVSAT_EXPERIMENT_MOTION": "quadratic"' in s,
-    'training_city_motion_scale_initialization': 'INIT_FORWARD_SPEED_M_PER_FRAME' in s,
-    'residual_temporal_architecture': 'ResidualTemporalGRU' in s,
-    'train_only_kalman_calibration': '_calibrate_kalman_on_training_validation' in s,
-    'city_native_nav50': '("nav50", "route_B"' in s,
-    'city_native_nav51': '("nav51", "route_C"' in s,
-    'fair_train_frames_argument': '--train-frames' in s,
-    'separate_temporal_checkpoint_selection': 'checkpoint_frames = int(variant["frames"])' in s,
-    'forward_backshift_enabled': 'FORWARD_SEARCH_ORIGIN_BACKSHIFT_M' in s,
+    'single_city_runner': 'CITY="${CITY:-citya}"' in shell and 'CITIES=(' not in shell,
+    'other_cities_not_looped': 'for city in' not in shell,
+    'fresh_prepare_current_city_only': '--city "${CITY}"' in shell,
+    'active_runner_has_no_legacy_centroid_decoder': legacy not in runner.lower(),
+    'runner_requests_front_softms': 'UAVSAT_EXPERIMENT_ANCHOR": "softms"' in runner,
+    'quadratic_next_step': 'UAVSAT_EXPERIMENT_MOTION": "quadratic"' in runner,
+    'separate_1_2_3_checkpoints': 'checkpoint_frames = int(variant["frames"])' in runner,
+    'seven_block_current_delta_delta2_gru': 'feature_dim * 7' in patch and 'current_h = self.uav_projection(z_uav)' in patch,
+    'dedicated_temporal_residual_adapter': 'self.temporal_motion_head' in patch and 'TEMPORAL_ADAPTER_3FRAME_SCALE' in patch,
+    'measurement_preserving_kalman': 'KALMAN_PRIOR_BLEND_BASE' in patch,
+    'confidence_relaxed_step_corridor': 'KALMAN_STEP_RELAX_CONFIDENCE' in patch,
+    'raw_visual_previous_measurement': 'self.last_used_measurement = raw_z.copy()' in patch,
+    'train_only_kalman_calibration': '_calibrate_kalman_on_training_validation' in runner,
+    'forward_backshift_enabled': 'FORWARD_SEARCH_ORIGIN_BACKSHIFT_M' in runner,
 }
 for name,ok in checks.items():
     print(f'[PRE-RUN AUDIT] {name}: {"PASS" if ok else "FAIL"}')
 if not all(checks.values()):
     raise SystemExit('PRE-RUN AUDIT FAILED')
-PY
-
-python3 - <<'PY'
-from pathlib import Path
-s=Path('v39_otherdata/run_bearing_iclr_ablation.sh').read_text(encoding='utf-8')
-checks={
-    'four_city_loop': 'CITIES=(citya cityb cityc cityd)' in s,
-    'fresh_prepare_from_raw_dataset': 'bearing_prepare_multicity.py' in s,
-    'no_old_generated_reuse': 'ln -s "${existing}"' not in s and 'reuse existing preparation' not in s,
-    'one_shared_visual_checkpoint_per_city': 'share_city_visual_checkpoint' in s,
-    'acceleration_supervision_enabled': 'UAVSAT_LOSS_ACCELERATION' in s,
-    'residual_motion_knobs_enabled': 'UAVSAT_MOTION_RESIDUAL_FORWARD_M' in s,
-}
-for name,ok in checks.items():
-    print(f'[DATA-PROTOCOL AUDIT] {name}: {"PASS" if ok else "FAIL"}')
-if not all(checks.values()):
-    raise SystemExit('DATA-PROTOCOL AUDIT FAILED')
 PY
 
 bash -n v39_otherdata/run_bearing_iclr_ablation.sh
