@@ -13,6 +13,7 @@ THREADS="${CPU_THREADS_PER_CITY:-2}"
 TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-100}"
 VISUAL_EPOCHS="${VISUAL_EPOCHS:-30}"
 PATIENCE="${PATIENCE:-4}"
+UPLOAD_CORE="${UPLOAD_CORE:-1}"
 OUTROOT="${BASE_SUITE}/paper_temporal_multiseed_v3"
 mkdir -p "${OUTROOT}" "${BASE_SUITE}/logs"
 
@@ -163,3 +164,42 @@ echo "Temporal seeds  : ${OUTROOT}/aggregate/TEMPORAL_MULTI_SEED.md"
 echo "IMPORTANT       : 3-frame is only claimed best if the multi-seed result supports it."
 echo "Protocol        : Full remains controlled_gt_jitter; this run does not make it GT-free."
 echo "================================================================================"
+
+if [[ "${UPLOAD_CORE}" == "1" ]]; then
+  STAMP="$(date +%Y%m%d_%H%M%S)"
+  DEST="paper_results/formal_bearing_v5_core_v3_${STAMP}"
+  TMP="$(mktemp -d "${ROOT%/*}/uav-sat-core-v3-upload-XXXXXX")"
+  BR="core-v3-upload-${STAMP}-$$"
+  cleanup(){
+    git -C "${ROOT}" worktree remove --force "${TMP}" >/dev/null 2>&1 || true
+    git -C "${ROOT}" branch -D "${BR}" >/dev/null 2>&1 || true
+  }
+  trap cleanup EXIT
+  git fetch origin bearing-v5-formal-smooth-v1
+  git worktree add -b "${BR}" "${TMP}" origin/bearing-v5-formal-smooth-v1
+  mkdir -p "${TMP}/${DEST}"
+  cp -r "${BASE_SUITE}/paper_core" "${TMP}/${DEST}/"
+  cp -r "${OUTROOT}/aggregate" "${TMP}/${DEST}/temporal_multiseed"
+  for seed in ${SEEDS_STR}; do
+    for city in citya cityb cityc cityd; do
+      for variant in frames1 frames2 full; do
+        src="${OUTROOT}/seed_${seed}/${city}/variants/${variant}/bearing_v39_summary.json"
+        [[ -s "${src}" ]] || continue
+        dst="${TMP}/${DEST}/temporal_seed_${seed}/${city}/${variant}"
+        mkdir -p "${dst}"
+        cp "${src}" "${dst}/"
+      done
+    done
+  done
+  cat > "${TMP}/${DEST}/PROTOCOL.txt" <<'EOF'
+Paper Core V3 deliberately excludes Top-1 and prior-jitter sensitivity from paper-facing tables.
+Historical measurements remain in earlier audit suites and were not edited or deleted.
+Temporal 1/2/3-frame comparison is reported across multiple independent seeds.
+No held-out nav50/nav51 metric is used to tune or select the temporal ordering.
+Current Full localization still uses the controlled_gt_jitter local-prior protocol and is not a fully GT-free deployment result.
+EOF
+  git -C "${TMP}" add "${DEST}"
+  git -C "${TMP}" -c user.name='OpenAI Results Uploader' -c user.email='results@local' commit -m "Upload Bearing V5 core V3 paper results ${STAMP}"
+  git -C "${TMP}" push origin "HEAD:bearing-v5-formal-smooth-v1"
+  echo "[CORE V3 UPLOAD DONE] ${DEST}"
+fi
