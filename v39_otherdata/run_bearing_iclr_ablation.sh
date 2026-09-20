@@ -9,10 +9,10 @@ DATASET_ROOT="${BEARING_DATASET_ROOT:-/yh/study/cvpr_data/Bearing_UAV_90K}"
 CITY="${CITY:-citya}"
 case "${CITY}" in citya|cityb|cityc|cityd) ;; *) echo "ERROR: CITY must be citya/cityb/cityc/cityd" >&2; exit 2;; esac
 
-SUITE_ROOT="${ICLR_SUITE_ROOT:-${REPO_ROOT}/v39_otherdata/iclr_bearing_${CITY}_ablation_v2_${TS}}"
+SUITE_ROOT="${ICLR_SUITE_ROOT:-${REPO_ROOT}/v39_otherdata/iclr_bearing_${CITY}_ablation_v4_${TS}}"
 TEMPORAL_EPOCHS="${TEMPORAL_EPOCHS:-100}"
 VISUAL_EPOCHS="${VISUAL_EPOCHS:-30}"
-PATIENCE="${PATIENCE:-14}"
+PATIENCE="${PATIENCE:-4}"
 SEED="${SEED:-2033}"
 UPLOAD_RESULTS="${UPLOAD_RESULTS:-1}"
 RESUME_EVAL="${RESUME_EVAL:-0}"
@@ -28,8 +28,9 @@ export UAVSAT_LOSS_VELOCITY="${UAVSAT_LOSS_VELOCITY:-0.40}"
 export UAVSAT_LOSS_ACCELERATION="${UAVSAT_LOSS_ACCELERATION:-0.25}"
 export UAVSAT_TEMPORAL_LR="${UAVSAT_TEMPORAL_LR:-8e-5}"
 export UAVSAT_RNN_DROPOUT="${UAVSAT_RNN_DROPOUT:-0.05}"
+export UAVSAT_EARLY_MIN_EPOCH="${UAVSAT_EARLY_MIN_EPOCH:-10}"
 
-# Residual temporal motion.
+# Residual temporal motion. Frame-3 alone has the delta2-only residual head.
 export UAVSAT_MOTION_VEL_ALPHA="${UAVSAT_MOTION_VEL_ALPHA:-0.65}"
 export UAVSAT_MOTION_STEP_ALPHA="${UAVSAT_MOTION_STEP_ALPHA:-0.70}"
 export UAVSAT_MOTION_RESIDUAL_FORWARD_M="${UAVSAT_MOTION_RESIDUAL_FORWARD_M:-2.5}"
@@ -38,18 +39,22 @@ export UAVSAT_MOTION_RESIDUAL_ACCEL_FORWARD_M="${UAVSAT_MOTION_RESIDUAL_ACCEL_FO
 export UAVSAT_MOTION_RESIDUAL_ACCEL_CROSS_M="${UAVSAT_MOTION_RESIDUAL_ACCEL_CROSS_M:-0.75}"
 export UAVSAT_TEMPORAL_ADAPTER_2FRAME_SCALE="${UAVSAT_TEMPORAL_ADAPTER_2FRAME_SCALE:-0.45}"
 export UAVSAT_TEMPORAL_ADAPTER_3FRAME_SCALE="${UAVSAT_TEMPORAL_ADAPTER_3FRAME_SCALE:-1.00}"
+export UAVSAT_TEMPORAL_DELTA2_SCALE="${UAVSAT_TEMPORAL_DELTA2_SCALE:-1.00}"
 
-# Measurement-preserving residual Kalman.
-export UAVSAT_EXPERIMENT_FIXED_VARIANCE_M2="${UAVSAT_EXPERIMENT_FIXED_VARIANCE_M2:-4.0}"
+# Initial residual Kalman profile. The 3-frame training-validation calibration
+# will select the final temporal/Kalman profile without reading nav50/nav51.
+export UAVSAT_EXPERIMENT_FIXED_VARIANCE_M2="${UAVSAT_EXPERIMENT_FIXED_VARIANCE_M2:-6.0}"
 export UAVSAT_KALMAN_Q_PROGRESS="${UAVSAT_KALMAN_Q_PROGRESS:-1.50}"
 export UAVSAT_KALMAN_Q_CROSS="${UAVSAT_KALMAN_Q_CROSS:-0.40}"
 export UAVSAT_KALMAN_Q_VELOCITY="${UAVSAT_KALMAN_Q_VELOCITY:-1.00}"
-export UAVSAT_KALMAN_CONFIDENCE_POWER="${UAVSAT_KALMAN_CONFIDENCE_POWER:-0.35}"
-export UAVSAT_KALMAN_PRIOR_BLEND_BASE="${UAVSAT_KALMAN_PRIOR_BLEND_BASE:-0.08}"
+export UAVSAT_KALMAN_CONFIDENCE_POWER="${UAVSAT_KALMAN_CONFIDENCE_POWER:-0.50}"
+export UAVSAT_KALMAN_PRIOR_BLEND_BASE="${UAVSAT_KALMAN_PRIOR_BLEND_BASE:-0.00}"
 export UAVSAT_KALMAN_PRIOR_BLEND_LOWCONF_GAIN="${UAVSAT_KALMAN_PRIOR_BLEND_LOWCONF_GAIN:-0.18}"
 export UAVSAT_KALMAN_PRIOR_BLEND_MAX="${UAVSAT_KALMAN_PRIOR_BLEND_MAX:-0.30}"
-export UAVSAT_KALMAN_STEP_RELAX_CONFIDENCE="${UAVSAT_KALMAN_STEP_RELAX_CONFIDENCE:-0.52}"
-export UAVSAT_KALMAN_STEP_VISUAL_SLACK_M="${UAVSAT_KALMAN_STEP_VISUAL_SLACK_M:-1.5}"
+export UAVSAT_KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF="${UAVSAT_KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF:-0.60}"
+export UAVSAT_KALMAN_STEP_RELAX_CONFIDENCE="${UAVSAT_KALMAN_STEP_RELAX_CONFIDENCE:-0.55}"
+export UAVSAT_KALMAN_STEP_RELAX_WIDTH="${UAVSAT_KALMAN_STEP_RELAX_WIDTH:-0.08}"
+export UAVSAT_KALMAN_STEP_VISUAL_SLACK_M="${UAVSAT_KALMAN_STEP_VISUAL_SLACK_M:-3.0}"
 
 python3 -m py_compile \
   v39_otherdata/bearing_iclr_ablation.py \
@@ -96,7 +101,7 @@ common_args(){
 run_train(){
   local frames="$1" gpu="$2"
   common_args "${gpu}"
-  echo "[TRAIN START] ${CITY} frames=${frames} GPU${gpu}"
+  echo "[TRAIN START] ${CITY} frames=${frames} GPU${gpu} patience=${PATIENCE}"
   python3 -u v39_otherdata/bearing_iclr_ablation.py train \
     "${COMMON[@]}" --train-frames "${frames}" \
     2>&1 | tee "${SUITE_ROOT}/logs/${CITY}_train_f${frames}.log"
@@ -129,11 +134,12 @@ run_eval_group(){
 }
 
 echo "================================================================================"
-echo "Bearing-UAV SINGLE-CITY ablation"
+echo "Bearing-UAV SINGLE-CITY ablation v4"
 echo "CITY            : ${CITY}"
 echo "Held-out tracks : nav50 / nav51 inside ${CITY}"
-echo "Architecture    : Forward18 SoftMS -> temporal residual GRU"
-echo "                  -> measurement-preserving residual Kalman"
+echo "Patience        : ${PATIENCE}"
+echo "Architecture    : Forward18 SoftMS -> 3-frame delta2 residual GRU"
+echo "                  -> confidence-adaptive residual Kalman"
 echo "                  -> final MeanShift -> XY"
 echo "Other cities    : NOT RUN"
 echo "================================================================================"
@@ -180,7 +186,7 @@ printf '%s\n' "${SUITE_ROOT}" > v39_otherdata/LATEST_ICLR_BEARING_ABLATION.txt
 
 if [[ "${UPLOAD_RESULTS}" == "1" ]]; then
   upload_wt="$(mktemp -d "${REPO_ROOT%/*}/uav-sat-iclr-upload-XXXXXX")"
-  upload_branch="iclr-${CITY}-ablation-v2-${TS}-$$"
+  upload_branch="iclr-${CITY}-ablation-v4-${TS}-$$"
   cleanup(){
     git -C "${REPO_ROOT}" worktree remove --force "${upload_wt}" >/dev/null 2>&1 || true
     git -C "${REPO_ROOT}" branch -D "${upload_branch}" >/dev/null 2>&1 || true
@@ -189,7 +195,7 @@ if [[ "${UPLOAD_RESULTS}" == "1" ]]; then
 
   git fetch origin v39_otherdata
   git worktree add -b "${upload_branch}" "${upload_wt}" origin/v39_otherdata
-  dest="paper_results/iclr_bearing_${CITY}_ablation_v2_${TS}"
+  dest="paper_results/iclr_bearing_${CITY}_ablation_v4_${TS}"
   mkdir -p "${upload_wt}/${dest}"
 
   cp "${SUITE_ROOT}"/paper_ablation_results.{json,csv} "${upload_wt}/${dest}/"
@@ -219,7 +225,7 @@ if [[ "${UPLOAD_RESULTS}" == "1" ]]; then
   (
     cd "${upload_wt}"
     git add "${dest}"
-    git commit -m "Add measured ${CITY} Bearing single-city ablation v2 ${TS}"
+    git commit -m "Add measured ${CITY} Bearing single-city ablation v4 ${TS}"
     git fetch origin v39_otherdata
     git rebase origin/v39_otherdata
     git push origin HEAD:v39_otherdata
@@ -228,7 +234,7 @@ if [[ "${UPLOAD_RESULTS}" == "1" ]]; then
 fi
 
 echo "================================================================================"
-echo "DONE: Bearing-UAV SINGLE-CITY ablation"
+echo "DONE: Bearing-UAV SINGLE-CITY ablation v4"
 echo "CITY  : ${CITY}"
 echo "Suite : ${SUITE_ROOT}"
 echo "Table : ${SUITE_ROOT}/paper_ablation_tables.md"
