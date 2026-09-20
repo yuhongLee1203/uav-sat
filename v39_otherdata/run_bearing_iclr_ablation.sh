@@ -55,6 +55,7 @@ export UAVSAT_KALMAN_STEP_VISUAL_SLACK_M="${UAVSAT_KALMAN_STEP_VISUAL_SLACK_M:-3
 python3 -m py_compile \
   v39_otherdata/bearing_iclr_ablation.py \
   v39_otherdata/bearing_prepare_multicity.py \
+  v39_otherdata/bearing_plot_final_vs_gt.py \
   v39_DirectFinalMS/patch_direct_finalms.py \
   v39_DirectFinalMS/patch_simple_figure_gru.py
 
@@ -86,6 +87,7 @@ echo "Model            : Full 3-frame only"
 echo "Patience         : ${PATIENCE}"
 echo "Suite            : ${SUITE_ROOT}"
 echo "Ablations        : DISABLED"
+echo "Figures          : nav50 + nav51 for every city"
 echo "================================================================================"
 
 # Fresh preparation for all four cities. No old generated package is reused.
@@ -109,6 +111,9 @@ done
 
 run_city(){
   local city="$1" gpu="$2"
+  local prepared="${SUITE_ROOT}/${city}/prepared"
+  local full_dir="${SUITE_ROOT}/${city}/variants/full"
+  local fig_dir="${full_dir}/formal_figures"
   common_args "${city}" "${gpu}"
 
   echo "================================================================================"
@@ -134,11 +139,42 @@ run_city(){
     --variant full \
     2>&1 | tee "${SUITE_ROOT}/logs/${city}_test_full_gpu${gpu}.log"
 
-  summary="${SUITE_ROOT}/${city}/variants/full/bearing_v39_summary.json"
+  summary="${full_dir}/bearing_v39_summary.json"
   [[ -s "${summary}" ]] || {
     echo "ERROR: ${city} formal summary missing: ${summary}" >&2
     return 21
   }
+
+  echo "================================================================================"
+  echo "[FORMAL PLOT START] ${city} nav50/nav51"
+  echo "================================================================================"
+  python3 -u v39_otherdata/bearing_plot_final_vs_gt.py \
+    --prepared-root "${prepared}" \
+    --output-dir "${full_dir}" \
+    --routes test_01 test_02 \
+    2>&1 | tee "${SUITE_ROOT}/logs/${city}_plot_full.log"
+
+  mkdir -p "${fig_dir}"
+  cp "${full_dir}/paper_figures_waypoint_gt/test_01_waypoint_gt_green.jpg" \
+     "${fig_dir}/nav50_result.jpg"
+  cp "${full_dir}/paper_figures_waypoint_gt/test_02_waypoint_gt_green.jpg" \
+     "${fig_dir}/nav51_result.jpg"
+  cp "${full_dir}/paper_figures_waypoint_gt/plot_source_audit.json" \
+     "${fig_dir}/plot_source_audit.json"
+
+  for required in \
+    "${fig_dir}/nav50_result.jpg" \
+    "${fig_dir}/nav51_result.jpg" \
+    "${fig_dir}/plot_source_audit.json"; do
+    [[ -s "${required}" ]] || {
+      echo "ERROR: ${city} required formal figure output missing: ${required}" >&2
+      return 22
+    }
+  done
+
+  echo "[FORMAL FIGURES DONE] ${city}"
+  echo "  nav50 -> ${fig_dir}/nav50_result.jpg"
+  echo "  nav51 -> ${fig_dir}/nav51_result.jpg"
   echo "[FORMAL CITY DONE] ${city} GPU${gpu}"
 }
 
@@ -198,8 +234,7 @@ done
   exit 30
 }
 
-# Aggregate the measured Full outputs only. Macro metrics are explicitly named
-# macro averages and are not presented as a pooled P90.
+# Aggregate the measured Full outputs and the eight final figure paths.
 python3 - "${SUITE_ROOT}" <<'PY'
 from pathlib import Path
 import json, sys
@@ -210,13 +245,30 @@ out = {
     "run_type": "formal_full_only",
     "method": "Bearing V5 frozen checkpoint architecture",
     "cities": {},
+    "figures": {},
     "macro_average_over_8_held_out_routes": {},
 }
 rows = []
+
 for city in cities:
-    p = root / city / "variants" / "full" / "bearing_v39_summary.json"
+    full = root / city / "variants" / "full"
+    p = full / "bearing_v39_summary.json"
     data = json.loads(p.read_text(encoding="utf-8"))
     out["cities"][city] = data
+
+    nav50 = full / "formal_figures" / "nav50_result.jpg"
+    nav51 = full / "formal_figures" / "nav51_result.jpg"
+    audit = full / "formal_figures" / "plot_source_audit.json"
+    for path in (nav50, nav51, audit):
+        if not path.is_file() or path.stat().st_size == 0:
+            raise RuntimeError(f"Missing formal output: {path}")
+
+    out["figures"][city] = {
+        "nav50": str(nav50),
+        "nav51": str(nav51),
+        "plot_source_audit": str(audit),
+    }
+
     for route_name, metrics in data.items():
         rows.append((city, route_name, metrics))
 
@@ -226,11 +278,17 @@ for key in ("MLE_m", "P90_m", "LSR@3_pct", "LSR@5_pct", "LSR@10_pct"):
         out["macro_average_over_8_held_out_routes"][key] = sum(vals) / len(vals)
 
 out["held_out_route_count"] = len(rows)
-out["note"] = "P90_m here is the macro-average of per-route P90 values, not a pooled-error P90."
+out["figure_count"] = 8
+out["note"] = (
+    "P90_m is the macro-average of per-route P90 values, not a pooled-error P90. "
+    "Each city has nav50/nav51 paper figures generated from raw final_x/final_y."
+)
 (root / "formal_allcities_results.json").write_text(
     json.dumps(out, indent=2), encoding="utf-8"
 )
 print(json.dumps(out["macro_average_over_8_held_out_routes"], indent=2))
+print("[FORMAL OUTPUT] held-out routes =", len(rows))
+print("[FORMAL OUTPUT] figures =", out["figure_count"])
 PY
 
 printf '%s\n' "${SUITE_ROOT}" > v39_otherdata/LATEST_FORMAL_BEARING_V5_ALLCITIES.txt
@@ -253,25 +311,35 @@ if [[ "${UPLOAD_RESULTS}" == "1" ]]; then
   for city in "${CITIES[@]}"; do
     mkdir -p \
       "${upload_wt}/${dest}/${city}/train_frames3" \
-      "${upload_wt}/${dest}/${city}/full"
+      "${upload_wt}/${dest}/${city}/full/formal_figures"
+
     cp "${SUITE_ROOT}/${city}/prepared/experiment.json" \
       "${upload_wt}/${dest}/${city}/prepared_experiment.json"
+
     cp "${SUITE_ROOT}/${city}/train_frames3/experiment_manifest.json" \
       "${upload_wt}/${dest}/${city}/train_frames3/" 2>/dev/null || true
     cp "${SUITE_ROOT}/${city}/train_frames3/kalman_calibration.json" \
       "${upload_wt}/${dest}/${city}/train_frames3/" 2>/dev/null || true
+
     cp "${SUITE_ROOT}/${city}/variants/full/bearing_v39_summary.json" \
       "${upload_wt}/${dest}/${city}/full/"
     cp "${SUITE_ROOT}/${city}/variants/full/experiment_manifest.json" \
       "${upload_wt}/${dest}/${city}/full/"
     cp "${SUITE_ROOT}/${city}/variants/full"/*_frames.csv \
       "${upload_wt}/${dest}/${city}/full/" 2>/dev/null || true
+
+    cp "${SUITE_ROOT}/${city}/variants/full/formal_figures/nav50_result.jpg" \
+      "${upload_wt}/${dest}/${city}/full/formal_figures/"
+    cp "${SUITE_ROOT}/${city}/variants/full/formal_figures/nav51_result.jpg" \
+      "${upload_wt}/${dest}/${city}/full/formal_figures/"
+    cp "${SUITE_ROOT}/${city}/variants/full/formal_figures/plot_source_audit.json" \
+      "${upload_wt}/${dest}/${city}/full/formal_figures/"
   done
 
   (
     cd "${upload_wt}"
     git add "${dest}"
-    git commit -m "Add formal Bearing V5 all-city results ${TS}"
+    git commit -m "Add formal Bearing V5 all-city data and figures ${TS}"
     git fetch origin bearing-v5-formal-allcities
     git rebase origin/bearing-v5-formal-allcities
     git push origin HEAD:bearing-v5-formal-allcities
@@ -280,8 +348,12 @@ if [[ "${UPLOAD_RESULTS}" == "1" ]]; then
 fi
 
 echo "================================================================================"
-echo "DONE: FORMAL Bearing V5 ALL CITIES"
+echo "DONE: FORMAL Bearing V5 ALL CITIES + FIGURES"
 echo "Suite   : ${SUITE_ROOT}"
 echo "Summary : ${SUITE_ROOT}/formal_allcities_results.json"
+for city in "${CITIES[@]}"; do
+  echo "${city} nav50: ${SUITE_ROOT}/${city}/variants/full/formal_figures/nav50_result.jpg"
+  echo "${city} nav51: ${SUITE_ROOT}/${city}/variants/full/formal_figures/nav51_result.jpg"
+done
 echo "Branch  : bearing-v5-formal-allcities"
 echo "================================================================================"
