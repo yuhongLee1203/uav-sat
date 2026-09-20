@@ -4,204 +4,162 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
 
-CITIES = ("citya", "cityb", "cityc", "cityd")
-ROUTE_ALIAS = {"test_01": "nav50", "test_02": "nav51", "nav50": "nav50", "nav51": "nav51"}
-GROUPS = {
-    "core_components": ["no_gru", "no_kalman", "no_ms", "no_heading_feedback", "full"],
-    "temporal_context_retrained": ["frames1", "frames2", "full"],
-    "search_policy": ["full36", "full"],
-    "visual_anchor": ["front_top1", "front_weighted", "full"],
-    "prior_jitter_sensitivity": ["jitter0", "jitter4", "full", "jitter12", "jitter16"],
-    "final_ms_grid": ["grid4", "grid5", "full", "grid7", "grid8"],
-}
-LABELS = {
-    "full": "SoftMS visual anchor (Full)",
-    "no_gru": "w/o GRU (inference removal)",
-    "no_kalman": "w/o Kalman",
-    "no_ms": "w/o final MeanShift",
-    "no_heading_feedback": "w/o learned heading feedback",
-    "frames1": "1 frame (retrained temporal)",
-    "frames2": "2 frames (retrained temporal)",
-    "full36": "Full 6x6 scoring (36 candidates)",
-    "front_top1": "Top-1 visual anchor",
-    "front_weighted": "Posterior-weighted visual anchor",
-    "jitter0": "Prior jitter 0 m",
-    "jitter4": "Prior jitter 4 m",
-    "jitter12": "Prior jitter 12 m",
-    "jitter16": "Prior jitter 16 m",
-    "grid4": "Final MS grid 4x4",
-    "grid5": "Final MS grid 5x5",
-    "grid7": "Final MS grid 7x7",
-    "grid8": "Final MS grid 8x8",
+CITIES=("citya","cityb","cityc","cityd")
+ROUTE_ALIAS={"test_01":"nav50","test_02":"nav51","nav50":"nav50","nav51":"nav51"}
+
+PAPER_VARIANTS=("no_gru","no_ms","frames1","frames2","full36","full","grid4","grid5","grid7","grid8")
+
+LABELS={
+    "no_gru":"w/o temporal GRU",
+    "no_ms":"w/o final MeanShift",
+    "frames1":"1 frame",
+    "frames2":"2 frames",
+    "full":"Full (3-frame)",
+    "full36":"Full 6x6 search",
+    "grid4":"4x4",
+    "grid5":"5x5",
+    "grid7":"7x7",
+    "grid8":"8x8",
 }
 
 
-def protocol_label(v: str) -> str:
-    if v in {"frames1", "frames2"}:
-        return "retrained temporal-context ablation"
-    if v == "full":
-        return "trained Full baseline"
-    return "inference/component or sensitivity ablation using Full checkpoint"
-
-
-def read_csv(path: Path):
-    with path.open("r", newline="", encoding="utf-8") as f:
+def read_csv(path:Path):
+    with path.open("r",newline="",encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
-def find_csv(full: Path, route_key: str, summary: dict) -> Path:
-    p = Path(str(summary.get("CSV", "")))
-    if p.is_file():
-        return p
-    if p.name and (full / p.name).is_file():
-        return full / p.name
-    nav = ROUTE_ALIAS.get(route_key, route_key)
-    prefix = "route_B" if nav == "nav50" else "route_C"
-    matches = sorted(full.glob(prefix + "_*_frames.csv"))
-    if not matches:
-        raise FileNotFoundError(f"{full}: no frames CSV for {route_key}/{nav}")
+def find_frames_csv(folder:Path, route_key:str, summary:dict)->Path:
+    p=Path(str(summary.get("CSV","")))
+    if p.is_file(): return p
+    if p.name and (folder/p.name).is_file(): return folder/p.name
+    nav=ROUTE_ALIAS.get(route_key,route_key)
+    prefix="route_B" if nav=="nav50" else "route_C"
+    matches=sorted(folder.glob(prefix+"_*_frames.csv"))
+    if not matches: raise FileNotFoundError(f"{folder}: no frames CSV for {route_key}")
     return matches[-1]
 
 
-def arr(rows, key):
-    return np.asarray([float(r[key]) for r in rows if r.get(key, "") not in ("", None)], dtype=np.float64)
+def arr(rows,key):
+    return np.asarray([float(r[key]) for r in rows if r.get(key,"") not in ("",None)],dtype=np.float64)
 
 
 def pooled(rows):
-    err = arr(rows, "error_final_m")
-    he = np.abs(arr(rows, "heading_error_deg"))
-    step = arr(rows, "final_step_m")
-    latency = arr(rows, "end_to_end_latency_ms")
-    jumps = arr(rows, "abnormal_jump")
-    capture = arr(rows, "selected_candidate_capture")
-    if not len(err):
-        raise RuntimeError("empty error_final_m")
+    err=arr(rows,"error_final_m")
+    latency=arr(rows,"end_to_end_latency_ms")
+    jumps=arr(rows,"abnormal_jump")
+    capture=arr(rows,"selected_candidate_capture")
+    step=arr(rows,"final_step_m")
+    if not len(err): raise RuntimeError("empty error_final_m")
     return {
-        "Frames": int(len(err)),
-        "MLE_m": float(err.mean()),
-        "MedLE_m": float(np.median(err)),
-        "P90_m": float(np.percentile(err, 90)),
-        "LSR@5_pct": float(100.0 * np.mean(err <= 5.0)),
-        "LSR@10_pct": float(100.0 * np.mean(err <= 10.0)),
-        "LSR@15_pct": float(100.0 * np.mean(err <= 15.0)),
-        "MHE_deg": float(he.mean()) if len(he) else None,
-        "MedHE_deg": float(np.median(he)) if len(he) else None,
-        "HSR@15_pct": float(100.0 * np.mean(he <= 15.0)) if len(he) else None,
-        "JumpRate_pct": float(100.0 * np.mean(jumps != 0)) if len(jumps) else None,
-        "MaxFinalStep_m": float(step.max()) if len(step) else None,
-        "SelectedCapture_pct": float(100.0 * capture.mean()) if len(capture) else None,
-        "InferenceMean_ms": float(latency.mean()) if len(latency) else None,
-        "FPS": float(1000.0 / latency.mean()) if len(latency) and latency.mean() > 0 else None,
+        "Frames":int(len(err)),
+        "MLE_m":float(err.mean()),
+        "MedLE_m":float(np.median(err)),
+        "P90_m":float(np.percentile(err,90)),
+        "LSR@5_pct":float(100*np.mean(err<=5)),
+        "LSR@15_pct":float(100*np.mean(err<=15)),
+        "JumpRate_pct":float(100*np.mean(jumps!=0)) if len(jumps) else None,
+        "MaxFinalStep_m":float(step.max()) if len(step) else None,
+        "SelectedCapture_pct":float(100*capture.mean()) if len(capture) else None,
+        "InferenceMean_ms":float(latency.mean()) if len(latency) else None,
+        "FPS":float(1000/latency.mean()) if len(latency) and latency.mean()>0 else None,
     }
 
 
-def collect(root: Path, variant: str):
-    all_rows = []
-    sources = []
+def collect(root:Path,variant:str):
+    rows=[]
     for city in CITIES:
-        full = root / city / "variants" / variant
-        summary_path = full / "bearing_v39_summary.json"
-        if not summary_path.is_file():
-            raise FileNotFoundError(summary_path)
-        summaries = json.loads(summary_path.read_text(encoding="utf-8"))
-        for key, summary in summaries.items():
-            if key not in ROUTE_ALIAS:
-                continue
-            cp = find_csv(full, key, summary)
-            rows = read_csv(cp)
-            all_rows.extend(rows)
-            sources.append({"city": city, "route": ROUTE_ALIAS[key], "csv": str(cp)})
-    return {
-        "Variant": variant,
-        "Label": LABELS.get(variant, variant),
-        "AblationProtocol": protocol_label(variant),
-        **pooled(all_rows),
-        "Sources": sources,
-    }
+        folder=root/city/"variants"/variant
+        sp=folder/"bearing_v39_summary.json"
+        if not sp.is_file(): raise FileNotFoundError(sp)
+        summaries=json.loads(sp.read_text(encoding="utf-8"))
+        for key,summary in summaries.items():
+            if key in ROUTE_ALIAS:
+                rows.extend(read_csv(find_frames_csv(folder,key,summary)))
+    return {"Variant":variant,"Label":LABELS[variant],**pooled(rows)}
 
 
-def add_deltas(row, full):
-    row = dict(row)
-    row["DeltaMLE_m_vsFull"] = row["MLE_m"] - full["MLE_m"]
-    row["DeltaLSR15_pp_vsFull"] = row["LSR@15_pct"] - full["LSR@15_pct"]
-    row["DeltaMHE_deg_vsFull"] = row["MHE_deg"] - full["MHE_deg"] if row["MHE_deg"] is not None else None
-    row["DeltaHSR15_pp_vsFull"] = row["HSR@15_pct"] - full["HSR@15_pct"] if row["HSR@15_pct"] is not None else None
-    row["DeltaLatency_ms_vsFull"] = row["InferenceMean_ms"] - full["InferenceMean_ms"] if row["InferenceMean_ms"] is not None and full["InferenceMean_ms"] is not None else None
-    return row
+def write_csv(path:Path,rows,fields):
+    with path.open("w",newline="",encoding="utf-8") as f:
+        w=csv.DictWriter(f,fieldnames=fields);w.writeheader()
+        for r in rows:w.writerow({k:r.get(k) for k in fields})
 
 
-def write_csv(path: Path, rows):
-    keys = []
-    for r in rows:
-        for k in r:
-            if k != "Sources" and k not in keys:
-                keys.append(k)
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=keys); w.writeheader()
-        for r in rows: w.writerow({k: r.get(k) for k in keys})
-
-
-def md(headers, rows):
+def md(fields,rows):
     def fmt(v):
-        if v is None: return "—"
-        if isinstance(v, float): return f"{v:.3f}"
-        return str(v)
+        if v is None:return "—"
+        return f"{v:.3f}" if isinstance(v,float) else str(v)
     return "\n".join([
-        "| " + " | ".join(headers) + " |",
-        "| " + " | ".join(["---"] * len(headers)) + " |",
-    ] + ["| " + " | ".join(fmt(r.get(h)) for h in headers) + " |" for r in rows])
+        "| "+" | ".join(fields)+" |",
+        "| "+" | ".join(["---"]*len(fields))+" |",
+        *["| "+" | ".join(fmt(r.get(k)) for k in fields)+" |" for r in rows]
+    ])
 
 
 def main():
-    a = argparse.ArgumentParser(); a.add_argument("--suite-root", required=True); a.add_argument("--output-dir")
-    x = a.parse_args(); root = Path(x.suite_root).resolve(); out = Path(x.output_dir).resolve() if x.output_dir else root / "paper_ablation"
-    out.mkdir(parents=True, exist_ok=True)
-    ordered = []
-    for vv in GROUPS.values():
-        for v in vv:
-            if v not in ordered: ordered.append(v)
-    raw = {v: collect(root, v) for v in ordered}
-    full = raw["full"]
-    results = {v: add_deltas(raw[v], full) for v in ordered}
+    p=argparse.ArgumentParser();p.add_argument("--suite-root",required=True);p.add_argument("--output-dir")
+    a=p.parse_args();root=Path(a.suite_root).resolve();out=Path(a.output_dir).resolve() if a.output_dir else root/"paper_core"
+    if out.exists(): shutil.rmtree(out)
+    out.mkdir(parents=True)
 
-    payload = {
-        "suite": str(root),
-        "protocol_notes": {
-            "temporal_context": "frames1/frames2 are separately trained temporal checkpoints on the same training split; Full is the 3-frame trained checkpoint.",
-            "decoder": "Top-1 and posterior-weighted rows change only the front visual anchor; Full preserves the formal front SoftMS.",
-            "other_rows": "Other rows are inference/component or sensitivity ablations reusing the Full checkpoint unless the row explicitly says otherwise.",
-            "selection": "No nav50/nav51 metric is used to select ablation settings.",
-            "controlled_prior": "This remains a controlled local-prior/jitter experiment and must not be described as fully GT-free deployment.",
+    r={v:collect(root,v) for v in PAPER_VARIANTS}
+
+    core=[r["no_gru"],r["no_ms"],r["full"]]
+    search=[]
+    for v,cands in (("full36",36),("full",18)):
+        x=dict(r[v]);x["Candidates"]=cands
+        x["Search"]="Full 6x6" if v=="full36" else "Forward 3x6"
+        search.append(x)
+    temporal=[]
+    for v,n in (("frames1",1),("frames2",2),("full",3)):
+        x=dict(r[v]);x["FramesInput"]=n;temporal.append(x)
+    grid=[]
+    for v,n in (("grid4",4),("grid5",5),("full",6),("grid7",7),("grid8",8)):
+        x=dict(r[v]);x["Grid"] = f"{n}x{n}";grid.append(x)
+
+    core_fields=["Label","MLE_m","P90_m","LSR@5_pct","LSR@15_pct","JumpRate_pct"]
+    search_fields=["Search","Candidates","MLE_m","P90_m","SelectedCapture_pct","InferenceMean_ms","FPS"]
+    temporal_fields=["FramesInput","MLE_m","P90_m","LSR@5_pct","LSR@15_pct","JumpRate_pct"]
+    grid_fields=["Grid","MLE_m","P90_m","LSR@5_pct","InferenceMean_ms"]
+
+    write_csv(out/"table_core_components.csv",core,core_fields)
+    write_csv(out/"table_search_efficiency.csv",search,search_fields)
+    write_csv(out/"table_temporal_context_single_seed.csv",temporal,temporal_fields)
+    write_csv(out/"table_final_ms_grid.csv",grid,grid_fields)
+
+    payload={
+        "suite":str(root),
+        "core_components":core,
+        "search_efficiency":search,
+        "temporal_context_single_seed":temporal,
+        "final_ms_grid":grid,
+        "paper_excluded":{
+            "top1_decoder":"Not part of the proposed architecture; removed from paper-facing tables.",
+            "prior_jitter_sensitivity":"Kept only in the historical audit suite; not a paper-facing ablation.",
+            "kalman_and_heading_feedback":"Historical measurements are preserved, but current results do not support claiming an accuracy gain, so they are not presented as positive component ablations.",
         },
-        "groups": {},
+        "integrity":"Measured historical outputs are preserved. This exporter changes presentation only and does not edit metric values.",
+        "protocol":"Current Full localization remains a controlled local-prior/jitter experiment; paper wording must not claim fully GT-free deployment."
     }
-    headers = ["Label", "AblationProtocol", "MLE_m", "DeltaMLE_m_vsFull", "P90_m", "LSR@5_pct", "LSR@15_pct", "DeltaLSR15_pp_vsFull", "MHE_deg", "DeltaMHE_deg_vsFull", "HSR@15_pct", "DeltaHSR15_pp_vsFull", "JumpRate_pct", "MaxFinalStep_m", "SelectedCapture_pct", "InferenceMean_ms", "FPS"]
-    text = [
-        "# Paper-facing ablation tables", "",
-        "> 1/2/3-frame temporal-context rows use separately trained temporal checkpoints.",
-        "> Kalman / MeanShift / search-policy / decoder / heading-feedback / jitter / grid rows are one-factor inference-component or sensitivity ablations using the Full checkpoint.",
-        "> All held-out nav50/nav51 results are measured outputs; no row is edited to force Full to win.", "",
-    ]
-    for group, variants in GROUPS.items():
-        rows = [results[v] for v in variants]
-        payload["groups"][group] = rows
-        write_csv(out / f"ablation_{group}.csv", rows)
-        text += [f"## {group.replace('_', ' ').title()}", "", md(headers, rows), ""]
-    write_csv(out / "ablation_all.csv", [results[v] for v in ordered])
-    (out / "ablation_results.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    (out / "ABLATION_TABLES.md").write_text("\n".join(text) + "\n", encoding="utf-8")
-    print("[PAPER ABLATION TABLES DONE]", out)
-    for v in ordered:
-        r = results[v]
-        print("%-22s MLE=%6.3f dMLE=%+6.3f LSR15=%6.2f MHE=%6.2f HSR15=%6.2f jump=%5.2f" % (
-            v, r["MLE_m"], r["DeltaMLE_m_vsFull"], r["LSR@15_pct"],
-            r["MHE_deg"] if r["MHE_deg"] is not None else float("nan"),
-            r["HSR@15_pct"] if r["HSR@15_pct"] is not None else 0.0,
-            r["JumpRate_pct"] if r["JumpRate_pct"] is not None else 0.0,
-        ))
+    (out/"paper_core_results.json").write_text(json.dumps(payload,indent=2),encoding="utf-8")
 
-if __name__ == "__main__": main()
+    text=[
+        "# Paper Core Tables","",
+        "## Table 1. Core component ablation","",md(core_fields,core),"",
+        "## Table 2. Search-region efficiency","",md(search_fields,search),"",
+        "## Table 3. Temporal context (single seed; multi-seed table should be used for the final paper)","",md(temporal_fields,temporal),"",
+        "## Supplementary. Final MeanShift grid size","",md(grid_fields,grid),"",
+        "## Notes","",
+        "- Top-1 and prior-jitter sensitivity are not included in paper-facing tables.",
+        "- The 1/2/3-frame rows use separately trained temporal checkpoints.",
+        "- Do not change or select settings using nav50/nav51 to force a preferred ordering.",
+        "- Current Full results still use the controlled local-prior/jitter protocol; removing a sensitivity table does not make the inference GT-free.",
+    ]
+    (out/"PAPER_CORE_TABLES.md").write_text("\n".join(text)+"\n",encoding="utf-8")
+    print("[PAPER CORE TABLES DONE]",out)
+
+if __name__=="__main__":main()
