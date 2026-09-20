@@ -6,10 +6,8 @@ cd "${ROOT}"
 python3 v39_otherdata/patch_bearing_iclr_main_alignment.py \
   v39_otherdata/bearing_iclr_ablation.py
 
-# -----------------------------------------------------------------------------
 # V5: directly supervise the third-frame second difference through acceleration
 # and next-step outputs. No new project file is introduced.
-# -----------------------------------------------------------------------------
 python3 - <<'PY'
 from pathlib import Path
 p = Path('v39_DirectFinalMS/patch_simple_figure_gru.py')
@@ -35,6 +33,8 @@ if new_delta2 not in s:
         raise SystemExit(f'V5 patch failed: delta2 generic block matches={s.count(old_delta2)}')
     s = s.replace(old_delta2, new_delta2, 1)
 
+# The velocity/acceleration tail exists in both the canonical old block and the
+# replacement block. Locate the occurrence specifically inside new_motion.
 old_accel = '''        velocity = torch.cat([v_parallel, v_cross], dim=1)
         acceleration = torch.cat([a_parallel, a_cross], dim=1)
 '''
@@ -62,9 +62,11 @@ new_accel = '''        # Frame-3-only direct acceleration correction. Accelerati
         acceleration = torch.cat([a_parallel, a_cross], dim=1)
 '''
 if new_accel not in s:
-    if s.count(old_accel) != 1:
-        raise SystemExit(f'V5 patch failed: acceleration output matches={s.count(old_accel)}')
-    s = s.replace(old_accel, new_accel, 1)
+    new_motion_pos = s.find("new_motion = '''")
+    accel_pos = s.find(old_accel, new_motion_pos)
+    if new_motion_pos < 0 or accel_pos < 0:
+        raise SystemExit('V5 patch failed: could not locate acceleration tail inside new_motion')
+    s = s[:accel_pos] + new_accel + s[accel_pos + len(old_accel):]
 
 boundary = "    s = s.replace(old_motion, new_motion, 1)\n\nold_init ="
 insertion = r"""    s = s.replace(old_motion, new_motion, 1)
@@ -151,9 +153,7 @@ p.write_text(s, encoding='utf-8')
 print('[TEMPORAL V5] direct delta2 acceleration + next-step supervision: PASS')
 PY
 
-# -----------------------------------------------------------------------------
 # Upgrade the generated experiment runner. Selection is train/validation only.
-# -----------------------------------------------------------------------------
 python3 - <<'PY'
 from pathlib import Path
 p = Path('v39_otherdata/bearing_iclr_ablation.py')
@@ -348,8 +348,8 @@ print('[PATCH ORDER] legacy 5-block Context-GRU prepatch disabled: PASS')
 print('[CALIBRATION V5] direct delta2 + residual Kalman train-validation search: PASS')
 PY
 
-# Keep patience=4, promote output naming to V5, and strengthen the two losses
-# that directly supervise the new second-order branch.
+# Keep patience=4, promote output naming to V5, and strengthen the losses that
+# directly supervise the new second-order branch.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('v39_otherdata/run_bearing_iclr_ablation.sh')
