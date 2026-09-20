@@ -25,6 +25,13 @@ For each city independently:
 
 The visualization uses the official waypoint trajectory as the green GT polyline and raw model predictions as the red polyline. No prediction smoothing is applied by the plotting script.
 
+Internal route aliases used by the code:
+
+- `test_01` = `nav50`
+- `test_02` = `nav51`
+
+`bearing_plot_final_vs_gt.py` accepts either naming scheme and resolves the corresponding summary entry automatically.
+
 ## GPU scheduling
 
 - GPU 0: first city slot
@@ -34,7 +41,7 @@ The visualization uses the official waypoint trajectory as the green GT polyline
 
 ## Resource-safe launcher
 
-Use `v39_otherdata/run_bearing_formal_v5_safe.sh` for formal runs.
+Use `v39_otherdata/run_bearing_formal_v5_safe.sh` for fresh formal runs.
 
 Default host limits:
 
@@ -52,6 +59,21 @@ Optional overrides:
 CPU_THREADS_PER_CITY=2 CACHE_BATCH_SIZE=128 CPU_NICE=5 \
   bash v39_otherdata/run_bearing_formal_v5_safe.sh
 ```
+
+## Resume an interrupted formal run
+
+Use `v39_otherdata/resume_bearing_formal_v5_safe.sh` with the original `FORMAL_SUITE_ROOT`.
+
+The resume runner inspects each city independently:
+
+- completed summary + completed figures: skip everything;
+- completed summary + missing figures: plot only;
+- completed checkpoint + missing summary: evaluate only, then plot;
+- incomplete checkpoint: resume training without `--force-train`, then evaluate and plot.
+
+This prevents a plotting failure from forcing already-measured cities to be retrained.
+
+Important: when resuming an interrupted run, do not overwrite the locally generated `bearing_iclr_ablation.py` with the branch-base copy before the resume command. The interrupted formal launcher already generated the V5-aligned runner locally.
 
 ## Formal output tree
 
