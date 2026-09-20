@@ -31,7 +31,12 @@ export UAVSAT_MAX_FORWARD_SPEED_M_PER_FRAME="${UAVSAT_MAX_FORWARD_SPEED_M_PER_FR
 export UAVSAT_MAX_CROSS_SPEED_M_PER_FRAME="${UAVSAT_MAX_CROSS_SPEED_M_PER_FRAME:-3.0}"
 export UAVSAT_MAX_CROSS_ACCEL_M_PER_FRAME2="${UAVSAT_MAX_CROSS_ACCEL_M_PER_FRAME2:-2.0}"
 export UAVSAT_MAX_POLYNOMIAL_STEP_M_PER_FRAME="${UAVSAT_MAX_POLYNOMIAL_STEP_M_PER_FRAME:-12.0}"
-export UAVSAT_MAX_MEASUREMENT_CORRECTION_CROSS_M="${UAVSAT_MAX_MEASUREMENT_CORRECTION_CROSS_M:-2.5}"
+
+# These two are owned by the canonical V5 runtime patch. Keep them here so the
+# tighter visual correction is applied without rewriting the base config first.
+export UAVSAT_CORR_PARALLEL_M="${UAVSAT_CORR_PARALLEL_M:-0.70}"
+export UAVSAT_CORR_CROSS_M="${UAVSAT_CORR_CROSS_M:-0.45}"
+
 export UAVSAT_HEADING_STATE_EMA_ALPHA="${UAVSAT_HEADING_STATE_EMA_ALPHA:-0.22}"
 export UAVSAT_TURN_RATE_EMA_ALPHA="${UAVSAT_TURN_RATE_EMA_ALPHA:-0.20}"
 export UAVSAT_MAX_HEADING_DELTA_DEG_PER_FRAME="${UAVSAT_MAX_HEADING_DELTA_DEG_PER_FRAME:-3.0}"
@@ -49,6 +54,8 @@ printf '%s\n' \
   "Plot smoothing         : DISABLED" \
   "Cross speed max        : ${UAVSAT_MAX_CROSS_SPEED_M_PER_FRAME} m/frame" \
   "Cross accel max        : ${UAVSAT_MAX_CROSS_ACCEL_M_PER_FRAME2} m/frame^2" \
+  "Visual corr parallel   : ${UAVSAT_CORR_PARALLEL_M} m" \
+  "Visual corr cross      : ${UAVSAT_CORR_CROSS_M} m" \
   "Heading EMA alpha      : ${UAVSAT_HEADING_STATE_EMA_ALPHA}" \
   "Heading delta max      : ${UAVSAT_MAX_HEADING_DELTA_DEG_PER_FRAME} deg/frame" \
   "Kalman cross correction: ${UAVSAT_KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M} m" \
