@@ -1,0 +1,5 @@
+Paper Core V3 deliberately excludes Top-1 and prior-jitter sensitivity from paper-facing tables.
+Historical measurements remain in earlier audit suites and were not edited or deleted.
+Temporal 1/2/3-frame comparison is reported across multiple independent seeds.
+No held-out nav50/nav51 metric is used to tune or select the temporal ordering.
+Current Full localization still uses the controlled_gt_jitter local-prior protocol and is not a fully GT-free deployment result.
