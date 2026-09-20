@@ -32,6 +32,27 @@ The visualization uses the official waypoint trajectory as the green GT polyline
 - GPU 6: third city slot
 - City D is launched immediately on whichever GPU finishes first.
 
+## Resource-safe launcher
+
+Use `v39_otherdata/run_bearing_formal_v5_safe.sh` for formal runs.
+
+Default host limits:
+
+- CPU math threads per city process: 2
+- SAT backbone cache batch: 128
+- CPU nice level: 5
+- SAT backbone gallery cache concurrency: exactly 1 city at a time
+- GPU 0/5/6 training remains pipelined concurrently after each cache is ready
+
+The serialized cache stage prevents three separate 47,961-patch SAT cache builders from saturating the CPU at the same time. These controls change resource scheduling/batching only; they do not change the V5 architecture, labels, city validation calibration, or held-out evaluation definition.
+
+Optional overrides:
+
+```bash
+CPU_THREADS_PER_CITY=2 CACHE_BATCH_SIZE=128 CPU_NICE=5 \
+  bash v39_otherdata/run_bearing_formal_v5_safe.sh
+```
+
 ## Formal output tree
 
 ```text
