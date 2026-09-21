@@ -16,7 +16,8 @@ WT="${ROOT%/*}/uav-sat-frozen-v5-all-${TS}"
 UPLOAD_WT="${ROOT%/*}/uav-sat-frozen-v5-upload-${TS}"
 UPLOAD_BRANCH="paper-repro-upload-${TS}-$$"
 DEST="paper_results/frozen_v5_all_paper_${TS}"
-PATCHER="${ROOT}/v39_otherdata/patch_frozen_v5_runner_sequential.py"
+SEQ_PATCHER="${ROOT}/v39_otherdata/patch_frozen_v5_runner_sequential.py"
+CONFIG_PATCHER="${ROOT}/v39_otherdata/patch_frozen_v5_direct_config.py"
 BUILDER="${ROOT}/v39_otherdata/build_frozen_v5_all_paper.py"
 
 cleanup(){
@@ -26,14 +27,14 @@ cleanup(){
 }
 trap cleanup EXIT
 
-# Fail before any training if the launcher/helper syntax is broken.
+# Fail before any training if launcher/helper syntax is broken.
 bash -n "$0"
-python3 -m py_compile "${PATCHER}" "${BUILDER}"
+python3 -m py_compile "${SEQ_PATCHER}" "${CONFIG_PATCHER}" "${BUILDER}"
 [[ -d "${DATASET_ROOT}" ]] || { echo "ERROR: dataset missing: ${DATASET_ROOT}" >&2; exit 2; }
 mkdir -p "${OUT}/logs" "${OUT}/paper_ablation_by_city"
 
 echo "============================================================"
-echo "FROZEN V5 ALL-PAPER SUITE V2 (SYNTAX-CHECKED / SEQUENTIAL)"
+echo "FROZEN V5 ALL-PAPER SUITE V2 (DEPENDENCY-AUDITED / SEQUENTIAL)"
 echo "Frozen SHA : ${FROZEN_SHA}"
 echo "Dataset    : ${DATASET_ROOT}"
 echo "Output     : ${OUT}"
@@ -56,11 +57,48 @@ for city in citya cityb cityc cityd; do
   git -C "${WT}" reset --hard "${FROZEN_SHA}" >/dev/null
   git -C "${WT}" clean -fdx >/dev/null
 
-  # Patch only launcher parallelism. Model/algorithm source remains frozen.
-  python3 "${PATCHER}" "${WT}/v39_otherdata/run_bearing_iclr_ablation.sh"
+  # Repair the frozen V5 patch-source dependency bug BEFORE the fixed runner
+  # generates runtime config.py. This does not change the intended algorithm;
+  # it restores the four constants already referenced by the V5 direct-delta2 path.
+  python3 "${CONFIG_PATCHER}" "${WT}/v39_DirectFinalMS/patch_simple_figure_gru.py"
+
+  # Remove background-worker ambiguity: train/evaluate sequentially on GPU0.
+  python3 "${SEQ_PATCHER}" "${WT}/v39_otherdata/run_bearing_iclr_ablation.sh"
+
+  # Static preflight on every executable source that will be used.
+  python3 -m py_compile \
+    "${WT}/v39_DirectFinalMS/patch_simple_figure_gru.py" \
+    "${WT}/v39_otherdata/bearing_iclr_ablation.py" \
+    "${WT}/v39_otherdata/patch_bearing_iclr_main_alignment.py"
   bash -n "${WT}/v39_otherdata/run_bearing_iclr_ablation.sh"
   bash -n "${WT}/v39_otherdata/run_bearing_iclr_ablation_fixed.sh"
-  echo "[CITY PRECHECK] ${city} frozen runner syntax + sequential patch: PASS"
+
+  # Strong source audit: definitions must be present in the runtime-config append
+  # block, not merely referenced somewhere in visual_model patch strings.
+  python3 - "${WT}/v39_DirectFinalMS/patch_simple_figure_gru.py" <<'PY'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1])
+s=p.read_text(encoding='utf-8')
+start=s.find("c += '''")
+end=s.find("'''", start+len("c += '''"))
+if start < 0 or end < 0:
+    raise SystemExit('ERROR: runtime config append block not found')
+block=s[start:end]
+required=(
+    'TEMPORAL_DIRECT_ACCEL_FORWARD_M =',
+    'TEMPORAL_DIRECT_ACCEL_CROSS_M =',
+    'TEMPORAL_DIRECT_STEP_FORWARD_M =',
+    'TEMPORAL_DIRECT_STEP_CROSS_M =',
+)
+missing=[x for x in required if x not in block]
+for item in required:
+    print(f'[RUNTIME-CONFIG PRECHECK] {item[:-2]}: {"PASS" if item in block else "FAIL"}')
+if missing:
+    raise SystemExit('ERROR: direct-delta2 runtime config definitions missing: '+repr(missing))
+PY
+
+  echo "[CITY PRECHECK] ${city} frozen V5 dependencies + syntax + sequential scheduling: PASS"
 
   (
     cd "${WT}"
@@ -187,7 +225,8 @@ if [[ "${UPLOAD_RESULTS}" == "1" ]]; then
   cat > "${UPLOAD_WT}/${DEST}/README.txt" <<EOF
 Frozen V5 all-city paper suite V2.
 Exact algorithm source: ${FROZEN_SHA} (bearing-v5-citya-pass-20260920).
-The only runtime modification is sequential launcher scheduling to avoid background GPU worker failures; model/algorithm source remains frozen.
+Runtime repair: restores four direct-delta2 config constants already referenced by the intended Frozen-V5 model path.
+Scheduling repair: temporal training and ablation evaluation run sequentially on GPU0 so background-worker failures are not hidden.
 Every city runs the same component, temporal, and MeanShift-grid ablations.
 Full figures use raw final_x/final_y with official sparse waypoint GT; no display smoothing.
 Protocol caveat: controlled_gt_jitter local-prior sequential refinement. Camera-heading and Bearing-Naver closed-loop metrics are not fabricated; motion-heading/offline replay diagnostics are separate.
