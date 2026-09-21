@@ -1,0 +1,1174 @@
+{
+  "suite": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151",
+  "protocol": {
+    "core": "same trained 3-frame Full checkpoint; remove exactly one component at inference",
+    "temporal": "same trained 3-frame Full checkpoint; truncate explicit temporal context to 1f/2f",
+    "kalman_profile_selection": "train_01 validation calibration only; held-out nav50/nav51 never used for profile selection"
+  },
+  "core_components": [
+    {
+      "Variant": "corev4_no_gru",
+      "Label": "w/o GRU",
+      "Frames": 1474,
+      "MLE_m": 4.157999723472594,
+      "MedLE_m": 3.921729777351425,
+      "P90_m": 7.052564735224077,
+      "P95_m": 8.006789293471535,
+      "LSR@5_pct": 68.79240162822252,
+      "LSR@10_pct": 98.50746268656717,
+      "LSR@15_pct": 99.93215739484395,
+      "JumpRate_pct": 0.8819538670284939,
+      "MaxFinalStep_m": 24.670323636744648,
+      "InferenceMean_ms": 34.154252731083325,
+      "FPS": 29.278930734441555,
+      "Sources": [
+        {
+          "city": "citya",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_no_gru/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "citya",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_no_gru/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_no_gru/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_no_gru/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_no_gru/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_no_gru/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_no_gru/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_no_gru/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        }
+      ],
+      "ValidationAudit": [
+        {
+          "city": "citya",
+          "validation_kalman_gain_m": 0.06621694504281272,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 9.758107941642262,
+            "val_p90_m": 12.151350473337878,
+            "val_speed_mae": 3.0070559809561024,
+            "val_progress_mae": 8.963442419098552,
+            "objective": 10.879991523319399
+          }
+        },
+        {
+          "city": "cityb",
+          "validation_kalman_gain_m": 0.10391488057612008,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 8.577126467236969,
+            "val_p90_m": 10.541649458340432,
+            "val_speed_mae": 3.2457974384559884,
+            "val_progress_mae": 7.36625694440517,
+            "objective": 9.559036942117375
+          }
+        },
+        {
+          "city": "cityc",
+          "validation_kalman_gain_m": 0.08736518916961877,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 10.371862991887275,
+            "val_p90_m": 12.555222263684751,
+            "val_speed_mae": 3.4400324351413634,
+            "val_progress_mae": 9.12811279570493,
+            "objective": 11.536362549641932
+          }
+        },
+        {
+          "city": "cityd",
+          "validation_kalman_gain_m": 0.09624304684349383,
+          "selected": {
+            "fixed_variance_m2": 9.0,
+            "q_progress": 1.125,
+            "q_cross": 0.30000000000000004,
+            "q_velocity": 0.75,
+            "confidence_power": 1.0,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.55,
+            "step_relax_width": 0.08,
+            "step_visual_slack_m": 3.0,
+            "stage": "filter",
+            "val_mle_m": 7.1221398108151845,
+            "val_p90_m": 9.388235343624551,
+            "val_speed_mae": 5.346846450982351,
+            "val_progress_mae": 6.968404556334795,
+            "objective": 8.049819612888143
+          }
+        }
+      ]
+    },
+    {
+      "Variant": "corev4_no_kalman",
+      "Label": "w/o Kalman",
+      "Frames": 1474,
+      "MLE_m": 3.6576294392411848,
+      "MedLE_m": 3.3500432830029525,
+      "P90_m": 6.5347195624079255,
+      "P95_m": 7.398934354221326,
+      "LSR@5_pct": 76.52645861601086,
+      "LSR@10_pct": 99.1180461329715,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.7462686567164178,
+      "MaxFinalStep_m": 24.925672435056864,
+      "InferenceMean_ms": 32.40318744685981,
+      "FPS": 30.86116147184495,
+      "Sources": [
+        {
+          "city": "citya",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_no_kalman/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "citya",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_no_kalman/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_no_kalman/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_no_kalman/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_no_kalman/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_no_kalman/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_no_kalman/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_no_kalman/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        }
+      ],
+      "ValidationAudit": [
+        {
+          "city": "citya",
+          "validation_kalman_gain_m": 0.06621694504281272,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 9.758107941642262,
+            "val_p90_m": 12.151350473337878,
+            "val_speed_mae": 3.0070559809561024,
+            "val_progress_mae": 8.963442419098552,
+            "objective": 10.879991523319399
+          }
+        },
+        {
+          "city": "cityb",
+          "validation_kalman_gain_m": 0.10391488057612008,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 8.577126467236969,
+            "val_p90_m": 10.541649458340432,
+            "val_speed_mae": 3.2457974384559884,
+            "val_progress_mae": 7.36625694440517,
+            "objective": 9.559036942117375
+          }
+        },
+        {
+          "city": "cityc",
+          "validation_kalman_gain_m": 0.08736518916961877,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 10.371862991887275,
+            "val_p90_m": 12.555222263684751,
+            "val_speed_mae": 3.4400324351413634,
+            "val_progress_mae": 9.12811279570493,
+            "objective": 11.536362549641932
+          }
+        },
+        {
+          "city": "cityd",
+          "validation_kalman_gain_m": 0.09624304684349383,
+          "selected": {
+            "fixed_variance_m2": 9.0,
+            "q_progress": 1.125,
+            "q_cross": 0.30000000000000004,
+            "q_velocity": 0.75,
+            "confidence_power": 1.0,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.55,
+            "step_relax_width": 0.08,
+            "step_visual_slack_m": 3.0,
+            "stage": "filter",
+            "val_mle_m": 7.1221398108151845,
+            "val_p90_m": 9.388235343624551,
+            "val_speed_mae": 5.346846450982351,
+            "val_progress_mae": 6.968404556334795,
+            "objective": 8.049819612888143
+          }
+        }
+      ]
+    },
+    {
+      "Variant": "corev4_no_ms",
+      "Label": "w/o Final MeanShift",
+      "Frames": 1474,
+      "MLE_m": 6.658384911767318,
+      "MedLE_m": 6.47511385340378,
+      "P90_m": 11.4967657047217,
+      "P95_m": 13.049261544513586,
+      "LSR@5_pct": 34.599728629579374,
+      "LSR@10_pct": 83.10719131614654,
+      "LSR@15_pct": 98.16824966078698,
+      "JumpRate_pct": 7.598371777476255,
+      "MaxFinalStep_m": 27.167677074108415,
+      "InferenceMean_ms": 28.46900739023409,
+      "FPS": 35.12591732801462,
+      "Sources": [
+        {
+          "city": "citya",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_no_ms/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "citya",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_no_ms/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_no_ms/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_no_ms/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_no_ms/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_no_ms/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_no_ms/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_no_ms/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        }
+      ],
+      "ValidationAudit": [
+        {
+          "city": "citya",
+          "validation_kalman_gain_m": 0.06621694504281272,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 9.758107941642262,
+            "val_p90_m": 12.151350473337878,
+            "val_speed_mae": 3.0070559809561024,
+            "val_progress_mae": 8.963442419098552,
+            "objective": 10.879991523319399
+          }
+        },
+        {
+          "city": "cityb",
+          "validation_kalman_gain_m": 0.10391488057612008,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 8.577126467236969,
+            "val_p90_m": 10.541649458340432,
+            "val_speed_mae": 3.2457974384559884,
+            "val_progress_mae": 7.36625694440517,
+            "objective": 9.559036942117375
+          }
+        },
+        {
+          "city": "cityc",
+          "validation_kalman_gain_m": 0.08736518916961877,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 10.371862991887275,
+            "val_p90_m": 12.555222263684751,
+            "val_speed_mae": 3.4400324351413634,
+            "val_progress_mae": 9.12811279570493,
+            "objective": 11.536362549641932
+          }
+        },
+        {
+          "city": "cityd",
+          "validation_kalman_gain_m": 0.09624304684349383,
+          "selected": {
+            "fixed_variance_m2": 9.0,
+            "q_progress": 1.125,
+            "q_cross": 0.30000000000000004,
+            "q_velocity": 0.75,
+            "confidence_power": 1.0,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.55,
+            "step_relax_width": 0.08,
+            "step_visual_slack_m": 3.0,
+            "stage": "filter",
+            "val_mle_m": 7.1221398108151845,
+            "val_p90_m": 9.388235343624551,
+            "val_speed_mae": 5.346846450982351,
+            "val_progress_mae": 6.968404556334795,
+            "objective": 8.049819612888143
+          }
+        }
+      ]
+    },
+    {
+      "Variant": "corev4_full",
+      "Label": "Full",
+      "Frames": 1474,
+      "MLE_m": 3.6584105667685822,
+      "MedLE_m": 3.36603027111308,
+      "P90_m": 6.502063682134365,
+      "P95_m": 7.334169890037668,
+      "LSR@5_pct": 76.86567164179104,
+      "LSR@10_pct": 99.18588873812755,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.7462686567164178,
+      "MaxFinalStep_m": 24.65652906844877,
+      "InferenceMean_ms": 34.22359461906231,
+      "FPS": 29.219607441323735,
+      "Sources": [
+        {
+          "city": "citya",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "citya",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        }
+      ],
+      "ValidationAudit": [
+        {
+          "city": "citya",
+          "validation_kalman_gain_m": 0.06621694504281272,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 9.758107941642262,
+            "val_p90_m": 12.151350473337878,
+            "val_speed_mae": 3.0070559809561024,
+            "val_progress_mae": 8.963442419098552,
+            "objective": 10.879991523319399
+          }
+        },
+        {
+          "city": "cityb",
+          "validation_kalman_gain_m": 0.10391488057612008,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 8.577126467236969,
+            "val_p90_m": 10.541649458340432,
+            "val_speed_mae": 3.2457974384559884,
+            "val_progress_mae": 7.36625694440517,
+            "objective": 9.559036942117375
+          }
+        },
+        {
+          "city": "cityc",
+          "validation_kalman_gain_m": 0.08736518916961877,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 10.371862991887275,
+            "val_p90_m": 12.555222263684751,
+            "val_speed_mae": 3.4400324351413634,
+            "val_progress_mae": 9.12811279570493,
+            "objective": 11.536362549641932
+          }
+        },
+        {
+          "city": "cityd",
+          "validation_kalman_gain_m": 0.09624304684349383,
+          "selected": {
+            "fixed_variance_m2": 9.0,
+            "q_progress": 1.125,
+            "q_cross": 0.30000000000000004,
+            "q_velocity": 0.75,
+            "confidence_power": 1.0,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.55,
+            "step_relax_width": 0.08,
+            "step_visual_slack_m": 3.0,
+            "stage": "filter",
+            "val_mle_m": 7.1221398108151845,
+            "val_p90_m": 9.388235343624551,
+            "val_speed_mae": 5.346846450982351,
+            "val_progress_mae": 6.968404556334795,
+            "objective": 8.049819612888143
+          }
+        }
+      ]
+    }
+  ],
+  "temporal_context": [
+    {
+      "Variant": "corev4_ctx1",
+      "Label": "1 frame context",
+      "Frames": 1474,
+      "MLE_m": 3.643674473374265,
+      "MedLE_m": 3.35886807033999,
+      "P90_m": 6.483582718623116,
+      "P95_m": 7.3173374116418195,
+      "LSR@5_pct": 76.93351424694708,
+      "LSR@10_pct": 99.18588873812755,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.7462686567164178,
+      "MaxFinalStep_m": 24.636727698255534,
+      "InferenceMean_ms": 35.744973017329926,
+      "FPS": 27.975961809096308,
+      "Sources": [
+        {
+          "city": "citya",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_ctx1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "citya",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_ctx1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_ctx1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_ctx1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_ctx1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_ctx1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_ctx1/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_ctx1/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        }
+      ],
+      "ValidationAudit": [
+        {
+          "city": "citya",
+          "validation_kalman_gain_m": 0.06621694504281272,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 9.758107941642262,
+            "val_p90_m": 12.151350473337878,
+            "val_speed_mae": 3.0070559809561024,
+            "val_progress_mae": 8.963442419098552,
+            "objective": 10.879991523319399
+          }
+        },
+        {
+          "city": "cityb",
+          "validation_kalman_gain_m": 0.10391488057612008,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 8.577126467236969,
+            "val_p90_m": 10.541649458340432,
+            "val_speed_mae": 3.2457974384559884,
+            "val_progress_mae": 7.36625694440517,
+            "objective": 9.559036942117375
+          }
+        },
+        {
+          "city": "cityc",
+          "validation_kalman_gain_m": 0.08736518916961877,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 10.371862991887275,
+            "val_p90_m": 12.555222263684751,
+            "val_speed_mae": 3.4400324351413634,
+            "val_progress_mae": 9.12811279570493,
+            "objective": 11.536362549641932
+          }
+        },
+        {
+          "city": "cityd",
+          "validation_kalman_gain_m": 0.09624304684349383,
+          "selected": {
+            "fixed_variance_m2": 9.0,
+            "q_progress": 1.125,
+            "q_cross": 0.30000000000000004,
+            "q_velocity": 0.75,
+            "confidence_power": 1.0,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.55,
+            "step_relax_width": 0.08,
+            "step_visual_slack_m": 3.0,
+            "stage": "filter",
+            "val_mle_m": 7.1221398108151845,
+            "val_p90_m": 9.388235343624551,
+            "val_speed_mae": 5.346846450982351,
+            "val_progress_mae": 6.968404556334795,
+            "objective": 8.049819612888143
+          }
+        }
+      ]
+    },
+    {
+      "Variant": "corev4_ctx2",
+      "Label": "2 frame context",
+      "Frames": 1474,
+      "MLE_m": 3.6436327878927077,
+      "MedLE_m": 3.3496018712026476,
+      "P90_m": 6.49564434604663,
+      "P95_m": 7.330840125735976,
+      "LSR@5_pct": 77.06919945725916,
+      "LSR@10_pct": 99.18588873812755,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.7462686567164178,
+      "MaxFinalStep_m": 24.643540994952332,
+      "InferenceMean_ms": 36.29556146931798,
+      "FPS": 27.551578196285462,
+      "Sources": [
+        {
+          "city": "citya",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_ctx2/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "citya",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_ctx2/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_ctx2/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_ctx2/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_ctx2/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_ctx2/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_ctx2/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_ctx2/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        }
+      ],
+      "ValidationAudit": [
+        {
+          "city": "citya",
+          "validation_kalman_gain_m": 0.06621694504281272,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 9.758107941642262,
+            "val_p90_m": 12.151350473337878,
+            "val_speed_mae": 3.0070559809561024,
+            "val_progress_mae": 8.963442419098552,
+            "objective": 10.879991523319399
+          }
+        },
+        {
+          "city": "cityb",
+          "validation_kalman_gain_m": 0.10391488057612008,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 8.577126467236969,
+            "val_p90_m": 10.541649458340432,
+            "val_speed_mae": 3.2457974384559884,
+            "val_progress_mae": 7.36625694440517,
+            "objective": 9.559036942117375
+          }
+        },
+        {
+          "city": "cityc",
+          "validation_kalman_gain_m": 0.08736518916961877,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 10.371862991887275,
+            "val_p90_m": 12.555222263684751,
+            "val_speed_mae": 3.4400324351413634,
+            "val_progress_mae": 9.12811279570493,
+            "objective": 11.536362549641932
+          }
+        },
+        {
+          "city": "cityd",
+          "validation_kalman_gain_m": 0.09624304684349383,
+          "selected": {
+            "fixed_variance_m2": 9.0,
+            "q_progress": 1.125,
+            "q_cross": 0.30000000000000004,
+            "q_velocity": 0.75,
+            "confidence_power": 1.0,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.55,
+            "step_relax_width": 0.08,
+            "step_visual_slack_m": 3.0,
+            "stage": "filter",
+            "val_mle_m": 7.1221398108151845,
+            "val_p90_m": 9.388235343624551,
+            "val_speed_mae": 5.346846450982351,
+            "val_progress_mae": 6.968404556334795,
+            "objective": 8.049819612888143
+          }
+        }
+      ]
+    },
+    {
+      "Variant": "corev4_full",
+      "Label": "Full",
+      "Frames": 1474,
+      "MLE_m": 3.6584105667685822,
+      "MedLE_m": 3.36603027111308,
+      "P90_m": 6.502063682134365,
+      "P95_m": 7.334169890037668,
+      "LSR@5_pct": 76.86567164179104,
+      "LSR@10_pct": 99.18588873812755,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.7462686567164178,
+      "MaxFinalStep_m": 24.65652906844877,
+      "InferenceMean_ms": 34.22359461906231,
+      "FPS": 29.219607441323735,
+      "Sources": [
+        {
+          "city": "citya",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "citya",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/citya/variants_core_v4/corev4_full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityb",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityb/variants_core_v4/corev4_full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityc",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v4/corev4_full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav50",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        },
+        {
+          "city": "cityd",
+          "route": "nav51",
+          "csv": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/variants_core_v4/corev4_full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+        }
+      ],
+      "ValidationAudit": [
+        {
+          "city": "citya",
+          "validation_kalman_gain_m": 0.06621694504281272,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 9.758107941642262,
+            "val_p90_m": 12.151350473337878,
+            "val_speed_mae": 3.0070559809561024,
+            "val_progress_mae": 8.963442419098552,
+            "objective": 10.879991523319399
+          }
+        },
+        {
+          "city": "cityb",
+          "validation_kalman_gain_m": 0.10391488057612008,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 8.577126467236969,
+            "val_p90_m": 10.541649458340432,
+            "val_speed_mae": 3.2457974384559884,
+            "val_progress_mae": 7.36625694440517,
+            "objective": 9.559036942117375
+          }
+        },
+        {
+          "city": "cityc",
+          "validation_kalman_gain_m": 0.08736518916961877,
+          "selected": {
+            "fixed_variance_m2": 25.0,
+            "q_progress": 1.5,
+            "q_cross": 0.4,
+            "q_velocity": 1.0,
+            "confidence_power": 0.5,
+            "temporal_3frame_scale": 0.9,
+            "delta2_scale": 0.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.0,
+            "step_relax_width": 0.05,
+            "step_visual_slack_m": 10.0,
+            "stage": "step",
+            "val_mle_m": 10.371862991887275,
+            "val_p90_m": 12.555222263684751,
+            "val_speed_mae": 3.4400324351413634,
+            "val_progress_mae": 9.12811279570493,
+            "objective": 11.536362549641932
+          }
+        },
+        {
+          "city": "cityd",
+          "validation_kalman_gain_m": 0.09624304684349383,
+          "selected": {
+            "fixed_variance_m2": 9.0,
+            "q_progress": 1.125,
+            "q_cross": 0.30000000000000004,
+            "q_velocity": 0.75,
+            "confidence_power": 1.0,
+            "temporal_3frame_scale": 1.1,
+            "delta2_scale": 2.0,
+            "prior_blend_base": 0.05,
+            "prior_blend_lowconf_gain": 0.3,
+            "prior_blend_max": 0.3,
+            "prior_blend_cutoff": 0.7,
+            "step_relax_confidence": 0.55,
+            "step_relax_width": 0.08,
+            "step_visual_slack_m": 3.0,
+            "stage": "filter",
+            "val_mle_m": 7.1221398108151845,
+            "val_p90_m": 9.388235343624551,
+            "val_speed_mae": 5.346846450982351,
+            "val_progress_mae": 6.968404556334795,
+            "objective": 8.049819612888143
+          }
+        }
+      ]
+    }
+  ],
+  "full_best_core_check": {
+    "MLE": false,
+    "P90": true,
+    "LSR5": true,
+    "LSR15": true,
+    "JumpRate": true
+  },
+  "full_best_temporal_check": {
+    "MLE": false,
+    "P90": false,
+    "LSR5": false,
+    "LSR15": true,
+    "JumpRate": true
+  }
+}

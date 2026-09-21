@@ -1,0 +1,7 @@
+Core V4:
+- Core component table includes w/o GRU, w/o Kalman, w/o Final MeanShift, Full.
+- Temporal table restores same-checkpoint context truncation: 1f/2f/3f all reuse the trained 3-frame Full checkpoint.
+- Kalman/runtime profile is selected from train_01 validation calibration only.
+- Held-out nav50/nav51 metrics are never used for automatic profile selection or retuning.
+- Overall chain remains Forward-18 SoftMS -> recurrent GRU -> constrained Kalman -> final MeanShift -> XY.
+- Current localization protocol remains controlled_gt_jitter.
