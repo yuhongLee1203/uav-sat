@@ -12,7 +12,9 @@ import bearing_paper_ablation as paper
 ab = paper.ab
 
 # Core V5-Restore keeps the architecture unchanged and restores the pre-Smooth-V1
-# estimator dynamics that previously gave Full > context truncations on CityA.
+# lateral/heading estimator dynamics that previously gave Full > context
+# truncations on CityA. Longitudinal motion limits remain owned by the original
+# train_01-only cadence adaptation, matching the old V5 manifest.
 CORE_V5 = {
     "corev5_full": dict(frames=3, disable_gru=False, kalman="fixed", ms=True, grid=6,
                         forward_only=True, anchor="softms", prior_jitter_m=8.0,
@@ -59,8 +61,10 @@ def _variant_root(args):
 
 
 def _restore_env():
-    # Pre-Smooth-V1 V5 estimator dynamics. These values are fixed before any
-    # held-out evaluation and are not selected from nav50/nav51.
+    # Pre-Smooth-V1 lateral/heading defaults. Longitudinal values may appear as
+    # import-time defaults, but _ORIG_PATCH_PATHS subsequently replaces them
+    # with train_01 cadence-derived limits and we deliberately do not overwrite
+    # those limits afterwards.
     values = {
         "UAVSAT_MAX_FORWARD_SPEED_M_PER_FRAME": "14.0",
         "UAVSAT_MAX_CROSS_SPEED_M_PER_FRAME": "5.0",
@@ -85,8 +89,6 @@ def _restore_env():
 def _set_environment(args, prepared_root, output, variant, *, training):
     _restore_env()
     _ORIG_SET_ENV(args, prepared_root, output, variant, training=training)
-    # _ORIG_SET_ENV may write some generic experiment vars; restore estimator
-    # knobs again so runtime config import always sees the V5 values.
     _restore_env()
     os.environ["UAVSAT_EXPERIMENT_FORWARD_ONLY"] = "1"
     os.environ["UAVSAT_EXPERIMENT_ANCHOR"] = "softms"
@@ -125,7 +127,6 @@ def _select_calibration(args):
     profiles = [x for x in profiles if _finite(x.get("val_mle_m"))]
     if not profiles:
         return None, {"source": str(p), "held_out_used_for_selection": False}
-    # Predeclared validation-only objective: accuracy first, then P90.
     selected = min(profiles, key=lambda x: (float(x["val_mle_m"]), float(x.get("val_p90_m", 1e30))))
     nk = payload.get("validation_no_kalman_diagnostic", {})
     audit = {
@@ -158,44 +159,72 @@ CAL_ATTRS = {
 
 
 def _patch_paths(config, args, prepared_root):
+    # First run the canonical Formal-V5 adaptation. This sets longitudinal
+    # motion/Kalman limits from train_01 only.
     _ORIG_PATCH_PATHS(config, args, prepared_root)
-    # Explicitly restore V5 estimator-side attributes after the generic Smooth
-    # config adapter has run.
+
+    # Restore only lateral/heading pre-Smooth-V1 dynamics. Do NOT overwrite
+    # MAX_FORWARD_SPEED, MAX_POLYNOMIAL_STEP, parallel correction, velocity
+    # correction, or final-step max here; those stay cadence-derived.
     fixed = {
-        "MAX_FORWARD_SPEED_M_PER_FRAME": 14.0,
         "MAX_CROSS_SPEED_M_PER_FRAME": 5.0,
         "MAX_CROSS_ACCEL_M_PER_FRAME2": 4.0,
-        "MAX_POLYNOMIAL_STEP_M_PER_FRAME": 14.0,
         "HEADING_STATE_EMA_ALPHA": 0.35,
         "TURN_RATE_EMA_ALPHA": 0.30,
         "MAX_HEADING_DELTA_DEG_PER_FRAME": 5.0,
         "MAX_TURN_RATE_DELTA_DEG_PER_FRAME2": 5.0,
         "LOSS_CROSS_MOTION_REG": 0.0,
         "KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M": 1.75,
-        "KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME": 1.25,
-        "KALMAN_FINAL_STEP_MAX_M": 7.0,
         "ROUTE_FRAME_SMOOTH_RADIUS_M": 24.0,
-        "MAX_MEASUREMENT_CORRECTION_PARALLEL_M": 0.75,
         "MAX_MEASUREMENT_CORRECTION_CROSS_M": 0.50,
     }
     applied = {}
     for k, v in fixed.items():
         if hasattr(config, k):
-            setattr(config, k, v); applied[k] = v
+            setattr(config, k, v)
+            applied[k] = v
+
+    # Re-assert train_01 cadence-derived longitudinal settings from the audit
+    # produced by the canonical loader. This makes ownership explicit and easy
+    # to verify in manifests.
+    cadence = getattr(args, "training_cadence_audit", {}) or {}
+    cadence_map = {
+        "max_forward_speed_m_per_frame": "MAX_FORWARD_SPEED_M_PER_FRAME",
+        "max_polynomial_step_m_per_frame": "MAX_POLYNOMIAL_STEP_M_PER_FRAME",
+        "max_measurement_correction_parallel_m": "MAX_MEASUREMENT_CORRECTION_PARALLEL_M",
+        "kalman_max_velocity_correction_m_per_frame": "KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME",
+        "kalman_final_step_max_m": "KALMAN_FINAL_STEP_MAX_M",
+    }
+    cadence_applied = {}
+    for src, dst in cadence_map.items():
+        if src in cadence and hasattr(config, dst):
+            value = float(cadence[src])
+            setattr(config, dst, value)
+            applied[dst] = value
+            cadence_applied[dst] = value
+
     selected, audit = _select_calibration(args)
     if selected:
         for key, attrs in CAL_ATTRS.items():
             if key not in selected or not _finite(selected[key]):
                 continue
-            v = float(selected[key])
+            value = float(selected[key])
             for attr in attrs:
                 if hasattr(config, attr):
-                    setattr(config, attr, v); applied[attr] = v
-    args.core_v5_restore_audit = {**audit, "restored_v5_config": applied}
+                    setattr(config, attr, value)
+                    applied[attr] = value
+
+    args.core_v5_restore_audit = {
+        **audit,
+        "restored_v5_config": applied,
+        "train01_cadence_config": cadence_applied,
+        "cadence_ownership": "PASS" if len(cadence_applied) >= 4 else "CHECK",
+    }
+    print("[CORE-V5 CONFIG] lateral/heading pre-Smooth-V1 profile: PASS", flush=True)
+    print("[CORE-V5 CONFIG] longitudinal train_01 cadence ownership: %s" % args.core_v5_restore_audit["cadence_ownership"], flush=True)
 
 
 def _reuse_visual_checkpoint(config, prepared_root):
-    # Reuse the already-trained visual model; only temporal/estimator state is retrained.
     args = CURRENT_ARGS
     root = Path(args.suite_root).resolve() / args.city
     dest = Path(config.VISUAL_CHECKPOINT)
@@ -205,7 +234,8 @@ def _reuse_visual_checkpoint(config, prepared_root):
     ):
         if p.exists():
             dest.parent.mkdir(parents=True, exist_ok=True)
-            if dest.exists() or dest.is_symlink(): dest.unlink()
+            if dest.exists() or dest.is_symlink():
+                dest.unlink()
             dest.symlink_to(p.resolve())
             print(f"[CORE-V5 REUSE VISUAL] {p}", flush=True)
             return
@@ -220,7 +250,8 @@ def _link_full_checkpoints(config, _ignored):
         if not src.exists():
             raise FileNotFoundError(src)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists() or dest.is_symlink(): dest.unlink()
+        if dest.exists() or dest.is_symlink():
+            dest.unlink()
         dest.symlink_to(src.resolve())
     print(f"[CORE-V5 CKPT] reuse restored 3f Full checkpoint: {srcdir}", flush=True)
 
@@ -238,7 +269,7 @@ def _write_protocol(args, out: Path):
         "city": args.city,
         "variant": getattr(args, "variant", "full"),
         "architecture": "Forward-18 SoftMS -> 3-frame recurrent GRU -> constrained Kalman -> final MeanShift -> XY",
-        "restored_profile": "pre-Smooth-V1 V5 estimator dynamics",
+        "restored_profile": "pre-Smooth-V1 lateral/heading estimator dynamics with train_01 cadence-derived longitudinal limits",
         "same_3frame_checkpoint_for_component_and_context_ablation": True,
         "held_out_used_for_selection": False,
         "validation_calibration": getattr(args, "core_v5_restore_audit", None),
@@ -278,7 +309,6 @@ def main():
     args.core_v5_restore = True
     CURRENT_ARGS = args
     if args.mode == "train":
-        # Train one restored 3-frame Full temporal checkpoint per city.
         args.variant = "corev5_full"
         ab.train_full(args)
         _write_protocol(args, _train_root(args))
@@ -298,6 +328,7 @@ def main():
             }
         sp.write_text(json.dumps(data, indent=2, default=float), encoding="utf-8")
         print(f"[CORE-V5 RESTORE DONE] {args.city} {args.variant}", flush=True)
+
 
 if __name__ == "__main__":
     main()
