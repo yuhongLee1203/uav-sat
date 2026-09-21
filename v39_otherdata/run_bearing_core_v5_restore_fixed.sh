@@ -49,8 +49,13 @@ COMMON=(
 )
 
 train_city(){
-  local city="$1" gpu="$2" root="${SUITE}/${city}/train_core_v5_restore"
-  if [[ "${FORCE}" == "1" ]]; then rm -rf "${root}"; fi
+  local city
+  local gpu
+  local train_root
+  city="$1"
+  gpu="$2"
+  train_root="${SUITE}/${city}/train_core_v5_restore"
+  if [[ "${FORCE}" == "1" ]]; then rm -rf "${train_root}"; fi
   echo "================================================================================"
   echo "[CORE-V5 TRAIN RESTORED 3F] ${city} GPU${gpu}"
   echo "================================================================================"
@@ -66,7 +71,12 @@ train_city cityd 0
 
 VARIANTS=(corev5_full corev5_no_gru corev5_no_kalman corev5_no_ms corev5_ctx1 corev5_ctx2)
 run_city(){
-  local city="$1" gpu="$2" variant out
+  local city
+  local gpu
+  local variant
+  local out
+  city="$1"
+  gpu="$2"
   for variant in "${VARIANTS[@]}"; do
     out="${SUITE}/${city}/variants_core_v5_restore/${variant}"
     if [[ "${FORCE}" == "1" ]]; then rm -rf "${out}"; fi
@@ -122,7 +132,8 @@ EOF
 for city in citya cityb cityc cityd; do
   cp -a "${SUITE}/${city}/train_core_v5_restore/core_v5_restore_manifest.json" "${TMP}/${DEST_REL}/${city}_train_manifest.json"
   for variant in "${VARIANTS[@]}"; do
-    src="${SUITE}/${city}/variants_core_v5_restore/${variant}"; dst="${TMP}/${DEST_REL}/${city}/${variant}"
+    src="${SUITE}/${city}/variants_core_v5_restore/${variant}"
+    dst="${TMP}/${DEST_REL}/${city}/${variant}"
     mkdir -p "${dst}"
     cp "${src}/bearing_v39_summary.json" "${dst}/"
     cp "${src}/core_v5_restore_manifest.json" "${dst}/"
