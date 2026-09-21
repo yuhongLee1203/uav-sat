@@ -21,23 +21,40 @@ export TOKENIZERS_PARALLELISM=false
 export UAVSAT_VISUAL_CACHE_BATCH_SIZE="${CACHE_BATCH_SIZE:-128}"
 export MALLOC_ARENA_MAX=2
 
-python3 v39_otherdata/patch_core_v5_restore_cadence.py
+# Always refresh the Core-V5 helper files from origin so a previous partial
+# patch can never poison a rerun. Do NOT overwrite bearing_iclr_ablation.py;
+# that local generated Formal-V5 runner is intentionally preserved.
+git fetch origin "${BRANCH}" >/dev/null
+git show "origin/${BRANCH}:v39_otherdata/bearing_core_v5_restore.py" \
+  > v39_otherdata/bearing_core_v5_restore.py
+git show "origin/${BRANCH}:v39_otherdata/build_bearing_core_v5_restore_tables.py" \
+  > v39_otherdata/build_bearing_core_v5_restore_tables.py
+git show "origin/${BRANCH}:v39_otherdata/bearing_paper_ablation.py" \
+  > v39_otherdata/bearing_paper_ablation.py
+
 python3 -m py_compile \
   v39_otherdata/bearing_core_v5_restore.py \
   v39_otherdata/build_bearing_core_v5_restore_tables.py \
   v39_otherdata/bearing_paper_ablation.py
 
+echo "[CORE-V5 REFRESH] helper files restored from origin: PASS"
+echo "[CORE-V5 REFRESH] no non-idempotent patch helper used: PASS"
+
 python3 - <<'PY'
 from pathlib import Path
 s=Path('v39_otherdata/bearing_iclr_ablation.py').read_text(encoding='utf-8')
+r=Path('v39_otherdata/bearing_core_v5_restore.py').read_text(encoding='utf-8')
 checks={
  'formal_v5_calibration':'formal_v5_direct_delta2_residual_kalman' in s,
  'frames':'EXPERIMENT_FRAME_COUNT' in s,
  'no_kalman':'no_kalman' in s,
  'train':'train_temporal_model' in s,
+ 'native_cadence_restore':'train01_cadence_config' in r,
+ 'no_patch_dependency':'patch_core_v5_restore_cadence' not in r,
 }
 for k,v in checks.items(): print(f'[CORE-V5 PRECHECK] {k}: {"PASS" if v else "FAIL"}')
-if not all(checks.values()): raise SystemExit('ERROR: local bearing_iclr_ablation.py is not the completed Formal-V5 runner; do not overwrite it.')
+if not all(checks.values()):
+    raise SystemExit('ERROR: Core V5 precheck failed. Keep the local generated bearing_iclr_ablation.py unchanged.')
 PY
 
 mkdir -p "${SUITE}/logs"
@@ -49,54 +66,56 @@ COMMON=(
 )
 
 train_city(){
-  local city
-  local gpu
-  local train_root
-  city="$1"
-  gpu="$2"
-  train_root="${SUITE}/${city}/train_core_v5_restore"
+  local city="$1" gpu="$2" train_root="${SUITE}/$1/train_core_v5_restore"
   if [[ "${FORCE}" == "1" ]]; then rm -rf "${train_root}"; fi
   echo "================================================================================"
   echo "[CORE-V5 TRAIN RESTORED 3F] ${city} GPU${gpu}"
   echo "================================================================================"
-  python3 -u v39_otherdata/bearing_core_v5_restore.py train "${COMMON[@]}" --city "${city}" --gpu "${gpu}" \
+  python3 -u v39_otherdata/bearing_core_v5_restore.py train \
+    "${COMMON[@]}" --city "${city}" --gpu "${gpu}" \
     2>&1 | tee "${SUITE}/logs/core_v5_${city}_train.log"
 }
+
 train_city citya 0 & PA=$!
 train_city cityb 5 & PB=$!
 train_city cityc 6 & PC=$!
-failed=0; wait "${PA}" || failed=1; wait "${PB}" || failed=1; wait "${PC}" || failed=1
+failed=0
+wait "${PA}" || failed=1
+wait "${PB}" || failed=1
+wait "${PC}" || failed=1
 [[ "${failed}" -eq 0 ]] || { echo "ERROR: citya/b/c restored training failed" >&2; exit 30; }
 train_city cityd 0
 
 VARIANTS=(corev5_full corev5_no_gru corev5_no_kalman corev5_no_ms corev5_ctx1 corev5_ctx2)
 run_city(){
-  local city
-  local gpu
-  local variant
-  local out
-  city="$1"
-  gpu="$2"
+  local city="$1" gpu="$2" variant out
   for variant in "${VARIANTS[@]}"; do
     out="${SUITE}/${city}/variants_core_v5_restore/${variant}"
     if [[ "${FORCE}" == "1" ]]; then rm -rf "${out}"; fi
     echo "================================================================================"
     echo "[CORE-V5 EVAL] ${city} ${variant} GPU${gpu}"
     echo "================================================================================"
-    python3 -u v39_otherdata/bearing_core_v5_restore.py eval "${COMMON[@]}" --city "${city}" --gpu "${gpu}" --variant "${variant}" \
+    python3 -u v39_otherdata/bearing_core_v5_restore.py eval \
+      "${COMMON[@]}" --city "${city}" --gpu "${gpu}" --variant "${variant}" \
       2>&1 | tee "${SUITE}/logs/core_v5_${city}_${variant}.log"
     [[ -s "${out}/bearing_v39_summary.json" ]] || { echo "ERROR: missing ${out}/bearing_v39_summary.json" >&2; return 40; }
   done
 }
+
 run_city citya 0 & PA=$!
 run_city cityb 5 & PB=$!
 run_city cityc 6 & PC=$!
-failed=0; wait "${PA}" || failed=1; wait "${PB}" || failed=1; wait "${PC}" || failed=1
+failed=0
+wait "${PA}" || failed=1
+wait "${PB}" || failed=1
+wait "${PC}" || failed=1
 [[ "${failed}" -eq 0 ]] || { echo "ERROR: citya/b/c Core V5 eval failed" >&2; exit 50; }
 run_city cityd 0
 
 rm -rf "${SUITE}/paper_core_v5_restore"
-python3 -u v39_otherdata/build_bearing_core_v5_restore_tables.py --suite-root "${SUITE}" --output-dir "${SUITE}/paper_core_v5_restore"
+python3 -u v39_otherdata/build_bearing_core_v5_restore_tables.py \
+  --suite-root "${SUITE}" \
+  --output-dir "${SUITE}/paper_core_v5_restore"
 cat "${SUITE}/paper_core_v5_restore/PAPER_CORE_V5_RESTORE_TABLES.md"
 
 echo "================================================================================"
@@ -108,6 +127,7 @@ echo "1f/2f are same-checkpoint context truncations; no multi-seed run."
 echo "================================================================================"
 
 if [[ "${UPLOAD}" != "1" ]]; then exit 0; fi
+
 STAMP="$(date +%Y%m%d_%H%M%S)"
 DEST_REL="paper_results/formal_bearing_v5_core_v5_restore_${STAMP}"
 TMP="$(mktemp -d /tmp/uavsat-corev5-upload.XXXXXX)"
@@ -130,7 +150,8 @@ Core V5-Restore:
 - Localization protocol remains controlled_gt_jitter.
 EOF
 for city in citya cityb cityc cityd; do
-  cp -a "${SUITE}/${city}/train_core_v5_restore/core_v5_restore_manifest.json" "${TMP}/${DEST_REL}/${city}_train_manifest.json"
+  cp -a "${SUITE}/${city}/train_core_v5_restore/core_v5_restore_manifest.json" \
+    "${TMP}/${DEST_REL}/${city}_train_manifest.json"
   for variant in "${VARIANTS[@]}"; do
     src="${SUITE}/${city}/variants_core_v5_restore/${variant}"
     dst="${TMP}/${DEST_REL}/${city}/${variant}"
@@ -141,6 +162,7 @@ for city in citya cityb cityc cityd; do
 done
 cd "${TMP}"
 git add "${DEST_REL}"
-git -c user.name="OpenAI" -c user.email="noreply@openai.com" commit -m "Upload Bearing V5 Core V5 restored results ${STAMP}" >/dev/null
+git -c user.name="OpenAI" -c user.email="noreply@openai.com" \
+  commit -m "Upload Bearing V5 Core V5 restored results ${STAMP}" >/dev/null
 git push origin "HEAD:${BRANCH}"
 echo "[CORE V5 RESTORE UPLOAD DONE] ${DEST_REL}"
