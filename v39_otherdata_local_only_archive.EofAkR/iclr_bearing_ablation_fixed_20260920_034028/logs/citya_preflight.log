@@ -1,0 +1,2 @@
+[PREPARED] PASS | city=citya | step=8 m | selection=unrecorded_legacy | existing GT/routes unchanged
+[CADENCE] source=train_01_manifest_gt | mean=10.675142 m | p90=17.170058 m | p95=19.094575 m

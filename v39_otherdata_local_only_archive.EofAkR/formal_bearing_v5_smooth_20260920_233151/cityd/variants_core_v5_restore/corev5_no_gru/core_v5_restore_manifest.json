@@ -1,0 +1,82 @@
+{
+  "city": "cityd",
+  "variant": "corev5_no_gru",
+  "architecture": "Forward-18 SoftMS -> 3-frame recurrent GRU -> constrained Kalman -> final MeanShift -> XY",
+  "restored_profile": "pre-Smooth-V1 lateral/heading estimator dynamics with train_01 cadence-derived longitudinal limits",
+  "same_3frame_checkpoint_for_component_and_context_ablation": true,
+  "held_out_used_for_selection": false,
+  "validation_calibration": {
+    "source": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/train_frames3/kalman_calibration.json",
+    "selection_source": "current_city_training_validation_only",
+    "validation_range": [
+      140,
+      166
+    ],
+    "selected": {
+      "fixed_variance_m2": 9.0,
+      "q_progress": 1.125,
+      "q_cross": 0.30000000000000004,
+      "q_velocity": 0.75,
+      "confidence_power": 1.0,
+      "temporal_3frame_scale": 1.1,
+      "delta2_scale": 2.0,
+      "prior_blend_base": 0.05,
+      "prior_blend_lowconf_gain": 0.3,
+      "prior_blend_max": 0.3,
+      "prior_blend_cutoff": 0.7,
+      "step_relax_confidence": 0.55,
+      "step_relax_width": 0.08,
+      "step_visual_slack_m": 3.0,
+      "stage": "filter",
+      "val_mle_m": 7.1221398108151845,
+      "val_p90_m": 9.388235343624551,
+      "val_speed_mae": 5.346846450982351,
+      "val_progress_mae": 6.968404556334795,
+      "objective": 8.049819612888143
+    },
+    "validation_no_kalman_diagnostic": {
+      "mle_m": 7.218382857658678,
+      "p90_m": 9.525868489887312
+    },
+    "held_out_used_for_selection": false,
+    "restored_v5_config": {
+      "MAX_CROSS_SPEED_M_PER_FRAME": 5.0,
+      "MAX_CROSS_ACCEL_M_PER_FRAME2": 4.0,
+      "HEADING_STATE_EMA_ALPHA": 0.35,
+      "TURN_RATE_EMA_ALPHA": 0.3,
+      "MAX_HEADING_DELTA_DEG_PER_FRAME": 5.0,
+      "MAX_TURN_RATE_DELTA_DEG_PER_FRAME2": 5.0,
+      "LOSS_CROSS_MOTION_REG": 0.0,
+      "KALMAN_MAX_POSTERIOR_CORRECTION_CROSS_M": 1.75,
+      "ROUTE_FRAME_SMOOTH_RADIUS_M": 24.0,
+      "MAX_MEASUREMENT_CORRECTION_CROSS_M": 0.5,
+      "MAX_FORWARD_SPEED_M_PER_FRAME": 14.0,
+      "MAX_POLYNOMIAL_STEP_M_PER_FRAME": 14.0,
+      "MAX_MEASUREMENT_CORRECTION_PARALLEL_M": 8.03150672776808,
+      "KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME": 3.0118150229130296,
+      "KALMAN_FINAL_STEP_MAX_M": 13.895714102996719,
+      "EXPERIMENT_FIXED_VARIANCE_M2": 9.0,
+      "KALMAN_Q_PROGRESS": 1.125,
+      "KALMAN_Q_CROSS": 0.30000000000000004,
+      "KALMAN_Q_VELOCITY": 0.75,
+      "KALMAN_CONFIDENCE_POWER": 1.0,
+      "TEMPORAL_ADAPTER_3FRAME_SCALE": 1.1,
+      "TEMPORAL_DELTA2_SCALE": 2.0,
+      "KALMAN_PRIOR_BLEND_BASE": 0.05,
+      "KALMAN_PRIOR_BLEND_LOWCONF_GAIN": 0.3,
+      "KALMAN_PRIOR_BLEND_MAX": 0.3,
+      "KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF": 0.7,
+      "KALMAN_STEP_RELAX_CONFIDENCE": 0.55,
+      "KALMAN_STEP_RELAX_WIDTH": 0.08,
+      "KALMAN_STEP_VISUAL_SLACK_M": 3.0
+    },
+    "train01_cadence_config": {
+      "MAX_FORWARD_SPEED_M_PER_FRAME": 14.0,
+      "MAX_POLYNOMIAL_STEP_M_PER_FRAME": 14.0,
+      "MAX_MEASUREMENT_CORRECTION_PARALLEL_M": 8.03150672776808,
+      "KALMAN_MAX_VELOCITY_CORRECTION_M_PER_FRAME": 3.0118150229130296,
+      "KALMAN_FINAL_STEP_MAX_M": 13.895714102996719
+    },
+    "cadence_ownership": "PASS"
+  }
+}

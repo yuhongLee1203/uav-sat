@@ -87,15 +87,15 @@ def _same_quadrant_recall(
             raise RuntimeError(f"source_index out of range: {source_index}")
         meta = city_rows.iloc[source_index]
 
-        # Official Bearing global coordinate conversion:
-        # block*256 + 256 + normalized_offset*256.
+        # Official Bearing global coordinate conversion uses a 256-pixel block
+        # stride and UNI_PIXEL=128 for the normalized intra-block offset.
         center_x_px = float(meta["block_x"]) * bearing.PATCH_SIZE + bearing.PATCH_SIZE
         center_y_px = float(meta["block_y"]) * bearing.PATCH_SIZE + bearing.PATCH_SIZE
         final_abs_x_px = (float(pred["final_x"]) + origin_x_m) / bearing.MPP
         final_abs_y_px = (float(pred["final_y"]) + origin_y_m) / bearing.MPP
         pred_rel = np.asarray([
-            final_abs_x_px - center_x_px,
-            final_abs_y_px - center_y_px,
+            (final_abs_x_px - center_x_px) / bearing.OFFICIAL_OFFSET_SCALE_PX,
+            (final_abs_y_px - center_y_px) / bearing.OFFICIAL_OFFSET_SCALE_PX,
         ], dtype=np.float64)
         gt_rel = np.asarray([
             float(meta["x_norm"]), float(meta["y_norm"])

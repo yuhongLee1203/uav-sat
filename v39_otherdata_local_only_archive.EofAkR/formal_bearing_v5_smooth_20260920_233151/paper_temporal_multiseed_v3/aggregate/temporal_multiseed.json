@@ -1,0 +1,57 @@
+{
+  "root": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/paper_temporal_multiseed_v3",
+  "seeds": [
+    2033,
+    2034,
+    2035
+  ],
+  "summary": [
+    {
+      "Frames": 1,
+      "Variant": "frames1",
+      "Seeds": 3,
+      "MLE_mean": 3.6246494177141297,
+      "MLE_std": 0.004958419247149933,
+      "P90_mean": 6.384404568829184,
+      "P90_std": 0.013118912274673055,
+      "LSR5_mean": 77.2274988692899,
+      "LSR5_std": 0.20726258231369668,
+      "LSR15_mean": 100.0,
+      "LSR15_std": 0.0,
+      "Jump_mean": 0.5653550429669832,
+      "Jump_std": 0.03916894634936404
+    },
+    {
+      "Frames": 2,
+      "Variant": "frames2",
+      "Seeds": 3,
+      "MLE_mean": 3.633880133334236,
+      "MLE_std": 0.005092204629158249,
+      "P90_mean": 6.387579617644016,
+      "P90_std": 0.010819883955475356,
+      "LSR5_mean": 77.43102668475802,
+      "LSR5_std": 0.14122564446853098,
+      "LSR15_mean": 100.0,
+      "LSR15_std": 0.0,
+      "Jump_mean": 0.5879692446856626,
+      "Jump_std": 0.03916894634936404
+    },
+    {
+      "Frames": 3,
+      "Variant": "full",
+      "Seeds": 3,
+      "MLE_mean": 3.654329270825185,
+      "MLE_std": 0.004721668737469723,
+      "P90_mean": 6.478831146560318,
+      "P90_std": 0.011574385447207595,
+      "LSR5_mean": 77.06919945725916,
+      "LSR5_std": 0.17949466153762195,
+      "LSR15_mean": 100.0,
+      "LSR15_std": 0.0,
+      "Jump_mean": 0.6784260515603799,
+      "Jump_std": 0.06784260515603796
+    }
+  ],
+  "selection_rule": "No held-out nav50/nav51 metric is used to tune or select a frame count.",
+  "interpretation": "Use mean\u00b1std. Do not claim 3-frame is best unless the multi-seed results support it."
+}

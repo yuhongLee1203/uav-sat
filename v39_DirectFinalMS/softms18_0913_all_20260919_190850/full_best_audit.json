@@ -1,0 +1,18 @@
+{
+  "front_decoder": "softms",
+  "front_candidates": 18,
+  "split_gate_used": false,
+  "combined_mle_m": {
+    "temporal_1frame": 1.9086704460250679,
+    "temporal_2frame": 1.9534503159810885,
+    "temporal_3frame": 1.9523027085073472,
+    "abl_ms_only": 5.005143023807546,
+    "abl_ms_gru": 5.332318111586498,
+    "abl_ms_gru_kalman": 4.308522394894694
+  },
+  "full_definition": "temporal_3frame = front SoftMS18 + 3-frame GRU + fixed-R Kalman + final MS",
+  "full_best_module_ablation": true,
+  "full_best_temporal_ablation": false,
+  "FULL_BEST_CHECK": "FAIL",
+  "research_integrity_note": "PASS/FAIL is reported from measured results only. No ablation is weakened and no metric is edited to force Full to win."
+}

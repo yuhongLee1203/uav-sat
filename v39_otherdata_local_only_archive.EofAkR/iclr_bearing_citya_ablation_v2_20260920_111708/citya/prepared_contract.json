@@ -1,0 +1,21 @@
+{
+  "prepared_root": "/yh/study/uav-sat/v39_otherdata/iclr_bearing_citya_ablation_v2_20260920_111708/citya/prepared",
+  "selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+  "selection_version_status": "recorded",
+  "sample_step_m": {
+    "train_01": 4.0,
+    "test_01": 4.0,
+    "test_02": 4.0
+  },
+  "sha256": {
+    "routes/train_01/manifest.csv": "94d73775f77d4ac755b230c8481af0fd4e8ca28d87ccb437d312d0aee39eb391",
+    "routes/train_01/waypoints.json": "bb41e6b9632abc3f3da145d66893b69d47a050d126c2f75081e56c098b2509c8",
+    "routes/test_01/manifest.csv": "5715e6341dfdd3171ba49842f84bed8a1031c27a18550b37ae409b66601a4adb",
+    "routes/test_01/waypoints.json": "6c268a1c0d2486d4cbccce0a4d8e9a9d27ed37d24f813317c575db4e298b1017",
+    "routes/test_02/manifest.csv": "f9683db8199f578c7bb9b3bf59b383a76349560bc3cd6bc0f4a42f000a08c96f",
+    "routes/test_02/waypoints.json": "34fefdd858099808de36e9ac652f57bae9f1d115327590a67e273f7b9aca8b10",
+    "experiment.json": "565eb0aa254743b6b5e1332a971f0bc2a057d0ee517137a9cc96bd5e9f75f2fb",
+    "bearing_satellite.json": "b53ad6815022d8af7b4ae157220e2cf6bb44a6aabba968b6b9ee5e114f27011e"
+  },
+  "data_modified": false
+}

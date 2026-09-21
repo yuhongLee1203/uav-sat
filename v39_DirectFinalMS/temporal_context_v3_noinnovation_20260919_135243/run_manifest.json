@@ -1,0 +1,10 @@
+{
+  "architecture": "V39_Forward18_TemporalContextV3_VisualPosition_NoInnovation_GRU_Kalman_Final6",
+  "main_chain": "Forward18 SoftMS -> 3-frame GRU -> fixed-R Kalman -> Final 6x6 MeanShift",
+  "gru_inputs": ["temporal_mean", "delta", "delta2", "satellite_context", "forward18_softms_visual_position", "previous_state"],
+  "position_innovation_input": false,
+  "visual_checkpoint_reused": true,
+  "temporal_checkpoint_retrained_route_A": true,
+  "hyperparameter_selection": "Route-A validation only",
+  "B_C_used_for_selection": false
+}

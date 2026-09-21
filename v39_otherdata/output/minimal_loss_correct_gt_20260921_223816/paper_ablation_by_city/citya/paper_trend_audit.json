@@ -1,0 +1,69 @@
+{
+  "FULL_TREND_CHECK": "FAIL",
+  "component_full_best": true,
+  "three_frame_full_best": false,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.4078760632292644,
+      "MLE_95CI": [
+        -0.47574339044400477,
+        -0.33957524610463263
+      ],
+      "full_minus_ablation_LSR@5_pct": 6.3157894736842195,
+      "LSR@5_95CI": [
+        3.421052631578958,
+        9.210526315789469
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": -0.009941484050721705,
+      "MLE_95CI": [
+        -0.0214048050181318,
+        0.002532508943450695
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.0,
+      "LSR@5_95CI": [
+        -1.0526315789473717,
+        1.0526315789473717
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": -3.4679666604548727,
+      "MLE_95CI": [
+        -3.7856123545788685,
+        -3.165686864799147
+      ],
+      "full_minus_ablation_LSR@5_pct": 38.684210526315795,
+      "LSR@5_95CI": [
+        33.42105263157895,
+        43.684210526315795
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": 0.0016666494493886574,
+      "MLE_95CI": [
+        -0.013399779143929803,
+        0.014984288661176593
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.2631578947368429,
+      "LSR@5_95CI": [
+        -0.5263157894736858,
+        1.3157894736842035
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": -0.00882896625892382,
+      "MLE_95CI": [
+        -0.019002037358271228,
+        0.0038260156475789496
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.0,
+      "LSR@5_95CI": [
+        -0.7894736842105288,
+        0.7894736842105288
+      ]
+    }
+  },
+  "claim_guidance": "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; revise only through training/validation data, not held-out navigation results.",
+  "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+}

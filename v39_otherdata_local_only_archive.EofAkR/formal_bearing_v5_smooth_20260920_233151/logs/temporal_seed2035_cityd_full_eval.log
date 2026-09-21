@@ -1,0 +1,32 @@
+[PREPARED] PASS | city=cityd | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.465267 m | p90=10.039383 m | p95=12.083230 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[PAPER-ABLATION-AUDIT] base_geometry_6x6: PASS
+[PAPER-ABLATION-AUDIT] forward_policy: PASS
+[PAPER-ABLATION-AUDIT] frame_count: PASS
+[PAPER-ABLATION-AUDIT] gru_flag: PASS
+[PAPER-ABLATION-AUDIT] kalman_flag: PASS
+[PAPER-ABLATION-AUDIT] front_decoder: PASS
+[PAPER-ABLATION-AUDIT] protocol: PASS
+[PAPER-ABLATION-AUDIT] controlled_gt_reference_enabled: PASS
+[PAPER-ABLATION-AUDIT] ablation_decoder_switch: PASS
+[PAPER-ABLATION-AUDIT] v5_temporal_source: PASS
+[PAPER-ABLATION-AUDIT] final_ms_source: PASS
+route_B: reuse UAV backbone cache
+
+=== cityd full: nav50 ===
+route_B final MLE=3.485m P90=5.740m LSR@15=100.00% selected_capture=100.00% bank_capture=100.00% acq_acc=100.00% speed_mae=3.117m/frame progress_mae=1.794m heading_mae=33.8deg jump_rate=0.00% max_step=22.44m final_leg=11 gt_leg=11
+route_C: reuse UAV backbone cache
+
+=== cityd full: nav51 ===
+route_C final MLE=3.479m P90=5.722m LSR@15=100.00% selected_capture=98.30% bank_capture=98.30% acq_acc=100.00% speed_mae=2.886m/frame progress_mae=1.971m heading_mae=38.2deg jump_rate=0.43% max_step=22.71m final_leg=9 gt_leg=9
+[DONE] /yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/paper_temporal_multiseed_v3/seed_2035/cityd/variants/full/bearing_v39_summary.json
+[PAPER-ABLATION DONE] cityd full

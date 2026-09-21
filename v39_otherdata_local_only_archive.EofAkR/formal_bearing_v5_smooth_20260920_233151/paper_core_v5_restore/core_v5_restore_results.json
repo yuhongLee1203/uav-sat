@@ -1,0 +1,106 @@
+{
+  "suite": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151",
+  "core_components": [
+    {
+      "Variant": "corev5_no_gru",
+      "Label": "w/o GRU",
+      "Frames": 1474,
+      "MLE_m": 4.137416940087891,
+      "MedLE_m": 3.9088235704948033,
+      "P90_m": 7.008644516375742,
+      "LSR@5_pct": 68.79240162822252,
+      "LSR@15_pct": 99.86431478968792,
+      "JumpRate_pct": 1.01763907734057,
+      "MaxFinalStep_m": 24.670344521851884
+    },
+    {
+      "Variant": "corev5_no_kalman",
+      "Label": "w/o Kalman",
+      "Frames": 1474,
+      "MLE_m": 3.5940492720238066,
+      "MedLE_m": 3.302884804159211,
+      "P90_m": 6.441147693957178,
+      "LSR@5_pct": 76.79782903663501,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.6784260515603799,
+      "MaxFinalStep_m": 24.78105771924087
+    },
+    {
+      "Variant": "corev5_no_ms",
+      "Label": "w/o Final MeanShift",
+      "Frames": 1474,
+      "MLE_m": 6.539572037066777,
+      "MedLE_m": 6.273661249865578,
+      "P90_m": 11.493203970311729,
+      "LSR@5_pct": 38.12754409769335,
+      "LSR@15_pct": 97.89687924016283,
+      "JumpRate_pct": 7.191316146540028,
+      "MaxFinalStep_m": 27.934694486721725
+    },
+    {
+      "Variant": "corev5_full",
+      "Label": "Full",
+      "Frames": 1474,
+      "MLE_m": 3.625558469863171,
+      "MedLE_m": 3.3372031624029255,
+      "P90_m": 6.500643871172566,
+      "LSR@5_pct": 76.52645861601086,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.8141112618724559,
+      "MaxFinalStep_m": 24.531835927541326
+    }
+  ],
+  "temporal_context": [
+    {
+      "Variant": "corev5_ctx1",
+      "Label": "1 frame context",
+      "Frames": 1474,
+      "MLE_m": 3.59861864611672,
+      "MedLE_m": 3.3103001626037383,
+      "P90_m": 6.479074103484662,
+      "LSR@5_pct": 77.06919945725916,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.8141112618724559,
+      "MaxFinalStep_m": 24.503887903753782
+    },
+    {
+      "Variant": "corev5_ctx2",
+      "Label": "2 frame context",
+      "Frames": 1474,
+      "MLE_m": 3.6063634667697944,
+      "MedLE_m": 3.305194788536216,
+      "P90_m": 6.480169236347923,
+      "LSR@5_pct": 77.00135685210311,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.8141112618724559,
+      "MaxFinalStep_m": 24.519059032013114
+    },
+    {
+      "Variant": "corev5_full",
+      "Label": "Full",
+      "Frames": 1474,
+      "MLE_m": 3.625558469863171,
+      "MedLE_m": 3.3372031624029255,
+      "P90_m": 6.500643871172566,
+      "LSR@5_pct": 76.52645861601086,
+      "LSR@15_pct": 100.0,
+      "JumpRate_pct": 0.8141112618724559,
+      "MaxFinalStep_m": 24.531835927541326
+    }
+  ],
+  "full_best_core": {
+    "MLE": false,
+    "P90": false,
+    "LSR5": false,
+    "LSR15": true,
+    "JumpRate": false
+  },
+  "full_best_temporal": {
+    "MLE": false,
+    "P90": false,
+    "LSR5": false,
+    "LSR15": true,
+    "JumpRate": true
+  },
+  "integrity": "Measured held-out outputs; no post-hoc numeric editing."
+}

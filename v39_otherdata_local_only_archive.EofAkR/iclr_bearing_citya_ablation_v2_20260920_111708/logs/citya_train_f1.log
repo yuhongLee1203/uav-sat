@@ -1,0 +1,17 @@
+[PREPARED] PASS | city=citya | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.603307 m | p90=10.304821 m | p95=11.938275 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+could not identify canonical GRUCell declaration
+Traceback (most recent call last):
+  File "v39_otherdata/bearing_iclr_ablation.py", line 659, in <module>
+    main()
+  File "v39_otherdata/bearing_iclr_ablation.py", line 653, in main
+    train_full(args)
+  File "v39_otherdata/bearing_iclr_ablation.py", line 475, in train_full
+    runtime = _make_runtime(prepared, output / "runtime")
+  File "v39_otherdata/bearing_iclr_ablation.py", line 248, in _make_runtime
+    subprocess.run(
+  File "/usr/lib/python3.8/subprocess.py", line 516, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/bin/python3', '/yh/study/uav-sat/v39_DirectFinalMS/patch_simple_figure_gru.py', '/yh/study/uav-sat/v39_otherdata/iclr_bearing_citya_ablation_v2_20260920_111708/citya/train_frames1/runtime/visual_model.py']' returned non-zero exit status 1.

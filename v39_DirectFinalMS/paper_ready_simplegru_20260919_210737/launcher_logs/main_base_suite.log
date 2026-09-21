@@ -1,0 +1,87 @@
+[STATIC] original temporal LR: PASS
+[STATIC] original next-step loss: PASS
+[STATIC] original velocity auxiliary weight: PASS
+[STATIC] no cumulative-progress loss: PASS
+[STATIC] original v39 next-step formula: PASS
+[STATIC] controlled_gt_jitter protocol: PASS
+[STATIC] frame-count switch: PASS
+============================================================================================================
+FINAL NECESSARY ABLATION SUITE
+Method: front MS1 -> Front SoftMS(18); original v39 training code otherwise unchanged
+KEEP: Constant Velocity and fixed-R Kalman as fixed main settings (not separate design tables)
+RUN: architecture ablation + fair 1/2/3-frame ablation + final-MS window/pure decoder latency + E2E runtime
+GPU plan: 0/5/6 train 1/2/3-frame variants in parallel
+MS latency definition: candidates + regularized logits READY -> one MeanShift -> metric XY
+============================================================================================================
+[OK] clean v39: Weighted Centroid -> original GRU -> original Kalman -> one final MS; pure MS timer enabled
+[PATCH OK] GRU = mean + delta + delta2 + SAT context + direct visual position + previous state
+[PATCH OK] no split/dual/residual gate; no position innovation
+[CACHE] preparing/reusing Route A/B/C UAV backbone caches on GPU0
+route_A: reuse UAV backbone cache
+[CACHE] route_A: 1732 frames
+route_B: reuse UAV backbone cache
+[CACHE] route_B: 2276 frames
+route_C: reuse UAV backbone cache
+[CACHE] route_C: 1258 frames
+[OK] clean v39: Weighted Centroid -> original GRU -> original Kalman -> one final MS; pure MS timer enabled
+[OK] clean v39: Weighted Centroid -> original GRU -> original Kalman -> one final MS; pure MS timer enabled
+[OK] clean v39: Weighted Centroid -> original GRU -> original Kalman -> one final MS; pure MS timer enabled
+[PATCH OK] GRU = mean + delta + delta2 + SAT context + direct visual position + previous state
+[PATCH OK] no split/dual/residual gate; no position innovation
+[PATCH OK] GRU = mean + delta + delta2 + SAT context + direct visual position + previous state
+[PATCH OK] no split/dual/residual gate; no position innovation
+[START][temporal_1frame][GPU0] frames=1 kalman=fixed gru=1 ms=1 grid=6 mode=train_eval
+[START][temporal_2frame][GPU5] frames=2 kalman=fixed gru=1 ms=1 grid=6 mode=train_eval
+[PATCH OK] GRU = mean + delta + delta2 + SAT context + direct visual position + previous state
+[PATCH OK] no split/dual/residual gate; no position innovation
+[START][temporal_3frame][GPU6] frames=3 kalman=fixed gru=1 ms=1 grid=6 mode=train_eval
+[temporal_1frame] ============================================================================================================
+[temporal_1frame] V39_SimpleFigureGRU_SoftMS18_Kalman_FinalMS
+[temporal_1frame] device=cuda:0
+[temporal_1frame] Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+[temporal_1frame] 3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.
+[temporal_1frame] Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+[temporal_1frame] Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+[temporal_1frame] ============================================================================================================
+[temporal_1frame] reuse visual checkpoint: /yh/study/uav-sat/v39_DirectFinalMS/paper_ready_simplegru_20260919_210737/main_ablation/temporal_1frame/checkpoints/visual_retrieval_A_only.pt
+[temporal_3frame] ============================================================================================================
+[temporal_3frame] V39_SimpleFigureGRU_SoftMS18_Kalman_FinalMS
+[temporal_3frame] device=cuda:0
+[temporal_3frame] Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+[temporal_3frame] 3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.
+[temporal_3frame] Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+[temporal_3frame] Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+[temporal_3frame] ============================================================================================================
+[temporal_3frame] reuse visual checkpoint: /yh/study/uav-sat/v39_DirectFinalMS/paper_ready_simplegru_20260919_210737/main_ablation/temporal_3frame/checkpoints/visual_retrieval_A_only.pt
+[temporal_2frame] ============================================================================================================
+[temporal_2frame] V39_SimpleFigureGRU_SoftMS18_Kalman_FinalMS
+[temporal_2frame] device=cuda:0
+[temporal_2frame] Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+[temporal_2frame] 3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.
+[temporal_2frame] Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+[temporal_2frame] Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+[temporal_2frame] ============================================================================================================
+[temporal_2frame] reuse visual checkpoint: /yh/study/uav-sat/v39_DirectFinalMS/paper_ready_simplegru_20260919_210737/main_ablation/temporal_2frame/checkpoints/visual_retrieval_A_only.pt
+[temporal_1frame] route_A: reuse UAV backbone cache
+[temporal_3frame] route_A: reuse UAV backbone cache
+[temporal_2frame] route_A: reuse UAV backbone cache
+[temporal_1frame] temporal split train=[0,1196) val=[1228,1456) route_length=4938.3m
+[temporal_1frame] Route-A GT mean forward step=2.937m/frame p90=3.555m/frame
+[temporal_3frame] temporal split train=[0,1196) val=[1228,1456) route_length=4938.3m
+[temporal_3frame] Route-A GT mean forward step=2.937m/frame p90=3.555m/frame
+[temporal_2frame] temporal split train=[0,1196) val=[1228,1456) route_length=4938.3m
+[temporal_2frame] Route-A GT mean forward step=2.937m/frame p90=3.555m/frame
+[temporal_1frame] temporal epoch=001/80 loss=5.08181 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.607 radius=0.0m pred_step=1.452 target_step=2.937 pred_v=0.893 target_v=2.937 val_mle=3.913m val_p90=8.128m val_speed_mae=1.958 heading=-0.8/0.2deg val_progress_mae=1.176m val_heading_mae=7.6deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.735 best=9.735 patience=0/15
+[temporal_2frame] temporal epoch=001/80 loss=5.12648 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.607 radius=0.0m pred_step=1.405 target_step=2.937 pred_v=0.882 target_v=2.937 val_mle=3.837m val_p90=8.045m val_speed_mae=1.984 heading=-0.8/0.2deg val_progress_mae=1.172m val_heading_mae=7.5deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.706 best=9.706 patience=0/15
+[temporal_3frame] temporal epoch=001/80 loss=5.10981 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.607 radius=0.0m pred_step=1.407 target_step=2.937 pred_v=0.883 target_v=2.937 val_mle=3.853m val_p90=8.068m val_speed_mae=1.979 heading=-0.6/0.2deg val_progress_mae=1.183m val_heading_mae=7.3deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.708 best=9.708 patience=0/15
+[temporal_2frame] temporal epoch=002/80 loss=3.27946 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.340 target_step=2.937 pred_v=1.457 target_v=2.937 val_mle=4.083m val_p90=8.206m val_speed_mae=1.937 heading=-0.6/0.2deg val_progress_mae=1.377m val_heading_mae=6.7deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.866 best=9.706 patience=1/15
+[temporal_1frame] temporal epoch=002/80 loss=3.27209 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.333 target_step=2.937 pred_v=1.458 target_v=2.937 val_mle=4.154m val_p90=8.445m val_speed_mae=1.927 heading=-0.6/0.2deg val_progress_mae=1.377m val_heading_mae=6.8deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.919 best=9.735 patience=1/15
+[temporal_3frame] temporal epoch=002/80 loss=3.27927 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.345 target_step=2.937 pred_v=1.459 target_v=2.937 val_mle=4.132m val_p90=8.367m val_speed_mae=1.936 heading=-0.4/0.2deg val_progress_mae=1.377m val_heading_mae=6.7deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.912 best=9.708 patience=1/15
+[temporal_2frame] temporal epoch=003/80 loss=3.17390 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.171 target_step=2.937 pred_v=1.395 target_v=2.937 val_mle=4.061m val_p90=8.172m val_speed_mae=1.853 heading=0.2/0.2deg val_progress_mae=1.377m val_heading_mae=6.6deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.673 best=9.706 patience=2/15
+[temporal_1frame] temporal epoch=003/80 loss=3.17207 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.184 target_step=2.937 pred_v=1.409 target_v=2.937 val_mle=4.147m val_p90=8.410m val_speed_mae=1.837 heading=0.0/0.2deg val_progress_mae=1.376m val_heading_mae=6.8deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.730 best=9.735 patience=2/15
+[temporal_3frame] temporal epoch=003/80 loss=3.17427 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.173 target_step=2.937 pred_v=1.395 target_v=2.937 val_mle=4.148m val_p90=8.414m val_speed_mae=1.850 heading=0.2/0.2deg val_progress_mae=1.379m val_heading_mae=6.7deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.755 best=9.708 patience=2/15
+[temporal_2frame] temporal epoch=004/80 loss=3.13694 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.191 target_step=2.937 pred_v=1.462 target_v=2.937 val_mle=4.036m val_p90=8.146m val_speed_mae=1.802 heading=0.3/0.2deg val_progress_mae=1.366m val_heading_mae=6.7deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.544 best=9.544 patience=0/15
+[temporal_1frame] temporal epoch=004/80 loss=3.13756 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.187 target_step=2.937 pred_v=1.472 target_v=2.937 val_mle=3.990m val_p90=8.068m val_speed_mae=1.807 heading=0.0/0.2deg val_progress_mae=1.367m val_heading_mae=6.7deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.508 best=9.508 patience=0/15
+[temporal_3frame] temporal epoch=004/80 loss=3.13658 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.188 target_step=2.937 pred_v=1.460 target_v=2.937 val_mle=4.128m val_p90=8.335m val_speed_mae=1.801 heading=0.2/0.2deg val_progress_mae=1.373m val_heading_mae=6.7deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.637 best=9.637 patience=0/15
+[temporal_2frame] temporal epoch=005/80 loss=3.12079 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.156 target_step=2.937 pred_v=1.514 target_v=2.937 val_mle=4.169m val_p90=8.466m val_speed_mae=1.758 heading=0.2/0.2deg val_progress_mae=1.374m val_heading_mae=6.7deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.592 best=9.544 patience=1/15
+[temporal_1frame] temporal epoch=005/80 loss=3.12905 center_teacher=1.000 acq_teacher=1.000 capture=92.47% bank_capture=92.47% acq_acc=100.00% acq_conf=0.606 radius=0.0m pred_step=3.156 target_step=2.937 pred_v=1.525 target_v=2.937 val_mle=4.070m val_p90=8.197m val_speed_mae=1.745 heading=0.2/0.2deg val_progress_mae=1.370m val_heading_mae=6.6deg val_capture=75.00% val_bank=75.00% val_acq_acc=100.00% score=9.465 best=9.508 patience=1/15

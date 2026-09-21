@@ -22,6 +22,9 @@ from PIL import Image, ImageDraw
 
 MPP = 0.25
 PATCH_SIZE = 256
+# Bearing-UAV stores x_norm/y_norm relative to UNI_PIXEL=128, not to the
+# 256-pixel block stride.  This matches the official cvphr evaluation code.
+OFFICIAL_OFFSET_SCALE_PX = 128
 REFERENCE_SIZE = 4096
 CITY_TO_RSI = {
     "citya": ("34bc", "35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg"),
@@ -140,9 +143,18 @@ def _city_rows(df: pd.DataFrame, city: str) -> pd.DataFrame:
     rows = df.loc[mask].copy()
     if rows.empty:
         raise ValueError("No %s/%s rows found from target_path" % (city, rsi_id))
-    # Same conversion used by Bearing-UAV's official cvphr/utils/utils.py.
-    rows["global_x_px"] = rows["block_x"].astype(float) * PATCH_SIZE + PATCH_SIZE + rows["x_norm"].astype(float) * PATCH_SIZE
-    rows["global_y_px"] = rows["block_y"].astype(float) * PATCH_SIZE + PATCH_SIZE + rows["y_norm"].astype(float) * PATCH_SIZE
+    # Same conversion used by Bearing-UAV's official cvphr/utils/utils.py:
+    # block centre = block * 256 + 256; normalized offset scale = UNI_PIXEL=128.
+    rows["global_x_px"] = (
+        rows["block_x"].astype(float) * PATCH_SIZE
+        + PATCH_SIZE
+        + rows["x_norm"].astype(float) * OFFICIAL_OFFSET_SCALE_PX
+    )
+    rows["global_y_px"] = (
+        rows["block_y"].astype(float) * PATCH_SIZE
+        + PATCH_SIZE
+        + rows["y_norm"].astype(float) * OFFICIAL_OFFSET_SCALE_PX
+    )
     rows = rows[
         rows["global_x_px"].between(0, REFERENCE_SIZE - 1)
         & rows["global_y_px"].between(0, REFERENCE_SIZE - 1)
@@ -347,6 +359,7 @@ def prepare(args):
     experiment = {
         "dataset_root": str(dataset_root), "city": city, "satellite_image": str(sat_path),
         "metadata_csv": str(metadata_path), "mpp": MPP,
+        "bearing_offset_scale_px": OFFICIAL_OFFSET_SCALE_PX,
         "train_routes": list(TRAIN_ROUTES), "inference_routes": list(TEST_ROUTES),
         "route_stats": stats,
         "note": "Independent Bearing-UAV observations are selected into disjoint pseudo-flight sequences.",

@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "v39_otherdata/bearing_plot_final_vs_gt.py", line 312, in <module>
+    main()
+  File "v39_otherdata/bearing_plot_final_vs_gt.py", line 304, in main
+    audit[route] = render(route, root, out, summaries[route])
+KeyError: 'test_01'

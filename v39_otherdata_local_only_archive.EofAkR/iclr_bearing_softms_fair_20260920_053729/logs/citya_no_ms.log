@@ -1,0 +1,29 @@
+[PREPARED] PASS | city=citya | step=8 m | selection=unrecorded_legacy | existing GT/routes unchanged
+[CADENCE] source=train_01_manifest_gt | mean=10.675142 m | p90=17.170058 m | p95=19.094575 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] simple GRU = mean + delta + delta2 + SAT context + direct SoftMS position + previous state
+[PATCH OK] no split/dual/inference gate; no position innovation
+[PATCH OK] Route-A-only search knobs exposed through UAVSAT_* environment variables
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[ARCH-AUDIT] forward_18: PASS
+[ARCH-AUDIT] base_geometry_6x6: PASS
+[ARCH-AUDIT] simple_six_block_gru: PASS
+[ARCH-AUDIT] front_softms_source: PASS
+[ARCH-AUDIT] one_final_ms_source: PASS
+[ARCH-AUDIT] front_decoder_softms: PASS
+[ARCH-AUDIT] forward_origin_backshift_covers_jitter: PASS
+[ARCH-AUDIT] protocol: PASS
+[ARCH-AUDIT] controlled_gt_reference_enabled: PASS
+[ARCH-AUDIT] frame_count: PASS
+[ARCH-AUDIT] gru_flag: PASS
+[ARCH-AUDIT] kalman_flag: PASS
+route_B: reuse UAV backbone cache
+
+=== citya no_ms: test_01 ===
+route_B final MLE=5.208m P90=12.423m LSR@15=93.48% selected_capture=100.00% bank_capture=100.00% acq_acc=100.00% speed_mae=9.434m/frame progress_mae=0.187m heading_mae=35.2deg jump_rate=0.00% max_step=20.70m final_leg=4 gt_leg=4
+route_C: reuse UAV backbone cache
+
+=== citya no_ms: test_02 ===
+route_C final MLE=6.419m P90=11.516m LSR@15=93.52% selected_capture=100.00% bank_capture=100.00% acq_acc=100.00% speed_mae=9.839m/frame progress_mae=0.545m heading_mae=38.3deg jump_rate=0.00% max_step=21.00m final_leg=4 gt_leg=4
+[DONE] /yh/study/uav-sat/v39_otherdata/iclr_bearing_softms_fair_20260920_053729/citya/variants/no_ms/bearing_v39_summary.json

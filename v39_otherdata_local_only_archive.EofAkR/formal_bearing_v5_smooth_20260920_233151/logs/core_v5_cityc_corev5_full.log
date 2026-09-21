@@ -1,0 +1,37 @@
+[CORE-V5 COMPAT] evaluate args refs=['city', 'variant']
+[CORE-V5 COMPAT] train_frames=3
+[PREPARED] PASS | city=cityc | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.807527 m | p90=11.516146 m | p95=13.307293 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[CORE-V5 CONFIG] lateral/heading pre-Smooth-V1 profile: PASS
+[CORE-V5 CONFIG] longitudinal train_01 cadence ownership: PASS
+[CORE-V5 CKPT] reuse restored 3f Full checkpoint: /yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/train_core_v5_restore/checkpoints
+[PAPER-ABLATION-AUDIT] base_geometry_6x6: PASS
+[PAPER-ABLATION-AUDIT] forward_policy: PASS
+[PAPER-ABLATION-AUDIT] frame_count: PASS
+[PAPER-ABLATION-AUDIT] gru_flag: PASS
+[PAPER-ABLATION-AUDIT] kalman_flag: PASS
+[PAPER-ABLATION-AUDIT] front_decoder: PASS
+[PAPER-ABLATION-AUDIT] protocol: PASS
+[PAPER-ABLATION-AUDIT] controlled_gt_reference_enabled: PASS
+[PAPER-ABLATION-AUDIT] ablation_decoder_switch: PASS
+[PAPER-ABLATION-AUDIT] v5_temporal_source: PASS
+[PAPER-ABLATION-AUDIT] final_ms_source: PASS
+route_B: reuse UAV backbone cache
+
+=== cityc corev5_full: nav50 ===
+route_B final MLE=3.916m P90=7.123m LSR@15=100.00% selected_capture=100.00% bank_capture=100.00% acq_acc=100.00% speed_mae=2.971m/frame progress_mae=1.499m heading_mae=36.9deg jump_rate=0.00% max_step=19.72m final_leg=11 gt_leg=11
+route_C: reuse UAV backbone cache
+
+=== cityc corev5_full: nav51 ===
+route_C final MLE=3.513m P90=6.236m LSR@15=100.00% selected_capture=100.00% bank_capture=100.00% acq_acc=100.00% speed_mae=3.533m/frame progress_mae=1.831m heading_mae=35.3deg jump_rate=0.44% max_step=24.53m final_leg=9 gt_leg=9
+[DONE] /yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityc/variants_core_v5_restore/corev5_full/bearing_v39_summary.json
+[CORE-V5 RESTORE DONE] cityc corev5_full

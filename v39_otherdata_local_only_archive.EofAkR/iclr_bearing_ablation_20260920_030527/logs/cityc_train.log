@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "v39_otherdata/bearing_iclr_ablation.py", line 371, in <module>
+    main()
+  File "v39_otherdata/bearing_iclr_ablation.py", line 365, in main
+    train_full(args)
+  File "v39_otherdata/bearing_iclr_ablation.py", line 208, in train_full
+    _lock_prepared(args, prepared)
+  File "v39_otherdata/bearing_iclr_ablation.py", line 65, in _lock_prepared
+    exact._require_audited_prepared(args, prepared_root)
+  File "/yh/study/uav-sat/v39_otherdata/bearing_runner_exact_v39.py", line 134, in _require_audited_prepared
+    raise RuntimeError("Bearing-v39 refused stale/invalid setup:\n- " + "\n- ".join(errors))
+RuntimeError: Bearing-v39 refused stale/invalid setup:
+- selection_version=None expected 'soft_sequence_v13_multicity_auto_train_fullroute'
+- train_01 sample_step=8.0 != runner step=4.0
+- test_01 sample_step=8.0 != runner step=4.0
+- test_02 sample_step=8.0 != runner step=4.0

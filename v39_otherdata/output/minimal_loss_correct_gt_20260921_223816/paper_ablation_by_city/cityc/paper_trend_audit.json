@@ -1,0 +1,69 @@
+{
+  "FULL_TREND_CHECK": "FAIL",
+  "component_full_best": false,
+  "three_frame_full_best": false,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.4729086575025221,
+      "MLE_95CI": [
+        -0.5602372430721003,
+        -0.3894624003767228
+      ],
+      "full_minus_ablation_LSR@5_pct": 6.68449197860963,
+      "LSR@5_95CI": [
+        3.475935828877008,
+        10.160427807486627
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": 0.006520809688301821,
+      "MLE_95CI": [
+        -0.008727813526936634,
+        0.024332926199606635
+      ],
+      "full_minus_ablation_LSR@5_pct": -0.5347593582887722,
+      "LSR@5_95CI": [
+        -1.3368983957219305,
+        0.0
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": -2.802026725626969,
+      "MLE_95CI": [
+        -3.0768553239993173,
+        -2.528339761587668
+      ],
+      "full_minus_ablation_LSR@5_pct": 41.711229946524064,
+      "LSR@5_95CI": [
+        36.63101604278074,
+        46.791443850267385
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": 0.009445130758816145,
+      "MLE_95CI": [
+        -0.013665051522469052,
+        0.03280609200558187
+      ],
+      "full_minus_ablation_LSR@5_pct": -0.8021390374331583,
+      "LSR@5_95CI": [
+        -2.67379679144385,
+        1.0695187165775333
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": -0.012233852674742973,
+      "MLE_95CI": [
+        -0.04282043921790237,
+        0.019491508517431422
+      ],
+      "full_minus_ablation_LSR@5_pct": -0.2673796791443861,
+      "LSR@5_95CI": [
+        -2.1390374331550777,
+        1.6042780748663055
+      ]
+    }
+  },
+  "claim_guidance": "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; revise only through training/validation data, not held-out navigation results.",
+  "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+}

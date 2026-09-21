@@ -1,0 +1,69 @@
+{
+  "FULL_TREND_CHECK": "FAIL",
+  "component_full_best": false,
+  "three_frame_full_best": false,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.29113425376104907,
+      "MLE_95CI": [
+        -0.34986028665804264,
+        -0.2324044360311193
+      ],
+      "full_minus_ablation_LSR@5_pct": 4.274084124830402,
+      "LSR@5_95CI": [
+        2.510176390773411,
+        5.97014925373135
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": 0.5942033620588378,
+      "MLE_95CI": [
+        0.4926884835039011,
+        0.6934721674638648
+      ],
+      "full_minus_ablation_LSR@5_pct": -8.548168249660781,
+      "LSR@5_95CI": [
+        -10.651289009497955,
+        -6.309362279511532
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": -3.2187865261617334,
+      "MLE_95CI": [
+        -3.354638935970763,
+        -3.0762958912935434
+      ],
+      "full_minus_ablation_LSR@5_pct": 39.41655359565808,
+      "LSR@5_95CI": [
+        36.702849389416556,
+        42.13025780189959
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": 0.13635472012200367,
+      "MLE_95CI": [
+        0.08347783212764177,
+        0.18429049486573448
+      ],
+      "full_minus_ablation_LSR@5_pct": -2.7137042062415184,
+      "LSR@5_95CI": [
+        -4.341926729986434,
+        -1.1533242876526462
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": -0.06393947802719513,
+      "MLE_95CI": [
+        -0.12723604286868412,
+        0.004411547284550882
+      ],
+      "full_minus_ablation_LSR@5_pct": 1.831750339213034,
+      "LSR@5_95CI": [
+        0.13568521031207537,
+        3.4599728629579385
+      ]
+    }
+  },
+  "claim_guidance": "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; revise only through training/validation data, not held-out navigation results.",
+  "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+}

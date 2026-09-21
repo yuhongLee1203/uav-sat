@@ -1,0 +1,13 @@
+[runtime_e2e] ============================================================================================================
+[runtime_e2e] V39_SimpleFigureGRU_SoftMS18_Kalman_FinalMS
+[runtime_e2e] device=cuda:0
+[runtime_e2e] Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+[runtime_e2e] 3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.
+[runtime_e2e] Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+[runtime_e2e] Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+[runtime_e2e] ============================================================================================================
+[runtime_e2e] route_B: reuse UAV backbone cache
+[runtime_e2e] route_B final MLE=2.067m P90=3.731m LSR@15=100.00% selected_capture=89.54% bank_capture=89.54% acq_acc=100.00% speed_mae=0.609m/frame progress_mae=5.989m heading_mae=12.8deg jump_rate=0.00% max_step=8.83m final_leg=14 gt_leg=14
+[runtime_e2e] route_C: reuse UAV backbone cache
+[runtime_e2e] route_C final MLE=1.752m P90=3.608m LSR@15=100.00% selected_capture=91.73% bank_capture=91.73% acq_acc=100.00% speed_mae=1.179m/frame progress_mae=8.229m heading_mae=36.6deg jump_rate=0.00% max_step=8.85m final_leg=10 gt_leg=10
+[runtime_e2e] summary: /yh/study/uav-sat/v39_DirectFinalMS/paper_ready_simplegru_20260919_211530/main_ablation/runtime_e2e/robust_tracker_summary.json

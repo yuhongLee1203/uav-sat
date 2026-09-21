@@ -1,0 +1,69 @@
+{
+  "FULL_TREND_CHECK": "FAIL",
+  "component_full_best": true,
+  "three_frame_full_best": false,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.16111971077883247,
+      "MLE_95CI": [
+        -0.2287382621221717,
+        -0.09352825291158359
+      ],
+      "full_minus_ablation_LSR@5_pct": 4.622871046228716,
+      "LSR@5_95CI": [
+        2.1897810218978075,
+        7.062043795620407
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": -0.01847949705591745,
+      "MLE_95CI": [
+        -0.04514085120721636,
+        0.006865131902377424
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.24330900243308973,
+      "LSR@5_95CI": [
+        0.0,
+        0.7299270072992692
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": -3.6875502212654627,
+      "MLE_95CI": [
+        -3.968309818956631,
+        -3.4051007356222533
+      ],
+      "full_minus_ablation_LSR@5_pct": 45.01216545012166,
+      "LSR@5_95CI": [
+        39.653284671532845,
+        50.37104622871043
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": 0.10499533186289733,
+      "MLE_95CI": [
+        0.051981603326420475,
+        0.16248867724156454
+      ],
+      "full_minus_ablation_LSR@5_pct": -0.9732360097323589,
+      "LSR@5_95CI": [
+        -2.676399026763987,
+        0.7299270072992692
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": 0.12927547129523376,
+      "MLE_95CI": [
+        0.05982085065546313,
+        0.20364426769794217
+      ],
+      "full_minus_ablation_LSR@5_pct": -0.9732360097323589,
+      "LSR@5_95CI": [
+        -2.919708029197088,
+        1.2165450121654486
+      ]
+    }
+  },
+  "claim_guidance": "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; revise only through training/validation data, not held-out navigation results.",
+  "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+}

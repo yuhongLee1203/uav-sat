@@ -1,0 +1,12 @@
+{
+  "selection_data": "Route-A validation only",
+  "validation_range": [1228, 1456],
+  "final_ms_main_grid": 6,
+  "gru_fusion_gain": 0.35,
+  "ms_bandwidth_m": 6.0,
+  "ms_kf_prior_weight": 1.50,
+  "ms_reference_prior_weight": 3.00,
+  "routeA_val_mle_m": 1.482880753,
+  "routeA_val_p90_m": 2.531516218,
+  "position_innovation_input": false
+}

@@ -1,0 +1,243 @@
+{
+  "rows": {
+    "frames1": {
+      "variant": "frames1",
+      "label": "1 frame",
+      "frames": 200,
+      "MLE_m": 4.831716631471016,
+      "MedLE_m": 4.028146733813467,
+      "P90_m": 8.95225462630245,
+      "P95_m": 10.815834098339977,
+      "P99_m": 14.223329496641519,
+      "CVaR90_m": 11.353151146111959,
+      "LSR@3_pct": 32.5,
+      "LSR@5_pct": 62.5,
+      "LSR@10_pct": 93.0,
+      "LSR@15_pct": 99.5,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 7.1777873029747505
+    },
+    "frames2": {
+      "variant": "frames2",
+      "label": "2 frames",
+      "frames": 200,
+      "MLE_m": 4.831562851196303,
+      "MedLE_m": 4.026603629710969,
+      "P90_m": 8.925378691373066,
+      "P95_m": 10.815598760297924,
+      "P99_m": 14.22271401606152,
+      "CVaR90_m": 11.353122143263887,
+      "LSR@3_pct": 32.5,
+      "LSR@5_pct": 62.5,
+      "LSR@10_pct": 93.0,
+      "LSR@15_pct": 99.5,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 7.503751991547774
+    },
+    "full": {
+      "variant": "full",
+      "label": "Full",
+      "frames": 200,
+      "MLE_m": 4.8316716715477686,
+      "MedLE_m": 4.027534741979595,
+      "P90_m": 8.945537128381366,
+      "P95_m": 10.815825207881188,
+      "P99_m": 14.223148767581307,
+      "CVaR90_m": 11.353773431476533,
+      "LSR@3_pct": 32.5,
+      "LSR@5_pct": 62.5,
+      "LSR@10_pct": 93.0,
+      "LSR@15_pct": 99.5,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 4.974741674358806
+    },
+    "grid4": {
+      "variant": "grid4",
+      "label": "4x4",
+      "frames": 200,
+      "MLE_m": 4.834561594719211,
+      "MedLE_m": 4.025179624611942,
+      "P90_m": 8.957284995373785,
+      "P95_m": 10.816699870128229,
+      "P99_m": 14.223772910346211,
+      "CVaR90_m": 11.360547821734041,
+      "LSR@3_pct": 32.5,
+      "LSR@5_pct": 62.5,
+      "LSR@10_pct": 93.0,
+      "LSR@15_pct": 99.5,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 3.997068404481185
+    },
+    "grid5": {
+      "variant": "grid5",
+      "label": "5x5",
+      "frames": 200,
+      "MLE_m": 4.833312438913855,
+      "MedLE_m": 4.028523036799703,
+      "P90_m": 8.953731485353472,
+      "P95_m": 10.81610790401635,
+      "P99_m": 14.223572545490423,
+      "CVaR90_m": 11.356262203240474,
+      "LSR@3_pct": 32.5,
+      "LSR@5_pct": 62.5,
+      "LSR@10_pct": 93.0,
+      "LSR@15_pct": 99.5,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 4.969635567496123
+    },
+    "grid7": {
+      "variant": "grid7",
+      "label": "7x7",
+      "frames": 200,
+      "MLE_m": 4.830204720998633,
+      "MedLE_m": 4.024404464704955,
+      "P90_m": 8.949128833110345,
+      "P95_m": 10.815823835228597,
+      "P99_m": 14.222756811941125,
+      "CVaR90_m": 11.351119258485209,
+      "LSR@3_pct": 32.5,
+      "LSR@5_pct": 62.5,
+      "LSR@10_pct": 93.0,
+      "LSR@15_pct": 99.5,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 7.407490986655871
+    },
+    "grid8": {
+      "variant": "grid8",
+      "label": "8x8",
+      "frames": 200,
+      "MLE_m": 4.828472947390509,
+      "MedLE_m": 4.0233555540508945,
+      "P90_m": 8.931369867242516,
+      "P95_m": 10.815460713879792,
+      "P99_m": 14.222211812986659,
+      "CVaR90_m": 11.348988817996851,
+      "LSR@3_pct": 32.5,
+      "LSR@5_pct": 62.5,
+      "LSR@10_pct": 93.0,
+      "LSR@15_pct": 99.5,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 9.980407176971454
+    },
+    "no_gru": {
+      "variant": "no_gru",
+      "label": "w/o GRU",
+      "frames": 200,
+      "MLE_m": 4.957813624563479,
+      "MedLE_m": 3.975204296223501,
+      "P90_m": 9.031255614913036,
+      "P95_m": 11.57490086073759,
+      "P99_m": 14.00493286926319,
+      "CVaR90_m": 11.898268925451612,
+      "LSR@3_pct": 31.0,
+      "LSR@5_pct": 62.5,
+      "LSR@10_pct": 92.5,
+      "LSR@15_pct": 99.5,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 6.595393447205424
+    },
+    "no_kalman": {
+      "variant": "no_kalman",
+      "label": "w/o Kalman",
+      "frames": 200,
+      "MLE_m": 4.103812426812541,
+      "MedLE_m": 3.3725760859502767,
+      "P90_m": 7.824859352758474,
+      "P95_m": 8.83626000626886,
+      "P99_m": 11.334498686550504,
+      "CVaR90_m": 9.571589981542507,
+      "LSR@3_pct": 43.5,
+      "LSR@5_pct": 69.5,
+      "LSR@10_pct": 96.5,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 6.221103375470243
+    },
+    "no_ms": {
+      "variant": "no_ms",
+      "label": "w/o MeanShift",
+      "frames": 200,
+      "MLE_m": 5.125729234311502,
+      "MedLE_m": 4.232204093095183,
+      "P90_m": 10.028019886100553,
+      "P95_m": 13.43506087526836,
+      "P99_m": 15.301827352046498,
+      "CVaR90_m": 13.649596430754903,
+      "LSR@3_pct": 32.5,
+      "LSR@5_pct": 57.49999999999999,
+      "LSR@10_pct": 89.5,
+      "LSR@15_pct": 96.5,
+      "LSR@20_pct": 100.0,
+      "MS_Latency_ms": 0.0
+    }
+  },
+  "audit": {
+    "FULL_TREND_CHECK": "FAIL",
+    "component_full_best": false,
+    "three_frame_full_best": false,
+    "paired_bootstrap": {
+      "no_gru": {
+        "full_minus_ablation_MLE_m": -0.1261419530157104,
+        "MLE_95CI": [
+          -0.35082792000232477,
+          0.0825604285623936
+        ],
+        "full_minus_ablation_LSR@5_pct": 0.0,
+        "LSR@5_95CI": [
+          -4.0000000000000036,
+          4.0000000000000036
+        ]
+      },
+      "no_kalman": {
+        "full_minus_ablation_MLE_m": 0.7278592447352272,
+        "MLE_95CI": [
+          0.4410864840534756,
+          1.0184926244555892
+        ],
+        "full_minus_ablation_LSR@5_pct": -6.999999999999995,
+        "LSR@5_95CI": [
+          -12.5,
+          -1.5000000000000013
+        ]
+      },
+      "no_ms": {
+        "full_minus_ablation_MLE_m": -0.29405756276373385,
+        "MLE_95CI": [
+          -0.6155352728090233,
+          0.01561361170610862
+        ],
+        "full_minus_ablation_LSR@5_pct": 5.000000000000004,
+        "LSR@5_95CI": [
+          -0.5000000000000004,
+          10.499999999999998
+        ]
+      },
+      "frames1": {
+        "full_minus_ablation_MLE_m": -4.495992324748954e-05,
+        "MLE_95CI": [
+          -0.0003518720320460078,
+          0.00021490635835743618
+        ],
+        "full_minus_ablation_LSR@5_pct": 0.0,
+        "LSR@5_95CI": [
+          0.0,
+          0.0
+        ]
+      },
+      "frames2": {
+        "full_minus_ablation_MLE_m": 0.00010882035146586588,
+        "MLE_95CI": [
+          -0.0003954152332810601,
+          0.00060765019792579
+        ],
+        "full_minus_ablation_LSR@5_pct": 0.0,
+        "LSR@5_95CI": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "claim_guidance": "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; report the measured result and revise the method only through a new train-only validation study.",
+    "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+  }
+}

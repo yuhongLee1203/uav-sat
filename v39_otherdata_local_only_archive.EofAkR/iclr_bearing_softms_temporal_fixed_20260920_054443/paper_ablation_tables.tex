@@ -1,0 +1,45 @@
+% Auto-generated from measured Bearing-UAV outputs. Do not edit values manually.
+\begin{table}[t]
+\caption{Component ablation on held-out Bearing-UAV routes.}
+\label{tab:component-ablation}
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Variant & MLE$\downarrow$ & P90$\downarrow$ & LSR@3$\uparrow$ & LSR@5$\uparrow$ & LSR@10$\uparrow$ \\
+\midrule
+w/o GRU & 4.858 & 9.008 & 33.00 & 61.50 & 93.00 \\
+w/o Kalman & 4.388 & 8.038 & 39.50 & 65.00 & 95.00 \\
+w/o MeanShift & 6.998 & 13.628 & 25.00 & 41.50 & 76.00 \\
+Full & 5.062 & 9.228 & 30.50 & 57.50 & 91.50 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\caption{Temporal input and final MeanShift window ablations.}
+\label{tab:temporal-window-ablation}
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Temporal input & MLE$\downarrow$ & P90$\downarrow$ & LSR@3$\uparrow$ & LSR@5$\uparrow$ \\
+\midrule
+1 frame & 5.050 & 9.153 & 30.00 & 58.50 \\
+2 frames & 5.054 & 9.221 & 30.50 & 57.50 \\
+Full & 5.062 & 9.228 & 30.50 & 57.50 \\
+\bottomrule
+\end{tabular}
+\vspace{0.8em}
+\begin{tabular}{lrrrr}
+\toprule
+MS window & Candidates & MLE$\downarrow$ & LSR@5$\uparrow$ & Latency (ms)$\downarrow$ \\
+\midrule
+4$\times$4 & 16 & 5.063 & 57.50 & 5.471 \\
+5$\times$5 & 25 & 5.063 & 57.50 & 6.452 \\
+6$\times$6 & 36 & 5.062 & 57.50 & 7.413 \\
+7$\times$7 & 49 & 5.061 & 57.50 & 12.024 \\
+8$\times$8 & 64 & 5.061 & 57.50 & 13.791 \\
+\bottomrule
+\end{tabular}
+\end{table}

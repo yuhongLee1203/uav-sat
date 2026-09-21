@@ -9,66 +9,66 @@ p = Path(sys.argv[1])
 s = p.read_text(encoding="utf-8")
 
 # -----------------------------------------------------------------------------
-# ONLY methodological change relative to the original v39 front-end:
-# replace the front 3x6 SoftMS decoder with posterior Weighted Centroid.
-# No training loss, LR, motion, Kalman, teacher-forcing or protocol is changed.
+# Front decoder is FIXED to Forward-18 Soft MeanShift.
+# Remove the old decoder switch entirely so a weighted-centroid path cannot be
+# selected by an environment variable or accidentally reintroduced at runtime.
 # -----------------------------------------------------------------------------
-old_front_ms = '''    softms_xy, softms_support, _, _, mode_weights, _ = soft_mean_shift(
-        raw_logits,
-        centers,
+old_anchor = '''    # Anchor ablation: the default is V36 SoftMS; weighted centroid uses the
+    # exact same local posterior and candidates without mean-shift iterations.
+    if str(getattr(config, "EXPERIMENT_ANCHOR", "softms")) == "weighted_centroid":
+        anchor_xy_all = (posterior.unsqueeze(-1) * candidate.centers).sum(dim=1)
+    else:
+        anchor_xy_all = candidate.softms_xy
+'''
+new_anchor = '''    # Forward-18 decoder is always Soft MeanShift.
+    # No alternate centroid decoder exists in this runtime.
+    anchor_xy_all = candidate.softms_xy
+'''
+if s.count(old_anchor) != 1:
+    raise SystemExit(f"ERROR: front decoder switch count={s.count(old_anchor)}")
+s = s.replace(old_anchor, new_anchor, 1)
+
+old_uncertainty = '''    if str(getattr(config, "EXPERIMENT_ANCHOR", "softms")) == "softms":
+        _, _, softms_modes_all, _, softms_mode_weights_all, _ = soft_mean_shift(
+            candidate.raw_logits,
+            candidate.centers,
+            config.MEANSHIFT_SCORE_TAU,
+            config.MEANSHIFT_BANDWIDTH_M,
+            config.MEANSHIFT_ITERATIONS,
+            config.MEANSHIFT_MODE_BETA,
+        )
+'''
+new_uncertainty = '''    _, _, softms_modes_all, _, softms_mode_weights_all, _ = soft_mean_shift(
+        candidate.raw_logits,
+        candidate.centers,
         config.MEANSHIFT_SCORE_TAU,
         config.MEANSHIFT_BANDWIDTH_M,
         config.MEANSHIFT_ITERATIONS,
         config.MEANSHIFT_MODE_BETA,
     )
-    return CandidateBatch(
-        indices=selected_indices,
-        centers=centers,
-        z_uav=z_uav,
-        z_sat=z_sat,
-        raw_logits=raw_logits,
-        raw_prob=raw_prob,
-        raw_top1_xy=raw_top1_xy,
-        softms_xy=softms_xy,
-        softms_support=softms_support,
-        softms_mode_count=(mode_weights > 0).sum(dim=1),
-    )
 '''
-new_front_ms = '''    # Front visual observation: Weighted Centroid, no MeanShift.
-    # visual_observation() uses the local posterior again for the actual anchor
-    # and computes uncertainty from posterior-weighted candidate dispersion.
-    weighted_xy = (raw_prob.unsqueeze(-1) * centers).sum(dim=1)
-    posterior_support = raw_prob.max(dim=1).values
-    posterior_mode_count = torch.ones(
-        raw_prob.shape[0], dtype=torch.long, device=raw_prob.device
-    )
-    return CandidateBatch(
-        indices=selected_indices,
-        centers=centers,
-        z_uav=z_uav,
-        z_sat=z_sat,
-        raw_logits=raw_logits,
-        raw_prob=raw_prob,
-        raw_top1_xy=raw_top1_xy,
-        softms_xy=weighted_xy,
-        softms_support=posterior_support,
-        softms_mode_count=posterior_mode_count,
-    )
-'''
-if s.count(old_front_ms) != 1:
-    raise SystemExit(f"ERROR: front SoftMS block count={s.count(old_front_ms)}")
-s = s.replace(old_front_ms, new_front_ms, 1)
+if s.count(old_uncertainty) != 1:
+    raise SystemExit(f"ERROR: SoftMS uncertainty switch count={s.count(old_uncertainty)}")
+s = s.replace(old_uncertainty, new_uncertainty, 1)
 
-old_anchor_comment = '''    # Anchor ablation: the default is V36 SoftMS; weighted centroid uses the
-    # exact same local posterior and candidates without mean-shift iterations.
+old_variance = '''        if str(getattr(config, "EXPERIMENT_ANCHOR", "softms")) == "softms":
+            variance_points = softms_modes_all[h]
+            variance_weights = softms_mode_weights_all[h]
+        else:
+            variance_points = candidate.centers[h]
+            variance_weights = posterior[h]
 '''
-new_anchor_comment = '''    # Front decoder ablation: weighted centroid uses the same local posterior.
-    # Its uncertainty is the posterior-weighted candidate spread in route axes.
+new_variance = '''        variance_points = softms_modes_all[h]
+        variance_weights = softms_mode_weights_all[h]
 '''
-if old_anchor_comment in s:
-    s = s.replace(old_anchor_comment, new_anchor_comment, 1)
+if s.count(old_variance) != 1:
+    raise SystemExit(f"ERROR: SoftMS variance switch count={s.count(old_variance)}")
+s = s.replace(old_variance, new_variance, 1)
 
-# One persistent pre-final-MS Kalman estimator, exactly as selected in v39.
+# -----------------------------------------------------------------------------
+# One persistent pre-final-MS Kalman estimator, followed by exactly one final
+# local MeanShift.  The original Forward-18 SoftMS remains intact in front.
+# -----------------------------------------------------------------------------
 old_metrics = '''    kf1_errors = []
     kf2_errors = []
     ms2_shifts_from_kf2 = []
@@ -92,8 +92,8 @@ if start < 0 or end < 0 or end <= start:
     raise SystemExit("ERROR: could not locate legacy final-refinement block")
 
 direct_block = '''        # =============================================================
-        # v39 selected chain, with ONLY the front decoder changed:
-        # Weighted Centroid -> GRU -> Kalman -> ONE final MS -> Final
+        # Selected chain:
+        # Forward-18 SoftMS -> GRU -> Kalman -> ONE final MS -> Final
         # =============================================================
         kalman_se = np.asarray(final_se, dtype=np.float64).copy()
         kalman_xy = route.xy_from_se(kalman_se[0], kalman_se[1])
@@ -132,9 +132,9 @@ direct_block = '''        # ====================================================
                 ms_lattice_index : ms_lattice_index + 1
             ]
 
-            # Do NOT call visual.candidate_batch() here: that legacy helper runs
-            # an internal SoftMS. Score the same candidate set directly so the
-            # online final path contains exactly one MeanShift.
+            # Score the final candidate set directly.  Do not call
+            # visual.candidate_batch(), because that helper also contains its
+            # own visual SoftMS; the final stage must execute exactly one MS.
             ms_indices = regular_grid_indices(
                 visual.gallery["xy"],
                 visual.gallery["pixel"],
@@ -178,8 +178,6 @@ direct_block = '''        # ====================================================
             )
             regularized_ms_logits = tau * combined_log_probability
 
-            # PURE MS DECODER TIMER. Start only after candidates and logits are
-            # ready; stop after MeanShift output has become the metric XY/SE.
             if measure_ms and device.type == "cuda":
                 torch.cuda.synchronize(device)
             ms_timer_start = time.perf_counter() if measure_ms else None
@@ -261,8 +259,8 @@ old_summary = '''    summary["KF1_MAE_m"] = float(np.mean(kf1_errors)) if kf1_er
 new_summary = '''    summary["Kalman_MAE_m"] = float(np.mean(kalman_errors)) if kalman_errors else 0.0
     summary["MS_MeanShiftFromKalman_m"] = float(np.mean(ms_shifts_from_kalman)) if ms_shifts_from_kalman else 0.0
     summary["MS_MaxShiftFromKalman_m"] = float(np.max(ms_shifts_from_kalman)) if ms_shifts_from_kalman else 0.0
-    summary["VisualObservationDecoder"] = "posterior weighted centroid"
-    summary["VisualObservationUncertainty"] = "posterior-weighted spatial variance projected to route parallel/cross coordinates"
+    summary["VisualObservationDecoder"] = "Forward-18 Soft MeanShift"
+    summary["VisualObservationUncertainty"] = "SoftMS converged-mode variance projected to route parallel/cross coordinates"
     summary["MS_Enabled"] = bool(str(__import__("os").environ.get("MS_ENABLED", "1")).strip().lower() not in {"0", "false", "no", "off"})
     summary["MS_GridSize"] = int(__import__("os").environ.get("MS_GRID_SIZE", "6"))
     summary["OnlineMeanShiftCount"] = 1 if summary["MS_Enabled"] else 0
@@ -272,7 +270,7 @@ new_summary = '''    summary["Kalman_MAE_m"] = float(np.mean(kalman_errors)) if 
     summary["MS_LatencyP90_ms"] = float(np.quantile(_ms_latency_eval, 0.90)) if _ms_latency_eval else 0.0
     summary["MS_ThroughputFPS"] = (1000.0 / summary["MS_LatencyMean_ms"]) if summary["MS_LatencyMean_ms"] > 0 else 0.0
     summary["MS_LatencyWarmupFrames"] = int(_ms_warmup)
-    summary["MS_Definition"] = "exactly one final local Soft MeanShift after the original v39 Kalman estimator"
+    summary["MS_Definition"] = "exactly one final local Soft MeanShift after the Kalman estimator"
     summary["MS_LatencyDefinition"] = "final candidate centers + regularized logits already prepared -> one soft_mean_shift decoder -> metric XY"
 '''
 if s.count(old_summary) != 1:
@@ -283,13 +281,11 @@ old_console = (
     '"causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.",'
 )
 new_console = (
-    '"weighted-centroid visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.",'
+    '"Forward-18 SoftMS visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final MeanShift -> final XY.",'
 )
 if old_console in s:
     s = s.replace(old_console, new_console, 1)
 
-# Static correctness audit: front MS removed; temporary KF2 removed; exactly one
-# explicit final MeanShift remains in the selected online path.
 for forbidden in [
     "kf2_errors",
     "ms2_shifts_from_kf2",
@@ -297,14 +293,22 @@ for forbidden in [
     "kf2_ms2_enabled",
     "ms2_shift_from_kf2_m",
     "MS2_",
+    "weighted_centroid",
+    "Weighted Centroid",
 ]:
     if forbidden in s:
-        raise SystemExit(f"ERROR: stale token remains: {forbidden}")
-if s.count("soft_mean_shift(") != 2:
-    # One legacy softms-only uncertainty branch remains in visual_observation,
-    # but weighted_centroid runtime never enters it. The other call is final MS.
+        raise SystemExit(f"ERROR: forbidden stale token remains in runtime: {forbidden}")
+
+# Runtime must contain exactly three SoftMS calls:
+#   1) Forward-18 visual position,
+#   2) Forward-18 converged-mode uncertainty,
+#   3) final post-Kalman MeanShift.
+if s.count("soft_mean_shift(") != 3:
     raise SystemExit(f"ERROR: unexpected soft_mean_shift call count={s.count('soft_mean_shift(')}")
+if "anchor_xy_all = candidate.softms_xy" not in s:
+    raise SystemExit("ERROR: Forward-18 SoftMS anchor missing")
 
 compile(s, str(p), "exec")
 p.write_text(s, encoding="utf-8")
-print("[OK] clean v39: Weighted Centroid -> original GRU -> original Kalman -> one final MS; pure MS timer enabled")
+print("[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift")
+print("[OK] weighted-centroid decoder removed from generated runtime source")

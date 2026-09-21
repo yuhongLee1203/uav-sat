@@ -1,0 +1,93 @@
+{
+  "city": "cityc",
+  "selected_source": "train_02",
+  "renamed_as": "train_01",
+  "profile": {
+    "name": "strict",
+    "max_sample_distance_m": 10.0,
+    "safety_max_step_m": 22.0,
+    "max_cross_track_m": 8.5,
+    "max_same_leg_lateral_jump_m": 4.0
+  },
+  "candidate_probes": {
+    "strict": {
+      "train_01": {
+        "candidate": "train_01",
+        "status": "ok",
+        "full": true,
+        "frames": 139,
+        "targets": 196,
+        "selected_ratio": 0.7091836734693877,
+        "first_target": 0,
+        "last_target": 195,
+        "target_span_ratio": 1.0,
+        "start_m": 7.832086015670726,
+        "end_m": 8.236678523429125,
+        "worst_waypoint_m": 8.236678523429125,
+        "centerline_cross_p90_m": 5.094782897120394,
+        "same_leg_lateral_delta_p90_m": 3.400130531502268,
+        "backward_step_pct": 2.1739130434782608,
+        "actual_step_p90_m": 10.990032554990865
+      },
+      "train_02": {
+        "candidate": "train_02",
+        "status": "ok",
+        "full": true,
+        "frames": 194,
+        "targets": 198,
+        "selected_ratio": 0.9797979797979798,
+        "first_target": 0,
+        "last_target": 197,
+        "target_span_ratio": 1.0,
+        "start_m": 6.462804015011414,
+        "end_m": 4.035543277615077,
+        "worst_waypoint_m": 4.897835499989939,
+        "centerline_cross_p90_m": 6.380438872745498,
+        "same_leg_lateral_delta_p90_m": 4.26553839398236,
+        "backward_step_pct": 17.616580310880828,
+        "actual_step_p90_m": 11.516145885442926
+      },
+      "train_03": {
+        "candidate": "train_03",
+        "status": "ok",
+        "full": true,
+        "frames": 153,
+        "targets": 203,
+        "selected_ratio": 0.7536945812807881,
+        "first_target": 0,
+        "last_target": 202,
+        "target_span_ratio": 1.0,
+        "start_m": 5.491163660154469,
+        "end_m": 6.781673707144525,
+        "worst_waypoint_m": 3.6529068270140144,
+        "centerline_cross_p90_m": 5.524965137576759,
+        "same_leg_lateral_delta_p90_m": 3.3012355001045686,
+        "backward_step_pct": 2.6315789473684212,
+        "actual_step_p90_m": 11.39406528018878
+      }
+    }
+  },
+  "coverage": {
+    "train_01": {
+      "frames": 194,
+      "waypoints": 6,
+      "start_m": 6.462804215049681,
+      "end_m": 4.035542800447192,
+      "worst_waypoint_m": 4.897835260364748
+    },
+    "test_01": {
+      "frames": 159,
+      "waypoints": 13,
+      "start_m": 3.5694629574462513,
+      "end_m": 3.6566834546670584,
+      "worst_waypoint_m": 6.656375865202435
+    },
+    "test_02": {
+      "frames": 227,
+      "waypoints": 11,
+      "start_m": 4.09642694124149,
+      "end_m": 8.944174133895968,
+      "worst_waypoint_m": 6.852289612467508
+    }
+  }
+}

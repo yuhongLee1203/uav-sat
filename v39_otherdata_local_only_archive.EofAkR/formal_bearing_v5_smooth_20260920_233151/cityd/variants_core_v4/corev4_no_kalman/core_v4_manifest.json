@@ -1,0 +1,61 @@
+{
+  "city": "cityd",
+  "variant": "corev4_no_kalman",
+  "architecture": "Forward18 SoftMS -> recurrent GRU -> constrained Kalman -> final MeanShift -> XY",
+  "same_trained_3frame_full_checkpoint": true,
+  "temporal_context_protocol": "context truncation at inference; no 1f/2f retraining",
+  "kalman_profile_selection": {
+    "path": "/yh/study/uav-sat/v39_otherdata/formal_bearing_v5_smooth_20260920_233151/cityd/train_frames3/kalman_calibration.json",
+    "selection_source": "current_city_training_validation_only",
+    "validation_range": [
+      140,
+      166
+    ],
+    "selection_rule": "minimum train-validation MLE; P90 tie-break",
+    "selected": {
+      "fixed_variance_m2": 9.0,
+      "q_progress": 1.125,
+      "q_cross": 0.30000000000000004,
+      "q_velocity": 0.75,
+      "confidence_power": 1.0,
+      "temporal_3frame_scale": 1.1,
+      "delta2_scale": 2.0,
+      "prior_blend_base": 0.05,
+      "prior_blend_lowconf_gain": 0.3,
+      "prior_blend_max": 0.3,
+      "prior_blend_cutoff": 0.7,
+      "step_relax_confidence": 0.55,
+      "step_relax_width": 0.08,
+      "step_visual_slack_m": 3.0,
+      "stage": "filter",
+      "val_mle_m": 7.1221398108151845,
+      "val_p90_m": 9.388235343624551,
+      "val_speed_mae": 5.346846450982351,
+      "val_progress_mae": 6.968404556334795,
+      "objective": 8.049819612888143
+    },
+    "validation_no_kalman_diagnostic": {
+      "mle_m": 7.218382857658678,
+      "p90_m": 9.525868489887312
+    },
+    "validation_kalman_gain_m": 0.09624304684349383,
+    "held_out_used_for_selection": false,
+    "applied_config": {
+      "EXPERIMENT_FIXED_VARIANCE_M2": 9.0,
+      "KALMAN_Q_PROGRESS": 1.125,
+      "KALMAN_Q_CROSS": 0.30000000000000004,
+      "KALMAN_Q_VELOCITY": 0.75,
+      "KALMAN_CONFIDENCE_POWER": 1.0,
+      "TEMPORAL_ADAPTER_3FRAME_SCALE": 1.1,
+      "TEMPORAL_DELTA2_SCALE": 2.0,
+      "KALMAN_PRIOR_BLEND_BASE": 0.05,
+      "KALMAN_PRIOR_BLEND_LOWCONF_GAIN": 0.3,
+      "KALMAN_PRIOR_BLEND_MAX": 0.3,
+      "KALMAN_PRIOR_BLEND_CONFIDENCE_CUTOFF": 0.7,
+      "KALMAN_STEP_RELAX_CONFIDENCE": 0.55,
+      "KALMAN_STEP_RELAX_WIDTH": 0.08,
+      "KALMAN_STEP_VISUAL_SLACK_M": 3.0
+    }
+  },
+  "integrity": "No held-out nav50/nav51 metric is used for hyperparameter/profile selection."
+}

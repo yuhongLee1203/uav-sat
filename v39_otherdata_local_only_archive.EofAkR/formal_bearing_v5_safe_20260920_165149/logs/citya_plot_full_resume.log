@@ -1,0 +1,7 @@
+[FINAL-PLOT-ALIAS] requested=test_01 internal=test_01 summary_key=nav50
+[FINAL-PLOT-AUDIT] test_01: PASS frames=162 raw-model-MLE=4.057m pred_source=CSV(final_x,final_y) postprocess=NONE
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/formal_bearing_v5_safe_20260920_165149/citya/variants/full/paper_figures_waypoint_gt/test_01_waypoint_gt_green.jpg | GT=GREEN SOLID official waypoint polyline (13 sparse waypoints from /yh/study/uav-sat/v39_otherdata/formal_bearing_v5_safe_20260920_165149/citya/prepared/routes/test_01/waypoints.json) | PRED=RED raw CSV final_x/final_y | prediction_postprocess=NONE
+[FINAL-PLOT-ALIAS] requested=test_02 internal=test_02 summary_key=nav51
+[FINAL-PLOT-AUDIT] test_02: PASS frames=205 raw-model-MLE=4.066m pred_source=CSV(final_x,final_y) postprocess=NONE
+[FINAL-PLOT] /yh/study/uav-sat/v39_otherdata/formal_bearing_v5_safe_20260920_165149/citya/variants/full/paper_figures_waypoint_gt/test_02_waypoint_gt_green.jpg | GT=GREEN SOLID official waypoint polyline (10 sparse waypoints from /yh/study/uav-sat/v39_otherdata/formal_bearing_v5_safe_20260920_165149/citya/prepared/routes/test_02/waypoints.json) | PRED=RED raw CSV final_x/final_y | prediction_postprocess=NONE
+[FINAL-PLOT-AUDIT] wrote /yh/study/uav-sat/v39_otherdata/formal_bearing_v5_safe_20260920_165149/citya/variants/full/paper_figures_waypoint_gt/plot_source_audit.json
