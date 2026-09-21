@@ -1,0 +1,9 @@
+Core V5-Restore V2:
+- Same architecture: Forward-18 SoftMS -> 3-frame recurrent GRU -> constrained Kalman -> final MeanShift -> XY.
+- Restores pre-Smooth-V1 lateral/heading estimator dynamics and retrains the 3-frame temporal checkpoint.
+- Longitudinal motion/Kalman limits remain train_01-cadence-derived.
+- Component table: w/o GRU, w/o Kalman, w/o Final MeanShift, Full.
+- Temporal table: same restored 3-frame checkpoint with 1f/2f context truncation.
+- Local generated Formal-V5 runner compatibility explicitly injects train_frames=3.
+- Held-out nav50/nav51 are not used for automatic numeric editing.
+- Localization protocol remains controlled_gt_jitter.
