@@ -47,7 +47,7 @@ done
 calibrate_city() {
   local city="$1"
   local gpu="$2"
-  echo "[CALIBRATE FINAL OUTPUT] city=${city} gpu=${gpu}"
+  echo "[CALIBRATE FINAL OUTPUT + HEADING FUSION] city=${city} gpu=${gpu}"
   CUDA_VISIBLE_DEVICES="${gpu}" python3 -u v39_otherdata/calibrate_final_output_kalman_city.py \
     --suite-root "${SUITE_ROOT}" \
     --dataset-root "${DATASET_ROOT}" \
@@ -95,6 +95,7 @@ d = json.load(open(p, encoding="utf-8"))
 found = bool(d["strict_all_five_profile_found"])
 b = d["best"]
 print("[VALIDATION SELECTED]", b["profile"]["name"])
+print("[VALIDATION HEADING FUSION ALPHA]", b["profile"].get("heading_fusion_alpha", 0.0))
 print("[VALIDATION MARGINS Full better]", json.dumps(b["margins_full_better"], indent=2))
 print("[VALIDATION STRICT ALL FIVE]", found)
 if require and not found:
@@ -102,15 +103,26 @@ if require and not found:
     sys.exit(5)
 PY
 
-# Frozen validation-selected profile -> held-out B/C.  Same profile is passed to
-# both rows; Kalman-only fields have no effect when EXPERIMENT_KALMAN=none.
+# Freeze the validation-selected heading fusion rule. The paper aggregation code
+# applies this SAME alpha to Full and every compared ablation row.
+BEARING_HEADING_FUSION_ALPHA="$(python3 - "${PROFILE_JSON}" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding='utf-8'))
+print(float(d['best']['profile'].get('heading_fusion_alpha', 0.0)))
+PY
+)"
+export BEARING_HEADING_FUSION_ALPHA
+echo "[FROZEN HEADING FUSION] alpha=${BEARING_HEADING_FUSION_ALPHA}"
+
+# Frozen validation-selected profile -> held-out B/C. Same Kalman profile is
+# passed to both rows; Kalman-only fields have no effect when mode=none.
 run_eval() {
   local city="$1"
   local variant="$2"
   local gpu="$3"
   local out="${SUITE_ROOT}/${city}/variants/${variant}"
   rm -rf "${out}"
-  echo "[HELD-OUT EVAL] city=${city} variant=${variant} gpu=${gpu}"
+  echo "[HELD-OUT EVAL] city=${city} variant=${variant} gpu=${gpu} heading_alpha=${BEARING_HEADING_FUSION_ALPHA}"
   CUDA_VISIBLE_DEVICES="${gpu}" python3 -u v39_otherdata/eval_with_final_output_kalman_profile.py \
     --profile-json "${PROFILE_JSON}" \
     eval \
@@ -152,6 +164,8 @@ for i in "${!pids[@]}"; do
   fi
 done
 
+# build_kalman_pair_table imports the shared paper aggregator; the exported
+# fusion alpha therefore affects HSR/MHE identically for Full and w/o Kalman.
 python3 v39_otherdata/build_kalman_pair_table.py \
   --suite-root "${SUITE_ROOT}" \
   --cities citya cityb cityc cityd
@@ -176,4 +190,5 @@ PY
 
 echo "[DONE] ${SUITE_ROOT}/kalman_pair_table.md"
 echo "[PROFILE] ${PROFILE_JSON}"
+echo "[HEADING FUSION ALPHA] ${BEARING_HEADING_FUSION_ALPHA}"
 echo "[AUDIT] ${BACKUP_ROOT}"
