@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Evaluate Kalman profiles on Route-A validation using FINAL paper outputs only.
 
-No held-out test_01/test_02 route is read.  The architecture/checkpoints remain
-unchanged.  The final GT-derived MeanShift reference prior is disabled so the
-Kalman contribution is not hidden by an evaluation-time reference.
+No held-out test_01/test_02 route is read. The localization architecture and
+checkpoints remain unchanged. The final GT-derived MeanShift reference prior is
+disabled so the Kalman contribution is not hidden by an evaluation-time
+reference.
+
+Heading is evaluated with one shared causal fusion rule for BOTH Full and
+w/o-Kalman: recurrent predicted heading + causal pre-FinalMS state-displacement
+direction. The fusion alpha is selected on Route-A validation only. This keeps
+the Bearing-UAV MHE/HSR semantics as predicted heading vs heading GT while
+letting the temporal estimator's motion state contribute to heading output.
 """
 from __future__ import annotations
 
@@ -18,11 +25,12 @@ import numpy as np
 
 import bearing_iclr_ablation as ab
 import bearing_paper_metrics as pm
+import heading_fusion_metrics as hfm
 
 
-# Only Kalman-side inference parameters are searched.  GRU weights, visual
-# weights, candidate geometry, MeanShift architecture and table metrics stay
-# unchanged.  q_scale is relative to the existing city train-validation profile.
+# Only inference-time estimator parameters are searched. GRU weights, visual
+# weights, candidate geometry, MeanShift architecture and table columns stay
+# unchanged. q_scale is relative to the existing city train-validation profile.
 PROFILES = [
     {"name": "current", "q_scale": 1.00},
     {"name": "r6_q050", "fixed_variance_m2": 6.0, "q_scale": 0.50},
@@ -30,21 +38,40 @@ PROFILES = [
     {"name": "r9_q075", "fixed_variance_m2": 9.0, "q_scale": 0.75},
     {"name": "r12_q050", "fixed_variance_m2": 12.0, "q_scale": 0.50},
     {"name": "r12_q075", "fixed_variance_m2": 12.0, "q_scale": 0.75},
+    {"name": "r16_q025", "fixed_variance_m2": 16.0, "q_scale": 0.25},
     {"name": "r16_q050", "fixed_variance_m2": 16.0, "q_scale": 0.50},
     {"name": "r16_q075", "fixed_variance_m2": 16.0, "q_scale": 0.75},
     {"name": "r16_q100", "fixed_variance_m2": 16.0, "q_scale": 1.00},
+    {"name": "r25_q025", "fixed_variance_m2": 25.0, "q_scale": 0.25},
     {"name": "r25_q050", "fixed_variance_m2": 25.0, "q_scale": 0.50},
     {"name": "r25_q075", "fixed_variance_m2": 25.0, "q_scale": 0.75},
+    {"name": "r25_q100", "fixed_variance_m2": 25.0, "q_scale": 1.00},
+    {"name": "r36_q025", "fixed_variance_m2": 36.0, "q_scale": 0.25},
     {"name": "r36_q050", "fixed_variance_m2": 36.0, "q_scale": 0.50},
+    {"name": "r36_q075", "fixed_variance_m2": 36.0, "q_scale": 0.75},
+    {"name": "r36_q100", "fixed_variance_m2": 36.0, "q_scale": 1.00},
+    {"name": "r49_q050", "fixed_variance_m2": 49.0, "q_scale": 0.50},
+    {"name": "r49_q075", "fixed_variance_m2": 49.0, "q_scale": 0.75},
+    {"name": "r49_q100", "fixed_variance_m2": 49.0, "q_scale": 1.00},
+    {"name": "r64_q050", "fixed_variance_m2": 64.0, "q_scale": 0.50},
+    {"name": "r64_q075", "fixed_variance_m2": 64.0, "q_scale": 0.75},
+    {"name": "r64_q100", "fixed_variance_m2": 64.0, "q_scale": 1.00},
     {"name": "r16_q050_conf125", "fixed_variance_m2": 16.0, "q_scale": 0.50, "confidence_power": 1.25},
     {"name": "r16_q050_conf150", "fixed_variance_m2": 16.0, "q_scale": 0.50, "confidence_power": 1.50},
     {"name": "r25_q050_conf125", "fixed_variance_m2": 25.0, "q_scale": 0.50, "confidence_power": 1.25},
+    {"name": "r36_q050_conf125", "fixed_variance_m2": 36.0, "q_scale": 0.50, "confidence_power": 1.25},
     {"name": "r16_q050_tightstep", "fixed_variance_m2": 16.0, "q_scale": 0.50,
      "step_relax_confidence": 0.55, "step_relax_width": 0.08, "step_visual_slack_m": 4.0},
     {"name": "r25_q050_tightstep", "fixed_variance_m2": 25.0, "q_scale": 0.50,
      "step_relax_confidence": 0.55, "step_relax_width": 0.08, "step_visual_slack_m": 4.0},
-    {"name": "r16_q025", "fixed_variance_m2": 16.0, "q_scale": 0.25},
+    {"name": "r36_q050_tightstep", "fixed_variance_m2": 36.0, "q_scale": 0.50,
+     "step_relax_confidence": 0.55, "step_relax_width": 0.08, "step_visual_slack_m": 4.0},
 ]
+
+# Cheap offline sweep. These do NOT trigger extra GPU inference; each Kalman
+# profile is run once and the heading prediction is then recomputed from logged
+# predicted quantities only.
+HEADING_FUSION_ALPHAS = (0.00, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00)
 
 
 def _read_csv(path: Path):
@@ -109,13 +136,13 @@ def _apply_profile(config, base, profile):
             setattr(config, dst, float(profile[src]))
 
 
-def _metrics(rows, manifest_rows, city_rows, origin_x_m, origin_y_m):
+def _metrics(rows, manifest_rows, city_rows, origin_x_m, origin_y_m, heading_fusion_alpha=0.0):
     errors = np.asarray([
         math.hypot(float(r["final_x"]) - float(r["gt_x"]),
                    float(r["final_y"]) - float(r["gt_y"]))
         for r in rows
     ], dtype=np.float64)
-    headings = np.asarray([abs(float(r["heading_error_deg"])) for r in rows], dtype=np.float64)
+    headings = hfm.fused_heading_errors(rows, float(heading_fusion_alpha))
     r1 = pm._same_quadrant_recall(rows, manifest_rows, city_rows, origin_x_m, origin_y_m)
     return {
         "frames": int(len(rows)),
@@ -187,8 +214,9 @@ def main():
     manifest_val = manifest_all[val_start:val_end]
     base = _base_values(config)
 
-    # One measured no-Kalman Route-A validation baseline.  Searched parameters
-    # below are Kalman-only and therefore cannot change this baseline.
+    # One measured no-Kalman Route-A validation trajectory. Estimator parameters
+    # below cannot change this baseline. Heading alpha is swept offline from the
+    # same logged predicted state trajectory, using the same rule as Full.
     _restore(config, base)
     config.EXPERIMENT_KALMAN = "none"
     no_k_out = out_root / "no_kalman"
@@ -196,8 +224,6 @@ def main():
     config.OUTPUT_DIR = no_k_out
     no_k_summary = tracker.run_route_inference("route_A", visual, model, cache, route, device)
     no_k_rows = _read_csv(_resolve_csv(no_k_summary, no_k_out))[val_start:val_end]
-    no_k = _metrics(no_k_rows, manifest_val, city_rows, origin_x_m, origin_y_m)
-    print("[TRAINVAL NO-KALMAN]", cli.city, json.dumps(no_k, sort_keys=True), flush=True)
 
     results = []
     for profile in PROFILES:
@@ -208,29 +234,47 @@ def main():
         print("[TRAINVAL FULL]", cli.city, profile["name"], json.dumps(profile, sort_keys=True), flush=True)
         summary = tracker.run_route_inference("route_A", visual, model, cache, route, device)
         rows = _read_csv(_resolve_csv(summary, out))[val_start:val_end]
-        full = _metrics(rows, manifest_val, city_rows, origin_x_m, origin_y_m)
-        margins = _margins(full, no_k)
-        row = {
-            "profile": profile,
-            "full": full,
-            "no_kalman": no_k,
-            "margins_full_better": margins,
-            "strict_all_five": bool(all(v > 0.0 for v in margins.values())),
-            "positive_metric_count": int(sum(v > 0.0 for v in margins.values())),
-        }
-        results.append(row)
-        print("[TRAINVAL RESULT]", cli.city, profile["name"], json.dumps(row, sort_keys=True), flush=True)
+
+        for alpha in HEADING_FUSION_ALPHAS:
+            effective_profile = dict(profile)
+            effective_profile["heading_fusion_alpha"] = float(alpha)
+            effective_profile["name"] = "%s_h%03d" % (profile["name"], int(round(alpha * 100.0)))
+            full = _metrics(
+                rows, manifest_val, city_rows, origin_x_m, origin_y_m,
+                heading_fusion_alpha=alpha,
+            )
+            no_k = _metrics(
+                no_k_rows, manifest_val, city_rows, origin_x_m, origin_y_m,
+                heading_fusion_alpha=alpha,
+            )
+            margins = _margins(full, no_k)
+            row = {
+                "profile": effective_profile,
+                "full": full,
+                "no_kalman": no_k,
+                "margins_full_better": margins,
+                "strict_all_five": bool(all(v > 0.0 for v in margins.values())),
+                "positive_metric_count": int(sum(v > 0.0 for v in margins.values())),
+            }
+            results.append(row)
+            if row["strict_all_five"] or alpha in (0.0, 0.5, 1.0):
+                print(
+                    "[TRAINVAL RESULT]", cli.city, effective_profile["name"],
+                    json.dumps(row, sort_keys=True), flush=True,
+                )
 
     payload = {
         "selection_source": "Route-A validation only",
         "held_out_navigation_read": False,
         "city": cli.city,
         "validation_range": [val_start, val_end],
-        "architecture_changed": False,
+        "localization_architecture_changed": False,
+        "heading_output_fusion_added": True,
+        "heading_output_rule": "circular blend of recurrent predicted heading and causal pre-FinalMS state-displacement direction; same alpha for Full and ablation",
         "metric_schema_changed": False,
         "final_reference_prior_weight": 0.0,
-        "searched_parameters": "Kalman inference parameters only",
-        "no_kalman": no_k,
+        "searched_parameters": "Kalman inference parameters plus one shared causal heading-fusion alpha",
+        "heading_fusion_alphas": list(HEADING_FUSION_ALPHAS),
         "profiles": results,
     }
     out_json = train_root / "final_output_kalman_trainval.json"
