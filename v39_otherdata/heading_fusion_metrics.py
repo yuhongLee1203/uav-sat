@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 """Causal heading fusion used consistently by validation and paper tables.
 
-The Bearing-UAV MHE/HSR metrics evaluate a predicted heading/direction against
-heading ground truth.  Our recurrent model already predicts heading, while the
-external route-state estimator also exposes a causal motion direction.  This
-module fuses those two *predicted* quantities without reading GT at inference.
-
-Both Full and ablations use the exact same fusion rule.  With Kalman disabled,
-the state displacement comes from the unfiltered measurement-state path; with
-Kalman enabled it comes from the filtered state path.  GT is used only after the
-prediction is formed, to compute the evaluation error.
+Bearing-UAV HSR/MHE compare a predicted direction with direction ground truth.
+The recurrent head is the primary direction predictor.  The causal estimator
+motion direction is used only as a consistency correction; when both predicted
+quantities strongly disagree, the fusion automatically falls back toward the
+recurrent prediction.  No GT enters the prediction rule.
 """
 from __future__ import annotations
 
 import math
+import os
 from typing import Iterable
 
 import numpy as np
@@ -24,7 +21,6 @@ def _wrap_deg(value: float) -> float:
 
 
 def _circular_blend_deg(a_deg: float, b_deg: float, alpha: float) -> float:
-    """Blend two directions on the unit circle; alpha weights b_deg."""
     alpha = float(np.clip(alpha, 0.0, 1.0))
     ar = math.radians(float(a_deg))
     br = math.radians(float(b_deg))
@@ -35,15 +31,25 @@ def _circular_blend_deg(a_deg: float, b_deg: float, alpha: float) -> float:
     return _wrap_deg(math.degrees(math.atan2(y, x)))
 
 
+def _agreement_alpha(learned_deg: float, motion_deg: float, alpha: float) -> float:
+    """Smoothly suppress a motion correction when two causal predictors disagree."""
+    limit = float(os.environ.get("BEARING_HEADING_FUSION_DISAGREEMENT_DEG", "60.0"))
+    power = float(os.environ.get("BEARING_HEADING_FUSION_AGREEMENT_POWER", "2.0"))
+    limit = max(limit, 1e-3)
+    disagreement = abs(_wrap_deg(float(motion_deg) - float(learned_deg)))
+    agreement = float(np.clip(1.0 - disagreement / limit, 0.0, 1.0))
+    return float(np.clip(alpha, 0.0, 1.0)) * (agreement ** max(power, 0.0))
+
+
 def fused_heading_errors(rows: Iterable[dict], alpha: float) -> np.ndarray:
-    """Return per-frame absolute heading error after causal state-direction fusion.
+    """Per-frame absolute heading error after causal agreement-gated fusion.
 
     Required CSV fields for alpha>0:
       estimated_heading_deg, gt_heading_deg, kalman_x, kalman_y
 
-    The first frame (and any zero-displacement frame) falls back to the recurrent
-    heading prediction because no causal state displacement direction exists yet.
-    alpha=0 exactly reproduces the existing heading_error_deg metric.
+    Full and every ablation use exactly the same rule.  The first/zero-motion
+    frame falls back to the recurrent heading.  GT is read only after the final
+    heading prediction has been formed, solely to compute the metric.
     """
     rows = list(rows)
     if not rows:
@@ -84,7 +90,12 @@ def fused_heading_errors(rows: Iterable[dict], alpha: float) -> np.ndarray:
         if motion_heading is None:
             predicted = learned_heading
         else:
-            predicted = _circular_blend_deg(learned_heading, motion_heading, alpha)
+            effective_alpha = _agreement_alpha(
+                learned_heading, motion_heading, alpha
+            )
+            predicted = _circular_blend_deg(
+                learned_heading, motion_heading, effective_alpha
+            )
         out.append(abs(_wrap_deg(predicted - gt_heading)))
         previous_xy = current_xy
 
