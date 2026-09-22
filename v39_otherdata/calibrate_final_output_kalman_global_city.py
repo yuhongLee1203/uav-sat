@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Run Route-A validation from ONE global ABCD inference base.
 
-This wrapper deliberately erases city-local Kalman calibration after the normal
-runtime setup, then lets calibrate_final_output_kalman_city evaluate a richer
-set of global candidates.  Each city is still a separate temporal episode, but
-candidate parameters are numerically identical across A/B/C/D and are selected
-only after the four validation pools are combined.
+Every candidate below is identical for A/B/C/D. City-local calibration is
+explicitly erased before the search. Selection happens only after all four
+Route-A validation pools are combined.
 """
 from __future__ import annotations
 
@@ -13,59 +11,68 @@ import calibrate_final_output_kalman_city as cal
 import global_abcd_runtime_profile as global_base
 
 
-EXTRA_PROFILES = [
-    # Fine search around the region that already improved pooled MLE/R@1.
+# Targeted search: 24 GPU profiles instead of re-running the old redundant
+# 31-profile city-relative grid. Heading alpha is swept offline and costs no
+# additional model inference.
+PROFILES = [
+    {"name": "r25_q010", "fixed_variance_m2": 25.0, "q_scale": 0.10},
+    {"name": "r25_q020", "fixed_variance_m2": 25.0, "q_scale": 0.20},
+    {"name": "r25_q030", "fixed_variance_m2": 25.0, "q_scale": 0.30},
     {"name": "r36_q010", "fixed_variance_m2": 36.0, "q_scale": 0.10},
-    {"name": "r36_q015", "fixed_variance_m2": 36.0, "q_scale": 0.15},
+    {"name": "r36_q020", "fixed_variance_m2": 36.0, "q_scale": 0.20},
+    {"name": "r36_q030", "fixed_variance_m2": 36.0, "q_scale": 0.30},
     {"name": "r49_q010", "fixed_variance_m2": 49.0, "q_scale": 0.10},
-    {"name": "r49_q015", "fixed_variance_m2": 49.0, "q_scale": 0.15},
+    {"name": "r49_q020", "fixed_variance_m2": 49.0, "q_scale": 0.20},
+    {"name": "r49_q030", "fixed_variance_m2": 49.0, "q_scale": 0.30},
     {"name": "r64_q010", "fixed_variance_m2": 64.0, "q_scale": 0.10},
-    {"name": "r64_q025", "fixed_variance_m2": 64.0, "q_scale": 0.25},
-    # Measurement-preserving confidence gates.  candidate_x is blended from the
-    # raw visual measurement toward the filtered posterior only at low confidence.
-    {"name": "r36_q025_pg045_g006", "fixed_variance_m2": 36.0, "q_scale": 0.25,
+    {"name": "r64_q020", "fixed_variance_m2": 64.0, "q_scale": 0.20},
+    {"name": "r64_q030", "fixed_variance_m2": 64.0, "q_scale": 0.30},
+    # Confidence-adaptive measurement-preserving variants. These are designed
+    # to keep high-confidence visual successes inside LSR@15 while allowing the
+    # filtered prior to repair low-confidence frames.
+    {"name": "r36_q020_c045_g006", "fixed_variance_m2": 36.0, "q_scale": 0.20,
      "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.06,
      "prior_blend_max": 0.10, "prior_blend_cutoff": 0.45},
-    {"name": "r36_q025_pg050_g008", "fixed_variance_m2": 36.0, "q_scale": 0.25,
-     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.08,
-     "prior_blend_max": 0.12, "prior_blend_cutoff": 0.50},
-    {"name": "r36_q025_pg055_g012", "fixed_variance_m2": 36.0, "q_scale": 0.25,
-     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.12,
-     "prior_blend_max": 0.18, "prior_blend_cutoff": 0.55},
-    {"name": "r36_q025_pg065_g022", "fixed_variance_m2": 36.0, "q_scale": 0.25,
-     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.22,
-     "prior_blend_max": 0.32, "prior_blend_cutoff": 0.65},
-    {"name": "r49_q015_pg050_g008", "fixed_variance_m2": 49.0, "q_scale": 0.15,
-     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.08,
-     "prior_blend_max": 0.12, "prior_blend_cutoff": 0.50},
-    {"name": "r49_q025_pg055_g012", "fixed_variance_m2": 49.0, "q_scale": 0.25,
-     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.12,
-     "prior_blend_max": 0.18, "prior_blend_cutoff": 0.55},
-    {"name": "r64_q015_pg050_g008", "fixed_variance_m2": 64.0, "q_scale": 0.15,
-     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.08,
-     "prior_blend_max": 0.12, "prior_blend_cutoff": 0.50},
-    {"name": "r64_q025_pg060_g018", "fixed_variance_m2": 64.0, "q_scale": 0.25,
+    {"name": "r36_q020_c050_g010", "fixed_variance_m2": 36.0, "q_scale": 0.20,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.10,
+     "prior_blend_max": 0.15, "prior_blend_cutoff": 0.50},
+    {"name": "r36_q025_c055_g014", "fixed_variance_m2": 36.0, "q_scale": 0.25,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.14,
+     "prior_blend_max": 0.20, "prior_blend_cutoff": 0.55},
+    {"name": "r36_q030_c060_g018", "fixed_variance_m2": 36.0, "q_scale": 0.30,
      "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.18,
-     "prior_blend_max": 0.26, "prior_blend_cutoff": 0.60},
+     "prior_blend_max": 0.28, "prior_blend_cutoff": 0.60},
+    {"name": "r49_q015_c045_g006", "fixed_variance_m2": 49.0, "q_scale": 0.15,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.06,
+     "prior_blend_max": 0.10, "prior_blend_cutoff": 0.45},
+    {"name": "r49_q020_c050_g010", "fixed_variance_m2": 49.0, "q_scale": 0.20,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.10,
+     "prior_blend_max": 0.15, "prior_blend_cutoff": 0.50},
+    {"name": "r49_q025_c055_g014", "fixed_variance_m2": 49.0, "q_scale": 0.25,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.14,
+     "prior_blend_max": 0.20, "prior_blend_cutoff": 0.55},
+    {"name": "r49_q030_c060_g018", "fixed_variance_m2": 49.0, "q_scale": 0.30,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.18,
+     "prior_blend_max": 0.28, "prior_blend_cutoff": 0.60},
+    {"name": "r64_q015_c045_g006", "fixed_variance_m2": 64.0, "q_scale": 0.15,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.06,
+     "prior_blend_max": 0.10, "prior_blend_cutoff": 0.45},
+    {"name": "r64_q020_c050_g010", "fixed_variance_m2": 64.0, "q_scale": 0.20,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.10,
+     "prior_blend_max": 0.15, "prior_blend_cutoff": 0.50},
+    {"name": "r64_q025_c055_g014", "fixed_variance_m2": 64.0, "q_scale": 0.25,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.14,
+     "prior_blend_max": 0.20, "prior_blend_cutoff": 0.55},
+    {"name": "r64_q030_c060_g018", "fixed_variance_m2": 64.0, "q_scale": 0.30,
+     "prior_blend_base": 0.0, "prior_blend_lowconf_gain": 0.18,
+     "prior_blend_max": 0.28, "prior_blend_cutoff": 0.60},
 ]
-
-# Keep old candidates plus new targeted candidates, with unique names.
-_seen = set()
-PROFILES = []
-for _p in list(cal.PROFILES) + EXTRA_PROFILES:
-    if _p["name"] not in _seen:
-        PROFILES.append(dict(_p))
-        _seen.add(_p["name"])
 cal.PROFILES = PROFILES
-
-# The existing alpha sweep remains cheap.  Heading fusion itself is now
-# agreement-gated in heading_fusion_metrics.py.
 cal.HEADING_FUSION_ALPHAS = (
     0.00, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00
 )
 
 
-# Extend the saved/restored base with every confidence-residual field we search.
 def _base_values(config):
     names = [
         "EXPERIMENT_FIXED_VARIANCE_M2",
@@ -106,7 +113,6 @@ def _apply_profile(config, base, profile):
 cal._base_values = _base_values
 cal._apply_profile = _apply_profile
 
-# Erase per-city cadence/Kalman calibration after the normal path setup.
 _original_patch_paths = cal.ab._patch_paths
 
 def _global_patch_paths(config, args, prepared_root):
@@ -114,7 +120,6 @@ def _global_patch_paths(config, args, prepared_root):
     global_base.apply_global_base(config, args.suite_root)
 
 cal.ab._patch_paths = _global_patch_paths
-
 
 if __name__ == "__main__":
     cal.main()
