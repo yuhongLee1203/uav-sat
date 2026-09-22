@@ -17,12 +17,16 @@ s = p.read_text(encoding='utf-8')
 # run. Treat that as success: applying the string patch twice would duplicate
 # the acceleration/next-step blocks and previously aborted B/C/D before train.
 v5_markers = (
-    'delta2_direct = torch.tanh(self.delta2_motion_head(accel_h))',
+    'self.delta2_motion_head(accel_h)',
     'delta2_direct[:, 0:1]',
     'delta2_direct[:, 2:3]',
     'TEMPORAL_DIRECT_STEP_FORWARD_M',
 )
-if all(marker in s for marker in v5_markers):
+v5_gate_ok = (
+    'self.temporal_reliability_head' not in s
+    or 'temporal_reliability' in s
+)
+if all(marker in s for marker in v5_markers) and v5_gate_ok:
     compile(s, str(p), 'exec')
     print('[TEMPORAL V5] existing direct-delta2 patch: PASS')
     raise SystemExit(0)

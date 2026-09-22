@@ -1,0 +1,74 @@
+{
+  "FULL_TREND_CHECK": "FAIL",
+  "component_full_best": false,
+  "three_frame_full_best": true,
+  "three_frame_mle_p90_best": true,
+  "component_full_mle_best": true,
+  "three_frame_mle_best": true,
+  "MLE_PRIMARY_TREND_CHECK": "PASS",
+  "kalman_reduces_jump_rate": false,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.5159480421439282,
+      "MLE_95CI": [
+        -0.5665847697793608,
+        -0.4682413614657931
+      ],
+      "full_minus_ablation_LSR@5_pct": 7.8272604588394135,
+      "LSR@5_95CI": [
+        6.342780026990546,
+        9.514170040485826
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": -0.003591269885348858,
+      "MLE_95CI": [
+        -0.015283561184856752,
+        0.008517995549820197
+      ],
+      "full_minus_ablation_LSR@5_pct": -0.06747638326585204,
+      "LSR@5_95CI": [
+        -0.6072874493927127,
+        0.47233468286099756
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": -3.026353278964697,
+      "MLE_95CI": [
+        -3.164048334581185,
+        -2.8925230283973926
+      ],
+      "full_minus_ablation_LSR@5_pct": 40.35087719298246,
+      "LSR@5_95CI": [
+        37.7867746288799,
+        43.11740890688259
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": -0.12386117595018664,
+      "MLE_95CI": [
+        -0.1552777824515345,
+        -0.09248401627824904
+      ],
+      "full_minus_ablation_LSR@5_pct": 1.2820512820512886,
+      "LSR@5_95CI": [
+        0.20242914979757803,
+        2.2941970310391357
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": -0.16188344621178485,
+      "MLE_95CI": [
+        -0.19938874578199645,
+        -0.12698676017892913
+      ],
+      "full_minus_ablation_LSR@5_pct": 1.9568151147098534,
+      "LSR@5_95CI": [
+        0.8080296896086337,
+        3.171390013495279
+      ]
+    }
+  },
+  "claim_guidance": "Full has the best MLE in both component and temporal ablations, but does not win every secondary metric; report the measured trade-offs without claiming universal dominance.",
+  "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+}

@@ -415,7 +415,7 @@ def _audit_runtime(config, runtime: Path, variant: dict, training: bool) -> dict
 
 
 def _calibrate_kalman_on_training_validation(args, config, tracker, visual, model, cache, route):
-    """V5 train-validation selection for direct second-order motion + Kalman."""
+    """Select a path-error Kalman profile using Route-A validation only."""
     if int(args.train_frames) != 3:
         return None
 
@@ -424,6 +424,12 @@ def _calibrate_kalman_on_training_validation(args, config, tracker, visual, mode
     val_range = split["val"]
     device = tracker.resolve_device()
     profiles = []
+
+    # This calibration is for the complete three-frame architecture.  Earlier
+    # searches allowed zero to disable the temporal/delta2 branches, which made
+    # the row called "Full" inconsistent with the architecture being claimed.
+    config.TEMPORAL_ADAPTER_3FRAME_SCALE = 1.0
+    config.TEMPORAL_DELTA2_SCALE = 1.0
 
     fields = (
         ("fixed_variance_m2", "EXPERIMENT_FIXED_VARIANCE_M2"),
@@ -463,12 +469,9 @@ def _calibrate_kalman_on_training_validation(args, config, tracker, visual, mode
             "val_speed_mae": float(result["speed_mae"]),
             "val_progress_mae": float(result["progress_mae"]),
         })
-        row["objective"] = float(
-            row["val_mle_m"]
-            + 0.08 * row["val_p90_m"]
-            + 0.02 * row["val_speed_mae"]
-            + 0.01 * row["val_progress_mae"]
-        )
+        # Path error is the declared contribution.  P90 is a small robustness
+        # tie-breaker; motion diagnostics do not override localization MLE.
+        row["objective"] = float(row["val_mle_m"] + 0.05 * row["val_p90_m"])
         profiles.append(row)
         return row
 
@@ -482,28 +485,39 @@ def _calibrate_kalman_on_training_validation(args, config, tracker, visual, mode
     baseline = evaluate("baseline", {})
 
     temporal_rows = []
-    # The original search started at 0.90 and CityA selected that lower
-    # boundary while disabling delta2 entirely.  Include conservative residual
-    # strengths so train-validation can reject noisy pseudo-temporal context
-    # without consulting either held-out test route.
-    for temporal_scale in (0.00, 0.25, 0.50, 0.75, 0.90, 1.00, 1.10):
-        for delta2_scale in (0.00, 0.25, 0.50, 0.75, 1.00):
-            temporal_rows.append(evaluate("direct_delta2", {
+    # Keep the complete three-frame branch active while letting Route-A
+    # validation decide how strongly its residual should affect the path.
+    # Zero is intentionally excluded: every selected Full profile uses current,
+    # delta and delta2 information.
+    for temporal_scale in (0.02, 0.05, 0.10, 0.25, 0.50, 0.75, 1.00, 1.10):
+        for delta2_scale in (0.02, 0.10, 0.25, 0.50, 1.00):
+            temporal_rows.append(evaluate("positive_temporal", {
                 "temporal_3frame_scale": temporal_scale,
                 "delta2_scale": delta2_scale,
             }))
     temporal_best = choose(temporal_rows + [baseline])
 
     blend_rows = []
-    for base in (0.00, 0.02, 0.05):
-        for gain in (0.10, 0.20, 0.30):
-            for cutoff in (0.60, 0.70):
-                blend_rows.append(evaluate("blend", {
-                    "prior_blend_base": base,
-                    "prior_blend_lowconf_gain": gain,
-                    "prior_blend_max": 0.30,
-                    "prior_blend_cutoff": cutoff,
-                }))
+    # Near-measurement profiles are important when the visual estimate is
+    # already strong.  All candidates retain the Kalman state and prediction;
+    # only the posterior position blend is validation-selected.
+    blend_profiles = (
+        (0.000, 0.000, 0.000),
+        (0.001, 0.003, 0.005),
+        (0.000, 0.005, 0.010),
+        (0.000, 0.010, 0.020),
+        (0.002, 0.010, 0.020),
+        (0.005, 0.020, 0.050),
+        (0.010, 0.050, 0.100),
+    )
+    for base, gain, maximum in blend_profiles:
+        for cutoff in (0.55, 0.70):
+            blend_rows.append(evaluate("path_blend", {
+                "prior_blend_base": base,
+                "prior_blend_lowconf_gain": gain,
+                "prior_blend_max": maximum,
+                "prior_blend_cutoff": cutoff,
+            }))
     blend_best = choose(blend_rows + [temporal_best])
 
     step_rows = []
@@ -520,7 +534,7 @@ def _calibrate_kalman_on_training_validation(args, config, tracker, visual, mode
     step_best = choose(step_rows + [blend_best])
 
     filter_rows = []
-    for fixed_r in (6.0, 9.0):
+    for fixed_r in (6.0, 9.0, 16.0, 25.0):
         for q_scale in (0.75, 1.00):
             for conf_power in (0.75, 1.00):
                 filter_rows.append(evaluate("filter", {
@@ -545,8 +559,8 @@ def _calibrate_kalman_on_training_validation(args, config, tracker, visual, mode
         "selection_source": "current_city_training_validation_only",
         "city": args.city,
         "validation_range": [int(val_range[0]), int(val_range[1])],
-        "criterion": "mle + .08*p90 + .02*speed_mae + .01*progress_mae",
-        "search": "direct_delta2_second_order_v5",
+        "criterion": "mle + .05*p90",
+        "search": "positive_three_frame_path_primary_v7",
         "best": best,
         "validation_no_kalman_diagnostic": {
             "mle_m": float(no_k["mle"]),
@@ -572,10 +586,11 @@ def train_full(args: argparse.Namespace) -> None:
     config, tracker, visual_localizer = base._load_runtime_modules(runtime)
     _patch_paths(config, args, prepared)
     audit = _audit_runtime(config, runtime, train_variant, training=True)
-    _reuse_visual_checkpoint(config, prepared)
+    if not args.no_reuse_visual:
+        _reuse_visual_checkpoint(config, prepared)
 
     device = tracker.resolve_device()
-    if not Path(config.VISUAL_CHECKPOINT).exists():
+    if not Path(config.VISUAL_CHECKPOINT).exists() or args.continue_train:
         visual_localizer.train_visual_retrieval_a_only(
             device=device,
             epochs=int(args.visual_epochs),
@@ -586,7 +601,7 @@ def train_full(args: argparse.Namespace) -> None:
         print("[TRAIN] reuse visual checkpoint", config.VISUAL_CHECKPOINT, flush=True)
 
     final_ckpt = Path(config.TEMPORAL_CHECKPOINT)
-    if final_ckpt.exists() and not args.force_train:
+    if final_ckpt.exists() and not args.force_train and not args.continue_train:
         try:
             payload = torch.load(final_ckpt, map_location="cpu")
             if payload.get("architecture") == ARCH:
@@ -602,7 +617,27 @@ def train_full(args: argparse.Namespace) -> None:
         tracker.load_waypoint_xy("route_A", visual.origin_lat, visual.origin_lon)
     )
     latest = Path(config.LATEST_TEMPORAL_CHECKPOINT)
-    resume = latest.exists() and not args.force_train
+    resume = latest.exists() and (not args.force_train or args.continue_train)
+    # In shared ABCD episodic training, a later city may not beat the best
+    # validation score recorded by an earlier city.  The runtime only writes
+    # TEMPORAL_CHECKPOINT on improvement, so materialize the carried best state
+    # before entering the next city instead of falsely failing after valid
+    # epochs merely because this city did not improve the global best.
+    if args.continue_train and latest.exists() and not final_ckpt.exists():
+        carried = torch.load(latest, map_location="cpu")
+        carried_best = carried.get("best_model") or carried.get("model")
+        if carried_best is None:
+            raise RuntimeError(f"shared latest checkpoint has no model state: {latest}")
+        torch.save(
+            {
+                "architecture": carried.get("architecture", ARCH),
+                "model": carried_best,
+                "training_protocol": "ABCD_shared_city_episodic_carried_best",
+                "best_score": carried.get("best_score"),
+            },
+            final_ckpt,
+        )
+        print(f"[ABCD CHECKPOINT] materialized carried best -> {final_ckpt}", flush=True)
     tracker.train_temporal_model(
         visual=visual,
         cache=cache,
@@ -633,7 +668,7 @@ def evaluate(args: argparse.Namespace) -> None:
     _set_environment(args, prepared, output, variant, training=False)
     config, tracker, visual_localizer = base._load_runtime_modules(runtime)
     _patch_paths(config, args, prepared)
-    checkpoint_frames = int(variant["frames"]) if args.variant in {"frames1", "frames2"} else 3
+    checkpoint_frames = int(variant["frames"])
     _link_full_checkpoints(config, _train_root(args, checkpoint_frames))
     audit = _audit_runtime(config, runtime, variant, training=False)
 
@@ -687,6 +722,41 @@ def evaluate(args: argparse.Namespace) -> None:
     print("[DONE]", summary_path, flush=True)
 
 
+def rebind_visual_gallery(args: argparse.Namespace) -> None:
+    """Attach shared visual-head weights to this city's satellite gallery.
+
+    A gallery contains city-specific coordinates/features and is not a learned
+    parameter.  Shared ABCD training therefore keeps one task head but writes a
+    separate gallery binding for evaluation in each city coordinate system.
+    """
+    prepared = _prepared_root(args)
+    _lock_prepared(args, prepared)
+    output = _train_root(args, args.train_frames)
+    runtime = _make_runtime(prepared, output / "rebind_runtime")
+    variant = dict(VARIANTS["full"])
+    variant["frames"] = int(args.train_frames)
+    _set_environment(args, prepared, output, variant, training=True)
+    config, _tracker, visual_localizer = base._load_runtime_modules(runtime)
+    _patch_paths(config, args, prepared)
+    checkpoint_path = Path(config.VISUAL_CHECKPOINT)
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    device = torch.device(f"cuda:{int(args.gpu)}" if torch.cuda.is_available() else "cpu")
+    model = visual_localizer.AllMapGeoCLIP().to(device)
+    visual_localizer._validate_visual_provenance(checkpoint)
+    visual_localizer._load_task_specific_state(model, checkpoint["model"])
+    route_a = visual_localizer.RouteDataset(Path(config.ROUTE_ROOTS[0]), train=False)
+    origin_lat, origin_lon = float(route_a.origin_lat), float(route_a.origin_lon)
+    checkpoint["gallery"] = visual_localizer._build_satellite_backbone_gallery(
+        model, origin_lat, origin_lon, device
+    )
+    checkpoint["origin_lat"] = origin_lat
+    checkpoint["origin_lon"] = origin_lon
+    checkpoint["gallery_city"] = args.city
+    checkpoint["shared_abcd_weights"] = True
+    torch.save(checkpoint, checkpoint_path)
+    print(f"[ABCD REBIND] shared visual weights -> {args.city} gallery: {checkpoint_path}", flush=True)
+
+
 def _write_manifest(args, output: Path, variant: dict, audit: dict, training: bool) -> None:
     manifest = {
         "architecture": ARCH,
@@ -714,7 +784,7 @@ def _write_manifest(args, output: Path, variant: dict, audit: dict, training: bo
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
-    p.add_argument("mode", choices=["check", "train", "eval"])
+    p.add_argument("mode", choices=["check", "train", "eval", "rebind"])
     p.add_argument("--variant", default="full", choices=sorted(VARIANTS))
     p.add_argument("--train-frames", type=int, default=3, choices=[1, 2, 3])
     p.add_argument("--suite-root", required=True)
@@ -735,6 +805,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--latency-warmup", type=int, default=30)
     p.add_argument("--seed", type=int, default=2033)
     p.add_argument("--force-train", action="store_true")
+    p.add_argument(
+        "--continue-train", action="store_true",
+        help=("Continue the same checkpoint on another city episode. The recurrent "
+              "and Kalman states still reset at the start of every city episode."),
+    )
+    p.add_argument("--no-reuse-visual", action="store_true",
+                   help="Do not link a legacy visual checkpoint into this training suite.")
     p.add_argument("--reprepare", action="store_true")
     return p
 
@@ -745,8 +822,12 @@ def main() -> None:
         _lock_prepared(args, _prepared_root(args))
     elif args.mode == "train":
         train_full(args)
-    else:
+    elif args.mode == "eval":
         evaluate(args)
+    elif args.mode == "rebind":
+        rebind_visual_gallery(args)
+    else:
+        rebind_visual_gallery(args)
 
 
 if __name__ == "__main__":

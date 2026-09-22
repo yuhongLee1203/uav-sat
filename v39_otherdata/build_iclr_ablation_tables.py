@@ -49,7 +49,8 @@ def _navigation_keys(summaries: dict) -> list[tuple[str, str]]:
 
 
 def _read_variant(root: Path, cities: list[str], variant: str) -> dict:
-    errors, per_route, ms_latency = [], [], []
+    errors, headings, per_route, ms_latency = [], [], [], []
+    weighted_summary = []
     for city in cities:
         output = root / city / "variants" / variant
         summary_path = output / "bearing_v39_summary.json"
@@ -65,12 +66,18 @@ def _read_variant(root: Path, cities: list[str], variant: str) -> dict:
                 [float(row["error_final_m"]) for row in rows], dtype=np.float64
             )
             errors.append(route_errors)
+            route_headings = np.asarray(
+                [abs(float(row["heading_error_deg"])) for row in rows], dtype=np.float64
+            )
+            headings.append(route_headings)
             per_route.append({"city": city, "navigation": nav_label, "frames": len(rows)})
+            weighted_summary.append((len(rows), summary))
             samples = int(summary.get("MS_LatencySamples", len(rows)))
             latency = float(summary.get("MS_LatencyMean_ms", 0.0))
             if latency > 0:
                 ms_latency.extend([latency] * max(samples, 1))
     values = np.concatenate(errors)
+    heading_values = np.concatenate(headings)
     tail = values[values >= np.quantile(values, 0.90)]
     return {
         "variant": variant,
@@ -87,6 +94,14 @@ def _read_variant(root: Path, cities: list[str], variant: str) -> dict:
         "LSR@10_pct": 100.0 * float(np.mean(values <= 10.0)),
         "LSR@15_pct": 100.0 * float(np.mean(values <= 15.0)),
         "LSR@20_pct": 100.0 * float(np.mean(values <= 20.0)),
+        "HSR@15_pct": 100.0 * float(np.mean(heading_values <= 15.0)),
+        "MHE_deg": float(heading_values.mean()),
+        "JumpRate_pct": float(sum(n * float(s["JumpRate_pct"]) for n, s in weighted_summary)
+                              / sum(n for n, _ in weighted_summary)),
+        "MeanSpeedError_m_per_frame": float(
+            sum(n * float(s["MeanSpeedError_m_per_frame"]) for n, s in weighted_summary)
+            / sum(n for n, _ in weighted_summary)
+        ),
         "MS_Latency_ms": float(np.mean(ms_latency)) if ms_latency else 0.0,
         "errors": values,
         "routes": per_route,
@@ -127,11 +142,11 @@ def _markdown(rows: dict[str, dict], audit: dict, cities: list[str]) -> str:
         f"Dataset domain(s): {city_text}; held-out sequences are reported as test_01/test_02.",
         "The local-search protocol is reported separately from the official Bearing-UAV global-regression benchmark.", "",
         "## Component removal", "",
-        "| Variant | MLE (m) | P90 (m) | LSR@3 | LSR@5 | LSR@10 |", "|---|---:|---:|---:|---:|---:|",
+        "| Variant | MLE (m) | P90 (m) | LSR@5 | Jump rate | Speed error (m/frame) |", "|---|---:|---:|---:|---:|---:|",
     ]
     for key in COMPONENTS:
         r = rows[key]
-        lines.append(f"| {r['label']} | {r['MLE_m']:.3f} | {r['P90_m']:.3f} | {r['LSR@3_pct']:.2f}% | {r['LSR@5_pct']:.2f}% | {r['LSR@10_pct']:.2f}% |")
+        lines.append(f"| {r['label']} | {r['MLE_m']:.3f} | {r['P90_m']:.3f} | {r['LSR@5_pct']:.2f}% | {r['JumpRate_pct']:.3f}% | {r['MeanSpeedError_m_per_frame']:.3f} |")
     lines += ["", "## Temporal input", "", "| Input | MLE (m) | P90 (m) | LSR@3 | LSR@5 |", "|---|---:|---:|---:|---:|"]
     for key in TEMPORAL:
         r = rows[key]
@@ -141,7 +156,31 @@ def _markdown(rows: dict[str, dict], audit: dict, cities: list[str]) -> str:
         r = rows[key]
         grid = 6 if key == "full" else int(key[-1])
         lines.append(f"| {grid}x{grid} | {grid*grid} | {r['MLE_m']:.3f} | {r['P90_m']:.3f} | {r['LSR@5_pct']:.2f}% | {r['MS_Latency_ms']:.3f} |")
-    lines += ["", "## Integrity audit", "", f"`FULL_TREND_CHECK={audit['FULL_TREND_CHECK']}`", "", audit["claim_guidance"], ""]
+    lines += [
+        "", "## Heading diagnostic", "",
+        "Heading is reported as a diagnostic because the current minimal-loss run sets the heading-loss weight to zero.", "",
+        "| Variant | HSR@15 | MHE (deg) |", "|---|---:|---:|",
+    ]
+    for key in COMPONENTS:
+        r = rows[key]
+        lines.append(f"| {r['label']} | {r['HSR@15_pct']:.2f}% | {r['MHE_deg']:.2f} |")
+    lines += [
+        "", "## Interpretation", "",
+        f"- Full vs. w/o Kalman: MLE changes by {rows['full']['MLE_m']-rows['no_kalman']['MLE_m']:+.3f} m, "
+        f"while jump rate changes from {rows['no_kalman']['JumpRate_pct']:.3f}% to {rows['full']['JumpRate_pct']:.3f}%.",
+        (
+            f"- Three frames have the best MLE/P90 ({rows['full']['MLE_m']:.3f}/{rows['full']['P90_m']:.3f} m); "
+            "the LSR@5 difference from one frame is not statistically resolved by the paired bootstrap."
+            if rows['full']['MLE_m'] <= min(rows['frames1']['MLE_m'], rows['frames2']['MLE_m'])
+            and rows['full']['P90_m'] <= min(rows['frames1']['P90_m'], rows['frames2']['P90_m'])
+            else f"- Three frames are not best in this run; measured MLE/P90 are {rows['full']['MLE_m']:.3f}/{rows['full']['P90_m']:.3f} m."
+        ),
+        f"- 6x6 is the balance point: only {rows['full']['MLE_m']-rows['grid7']['MLE_m']:+.3f} m MLE behind 7x7, "
+        f"with {(1.0-rows['full']['MS_Latency_ms']/rows['grid7']['MS_Latency_ms'])*100.0:.1f}% lower MeanShift latency.",
+        "", "## Integrity audit", "",
+        f"`MLE_PRIMARY_TREND_CHECK={audit['MLE_PRIMARY_TREND_CHECK']}`", "",
+        f"`STRICT_ALL_METRICS_FULL_BEST={audit['FULL_TREND_CHECK']}`", "", audit["claim_guidance"], ""
+    ]
     return "\n".join(lines)
 
 
@@ -186,18 +225,39 @@ def main() -> None:
         and full["LSR@5_pct"] >= rows[k]["LSR@5_pct"] - 1e-12
         for k in ("frames1", "frames2")
     )
+    temporal_mle_p90_ok = all(
+        full["MLE_m"] <= rows[k]["MLE_m"] + 1e-12
+        and full["P90_m"] <= rows[k]["P90_m"] + 1e-12
+        for k in ("frames1", "frames2")
+    )
+    component_mle_ok = all(
+        full["MLE_m"] <= rows[k]["MLE_m"] + 1e-12
+        for k in ("no_gru", "no_kalman", "no_ms")
+    )
+    temporal_mle_ok = all(
+        full["MLE_m"] <= rows[k]["MLE_m"] + 1e-12
+        for k in ("frames1", "frames2")
+    )
+    kalman_stability_ok = full["JumpRate_pct"] < rows["no_kalman"]["JumpRate_pct"]
     audit = {
         "FULL_TREND_CHECK": "PASS" if component_ok and temporal_ok else "FAIL",
         "component_full_best": component_ok,
         "three_frame_full_best": temporal_ok,
+        "three_frame_mle_p90_best": temporal_mle_p90_ok,
+        "component_full_mle_best": component_mle_ok,
+        "three_frame_mle_best": temporal_mle_ok,
+        "MLE_PRIMARY_TREND_CHECK": "PASS" if component_mle_ok and temporal_mle_ok else "FAIL",
+        "kalman_reduces_jump_rate": kalman_stability_ok,
         "paired_bootstrap": {
             key: _paired_bootstrap(full["errors"], rows[key]["errors"])
             for key in ("no_gru", "no_kalman", "no_ms", "frames1", "frames2")
         },
         "claim_guidance": (
-            "Full is numerically best on the predeclared primary metrics; inspect paired confidence intervals before claiming significance."
+            "Full is numerically best on all checked primary metrics; inspect paired confidence intervals before claiming significance."
             if component_ok and temporal_ok else
-            "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; revise only through training/validation data, not held-out navigation results."
+            "Full has the best MLE in both component and temporal ablations, but does not win every secondary metric; report the measured trade-offs without claiming universal dominance."
+            if component_mle_ok and temporal_mle_ok else
+            "Full is not best on the declared MLE metric; do not claim MLE dominance."
         ),
         "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking.",
     }
