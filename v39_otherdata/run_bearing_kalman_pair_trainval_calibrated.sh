@@ -22,6 +22,7 @@ fi
 python3 -m py_compile \
   v39_otherdata/calibrate_finalms_prior_trainval.py \
   v39_otherdata/select_global_finalms_profile.py \
+  v39_otherdata/build_kalman_pair_table.py \
   v39_otherdata/bearing_iclr_ablation.py \
   v39_otherdata/build_iclr_ablation_tables.py
 
@@ -124,12 +125,17 @@ for city in "${CITIES[@]}"; do
   done
 done
 
-python3 v39_otherdata/build_iclr_ablation_tables.py \
+# Do NOT rebuild the complete ablation table here: the other variants still
+# belong to the previous decoder profile.  First prove the Kalman contribution
+# with this isolated, paired comparison.  If it is useful, freeze this profile
+# and rerun every paper variant under the same settings.
+python3 v39_otherdata/build_kalman_pair_table.py \
   --suite-root "${SUITE_ROOT}" \
   --cities citya cityb cityc cityd \
-  | tee "${SUITE_ROOT}/logs/finalms_trainval/table.log"
+  | tee "${SUITE_ROOT}/logs/finalms_trainval/kalman_pair_table.log"
 
 echo "[DONE] train-validation-calibrated Full vs w/o Kalman"
 echo "[PROFILE] ${SUITE_ROOT}/finalms_global_calibration.json"
-echo "[TABLE] ${SUITE_ROOT}/paper_ablation_tables.md"
-echo "[CSV] ${SUITE_ROOT}/paper_ablation_results.csv"
+echo "[PAIR TABLE] ${SUITE_ROOT}/kalman_pair_table.md"
+echo "[PAIR JSON] ${SUITE_ROOT}/kalman_pair_results.json"
+echo "[NOTE] Full paper ablation table was intentionally NOT rebuilt yet."
