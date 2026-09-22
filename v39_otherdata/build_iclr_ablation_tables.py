@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,7 @@ import pandas as pd
 
 import bearing_paper_metrics as bpm
 import bearing_prepare as bearing
+import heading_fusion_metrics as hfm
 
 COMPONENTS = ["no_gru", "no_kalman", "no_ms", "full"]
 TEMPORAL = ["frames1", "frames2", "full"]
@@ -27,6 +29,13 @@ LABELS = {
     "frames1": "1 frame", "frames2": "2 frames",
     "grid4": "4x4", "grid5": "5x5", "grid7": "7x7", "grid8": "8x8",
 }
+
+
+def _heading_fusion_alpha() -> float:
+    value = float(os.environ.get("BEARING_HEADING_FUSION_ALPHA", "0.0"))
+    if not 0.0 <= value <= 1.0:
+        raise ValueError("BEARING_HEADING_FUSION_ALPHA must be in [0,1]")
+    return value
 
 
 def _csv_for(summary: dict, output: Path) -> Path:
@@ -61,6 +70,7 @@ def _read_variant(root: Path, cities: list[str], variant: str) -> dict:
     errors, headings, ms_latency = [], [], []
     recall_good, recall_total = 0.0, 0
     per_route = []
+    heading_alpha = _heading_fusion_alpha()
     for city in cities:
         prepared = root / city / "prepared"
         city_rows, origin_x_m, origin_y_m = _recall_context(prepared, city)
@@ -77,7 +87,7 @@ def _read_variant(root: Path, cities: list[str], variant: str) -> dict:
                     f"{city}/{variant}/{nav_label} lacks heading_error_deg; rerun EVAL ONLY, not training."
                 )
             route_errors = np.asarray([float(r["error_final_m"]) for r in rows], dtype=np.float64)
-            route_headings = np.asarray([abs(float(r["heading_error_deg"])) for r in rows], dtype=np.float64)
+            route_headings = hfm.fused_heading_errors(rows, heading_alpha)
             errors.append(route_errors)
             headings.append(route_headings)
             manifest = bpm._read_csv(prepared / "routes" / nav_label / "manifest.csv")
@@ -102,6 +112,7 @@ def _read_variant(root: Path, cities: list[str], variant: str) -> dict:
         "MLE_m": float(values.mean()),
         "MHE_deg": float(heading_values.mean()),
         "MS_Latency_ms": float(np.mean(ms_latency)) if ms_latency else 0.0,
+        "heading_fusion_alpha": float(heading_alpha),
         "_errors": values,
         "_routes": per_route,
     }
@@ -145,10 +156,12 @@ def _row(name: str, r: dict):
 
 def _markdown(rows, audit, cities):
     city_text = ", ".join(c.upper() for c in cities)
+    alpha = _heading_fusion_alpha()
     lines = [
         "# Bearing-UAV 4-city ablation (measured)", "",
         f"Dataset domains: {city_text}; held-out sequences: test_01/test_02.",
-        "R@1* uses Bearing-UAV's same-quadrant/sign rule on the tracker's continuous final XY.", "",
+        "R@1* uses Bearing-UAV's same-quadrant/sign rule on the tracker's continuous final XY.",
+        f"HSR/MHE use predicted heading with shared causal state-direction fusion alpha={alpha:.2f} for every compared row.", "",
         "## Component removal", "", *_header("Variant"),
     ]
     for key in COMPONENTS:
@@ -173,6 +186,7 @@ def _markdown(rows, audit, cities):
         "- P90/P95/P99/CVaR and jump-rate are not included in paper-facing tables.",
         "- HSR@15 is the percentage of frames with heading error <= 15 degrees.",
         "- MHE is mean absolute heading error in degrees.",
+        "- Heading fusion uses only predicted recurrent heading and causal estimator-state displacement; GT is used only to score the final heading prediction.",
         "", "## Integrity audit", "",
         f"`LOCALIZATION_TREND_CHECK={audit['LOCALIZATION_TREND_CHECK']}`", "",
         audit["claim_guidance"], "",
@@ -219,6 +233,7 @@ def main():
         "LOCALIZATION_TREND_CHECK": "PASS" if localization_ok else "FAIL",
         "component_full_localization_best": component_ok,
         "three_frame_full_localization_best": temporal_ok,
+        "heading_fusion_alpha": _heading_fusion_alpha(),
         "paired_bootstrap": {
             key: _paired_bootstrap(full["_errors"], rows[key]["_errors"])
             for key in ("no_gru", "no_kalman", "no_ms", "frames1", "frames2")
@@ -228,12 +243,13 @@ def main():
             if localization_ok else
             "At least one measured ablation is better on MLE or LSR@15; report that trade-off rather than forcing a preferred ranking."
         ),
-        "integrity": "All values are recomputed from measured frame-level outputs.",
+        "integrity": "All values are recomputed from measured frame-level outputs; shared heading fusion is applied identically to every row.",
     }
 
     payload = {
         "cities": args.cities,
         "metric_set": ["R@1*_pct", "LSR@15_pct", "HSR@15_pct", "MLE_m", "MHE_deg"],
+        "heading_fusion_alpha": _heading_fusion_alpha(),
         "rows": {k: _clean(v) for k, v in rows.items()},
         "audit": audit,
     }
