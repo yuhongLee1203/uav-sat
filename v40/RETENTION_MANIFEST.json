@@ -1,0 +1,1752 @@
+{
+  "date": "2026-10-21",
+  "scope": "v40 only",
+  "archive_outside_repository": "/yh/study/uav-sat_archives/v40_retired_20261021",
+  "kept_root_code": [
+    "audit_validation_gt_independence.py",
+    "evaluate_official96_fixed_test.py",
+    "evaluate_official96_validation.py",
+    "image_only_citya.py",
+    "plot_no_gt_test_pictures.py",
+    "prepare_official96_fixed_routes.py",
+    "prepare_official96_fixed_train_extra.py",
+    "run_no_gt_multicity_evaluate.py",
+    "run_no_gt_multicity_retrain.py",
+    "train_multicity_routes.py",
+    "train_visual_backbone_gtloss.py",
+    "train_visual_global_gtloss.py",
+    "train_visual_metadata90k.py",
+    "train_visual_seed2059.py"
+  ],
+  "kept_paths": [
+    ".gitignore",
+    "README.md",
+    "audit_validation_gt_independence.py",
+    "checkpoint1/MANIFEST.json",
+    "checkpoint1/best_no_gt_20260926",
+    "checkpoint1/code_before_fusion",
+    "data/official96_fixed_routes",
+    "data/official96_fixed_train_grid",
+    "evaluate_official96_fixed_test.py",
+    "evaluate_official96_validation.py",
+    "image_only_citya.py",
+    "output/no_gt_6x6_20260927_a/cross_prior_sweep/cross_prior_0.00",
+    "output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/train",
+    "output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/train",
+    "output/no_gt_6x6_20261008_ms_sweep/bandwidth18",
+    "output/no_gt_multicity_retrain_20261009",
+    "plot_no_gt_test_pictures.py",
+    "prepare_official96_fixed_routes.py",
+    "prepare_official96_fixed_train_extra.py",
+    "run_no_gt_multicity_evaluate.py",
+    "run_no_gt_multicity_retrain.py",
+    "runtime/config.py",
+    "runtime/data.py",
+    "runtime/robust_tracker.py",
+    "runtime/visual_localizer.py",
+    "runtime/visual_model.py",
+    "train_multicity_routes.py",
+    "train_visual_backbone_gtloss.py",
+    "train_visual_global_gtloss.py",
+    "train_visual_metadata90k.py",
+    "train_visual_seed2059.py"
+  ],
+  "retired_entries": [
+    {
+      "path": "sweep_no_gt6_anchor_raw.py",
+      "directory": false,
+      "bytes_if_file": 3539
+    },
+    {
+      "path": "train_visual_augmented.py",
+      "directory": false,
+      "bytes_if_file": 1368
+    },
+    {
+      "path": "train_visual_deeper.py",
+      "directory": false,
+      "bytes_if_file": 1652
+    },
+    {
+      "path": "sweep_citya_tta_ms_extended.py",
+      "directory": false,
+      "bytes_if_file": 2555
+    },
+    {
+      "path": "search_causal_4m.py",
+      "directory": false,
+      "bytes_if_file": 4508
+    },
+    {
+      "path": "sweep_citya_ms.py",
+      "directory": false,
+      "bytes_if_file": 3061
+    },
+    {
+      "path": "train_visual_augmented_mild.py",
+      "directory": false,
+      "bytes_if_file": 1368
+    },
+    {
+      "path": "sweep_citya_tta_tau.py",
+      "directory": false,
+      "bytes_if_file": 2611
+    },
+    {
+      "path": "README_STRICT_GTLOSS.md",
+      "directory": false,
+      "bytes_if_file": 3748
+    },
+    {
+      "path": "output/global_gtloss_citya_20k_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/gt_visual90k_ab_mixed_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_grid_soft_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_backbone_last2_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_backbone_last1_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_backbone_last8_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_rotation_ensemble",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/gt_visual90k_ab_mixed6_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_selector_visual10_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint8_anchorhalf_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/global_gtloss_citya_10k_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_temporal_citya_dist10_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_visual_sigma8local3_resume20_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_temporal_citya_20k15ep_10ep_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/visual90k_a_10k_4ep_coord1_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_route_oversample",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/legacy_parent_visual",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/combination_sweep",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/acquisition_sweep",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/learned_scale_sweep",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/motion_prior_sweep",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/validation",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/train.log",
+      "directory": false,
+      "bytes_if_file": 1169
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/val_cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/validation.log",
+      "directory": false,
+      "bytes_if_file": 1248
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_search/distance20",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_search/sharp_sigma2",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_search/summary.json",
+      "directory": false,
+      "bytes_if_file": 1851
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/fused_best_visual",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_stage2_fixed",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/scorer_sweep",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_raw_peak",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_query_sweep",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/learned_scale_high_sweep",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/visual_stage2",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/summary.json",
+      "directory": false,
+      "bytes_if_file": 133
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/cross_prior_sweep/cross_prior_16.00",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/cross_prior_sweep/cross_prior_2.00",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/cross_prior_sweep/cross_prior_0.00/cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/cross_prior_sweep/cross_prior_32.00",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/cross_prior_sweep/summary.json",
+      "directory": false,
+      "bytes_if_file": 2372
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/cross_prior_sweep/cross_prior_8.00",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/cross_prior_sweep/cross_prior_4.00",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/cross_prior_sweep/cross_prior_1.00",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_search",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_raw_peak_warm",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_anchor_labels",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/legacy_best_visual",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/anchor_raw_sweep",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_visual2061/raw5_sigma4",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/validation",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/train.log",
+      "directory": false,
+      "bytes_if_file": 32276
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/train/feature_cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/train_cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/val_cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/validation.log",
+      "directory": false,
+      "bytes_if_file": 1247
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_visual2061/summary.json",
+      "directory": false,
+      "bytes_if_file": 1540
+    },
+    {
+      "path": "output/no_gt_6x6_20260927_a/temporal_visual2061/raw5_sigma2",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_last8_standard_tta02_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint8_mskf0_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_visual_distance5_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint_gtpos_gt_positive4_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_fixedroute_multispeed_pilot_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_fixed_backbone_last4_temporal_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/visual90k_a_10k_hardneg8_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_visual_distance5_resume20_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_tta_0123_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/citya_local7_validation_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_local10_best_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_acq_refine",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_acq_diagnostic",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/gt_jitter_ablation_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/v39_v40_relaxed_v13_20260925_201335_1534662",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/fused_temporal_citya_grid_parallel_20260926",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_center_sweep",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/hardneg10k_causal_eval_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint8_rotations_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_temporal_citya_widebank_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/v39_v40_relaxed_v13_20260925_201254_1533786",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_newtemporal_ms01_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_paired_visual_temporal",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_backbone_last4_resume_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/causal_4m_visual_augmented_mild_epoch1_snapshot",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/v39_v40_relaxed_v13_20260925_201631_1537588",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_wide_motion",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_xy_corr20_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_fixed_ms_tau01_bw4_val_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/gt_visual90k_ab_causal_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/visual90k_a_10k_4ep_coord2_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_gtpos_final_validation_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_ms_sweep/bandwidth18/cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_ms_sweep/bandwidth12",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_ms_sweep/summary.json",
+      "directory": false,
+      "bytes_if_file": 1676
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_ms_sweep/bandwidth35",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_visual_candidates_retry16",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/global_gtloss_citya_20k_sigma2_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_backbone_last8_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint8_rot1_gt_audit_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/mobileclip_a_10k_6ep_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint_live4lr30_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint_live4lr30_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint_q100_straight_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_backbone_last4_bestdecoder_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_xy_corr10_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/gt_90k_ab_20260924_181202",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/causal_4m_search_20260926_a",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_gtloss_default_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/widebank_ms_soft_eval_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint_q10_straight_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/causal_4m_visual_seed2059_20260926_a",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_temporal_citya_20k_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/gt_visual90k_ab_hybrid6_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/causal_recheck_20260924_165608",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_temporal_citya_20k15ep_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_gtloss_acq4_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_crop64_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint_live1_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_last8_standard_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_local10_last_tta02_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_bank100_ms02_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/causal_recheck_verified_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/visual10k_temporal_state50_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/global_gtloss_citya_20k_15ep_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/v39_v40_relaxed_v13_20260925_201956_1541303",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_fixedroute_pilot_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_temporal_citya_10k_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_gt_all_mspatch_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/visual90k_ab_pilot_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/multicity_image_only_20260924_171421",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_gtloss_motion4_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint_q10_mssoft_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_last8_standard_tta0123_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_visual_local10_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/causal_4m_best_gt_independence_audit_20260926_a",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_multispeed_pilot_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_backbone_last4_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/widebank6_kalman_causalfix_eval_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_temporal_citya_widebank6_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_rank_loss",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_local3_best_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_visual_local1_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/v39_v40_relaxed_v13_20260925_202113_1542916",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_visual_local10_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/mobileclip_a_10k_6ep_hardneg8_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_fixed_kalman_aggressive_val_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_visual_local10_resume20_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/widebank_kalman_relaxed_eval_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_kalman_moderate_val_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_last8_extra_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint8_anchor0_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_gtloss_citya_20260924_230311",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/gt_visual90k_ab_teacher_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/visual10k_causal_eval_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/fused_temporal_citya_20260926",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_temporal_citya_dist05_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_tta_02_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_gt_independence_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_visual_18k_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/global_gtloss_citya_20k_dist10_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_visual_local3_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint8_final_validation_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/visual90k_a_10k_4ep_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_acq_refine_stage2",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/widebank_kalman_causalfix_eval_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_local10_last_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_visual_candidates",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_backbone_all13_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint8_mskfhalf_bw3_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint_q50_straight_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint8_continue_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_corr10_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_visual_sigma2_resume20_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_temporal_loss_selector_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_gtfront18_patch_oracle_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint8_rotation_snapshot1_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_fixed_visual_distance5_kfaggressive_val_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_gt_reference_ablation_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint8_sharp_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/global_gtloss_citya_20k_dist05_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/README.md",
+      "directory": false,
+      "bytes_if_file": 934
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint_q10_smooth_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_fixed_kalman_moderate_val_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/widebank_ms_sharp_eval_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/v39_v40_relaxed_v13_20260925_202734_1548206",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_fixed_ms_tau005_bw3_val_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/visual10k_temporal_state90_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_fixedroute_aggressive_pilot_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_visual_sigma8local3_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_xy_corr3_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_last8_shifted_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_crop64_bestdecoder_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/v39_v40_relaxed_v13_20260925_213705_1594886",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_bettervisual_pilot_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_gtfront18_oracle_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint8_blend0_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_local1_best_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_local10_best_tta02_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_rank_acq_combo",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/causal_4m_visual_seed2059_route_20260926_a",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/mobileclip_a_10k_6ep_coord1_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_gt_all_mscenter_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint_live4_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint8_mskfhalf_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/ms_calibration_mobilenet_a_20260924.json",
+      "directory": false,
+      "bytes_if_file": 6451
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_corr3_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_kalman_aggressive_val_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint_live1_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint_q10_tta4_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_6x6_20261008_multiscale_tta",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_sigma8local3_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_gtpos_blend_validation_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/fused_temporal_citya_grid_compare_20260926",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_multicity_retrain_20261009/temporal/feature_cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_multicity_retrain_20261009/visual_cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/no_gt_multicity_retrain_20261009/temporal_feature_cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/gt_sweep_actual_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_image_guided_front18_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_backbone_last4_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_visual_sigma2_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_visual_sigma2_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/visual10k_temporal2_causal_eval_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_crop80_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint8_blend0_gt_audit_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_temporal_citya_dense_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/strict_runner_verify_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_last8_extra_visual_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/citya_image_only_20260923_212342",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/widebank_kalman_moderate_eval_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_visual_resume20_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_val_tta_013_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_temporal_corr20_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint_gtpos_gt_positive1_rot_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_oracle_diagnostic_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_joint_gtpos_gt_positive1_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/historical_shared_abcd_gt_reference_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/gt_visual90k_ab_teacher6_20260924",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_citya_temporal_loss_visual_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "output/official96_fixed_citya_val_joint8_rot1_20260925",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "summarize_multicity_sweep.py",
+      "directory": false,
+      "bytes_if_file": 802
+    },
+    {
+      "path": "README_GT_90K.md",
+      "directory": false,
+      "bytes_if_file": 2768
+    },
+    {
+      "path": "run_gt_reference_ablation.py",
+      "directory": false,
+      "bytes_if_file": 5969
+    },
+    {
+      "path": "sweep_no_gt6_learned_scale_high.py",
+      "directory": false,
+      "bytes_if_file": 4197
+    },
+    {
+      "path": "run_no_gt6_rank_acq_combo.py",
+      "directory": false,
+      "bytes_if_file": 2897
+    },
+    {
+      "path": "sweep_no_gt6_acquisition.py",
+      "directory": false,
+      "bytes_if_file": 3135
+    },
+    {
+      "path": "sweep_citya_final_ms_effective.py",
+      "directory": false,
+      "bytes_if_file": 2517
+    },
+    {
+      "path": "run_v39_v40_relaxed_v13_ablation_3gpu_v2.sh",
+      "directory": false,
+      "bytes_if_file": 4822
+    },
+    {
+      "path": "run_no_gt6_acq_refine_stage2.py",
+      "directory": false,
+      "bytes_if_file": 4445
+    },
+    {
+      "path": "sweep_citya_large_ms.py",
+      "directory": false,
+      "bytes_if_file": 2526
+    },
+    {
+      "path": "run_no_gt6_wide_motion.py",
+      "directory": false,
+      "bytes_if_file": 4147
+    },
+    {
+      "path": "runtime/outputs",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "runtime/__pycache__",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "prepare_official96_train_episodes.py",
+      "directory": false,
+      "bytes_if_file": 3872
+    },
+    {
+      "path": "eval_citya_tta.py",
+      "directory": false,
+      "bytes_if_file": 1744
+    },
+    {
+      "path": "run_no_gt6_targeted_ms_sweep.py",
+      "directory": false,
+      "bytes_if_file": 3033
+    },
+    {
+      "path": "README_OFFICIAL96_FIXED.md",
+      "directory": false,
+      "bytes_if_file": 6952
+    },
+    {
+      "path": "run_no_gt6_multiscale_tta.py",
+      "directory": false,
+      "bytes_if_file": 2713
+    },
+    {
+      "path": "sweep_citya_ms_focused.py",
+      "directory": false,
+      "bytes_if_file": 3195
+    },
+    {
+      "path": "run_no_gt6_temporal_search.py",
+      "directory": false,
+      "bytes_if_file": 4355
+    },
+    {
+      "path": "run_v39_shared_parallel_rebind.sh",
+      "directory": false,
+      "bytes_if_file": 9753
+    },
+    {
+      "path": "sweep_citya_augmented_grid.py",
+      "directory": false,
+      "bytes_if_file": 2556
+    },
+    {
+      "path": "sweep_citya_backshift.py",
+      "directory": false,
+      "bytes_if_file": 2649
+    },
+    {
+      "path": "run_gt_90k_ab_pilot.sh",
+      "directory": false,
+      "bytes_if_file": 242
+    },
+    {
+      "path": "run_no_gt6_visual_search.py",
+      "directory": false,
+      "bytes_if_file": 4822
+    },
+    {
+      "path": "README_V39_V40_RELAXED_V13.md",
+      "directory": false,
+      "bytes_if_file": 3452
+    },
+    {
+      "path": "run_no_gt6_temporal_raw_peak.py",
+      "directory": false,
+      "bytes_if_file": 4757
+    },
+    {
+      "path": "eval_citya_temporal_candidates.py",
+      "directory": false,
+      "bytes_if_file": 1589
+    },
+    {
+      "path": "README_NO_GT_6X6_PROGRESS_20261008.md",
+      "directory": false,
+      "bytes_if_file": 6756
+    },
+    {
+      "path": "build_v39_v40_relaxed_v13_report.py",
+      "directory": false,
+      "bytes_if_file": 4126
+    },
+    {
+      "path": "run_no_gt6_visual_candidate_audit.py",
+      "directory": false,
+      "bytes_if_file": 3992
+    },
+    {
+      "path": "run_no_gt6_visual_stage2_fixed.py",
+      "directory": false,
+      "bytes_if_file": 4960
+    },
+    {
+      "path": "run_no_gt6_temporal_anchor_labels.py",
+      "directory": false,
+      "bytes_if_file": 4751
+    },
+    {
+      "path": "run_no_gt6_temporal_raw_peak_warm.py",
+      "directory": false,
+      "bytes_if_file": 4948
+    },
+    {
+      "path": "run_bearinguav_multicity_pilot.sh",
+      "directory": false,
+      "bytes_if_file": 1687
+    },
+    {
+      "path": "train_visual_seed2047.py",
+      "directory": false,
+      "bytes_if_file": 1388
+    },
+    {
+      "path": "sweep_no_gt6_temporal_query.py",
+      "directory": false,
+      "bytes_if_file": 4556
+    },
+    {
+      "path": "show_fused_temporal_progress.py",
+      "directory": false,
+      "bytes_if_file": 2934
+    },
+    {
+      "path": "run_no_gt6_rank_loss.py",
+      "directory": false,
+      "bytes_if_file": 4490
+    },
+    {
+      "path": "sweep_citya_tta_ms.py",
+      "directory": false,
+      "bytes_if_file": 2540
+    },
+    {
+      "path": "sweep_no_gt6_motion_prior.py",
+      "directory": false,
+      "bytes_if_file": 4621
+    },
+    {
+      "path": "run_supervised_sweep.sh",
+      "directory": false,
+      "bytes_if_file": 1101
+    },
+    {
+      "path": "run_citya_causal_recheck.sh",
+      "directory": false,
+      "bytes_if_file": 654
+    },
+    {
+      "path": "run_citya_image_only.sh",
+      "directory": false,
+      "bytes_if_file": 1763
+    },
+    {
+      "path": "run_cityb_fixed_visual_pilot.sh",
+      "directory": false,
+      "bytes_if_file": 990
+    },
+    {
+      "path": "finish_citya_joint_validation.py",
+      "directory": false,
+      "bytes_if_file": 5246
+    },
+    {
+      "path": "run_strict_gtloss_citya_pilot.sh",
+      "directory": false,
+      "bytes_if_file": 2325
+    },
+    {
+      "path": "cache",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "run_v39_v40_relaxed_v13_ablation_3gpu.sh",
+      "directory": false,
+      "bytes_if_file": 4150
+    },
+    {
+      "path": "checkpoint1/interrupted_single_gpu_trial",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "checkpoint1/HISTORY.md",
+      "directory": false,
+      "bytes_if_file": 6825
+    },
+    {
+      "path": "checkpoint1/code_fused_experiment",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "checkpoint1/CAUSAL_EXPERIMENT_INDEX.csv",
+      "directory": false,
+      "bytes_if_file": 15801
+    },
+    {
+      "path": "checkpoint1/REMOVED_OUTPUTS.txt",
+      "directory": false,
+      "bytes_if_file": 2311
+    },
+    {
+      "path": "train_causal_corrected.py",
+      "directory": false,
+      "bytes_if_file": 2449
+    },
+    {
+      "path": "finish_augmented_validation.py",
+      "directory": false,
+      "bytes_if_file": 1828
+    },
+    {
+      "path": "run_fused_temporal_citya.py",
+      "directory": false,
+      "bytes_if_file": 10051
+    },
+    {
+      "path": "calibrate_visual_ms.py",
+      "directory": false,
+      "bytes_if_file": 3780
+    },
+    {
+      "path": "sweep_no_gt6_scorer.py",
+      "directory": false,
+      "bytes_if_file": 3653
+    },
+    {
+      "path": "run_no_gt6_acq_refine.py",
+      "directory": false,
+      "bytes_if_file": 3658
+    },
+    {
+      "path": "data/official96_train_episodes",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "data/official96_fixed_train_shifted_v3",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "data/official96_fixed_train_shifted",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "data/official96_fixed_train_episodes",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "data/official96_fixed_train_grid_wide",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "data/official96_fixed_train_shifted_v2",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "evaluate_checkpoint_routes.py",
+      "directory": false,
+      "bytes_if_file": 2958
+    },
+    {
+      "path": "run_no_gt6_visual_stage2.py",
+      "directory": false,
+      "bytes_if_file": 4954
+    },
+    {
+      "path": "sweep_no_gt6_learned_scale.py",
+      "directory": false,
+      "bytes_if_file": 4192
+    },
+    {
+      "path": "export_visual_interim.py",
+      "directory": false,
+      "bytes_if_file": 2346
+    },
+    {
+      "path": "run_no_gt6_rotation_ensemble.py",
+      "directory": false,
+      "bytes_if_file": 3856
+    },
+    {
+      "path": "run_no_gt6_visual_route_oversample.py",
+      "directory": false,
+      "bytes_if_file": 5174
+    },
+    {
+      "path": "summarize.py",
+      "directory": false,
+      "bytes_if_file": 937
+    },
+    {
+      "path": "finish_temporal_augmented_validation.py",
+      "directory": false,
+      "bytes_if_file": 1462
+    },
+    {
+      "path": "sweep_no_gt6_cross_prior.py",
+      "directory": false,
+      "bytes_if_file": 4672
+    },
+    {
+      "path": "run_no_gt6_temporal_visual2061.py",
+      "directory": false,
+      "bytes_if_file": 4628
+    },
+    {
+      "path": "evaluate_causal_citya.py",
+      "directory": false,
+      "bytes_if_file": 3698
+    },
+    {
+      "path": "run_no_gt6_screen.py",
+      "directory": false,
+      "bytes_if_file": 2764
+    },
+    {
+      "path": "sweep_citya_initial_speed.py",
+      "directory": false,
+      "bytes_if_file": 2558
+    },
+    {
+      "path": "__pycache__",
+      "directory": true,
+      "bytes_if_file": 4096
+    },
+    {
+      "path": "run_no_gt6_visual_candidate_audit_retry16.py",
+      "directory": false,
+      "bytes_if_file": 3966
+    },
+    {
+      "path": "sweep_citya_route_prior.py",
+      "directory": false,
+      "bytes_if_file": 2651
+    },
+    {
+      "path": "README_CAUSAL_4M_PROGRESS_20260926.md",
+      "directory": false,
+      "bytes_if_file": 672
+    },
+    {
+      "path": "run_gt_reference_abcd.py",
+      "directory": false,
+      "bytes_if_file": 5313
+    },
+    {
+      "path": "sweep_citya_acquisition.py",
+      "directory": false,
+      "bytes_if_file": 2552
+    },
+    {
+      "path": "run_no_gt_all_test_pictures.py",
+      "directory": false,
+      "bytes_if_file": 8051
+    },
+    {
+      "path": "run_no_gt6_center_sweep.py",
+      "directory": false,
+      "bytes_if_file": 2129
+    },
+    {
+      "path": "run_no_gt6_pair_visual_temporal.py",
+      "directory": false,
+      "bytes_if_file": 4718
+    }
+  ],
+  "retained_weight_sha256": {
+    "checkpoint1/best_no_gt_20260926/visual_retrieval_A_only.pt": "74d12930109e9f7273b9a7f208b121ab8c27ea18b6e0dbf6d2508f8ea463d07e",
+    "checkpoint1/best_no_gt_20260926/best_temporal_interim.pt": "1d4b0aa905ee07e7669d4b6a854b53de1a2f6afd5454fb654199dc8adc74ac28",
+    "checkpoint1/best_no_gt_20260926/parent_epoch1_visual.pt": "41a90a4793b511afdf0037a17aa59176a5756fa6088b7c278220b76fd4b3ff62",
+    "output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/train/checkpoints/citya/visual_retrieval_A_only.pt": "6b309c3383a9ec14652f3ab779ed7fc0359eee5505bc5a852a173c23c578ab28",
+    "output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/train/best_temporal_interim.pt": "2e6aa6bc201d9bbb9215b21b6a04971911bd2d68e86991e84eafaa19a3e72c0a",
+    "output/no_gt_multicity_retrain_20261009/temporal/best_temporal_interim.pt": "f593c181df526d52d93a3780b2ca97ae120cad68bdc9810f977bc7bce810dd51",
+    "output/no_gt_multicity_retrain_20261009/visual_checkpoints/citya/visual_retrieval_A_only.pt": "6b309c3383a9ec14652f3ab779ed7fc0359eee5505bc5a852a173c23c578ab28",
+    "output/no_gt_multicity_retrain_20261009/visual_checkpoints/cityb/visual_retrieval_A_only.pt": "4f20dc4089fd315c4e718956746250e386c96ef73f8682d2c5090957fccef42b",
+    "output/no_gt_multicity_retrain_20261009/visual_checkpoints/cityc/visual_retrieval_A_only.pt": "6ed3672156ae3c4a2295738d2c45fc98e8464c844bb1cc9e34ea8c141b609015",
+    "output/no_gt_multicity_retrain_20261009/visual_checkpoints/cityd/visual_retrieval_A_only.pt": "dcc5a00ba779e93f4eeb5db87f92b272c6527eba127ac1ec6a06ec10c0364b97"
+  },
+  "weights_stay_local": true,
+  "weights_upload": false,
+  "latest_test_metrics": {
+    "city": "Overall",
+    "route": "frame_micro",
+    "N": 613,
+    "MLE_m": 7.881161373835805,
+    "LSR15_pct": 88.09135399673735
+  }
+}

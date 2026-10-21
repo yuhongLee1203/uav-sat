@@ -1,0 +1,8 @@
+{
+  "candidate_metric_count": 1748,
+  "lowest_valid_same_city_validation_MLE_m": 4.402212375402032,
+  "fixed6_validation_MLE_m": 4.666516102397285,
+  "oracle_diagnostics_not_ranked": true,
+  "ensembles_not_ranked_as_single_model": true,
+  "validation_not_mixed_with_test": true
+}

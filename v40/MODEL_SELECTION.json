@@ -1,0 +1,42 @@
+{
+  "best_citya_validation_18x18": {
+    "MLE_m": 4.402212375402032,
+    "N": 63,
+    "split": "CityA val_01",
+    "final_MS_grid": "18x18",
+    "visual_training_entry": "train_visual_seed2059.py",
+    "visual_training_implementation": "train_visual_backbone_gtloss.py",
+    "temporal_training": "train_multicity_routes.py",
+    "weights": "checkpoint1/best_no_gt_20260926",
+    "code_snapshot": "checkpoint1/code_before_fusion",
+    "current_frame_GT_input": false
+  },
+  "best_fixed6_validation": {
+    "MLE_m": 4.666516102397285,
+    "N": 63,
+    "split": "CityA val_01",
+    "final_MS_grid": "6x6",
+    "visual_training": "train_visual_backbone_gtloss.py",
+    "visual_seed": 2061,
+    "temporal_training": "train_multicity_routes.py",
+    "report": "output/no_gt_6x6_20261008_ms_sweep/bandwidth18/report.json",
+    "current_frame_GT_input": false
+  },
+  "latest_abcd": {
+    "date": "2026-10-09",
+    "entry": "run_no_gt_multicity_retrain.py",
+    "visual_training": [
+      "train_visual_global_gtloss.py",
+      "train_visual_backbone_gtloss.py"
+    ],
+    "temporal_training": "train_multicity_routes.py",
+    "training_validation_selected_epoch": 8,
+    "training_validation_MLE_m": 8.13554898526637,
+    "test_N": 613,
+    "test_MLE_m": 7.881161373835805,
+    "test_LSR15_pct": 88.09135399673735,
+    "test_source": "retained/latest_abcd/test_metrics.csv",
+    "citya_visual_source": "best_fixed6_validation",
+    "current_frame_GT_input": false
+  }
+}

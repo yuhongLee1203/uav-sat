@@ -1,10 +1,12 @@
+> v40 已於 2026-10-21 精簡，只保留最佳歷史驗證、固定 6×6 最佳與最新四城市版本及必要依賴；[訓練程式與結果](v40/README.md)。
+
 # UAV–Satellite 定位實驗：程式與版本結果
 
 這是 `/yh/study/uav-sat` 的精簡上傳快照（2026-10-21）。包含各版本程式、實驗設定、可取得的結果數據及報告。
 
 - **[各版本結果索引](RESULTS_INDEX.md)**：先從這裡找版本對應的數據。
 - [完整結果清單](VERSION_RESULTS.csv)：保留原版本與實驗目錄，不混合不同測試條件。
-- [v40 程式與設定](v40/)／[v40 GT-loss-only 說明](v40/README_STRICT_GTLOSS.md)。
+- [v40 程式與設定](v40/)／[v40 最佳／最新與訓練來源](v40/README.md)。
 - [v39_otherdata](v39_otherdata/)／[report/1016](report/1016/)。
 - [快照統計](upload_metadata/snapshot_summary.json)、[納入檔案與 SHA256](upload_metadata/included_files.csv)、[排除清單](upload_metadata/excluded_files.csv)。
 

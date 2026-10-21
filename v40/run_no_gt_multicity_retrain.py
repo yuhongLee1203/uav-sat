@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor,as_completed
 from pathlib import Path
 
 HERE=Path(__file__).resolve().parent
-OUT=HERE/'output/no_gt_multicity_retrain_20261009'
+OUT=Path(os.environ.get('V40_MULTICITY_OUTPUT',str(HERE/'output/no_gt_multicity_retrain_20261009')))
 SETTINGS=HERE/'output/no_gt_6x6_20260927_a/cross_prior_sweep/cross_prior_0.00/run_settings.json'
 CITYA_VISUAL=HERE/'output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/train/checkpoints/citya/visual_retrieval_A_only.pt'
 
@@ -89,6 +89,8 @@ def temporal_stage():
 
 
 def main():
+ if (OUT/'temporal/report.json').exists():
+  raise SystemExit('Saved model run already exists. Set V40_MULTICITY_OUTPUT to a fresh directory; retained results will not be overwritten.')
  OUT.mkdir(parents=True,exist_ok=True)
  visual_stage();backbone_stage();temporal_stage()
  print('[TRAINING COMPLETE]',OUT,flush=True)

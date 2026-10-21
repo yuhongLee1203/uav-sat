@@ -1,0 +1,32 @@
+{
+  "scope": "v40 cleanup plus result indexes",
+  "v40_files_in_main": 275,
+  "old_v40_paths_removed": true,
+  "root_training_files": [
+    "audit_validation_gt_independence.py",
+    "evaluate_official96_fixed_test.py",
+    "evaluate_official96_validation.py",
+    "image_only_citya.py",
+    "plot_no_gt_test_pictures.py",
+    "prepare_official96_fixed_routes.py",
+    "prepare_official96_fixed_train_extra.py",
+    "run_no_gt_multicity_evaluate.py",
+    "run_no_gt_multicity_retrain.py",
+    "train_multicity_routes.py",
+    "train_visual_backbone_gtloss.py",
+    "train_visual_global_gtloss.py",
+    "train_visual_metadata90k.py",
+    "train_visual_seed2059.py"
+  ],
+  "best_citya_validation_18x18_MLE_m": 4.402212375402032,
+  "best_fixed6_validation_MLE_m": 4.666516102397285,
+  "latest_test_frames": 613,
+  "latest_test_MLE_m": 7.881161373835805,
+  "test_metrics_recomputed_from_raw_error": true,
+  "training_import_and_syntax_checks_passed": true,
+  "saved_run_overwrite_guard_passed": true,
+  "retained_weights_preserved_locally": true,
+  "weights_uploaded": false,
+  "old_models_archived_outside_repository": "/yh/study/uav-sat_archives/v40_retired_20261021",
+  "new_training_started": false
+}

@@ -1,114 +1,40 @@
-# v40: City A image-only training experiment
+# v40：僅保留最佳、固定 6×6 最佳及最新四城市版本
 
-`run_citya_image_only.sh` trains three **unlabeled City A adaptations** of the
-existing supervised shared-ABCD checkpoint, one each on GPU 0, 5 and 6. The fixed architecture is:
-current UAV image through frozen MobileNet backbone, previous two cached UAV
-features, forward-facing 3x6 (18) satellite patches, 3-frame GRU, external
-Kalman filter, final MeanShift, XY output. Training resets recurrent/filter
-state at the start of each route episode. `test_01` and `test_02` are held out.
+## 目前最好的結果用哪個檔案訓練？
 
-The training loader reads only `frame_id` and `image_path`. It never uses
-`x_m`, `y_m`, yaw or per-frame route reference. Route waypoints and satellite
-map are *known priors*, not frame labels. The three objectives are visual
-similarity pseudo-labeling; pseudo-labels plus image-derived temporal motion;
-and confidence-gated pseudo-labeling/motion. They can be noisy or collapse.
-The current frame always passes through the backbone; a sanitized feature
-cache (no GT fields) is built once for the previous two frames. An existing
-feature cache is reused if the image paths match. GT is read only during
-held-out evaluation to compute metrics. The final MeanShift GT-center leak in
-the copied v39 runtime is corrected for route-reference mode.
+「最好」先固定在**不輸入當前幀 GT、同一條 CityA val_01 驗證路線（63 幀）**比較。GT 輔助 oracle 的較小數字不列入；不同城市、不同 test route、診斷 ensemble 也不混合排名。
 
-**Important limitation:** Both the visual retrieval checkpoint and the GRU
-checkpoint were originally trained with GT. Therefore this experiment tests
-whether further training works *without new GT labels*, not whether the entire
-model can learn absolute location from unlabelled raw images from scratch.
-Satellite/map correspondence and an origin prior are mathematically needed to
-identify absolute XY; pure UAV images alone do not uniquely define map XY.
-Kalman and MeanShift are non-differentiable decoders and are tested in the full
-inference path, not optimized by gradient descent.
+| 保留版本 | 結果 | 實際訓練檔案 | 證據 |
+|---|---|---|---|
+| CityA 驗證最低 MLE，最終 MS 18×18 | **4.402212m** | 視覺入口 `train_visual_seed2059.py` 呼叫 `train_visual_backbone_gtloss.py`；GRU `train_multicity_routes.py` | [原始報告](checkpoint1/best_no_gt_20260926/report.json)／[視覺訓練參數](checkpoint1/best_no_gt_20260926/visual_training_report.json)／[GRU 訓練參數](checkpoint1/best_no_gt_20260926/temporal_training_settings.json) |
+| 原固定 6×6 MS 架構的最低驗證 MLE | **4.666516m** | 視覺 `train_visual_backbone_gtloss.py`，seed 2061；GRU `train_multicity_routes.py` | [報告](output/no_gt_6x6_20261008_ms_sweep/bandwidth18/report.json)／[視覺訓練](output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/train/report.json)／[GRU 設定](output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/train/run_settings.json) |
+| 最新，2026-10-09 四城市重訓，固定 6×6 | **八條 test route、613 幀，MLE 7.881161m、LSR@15 88.091354%** | 入口 `run_no_gt_multicity_retrain.py`；實際視覺 `train_visual_global_gtloss.py` + `train_visual_backbone_gtloss.py`；GRU `train_multicity_routes.py` | [逐路線與整體數據](retained/latest_abcd/test_metrics.csv)／[訓練來源](retained/latest_abcd/training_validation_test_provenance.json) |
 
-## Findings and recommended recheck
+4.4022m／4.6665m 都是重複開發過的單條驗證結果，**不是獨立測試或官方 Table 6**。最新四城市 test 結果不能與它們直接判定高低。最新 CityA test_02 的 3.9715m 是另一條路線，不冒充同一驗證基準的改進。最新四城市 GRU 在沒有 TTA 的訓練驗證中選 epoch 8（8.135549m）；正式測試另使用四轉角 TTA，請勿混合分母與推論設定。
 
-The old +/-60 m acquisition bank let a false visual match jump to a distant
-route point; the old Kalman update then bypassed its bounded posterior and
-snapped to that false measurement. v40 now keeps seven local hypotheses within
-15 m of the causal estimate, drops the uncalibrated raw-peak bonus, and keeps
-the bounded Kalman update. This does **not** use current-frame GT or the known
-number of test frames to predict progress. The test GT is used only *after*
-prediction for metrics. The old `capture=0%` in no-GT reports was also a
-diagnostic bug; the corrected capture audit cannot affect selection.
+## 保留目錄
 
-Use this command to evaluate the existing supervised warm start with those
-causal fixes, without retraining:
+- `checkpoint1/best_no_gt_20260926/`：4.4022m 的成對權重、原始報告、父 checkpoint、GT 擾動檢查和訓練設定。
+- `checkpoint1/code_before_fusion/`：得到該歷史最佳結果時的凍結程式快照；只作歷史版本來源，保留當時的原始路徑記錄。
+- `output/no_gt_6x6_20260927_a/`：只留下固定 6×6 最佳視覺／GRU 訓練結果和跨橫向 prior=0 的設定，其他候選分支已移出。
+- `output/no_gt_6x6_20261008_ms_sweep/bandwidth18/`：同權重、bandwidth 18 的最低 6×6 驗證結果。
+- `output/no_gt_multicity_retrain_20261009/`：最新四城市的視覺、GRU、validation 選 checkpoint 紀錄。
+- `retained/latest_abcd/`：從原始逐幀 `error_final_m` 重新計算確認的八條 test 數據及原始預測 CSV。原圖仍在 `../report/add_more/picture_noGT/retrained/`。
+- `runtime/`、14 個根目錄 Python 檔及 `data/official96_fixed_routes`、`data/official96_fixed_train_grid`：上述版本的共同必要依賴，沒有為了刪舊版而刪掉仍需使用的程式／資料。
 
-```bash
-bash /yh/study/uav-sat/v40/run_citya_causal_recheck.sh
-```
+四城市 latest 的 CityA 視覺權重正是上述最佳 6×6 視覺權重，因此不能把它當成「舊檔」刪除。CityB/C/D 的視覺模型及共享 GRU 才是在 10-09 本輪重新訓練。保留的 10 個實際權重／引用均已核對 SHA256，清理前後一致；只保留於本機，不上傳 GitHub。
 
-On the current prepared City A routes, that checkpoint yielded test_01 MLE
-11.995 m and test_02 MLE 30.749 m. These are exploratory results: the test
-routes were inspected while debugging and are **not** untouched paper-final
-validation. A route-duration-only diagnostic baseline gives 12.069 m and
-22.162 m; it uses full route duration and is not an image-only method.
-
-The unlabeled adaptations remain experiments, not recommended checkpoints:
-under the same causal search their MLEs were 47.258/88.304 m,
-213.354/342.086 m and 262.662/351.565 m. Lower pseudo-label loss did not
-mean better localization. `train_01` mean actual step is 5.36 m, while both
-test routes are about 5.77 m. More importantly, over 97% of adjacent samples
-have non-consecutive source indices and the median adjacent UAV yaw change is
-roughly 85–93 degrees. These are spatially arranged pseudo-routes, not a
-continuous video from which GRU motion can reliably be learned without labels.
-
-## Shared multi-city pilot (new model checkpoint)
-
-`run_bearinguav_multicity_pilot.sh` updates one shared temporal model and one
-optimizer across selected city episodes; it resets GRU/Kalman at each route
-boundary. Each city loads its own Bearing-UAV 90K UAV images, satellite map,
-waypoints and gallery. It evaluates `test_01` and `test_02` separately for
-each requested city. The model always uses current image -> backbone, previous
-two cached image features -> front-18 -> GRU -> Kalman -> final MeanShift.
-The test-time search center is causal and never reads frame GT. The script
-does not use known test-route duration as a pace prior.
-
-Two **different** training protocols are offered; do not mix their claims:
-
-- `V40_SUPERVISION=image_only` (default): no frame GT in the new temporal
-  training loss, but both visual and temporal models start from an older
-  GT-supervised shared-ABCD checkpoint. This does not test from-scratch learning.
-- `V40_SUPERVISION=gt_train`: frame GT is used in the temporal training loss,
-  but never as a test-time model input. This is the scientifically ordinary
-  supervised train / GT-free test setting.
-
-For a short A+B pilot without new GT supervision:
-
-```bash
-V40_TRAIN_CITIES="citya cityb" V40_EVAL_CITIES="citya cityb" \
-  V40_SUPERVISION=image_only V40_EPOCHS=2 V40_MAX_TRAIN_FRAMES=136 \
-  bash /yh/study/uav-sat/v40/run_bearinguav_multicity_pilot.sh
-```
-
-After the pilot, if the protocol and result are acceptable, set both city
-lists to `"citya cityb cityc cityd"` to run one shared ABCD temporal model.
-The source images are in `/yh/study/cvpr_data/Bearing_UAV_90K`; the current
-prepared custom routes use about 150–260 images per train/test episode, not
-all 90K rows or the official paper's full merged-index split. Result files
-explicitly record that distinction. A three-frame A+B image-only smoke test
-passed, but it is not an accuracy claim.
-
-Run from any directory:
-
-```bash
-bash /yh/study/uav-sat/v40/run_citya_image_only.sh
-```
-
-Outputs include per-design `train.log`, `temporal_image_only.pt`, `result.json`
-and `summary.md`. For a quick local smoke run on GPU 0:
+## 最新版本的訓練入口
 
 ```bash
 cd /yh/study/uav-sat
-CUDA_VISIBLE_DEVICES=0 UAVSAT_BACKBONE=mobilenet_v3_small \
-  UAVSAT_REFERENCE_PROTOCOL=route_reference MS_REFERENCE_PRIOR_WEIGHT=0 \
-  python3 v40/image_only_citya.py --design visual_pseudo \
-  --output v40/output/smoke/visual_pseudo --smoke
+V40_MULTICITY_OUTPUT=/yh/study/uav-sat/v40/output/new_abcd_run python3 v40/run_no_gt_multicity_retrain.py
 ```
+
+該程式按原配置使用 GPU 0／5／6；以上只是入口說明，本次清理沒有啟動訓練。自訂新目錄可避免混入現有結果。訓練後用相同 `V40_MULTICITY_OUTPUT`，並設定新的 `V40_MULTICITY_EVAL_OUTPUT` 結果目錄，呼叫 `run_no_gt_multicity_evaluate.py`；環境須有原 README 所用的 PyTorch／torchvision／open_clip、Bearing-UAV-90K 原始資料，以及本機保留的 parent CityA 視覺權重。
+
+## GT、清理與上傳範圍
+
+GT 用於訓練 loss 和事後誤差；當前幀 GT 不作推論輸入，固定路線 waypoint 仍是已知參考。這些是 Bearing-UAV-90K 官方 metadata 切分內組裝的 synthetic routes，不是原生連續航拍，也不是 TravelUAV 的新訓練。
+
+335 個舊實驗／程式／快取入口已移出 v40，放在 `/yh/study/uav-sat_archives/v40_retired_20261021/`。因此 v40 已精簡，誤刪時仍可找回；封存目錄在 repository 外，不會上傳。完整清單與保留權重 SHA256 見 [RETENTION_MANIFEST.json](RETENTION_MANIFEST.json)。GitHub main 的舊 v40 檔案會移除；既有歷史 commit 不改寫。上傳仍排除權重及大型檔案，大型數值 CSV 使用無損 gzip。

@@ -11,7 +11,7 @@ from pathlib import Path
 import run_no_gt_multicity_retrain as train
 HERE=train.HERE
 RUN=train.OUT
-OUT=HERE.parent/'report/add_more/picture_noGT/retrained'
+OUT=Path(os.environ.get('V40_MULTICITY_EVAL_OUTPUT',str(HERE.parent/'report/add_more/picture_noGT/retrained')))
 VISUAL_ROOT=RUN/'visual_checkpoints'
 TEMPORAL=RUN/'temporal/best_temporal_interim.pt'
 

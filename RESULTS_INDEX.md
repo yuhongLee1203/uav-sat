@@ -25,6 +25,6 @@
 | [v38_FinalMS](v38_FinalMS/) | 20 | 9 | [robust_tracker_summary.json](v38_FinalMS/output/robust_tracker_summary.json)<br>[robust_tracker_summary.json](v38_FinalMS/reference_result/robust_tracker_summary.json)<br>[waypoint_detection_summary.json](v38_FinalMS/src/route_waypoints/waypoint_detection_summary.json) |
 | [v39_DirectFinalMS](v39_DirectFinalMS/) | 1745 | 731 | [waypoint_detection_summary.json](v39_DirectFinalMS/base_src/route_waypoints/waypoint_detection_summary.json)<br>[waypoint_detection_summary.json](v39_DirectFinalMS/runtime_src/route_waypoints/waypoint_detection_summary.json)<br>[experiment_summary.csv](v39_DirectFinalMS/softms_5x5_core_ablation_20260918_220846/experiment_summary.csv) |
 | [v39_otherdata](v39_otherdata/) | 7457 | 4065 | [paper_all4_summary.csv](v39_otherdata/generated/paper_all4_summary.csv)<br>[paper_all4_summary.json](v39_otherdata/generated/paper_all4_summary.json)<br>[bearing_v39_summary.json](v39_otherdata/generated/cityc/v39_output_bearing_adapted/bearing_v39_summary.json) |
-| [v40](v40/) | 2809 | 2043 | [summary.json](v40/output/no_gt_6x6_20260927_a/summary.json)<br>[summary.json](v40/output/no_gt_6x6_20261008_ms_sweep/summary.json)<br>[summary.json](v40/output/no_gt_6x6_20261008_rank_loss/summary.json) |
+| [v40](v40/) | 275 | 95 | [最佳／最新與訓練檔案](v40/README.md)／[最新四城市測試](v40/retained/latest_abcd/test_metrics.csv) |
 
 CSV 大於 1 MiB 時，完整內容無損保存為 `.csv.gz`。摘要 CSV／JSON 保留原格式，方便直接瀏覽。程式中引用原 `.csv` 檔名時，先用 `gzip -dk 檔名.csv.gz` 還原即可。v33／v34 原資料夾只有程式，沒有捏造其結果；跨版本報告另保存在 report、paper_results。

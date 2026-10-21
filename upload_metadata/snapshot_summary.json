@@ -1,6 +1,6 @@
 {
-  "selected_files": 13999,
-  "selected_bytes": 2537825894,
+  "selected_files": 11465,
+  "selected_bytes": 2397816980,
   "per_version": {
     "run_fornx_g_only.sh": 1,
     "prepare_fornx_gvsk.sh": 1,
@@ -13,7 +13,6 @@
     "v37": 27,
     "outputs": 170,
     "v39_otherdata": 7457,
-    "v40": 2809,
     "HardMS-exp": 43,
     "frame-reference-exp": 16,
     "forNX_reduced_finalMS": 13,
@@ -28,7 +27,8 @@
     "v36_byTeacher": 139,
     "same_route_allPaper_exp": 2,
     "v36-exp": 241,
-    "paper_results": 659
+    "paper_results": 659,
+    "v40": 275
   },
   "excluded_by_reason": {
     "local_git_diagnostic": 3,
@@ -68,12 +68,21 @@
   "snapshot_date": "2026-10-21",
   "remote_files_absent_locally_preserved": true,
   "removed_from_tip": 3027,
-  "stored_bytes": 1557171052,
+  "stored_bytes": 1417162138,
   "compressed_csv_count": 508,
   "compression_saved_bytes": 980655121,
   "compression_policy": "CSV larger than 1 MiB stored losslessly as .csv.gz; original decompressed SHA256 is retained in the provenance inventory",
-  "result_files": 8153,
+  "result_files": 6205,
   "third_party_submodules": 5,
   "local_source_branch": "bearing-v5-abcd-shared-results-20260922",
-  "target_branch": "main"
+  "target_branch": "main",
+  "v40_retention": {
+    "included_files": 275,
+    "result_files": 95,
+    "retired_local_entries": 335,
+    "old_versions_moved_outside_repository": true,
+    "best18_validation_MLE_m": 4.402212375402032,
+    "best6_validation_MLE_m": 4.666516102397285,
+    "latest_test_MLE_m": 7.881161373835805
+  }
 }
