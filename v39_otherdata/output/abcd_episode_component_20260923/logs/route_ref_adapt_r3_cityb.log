@@ -1,0 +1,36 @@
+[PREPARED] PASS | city=cityb | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.550783 m | p90=9.862441 m | p95=11.094216 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[PATCH OK] stable UAV model-state feature cache
+[PATCH OK] route-reference stage reset + scheduled acquisition
+[ROUTE-REF-AUDIT] forward_18: PASS
+[ROUTE-REF-AUDIT] base_geometry_6x6: PASS
+[ROUTE-REF-AUDIT] front_decoder_softms: PASS
+[ROUTE-REF-AUDIT] one_final_ms_source: PASS
+[ROUTE-REF-AUDIT] simple_seven_block_gru: PASS
+[ROUTE-REF-AUDIT] residual_motion_head: PASS
+[ROUTE-REF-AUDIT] temporal_reliability_gate: PASS
+[ROUTE-REF-AUDIT] protocol_route_reference: PASS
+[ROUTE-REF-AUDIT] no_current_frame_gt_inference: PASS
+[ROUTE-REF-AUDIT] route_reference_only: PASS
+[ROUTE-REF-AUDIT] final_ms_current_gt_prior_disabled: PASS
+[ROUTE-REF-AUDIT] causal_route_search_center: PASS
+[ROUTE-REF-AUDIT] frame_count: PASS
+[ROUTE-REF-AUDIT] gru_flag: PASS
+[ROUTE-REF-AUDIT] kalman_flag: PASS
+[TRAIN] frozen visual checkpoint; skip visual retraining /yh/study/uav-sat/v39_otherdata/output/abcd_episode_component_20260923/cityb/train_frames3/checkpoints/visual_retrieval_A_only.pt
+route_A: reuse UAV backbone cache
+[ABCD CHECKPOINT] materialized carried best -> /yh/study/uav-sat/v39_otherdata/output/abcd_episode_component_20260923/cityb/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt
+resume route-reference adaptation from epoch 103 with episode optimizer/validation reset
+temporal split train=[0,135) val=[139,164) route_length=781.2m
+City training-sequence mean forward step=5.317m/frame p90=9.734m/frame
+temporal epoch=103/103 loss=14.08765 center_teacher=1.000 acq_teacher=0.400 capture=64.18% bank_capture=95.52% acq_acc=27.61% acq_conf=0.634 radius=30.0m pred_step=3.369 target_step=4.024 pred_v=3.811 target_v=4.024 val_mle=156.025m val_p90=176.251m val_speed_mae=2.982 heading=3.7/2.4deg val_progress_mae=156.754m val_heading_mae=32.7deg val_capture=0.00% val_bank=0.00% val_acq_acc=0.00% score=162.943 best=162.943 patience=0/20
+[TRAIN] skip redundant city-local Kalman sweep; global ABCD calibration runs after adaptation

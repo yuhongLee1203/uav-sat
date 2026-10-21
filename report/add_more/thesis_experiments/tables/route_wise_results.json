@@ -1,0 +1,74 @@
+[
+  {
+    "City": "A",
+    "Route": "test_01",
+    "Samples": 161,
+    "MLE (m)": "3.66",
+    "Median Error (m)": "3.40",
+    "LSR@3 (%)": "44.72",
+    "LSR@15 (%)": "100.00"
+  },
+  {
+    "City": "A",
+    "Route": "test_02",
+    "Samples": 219,
+    "MLE (m)": "3.65",
+    "Median Error (m)": "3.37",
+    "LSR@3 (%)": "42.01",
+    "LSR@15 (%)": "100.00"
+  },
+  {
+    "City": "B",
+    "Route": "test_01",
+    "Samples": 146,
+    "MLE (m)": "3.85",
+    "Median Error (m)": "3.71",
+    "LSR@3 (%)": "37.67",
+    "LSR@15 (%)": "100.00"
+  },
+  {
+    "City": "B",
+    "Route": "test_02",
+    "Samples": 171,
+    "MLE (m)": "3.59",
+    "Median Error (m)": "3.32",
+    "LSR@3 (%)": "42.69",
+    "LSR@15 (%)": "100.00"
+  },
+  {
+    "City": "C",
+    "Route": "test_01",
+    "Samples": 148,
+    "MLE (m)": "3.57",
+    "Median Error (m)": "3.25",
+    "LSR@3 (%)": "45.27",
+    "LSR@15 (%)": "100.00"
+  },
+  {
+    "City": "C",
+    "Route": "test_02",
+    "Samples": 226,
+    "MLE (m)": "4.19",
+    "Median Error (m)": "3.76",
+    "LSR@3 (%)": "38.94",
+    "LSR@15 (%)": "100.00"
+  },
+  {
+    "City": "D",
+    "Route": "test_01",
+    "Samples": 150,
+    "MLE (m)": "4.08",
+    "Median Error (m)": "3.48",
+    "LSR@3 (%)": "40.67",
+    "LSR@15 (%)": "100.00"
+  },
+  {
+    "City": "D",
+    "Route": "test_02",
+    "Samples": 261,
+    "MLE (m)": "3.52",
+    "Median Error (m)": "3.33",
+    "LSR@3 (%)": "43.30",
+    "LSR@15 (%)": "100.00"
+  }
+]

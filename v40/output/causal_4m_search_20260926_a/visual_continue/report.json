@@ -1,0 +1,76 @@
+{
+  "city": "citya",
+  "samples": 18000,
+  "arguments": {
+    "city": "citya",
+    "source_checkpoint": "/yh/study/uav-sat/v40/output/official96_fixed_citya_joint8_continue_20260925/checkpoints/citya/visual_retrieval_A_only.pt",
+    "resume_interim": null,
+    "samples": 18000,
+    "epochs": 4,
+    "batch_size": 64,
+    "backbone_lr": 5e-06,
+    "head_lr": 3e-05,
+    "unfreeze_last_blocks": 2,
+    "target_sigma_m": 4.0,
+    "distance_loss_weight": 5.0,
+    "live_sat_topk": 16,
+    "live_sat_random": 16,
+    "live_sat_gt_nearest": 0,
+    "uav_quarter_turn_augment": false,
+    "output": "/yh/study/uav-sat/v40/output/causal_4m_search_20260926_a/visual_continue",
+    "seed": 2033
+  },
+  "architecture": "ICLR_Bearing4City_Forward18SoftMS_ResidualTemporalGRU_Kalman_FinalMS",
+  "backbone": "torchvision:mobilenet_v3_small",
+  "backbone_unfreeze_last_blocks": 2,
+  "live_sat_topk": 16,
+  "live_sat_random": 16,
+  "live_sat_gt_nearest": 0,
+  "uav_quarter_turn_augment": false,
+  "resumed_from_interim": null,
+  "best_checkpoint_improved_in_this_run": true,
+  "best_checkpoint_training_protocol": "global_gallery_gt_loss_only",
+  "best_checkpoint_GT_selected_patches": false,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "best_val_global_top1_MLE_m": 7.027170658111572,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 3.9912676201091974,
+      "validation": {
+        "global_top1_MLE_m": 7.114257335662842,
+        "global_top1_P90_m": 12.372847557067871,
+        "global_top1_LSR15_pct": 94.1111068725586
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 3.9657816323708364,
+      "validation": {
+        "global_top1_MLE_m": 7.09370756149292,
+        "global_top1_P90_m": 12.572894096374512,
+        "global_top1_LSR15_pct": 93.83333587646484
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 3.950042367920162,
+      "validation": {
+        "global_top1_MLE_m": 7.120514392852783,
+        "global_top1_P90_m": 12.289755821228027,
+        "global_top1_LSR15_pct": 94.27777862548828
+      }
+    },
+    {
+      "epoch": 4,
+      "train_loss": 3.934152424804808,
+      "validation": {
+        "global_top1_MLE_m": 7.027170658111572,
+        "global_top1_P90_m": 12.147072792053223,
+        "global_top1_LSR15_pct": 94.55555725097656
+      }
+    }
+  ],
+  "checkpoint": "/yh/study/uav-sat/v40/output/causal_4m_search_20260926_a/visual_continue/checkpoints/citya/visual_retrieval_A_only.pt"
+}

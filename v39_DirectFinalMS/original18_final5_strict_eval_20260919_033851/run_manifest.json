@@ -1,0 +1,11 @@
+{
+  "method": "Forward 3x6 SoftMS -> 3-frame GRU -> Constant Velocity -> fixed-R Kalman -> final SoftMS",
+  "ablation_policy": "core component ablations only; Forward 3x6 remains fixed because replacing it with full 6x6 changes directionality, candidate count, compute budget, and search semantics simultaneously",
+  "git_sha": "2cca690ae96ed72320946d9128386aba6d7a9e78",
+  "gpu": "0",
+  "temporal_epochs": 60,
+  "patience": 10,
+  "jitter_m": 8,
+  "final_ms_grid": 5,
+  "final_ms_bandwidth_m": 7.0
+}

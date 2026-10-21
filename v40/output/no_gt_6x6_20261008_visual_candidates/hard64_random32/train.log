@@ -1,0 +1,33 @@
+[BACKBONE SOURCE SAME-SPLIT] {"global_top1_MLE_m": 5.331394195556641, "global_top1_P90_m": 9.0365629196167, "global_top1_LSR15_pct": 97.11111450195312}
+Traceback (most recent call last):
+  File "/yh/study/uav-sat/v40/train_visual_backbone_gtloss.py", line 380, in <module>
+    main()
+  File "/yh/study/uav-sat/v40/train_visual_backbone_gtloss.py", line 246, in main
+    training_sat, live_indices, live_features = live_satellite_features(
+  File "/yh/study/uav-sat/v40/train_visual_backbone_gtloss.py", line 67, in live_satellite_features
+    live = model.clip.encode_image(images)
+  File "/yh/study/uav-sat/v40/runtime/visual_model.py", line 47, in encode_image
+    return self.network((image - self.mean) / self.std)
+  File "/usr/local/lib/python3.8/dist-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/usr/local/lib/python3.8/dist-packages/torchvision/models/mobilenetv3.py", line 220, in forward
+    return self._forward_impl(x)
+  File "/usr/local/lib/python3.8/dist-packages/torchvision/models/mobilenetv3.py", line 210, in _forward_impl
+    x = self.features(x)
+  File "/usr/local/lib/python3.8/dist-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/usr/local/lib/python3.8/dist-packages/torch/nn/modules/container.py", line 204, in forward
+    input = module(input)
+  File "/usr/local/lib/python3.8/dist-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/usr/local/lib/python3.8/dist-packages/torchvision/models/mobilenetv3.py", line 111, in forward
+    result = self.block(input)
+  File "/usr/local/lib/python3.8/dist-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/usr/local/lib/python3.8/dist-packages/torch/nn/modules/container.py", line 204, in forward
+    input = module(input)
+  File "/usr/local/lib/python3.8/dist-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/usr/local/lib/python3.8/dist-packages/torchvision/ops/misc.py", line 260, in forward
+    return scale * input
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 156.00 MiB (GPU 0; 23.56 GiB total capacity; 20.03 GiB already allocated; 146.06 MiB free; 20.19 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF

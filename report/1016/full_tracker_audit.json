@@ -1,0 +1,170 @@
+[
+  {
+    "bandwidth_m": 7,
+    "city": "a",
+    "route": "test_01",
+    "N": 161,
+    "max_position_change_vs_original_m": 0.0
+  },
+  {
+    "bandwidth_m": 7,
+    "city": "a",
+    "route": "test_02",
+    "N": 219,
+    "max_position_change_vs_original_m": 0.0
+  },
+  {
+    "bandwidth_m": 7,
+    "city": "b",
+    "route": "test_01",
+    "N": 146,
+    "max_position_change_vs_original_m": 0.0
+  },
+  {
+    "bandwidth_m": 7,
+    "city": "b",
+    "route": "test_02",
+    "N": 171,
+    "max_position_change_vs_original_m": 0.0
+  },
+  {
+    "bandwidth_m": 7,
+    "city": "c",
+    "route": "test_01",
+    "N": 148,
+    "max_position_change_vs_original_m": 0.0
+  },
+  {
+    "bandwidth_m": 7,
+    "city": "c",
+    "route": "test_02",
+    "N": 226,
+    "max_position_change_vs_original_m": 0.0
+  },
+  {
+    "bandwidth_m": 7,
+    "city": "d",
+    "route": "test_01",
+    "N": 150,
+    "max_position_change_vs_original_m": 0.0
+  },
+  {
+    "bandwidth_m": 7,
+    "city": "d",
+    "route": "test_02",
+    "N": 261,
+    "max_position_change_vs_original_m": 0.0
+  },
+  {
+    "bandwidth_m": 4,
+    "city": "a",
+    "route": "test_01",
+    "N": 161,
+    "max_position_change_vs_original_m": 0.3825158922025015
+  },
+  {
+    "bandwidth_m": 4,
+    "city": "a",
+    "route": "test_02",
+    "N": 219,
+    "max_position_change_vs_original_m": 0.4054945204838035
+  },
+  {
+    "bandwidth_m": 4,
+    "city": "b",
+    "route": "test_01",
+    "N": 146,
+    "max_position_change_vs_original_m": 0.3307984409721347
+  },
+  {
+    "bandwidth_m": 4,
+    "city": "b",
+    "route": "test_02",
+    "N": 171,
+    "max_position_change_vs_original_m": 0.3816429885410979
+  },
+  {
+    "bandwidth_m": 4,
+    "city": "c",
+    "route": "test_01",
+    "N": 148,
+    "max_position_change_vs_original_m": 0.34682585093115365
+  },
+  {
+    "bandwidth_m": 4,
+    "city": "c",
+    "route": "test_02",
+    "N": 226,
+    "max_position_change_vs_original_m": 0.417169912731914
+  },
+  {
+    "bandwidth_m": 4,
+    "city": "d",
+    "route": "test_01",
+    "N": 150,
+    "max_position_change_vs_original_m": 0.45950382949854274
+  },
+  {
+    "bandwidth_m": 4,
+    "city": "d",
+    "route": "test_02",
+    "N": 261,
+    "max_position_change_vs_original_m": 0.3624029154915644
+  },
+  {
+    "bandwidth_m": 14,
+    "city": "a",
+    "route": "test_01",
+    "N": 161,
+    "max_position_change_vs_original_m": 0.16876425509046486
+  },
+  {
+    "bandwidth_m": 14,
+    "city": "a",
+    "route": "test_02",
+    "N": 219,
+    "max_position_change_vs_original_m": 0.11578512014936272
+  },
+  {
+    "bandwidth_m": 14,
+    "city": "b",
+    "route": "test_01",
+    "N": 146,
+    "max_position_change_vs_original_m": 0.13228786856037564
+  },
+  {
+    "bandwidth_m": 14,
+    "city": "b",
+    "route": "test_02",
+    "N": 171,
+    "max_position_change_vs_original_m": 0.13263549234670588
+  },
+  {
+    "bandwidth_m": 14,
+    "city": "c",
+    "route": "test_01",
+    "N": 148,
+    "max_position_change_vs_original_m": 0.12445791241285478
+  },
+  {
+    "bandwidth_m": 14,
+    "city": "c",
+    "route": "test_02",
+    "N": 226,
+    "max_position_change_vs_original_m": 0.13711105414256264
+  },
+  {
+    "bandwidth_m": 14,
+    "city": "d",
+    "route": "test_01",
+    "N": 150,
+    "max_position_change_vs_original_m": 0.22974674837680242
+  },
+  {
+    "bandwidth_m": 14,
+    "city": "d",
+    "route": "test_02",
+    "N": 261,
+    "max_position_change_vs_original_m": 0.148122805245151
+  }
+]

@@ -1,0 +1,10 @@
+[unified-runner] GPU grid lookup; CPU threads=2; Stage-1 jitter=fixed-radius
+route_A backbone cache: 256/1732
+route_A backbone cache: 1732/1732
+[capture] {"Route": "route_A", "Jitter_m": 8.0, "GridSize": 6, "CandidateCount": 36, "CaptureRadius_m": 7.5, "CandidateCaptureRate_pct": 100.0, "NearestCandidateMean_m": 1.8169225454330444, "NearestCandidateP95_m": 2.873246431350708, "NearestCandidateMax_m": 3.304666519165039}
+route_B backbone cache: 256/2276
+route_B backbone cache: 2276/2276
+[capture] {"Route": "route_B", "Jitter_m": 8.0, "GridSize": 6, "CandidateCount": 36, "CaptureRadius_m": 7.5, "CandidateCaptureRate_pct": 100.0, "NearestCandidateMean_m": 1.8065215349197388, "NearestCandidateP95_m": 2.831418514251709, "NearestCandidateMax_m": 3.3217859268188477}
+route_C backbone cache: 256/1258
+route_C backbone cache: 1258/1258
+[capture] {"Route": "route_C", "Jitter_m": 8.0, "GridSize": 6, "CandidateCount": 36, "CaptureRadius_m": 7.5, "CandidateCaptureRate_pct": 100.0, "NearestCandidateMean_m": 1.7410340309143066, "NearestCandidateP95_m": 2.772047758102417, "NearestCandidateMax_m": 3.296250820159912}

@@ -1,0 +1,13 @@
+Metric,Value
+Trainable Parameters,2848021
+Total Parameters,3775029
+Mean End-to-End Latency (ms),39.88
+Median End-to-End Latency (ms),37.56
+Latency Standard Deviation (ms),6.32
+FPS,25.08
+GPU,NVIDIA GeForce RTX 3090 (original replay distributed across GPU 0/5/6)
+Precision,FP32 compute; some precomputed feature caches stored as FP16
+Batch Size,1
+UAV Input Resolution,256x256
+Timing Observations,1082
+Warm-up Observations per Route,50

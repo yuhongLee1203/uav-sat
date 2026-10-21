@@ -1,0 +1,94 @@
+{
+  "dataset_root": "/yh/study/cvpr_data/Bearing_UAV_90K",
+  "city": "citya",
+  "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
+  "metadata_csv": "/yh/study/cvpr_data/Bearing_UAV_90K/c4m_254k_96bc_b15_s100_v3d/metadata/metadata.csv",
+  "mpp": 0.25,
+  "sequence_selection_version": "official_rsi96_seed42_temporal_v1",
+  "official_dataset_id": 96,
+  "official_split_seed": 42,
+  "official_split_ratio": [
+    0.85,
+    0.05,
+    0.1
+  ],
+  "train_routes": [
+    "train_01"
+  ],
+  "validation_routes": [
+    "val_01"
+  ],
+  "inference_routes": [
+    "test_01",
+    "test_02"
+  ],
+  "route_stats": {
+    "train_01": {
+      "official_split": "train",
+      "pool_rows": 19089,
+      "sample_step_m": 8.0,
+      "actual_step_mean_m": 9.154182185972948,
+      "actual_step_p90_m": 13.434345039636943,
+      "actual_step_p95_m": 14.426945694012918,
+      "frames": 99,
+      "targets": 99,
+      "first_target": 0,
+      "last_target": 98,
+      "target_span_ratio": 1.0,
+      "target_error_mean_m": 3.327061615512741,
+      "target_error_max_m": 9.456255322065582,
+      "frame_step_mean_m": 9.154182185972948,
+      "frame_step_p90_m": 13.434345039636943,
+      "frame_step_p95_m": 14.426945694012918,
+      "frame_step_max_m": 20.517038034747905
+    },
+    "val_01": {
+      "official_split": "val",
+      "pool_rows": 1160,
+      "sample_step_m": 8.0,
+      "actual_step_mean_m": 22.624304554079732,
+      "actual_step_p90_m": 32.4928450469026,
+      "actual_step_p95_m": 35.46984804906491,
+      "frames": 73,
+      "target_frames": 80,
+      "waypoint_anchors": 10,
+      "frame_step_mean_m": 22.624304554079732,
+      "frame_step_p90_m": 32.4928450469026,
+      "frame_step_p95_m": 35.46984804906491,
+      "frame_step_max_m": 41.39341331919321,
+      "construction": "deterministic nearest-neighbor chain within official split"
+    },
+    "test_01": {
+      "official_split": "test",
+      "pool_rows": 2251,
+      "sample_step_m": 8.0,
+      "actual_step_mean_m": 19.644855311206275,
+      "actual_step_p90_m": 27.0969141519543,
+      "actual_step_p95_m": 29.673145696062534,
+      "frames": 120,
+      "target_frames": 120,
+      "waypoint_anchors": 16,
+      "frame_step_mean_m": 19.644855311206275,
+      "frame_step_p90_m": 27.0969141519543,
+      "frame_step_p95_m": 29.673145696062534,
+      "frame_step_max_m": 36.952887567898934,
+      "construction": "deterministic nearest-neighbor chain within official split"
+    },
+    "test_02": {
+      "official_split": "test",
+      "pool_rows": 2251,
+      "sample_step_m": 8.0,
+      "actual_step_mean_m": 19.61589341599902,
+      "actual_step_p90_m": 25.473827725886842,
+      "actual_step_p95_m": 27.080185831605363,
+      "frames": 120,
+      "target_frames": 120,
+      "waypoint_anchors": 16,
+      "frame_step_mean_m": 19.61589341599902,
+      "frame_step_p90_m": 25.473827725886842,
+      "frame_step_p95_m": 27.080185831605363,
+      "frame_step_max_m": 32.94123809552913,
+      "construction": "deterministic nearest-neighbor chain within official split"
+    }
+  }
+}

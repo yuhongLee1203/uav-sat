@@ -1,0 +1,55 @@
+{
+  "protocol": {
+    "protocol_name": "unified_fixed_radial_8m_v1",
+    "main_jitter_m": 8.0,
+    "jitter_definition": "fixed radial magnitude; deterministic changing direction",
+    "main_grid_size": 6,
+    "main_candidate_count": 36,
+    "decoder": "softms",
+    "meanshift_bandwidth_m": 8.0,
+    "score_temperature_tau": 0.3,
+    "seed": 2026,
+    "minimum_candidate_capture_rate_pct": 95.0,
+    "formal_oracle_zero_m": false,
+    "train_route": "route_A",
+    "test_routes": [
+      "route_B",
+      "route_C"
+    ]
+  },
+  "capture": {
+    "route_A": {
+      "Route": "route_A",
+      "Jitter_m": 8.0,
+      "GridSize": 6,
+      "CandidateCount": 36,
+      "CaptureRadius_m": 7.5,
+      "CandidateCaptureRate_pct": 100.0,
+      "NearestCandidateMean_m": 1.8169225454330444,
+      "NearestCandidateP95_m": 2.873246431350708,
+      "NearestCandidateMax_m": 3.304666519165039
+    },
+    "route_B": {
+      "Route": "route_B",
+      "Jitter_m": 8.0,
+      "GridSize": 6,
+      "CandidateCount": 36,
+      "CaptureRadius_m": 7.5,
+      "CandidateCaptureRate_pct": 100.0,
+      "NearestCandidateMean_m": 1.8065215349197388,
+      "NearestCandidateP95_m": 2.831418514251709,
+      "NearestCandidateMax_m": 3.3217859268188477
+    },
+    "route_C": {
+      "Route": "route_C",
+      "Jitter_m": 8.0,
+      "GridSize": 6,
+      "CandidateCount": 36,
+      "CaptureRadius_m": 7.5,
+      "CandidateCaptureRate_pct": 100.0,
+      "NearestCandidateMean_m": 1.7410340309143066,
+      "NearestCandidateP95_m": 2.772047758102417,
+      "NearestCandidateMax_m": 3.296250820159912
+    }
+  }
+}

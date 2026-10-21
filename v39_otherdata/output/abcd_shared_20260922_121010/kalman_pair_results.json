@@ -1,0 +1,50 @@
+{
+  "cities": [
+    "citya",
+    "cityb",
+    "cityc",
+    "cityd"
+  ],
+  "comparison": "same shared checkpoint / same seed / same prepared data / same final-MS profile; Kalman fixed vs none",
+  "full": {
+    "variant": "full",
+    "label": "Full",
+    "frames": 1482,
+    "R@1*_pct": 84.88529014844805,
+    "LSR@15_pct": 96.35627530364373,
+    "HSR@15_pct": 38.8663967611336,
+    "MLE_m": 7.42504200945956,
+    "MHE_deg": 37.169137416083906,
+    "MS_Latency_ms": 16.598447002411074
+  },
+  "no_kalman": {
+    "variant": "no_kalman",
+    "label": "w/o Kalman",
+    "frames": 1482,
+    "R@1*_pct": 84.54790823211876,
+    "LSR@15_pct": 96.35627530364373,
+    "HSR@15_pct": 38.93387314439946,
+    "MLE_m": 7.474855495978065,
+    "MHE_deg": 37.122598410982164,
+    "MS_Latency_ms": 16.85791421929358
+  },
+  "full_minus_no_kalman": {
+    "R@1*_pct": 0.33738191632929215,
+    "LSR@15_pct": 0.0,
+    "HSR@15_pct": -0.0674763832658627,
+    "MLE_m": -0.049813486518504924,
+    "MHE_deg": 0.04653900510174225
+  },
+  "paired_bootstrap": {
+    "full_minus_ablation_MLE_m": -0.049813486518504924,
+    "MLE_95CI": [
+      -0.08604805561223487,
+      -0.018043811583193303
+    ],
+    "full_minus_ablation_LSR@15_pct": 0.0,
+    "LSR@15_95CI": [
+      -0.3373819163292935,
+      0.3373819163292935
+    ]
+  }
+}

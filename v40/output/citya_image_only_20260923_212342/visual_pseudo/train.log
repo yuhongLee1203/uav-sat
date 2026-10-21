@@ -1,0 +1,18 @@
+[V40 CACHE] reused prior UAV backbone features; GT discarded
+[visual_pseudo] frame=25 loss=0.2124
+[visual_pseudo] frame=50 loss=0.1792
+[visual_pseudo] frame=75 loss=0.1281
+[visual_pseudo] frame=100 loss=0.1911
+[visual_pseudo] frame=125 loss=0.1580
+[visual_pseudo] epoch=1 image_only_loss=0.17173
+[visual_pseudo] frame=25 loss=0.2296
+[visual_pseudo] frame=50 loss=0.1687
+[visual_pseudo] frame=75 loss=0.1180
+[visual_pseudo] frame=100 loss=0.1721
+[visual_pseudo] frame=125 loss=0.1134
+[visual_pseudo] epoch=2 image_only_loss=0.15639
+route_B: reuse UAV backbone cache
+route_B final MLE=193.271m P90=348.681m LSR@15=6.21% selected_capture=0.00% bank_capture=0.00% acq_acc=0.00% speed_mae=3.313m/frame progress_mae=309.201m heading_mae=66.0deg jump_rate=31.87% max_step=36.65m final_leg=0 gt_leg=11
+route_C: reuse UAV backbone cache
+route_C final MLE=334.920m P90=590.160m LSR@15=1.37% selected_capture=0.00% bank_capture=0.00% acq_acc=0.00% speed_mae=3.017m/frame progress_mae=477.578m heading_mae=57.7deg jump_rate=4.13% max_step=50.04m final_leg=0 gt_leg=8
+[V40 RESULT] /yh/study/uav-sat/v40/output/citya_image_only_20260923_212342/visual_pseudo/result.json

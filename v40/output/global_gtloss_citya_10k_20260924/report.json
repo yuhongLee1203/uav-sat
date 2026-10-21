@@ -1,0 +1,39 @@
+{
+  "city": "citya",
+  "samples": 10000,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "previous_task_checkpoint_loaded": false,
+  "excluded_test_manifest_sha256": "96aa0b92836b3b3faa12fa04f48006e2fd516807eca4307aca7427857b47305d",
+  "best_val_global_top1_MLE_m": 53.31802749633789,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 8.312446406189824,
+      "validation": {
+        "global_top1_MLE_m": 123.36981201171875,
+        "global_top1_P90_m": 387.0244445800781,
+        "global_top1_LSR15_pct": 22.0
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 6.805668790575484,
+      "validation": {
+        "global_top1_MLE_m": 75.67107391357422,
+        "global_top1_P90_m": 249.6988067626953,
+        "global_top1_LSR15_pct": 36.099998474121094
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 6.176180631342069,
+      "validation": {
+        "global_top1_MLE_m": 53.31802749633789,
+        "global_top1_P90_m": 141.64366149902344,
+        "global_top1_LSR15_pct": 40.400001525878906
+      }
+    }
+  ],
+  "checkpoint": "v40/output/global_gtloss_citya_10k_20260924/checkpoints/citya/visual_retrieval_A_only.pt"
+}

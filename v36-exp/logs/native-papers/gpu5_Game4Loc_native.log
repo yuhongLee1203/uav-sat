@@ -1,0 +1,118 @@
+
+Model: convnext_base.fb_in22k_ft_in1k_384
+{'input_size': (3, 384, 384), 'interpolation': 'bicubic', 'mean': (0.485, 0.456, 0.406), 'std': (0.229, 0.224, 0.225), 'crop_pct': 1.0, 'crop_mode': 'squash'}
+GPUs available: 1
+
+Image Size Query: (384, 384)
+Image Size Ground: (384, 384)
+Mean: (0.485, 0.456, 0.406)
+Std:  (0.229, 0.224, 0.225)
+
+Query Images Test: 3534
+Gallery Images Test: 2891
+
+Scheduler: cosine - max LR: 0.001
+Warmup Epochs: 0.1 - Warmup Steps: 10.9
+Train Epochs:  5 - Train Steps:  545
+
+------------------------------[Zero Shot]------------------------------
+Extract Features:
+Compute Scores:
+Recall@1: 0.7357 - Recall@5: 2.1505 - Recall@10: 4.0464 - Recall@top1: 8.2909 - AP: 1.3699
+
+Shuffle Dataset:
+0it [00:00, ?it/s]2264it [00:00, 693435.39it/s]
+Original Length: 1732 - Length after Shuffle: 1712
+Break Counter: 512
+Pairs left out of last batch to avoid creating noise: 20
+First Element ID: 002868 - Last Element ID: 000958
+
+------------------------------[Epoch: 1]------------------------------
+Iteration 1/107 took 0.5586 s, ETA: 153.29 s, loss: 3.2399, loss_avg: ('3.2399',), lr: 0.000092
+Iteration 51/107 took 0.3594 s, ETA: 21.31 s, loss: 1.5017, loss_avg: ('2.0632',), lr: 0.000986
+Iteration 101/107 took 0.3565 s, ETA: 2.23 s, loss: 1.0885, loss_avg: ('1.7588',), lr: 0.000931
+Epoch: 1, Train Loss = 1.708, Lr = 0.000922
+
+------------------------------[Evaluate]------------------------------
+Extract Features:
+Compute Scores:
+Recall@1: 1.9242 - Recall@5: 6.3667 - Recall@10: 10.2151 - Recall@top1: 22.2411 - AP: 3.4715
+
+Shuffle Dataset:
+0it [00:00, ?it/s]2267it [00:00, 721816.38it/s]
+Original Length: 1732 - Length after Shuffle: 1712
+Break Counter: 512
+Pairs left out of last batch to avoid creating noise: 20
+First Element ID: 001122 - Last Element ID: 002886
+
+------------------------------[Epoch: 2]------------------------------
+Iteration 1/107 took 0.3764 s, ETA: 145.12 s, loss: 1.1679, loss_avg: ('1.1679',), lr: 0.000921
+Iteration 51/107 took 0.3711 s, ETA: 21.53 s, loss: 0.9497, loss_avg: ('0.8656',), lr: 0.000824
+Iteration 101/107 took 0.3850 s, ETA: 2.29 s, loss: 0.3767, loss_avg: ('0.8120',), lr: 0.000700
+Epoch: 2, Train Loss = 0.801, Lr = 0.000684
+
+------------------------------[Evaluate]------------------------------
+Extract Features:
+Compute Scores:
+Recall@1: 1.3016 - Recall@5: 5.8008 - Recall@10: 9.3096 - Recall@top1: 21.1658 - AP: 2.8408
+
+Shuffle Dataset:
+0it [00:00, ?it/s]2265it [00:00, 719704.44it/s]
+Original Length: 1732 - Length after Shuffle: 1712
+Break Counter: 512
+Pairs left out of last batch to avoid creating noise: 20
+First Element ID: 001306 - Last Element ID: 002883
+
+------------------------------[Epoch: 3]------------------------------
+Iteration 1/107 took 0.3807 s, ETA: 139.69 s, loss: 0.4589, loss_avg: ('0.4589',), lr: 0.000681
+Iteration 51/107 took 0.3887 s, ETA: 22.23 s, loss: 0.5956, loss_avg: ('0.5237',), lr: 0.000538
+Iteration 101/107 took 0.3815 s, ETA: 2.37 s, loss: 0.2145, loss_avg: ('0.4775',), lr: 0.000392
+Epoch: 3, Train Loss = 0.468, Lr = 0.000375
+
+------------------------------[Evaluate]------------------------------
+Extract Features:
+Compute Scores:
+Recall@1: 1.8393 - Recall@5: 6.9892 - Recall@10: 12.3090 - Recall@top1: 25.2122 - AP: 3.7182
+
+Shuffle Dataset:
+0it [00:00, ?it/s]2267it [00:00, 748287.34it/s]
+Original Length: 1732 - Length after Shuffle: 1712
+Break Counter: 512
+Pairs left out of last batch to avoid creating noise: 20
+First Element ID: 002801 - Last Element ID: 001149
+
+------------------------------[Epoch: 4]------------------------------
+Iteration 1/107 took 0.3794 s, ETA: 132.45 s, loss: 0.1498, loss_avg: ('0.1498',), lr: 0.000372
+Iteration 51/107 took 0.3778 s, ETA: 22.23 s, loss: 0.3229, loss_avg: ('0.3189',), lr: 0.000237
+Iteration 101/107 took 0.3900 s, ETA: 2.38 s, loss: 0.0282, loss_avg: ('0.2983',), lr: 0.000125
+Epoch: 4, Train Loss = 0.303, Lr = 0.000114
+
+------------------------------[Evaluate]------------------------------
+Extract Features:
+Compute Scores:
+Recall@1: 2.0939 - Recall@5: 8.2909 - Recall@10: 14.8274 - Recall@top1: 29.1171 - AP: 4.2737
+
+Shuffle Dataset:
+0it [00:00, ?it/s]2271it [00:00, 788254.25it/s]
+Original Length: 1732 - Length after Shuffle: 1712
+Break Counter: 512
+Pairs left out of last batch to avoid creating noise: 20
+First Element ID: 000036 - Last Element ID: 000870
+
+------------------------------[Epoch: 5]------------------------------
+Iteration 1/107 took 0.3723 s, ETA: 145.75 s, loss: 0.1730, loss_avg: ('0.1730',), lr: 0.000112
+Iteration 51/107 took 0.3739 s, ETA: 22.37 s, loss: 0.3202, loss_avg: ('0.2778',), lr: 0.000037
+Iteration 101/107 took 0.3823 s, ETA: 2.37 s, loss: 0.1909, loss_avg: ('0.2467',), lr: 0.000002
+Epoch: 5, Train Loss = 0.245, Lr = 0.000001
+
+------------------------------[Evaluate]------------------------------
+Extract Features:
+Compute Scores:
+Recall@1: 2.2354 - Recall@5: 8.3192 - Recall@10: 14.1200 - Recall@top1: 27.5325 - AP: 4.2591
+
+Shuffle Dataset:
+0it [00:00, ?it/s]2272it [00:00, 815878.31it/s]
+Original Length: 1732 - Length after Shuffle: 1712
+Break Counter: 512
+Pairs left out of last batch to avoid creating noise: 20
+First Element ID: 000690 - Last Element ID: 002886

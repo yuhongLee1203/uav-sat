@@ -1,0 +1,27 @@
+{
+  "checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/temporal_visual2061/raw5_sigma2/train/best_temporal_interim.pt",
+  "visual_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/train/checkpoints/citya/visual_retrieval_A_only.pt",
+  "run_settings": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/temporal_visual2061/raw5_sigma2/validation/run_settings.json",
+  "city": "citya",
+  "validation_only": true,
+  "GT_front18_oracle": false,
+  "GT_front18_patch_oracle": false,
+  "image_guided_front18": false,
+  "GT_final_MS_center_oracle": false,
+  "GT_final_MS_patch_oracle": false,
+  "valid_no_GT_inference_result": true,
+  "current_frame_backbone": true,
+  "tta_rotations": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "tta_flips": false,
+  "current_frame_GT_model_input": false,
+  "MLE_m": 4.8508241039952,
+  "P90_m": 8.144572924884638,
+  "LSR@15_pct": 95.23809523809523,
+  "SelectedCandidateCapture_pct": 93.65079365079364,
+  "BankCandidateCapture_pct": 98.4126984126984
+}

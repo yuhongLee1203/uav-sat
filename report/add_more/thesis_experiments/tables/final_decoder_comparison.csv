@@ -1,0 +1,4 @@
+Final Decoder,MLE (m),Median Error (m),LSR@3 (%),LSR@15 (%)
+Argmax,4.14,3.76,36.10,100.00
+Weighted Average,3.75,3.44,42.51,100.00
+Mean Shift,3.76,3.44,41.90,100.00

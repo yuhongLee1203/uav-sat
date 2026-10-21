@@ -1,0 +1,90 @@
+{
+  "finding": "Official city-specific *_50 files have identical pixel XY waypoint arrays. Distinct satellites, UAV image paths, per-frame errors and metrics were verified.",
+  "shared_test01_xy": true,
+  "official_test01_xy_sha256": "a7cc40552d6c48a41d2409081ce55b8acec913617c2d13295d2cc42bc95a2ea2",
+  "test01_distinct_satellite_sha256": 4,
+  "test01_distinct_error_sha256": 4,
+  "test01_uav_image_path_overlap": 0,
+  "routes": {
+    "a/test_01": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
+      "satellite_sha256": "d7c6add56423ae1ececc0511fe326a6d75449de25e0aca3005faa3d19b6342e0",
+      "official_waypoints": "/yh/study/bearinguav_lastver/loc2traj/traj_wps_gcs/wps34bc_50.json",
+      "uav_first_image": "/yh/study/cvpr_data/Bearing_UAV_90K/citya/uav_254k_34bc_b15_s100/blk_5_12_s_003_v3d.jpg",
+      "observations": 161,
+      "frame_error_sha256": "12e940abbe1a1e7db92caa57c2a601c4bd4ccdd6c12b5b750196fc7c177ba824",
+      "mle_m": 3.6569573095712546,
+      "lsr3_pct": 44.72049689440994
+    },
+    "a/test_02": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
+      "satellite_sha256": "d7c6add56423ae1ececc0511fe326a6d75449de25e0aca3005faa3d19b6342e0",
+      "official_waypoints": null,
+      "uav_first_image": "/yh/study/cvpr_data/Bearing_UAV_90K/citya/uav_254k_34bc_b15_s100/blk_1_0_s_051_v3d.jpg",
+      "observations": 219,
+      "frame_error_sha256": "7b5ca7edf1516fdb5b2ea141e15397270ef9ec4ab3826fdfd30a8ddcfac257e3",
+      "mle_m": 3.6505200539973517,
+      "lsr3_pct": 42.00913242009132
+    },
+    "b/test_01": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+      "satellite_sha256": "556cebf200f2e6f8cc69bf360abc5f38dc66895b97803face8f370a61233ab94",
+      "official_waypoints": "/yh/study/bearinguav_lastver/loc2traj/traj_wps_gcs/wps36bc_50.json",
+      "uav_first_image": "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_6_12_s_077_v3d.jpg",
+      "observations": 146,
+      "frame_error_sha256": "1c19a2816b544727a5d8b4b4160b818500798c2f2b4338ffcffa09d2a4c15c07",
+      "mle_m": 3.8463868239569936,
+      "lsr3_pct": 37.67123287671233
+    },
+    "b/test_02": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+      "satellite_sha256": "556cebf200f2e6f8cc69bf360abc5f38dc66895b97803face8f370a61233ab94",
+      "official_waypoints": null,
+      "uav_first_image": "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_0_14_s_046_v3d.jpg",
+      "observations": 171,
+      "frame_error_sha256": "865a1e7f07010059f87fe4e9329aeaf9e2343d4ae812e5886723a5e52091f005",
+      "mle_m": 3.5907066968240153,
+      "lsr3_pct": 42.69005847953216
+    },
+    "c/test_01": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/1.2897673873873876_103.84197619336068_1791.95_1024_1024_4326_city.jpg",
+      "satellite_sha256": "d4fb10c5a9157bee9719ef32c29bf20ed1b7b32aeb9c1711912560764c4af731",
+      "official_waypoints": "/yh/study/bearinguav_lastver/loc2traj/traj_wps_gcs/wps37bc_50.json",
+      "uav_first_image": "/yh/study/cvpr_data/Bearing_UAV_90K/cityc/uav_254k_37bc_b15_s100/blk_6_12_s_069_v3d.jpg",
+      "observations": 148,
+      "frame_error_sha256": "d2cf0549ce6eab847afa60fc1b7ab26f5c616ef6d32c3f76eaae63b043f9e5a7",
+      "mle_m": 3.5653000301839346,
+      "lsr3_pct": 45.27027027027027
+    },
+    "c/test_02": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/1.2897673873873876_103.84197619336068_1791.95_1024_1024_4326_city.jpg",
+      "satellite_sha256": "d4fb10c5a9157bee9719ef32c29bf20ed1b7b32aeb9c1711912560764c4af731",
+      "official_waypoints": null,
+      "uav_first_image": "/yh/study/cvpr_data/Bearing_UAV_90K/cityc/uav_254k_37bc_b15_s100/blk_2_5_s_045_v3d.jpg",
+      "observations": 226,
+      "frame_error_sha256": "65ce392a4f5a476d5d3de193484d7d97bea3fc432290d4d634ec2f8a28a120ca",
+      "mle_m": 4.191366175994011,
+      "lsr3_pct": 38.93805309734513
+    },
+    "d/test_01": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/37.75538738738739_-122.4533351740761_1791.95_1024_1024_4326_city.jpg",
+      "satellite_sha256": "31bc0054109c5894846c84cd7744d8ddbe18d37707286abd0c00819a77f6f145",
+      "official_waypoints": "/yh/study/bearinguav_lastver/loc2traj/traj_wps_gcs/wps38bc_50.json",
+      "uav_first_image": "/yh/study/cvpr_data/Bearing_UAV_90K/cityd/uav_254k_38bc_b15_s100/blk_5_12_s_055_v3d.jpg",
+      "observations": 150,
+      "frame_error_sha256": "d7586717f654be560e7459d6c5e593c0855731c561fca989ebcff055764ccc61",
+      "mle_m": 4.084096310654138,
+      "lsr3_pct": 40.666666666666664
+    },
+    "d/test_02": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/37.75538738738739_-122.4533351740761_1791.95_1024_1024_4326_city.jpg",
+      "satellite_sha256": "31bc0054109c5894846c84cd7744d8ddbe18d37707286abd0c00819a77f6f145",
+      "official_waypoints": null,
+      "uav_first_image": "/yh/study/cvpr_data/Bearing_UAV_90K/cityd/uav_254k_38bc_b15_s100/blk_2_5_s_073_v3d.jpg",
+      "observations": 261,
+      "frame_error_sha256": "60b9db4f003eac5e6198edb6d61ea04018b62c368b8aab98cbfd7c9cac9f8b93",
+      "mle_m": 3.523686972321611,
+      "lsr3_pct": 43.29501915708812
+    }
+  }
+}

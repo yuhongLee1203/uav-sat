@@ -1,0 +1,181 @@
+{
+  "protocol": "one shared ABCD model + one global Route-A-selected inference profile + pooled held-out B/C frames",
+  "official96_split_adapter": false,
+  "official96_split_audits": {},
+  "episode_training_schedule": {
+    "seed": 2033,
+    "rounds": 4,
+    "base_temporal_epoch": 93,
+    "episodes": [
+      {
+        "epoch": 1,
+        "city": "cityd",
+        "route": "train_01"
+      },
+      {
+        "epoch": 1,
+        "city": "cityc",
+        "route": "train_01"
+      },
+      {
+        "epoch": 1,
+        "city": "cityb",
+        "route": "train_01"
+      },
+      {
+        "epoch": 1,
+        "city": "citya",
+        "route": "train_01"
+      },
+      {
+        "epoch": 2,
+        "city": "cityb",
+        "route": "train_01"
+      },
+      {
+        "epoch": 2,
+        "city": "cityd",
+        "route": "train_01"
+      },
+      {
+        "epoch": 2,
+        "city": "citya",
+        "route": "train_01"
+      },
+      {
+        "epoch": 2,
+        "city": "cityc",
+        "route": "train_01"
+      },
+      {
+        "epoch": 3,
+        "city": "cityd",
+        "route": "train_01"
+      },
+      {
+        "epoch": 3,
+        "city": "cityb",
+        "route": "train_01"
+      },
+      {
+        "epoch": 3,
+        "city": "cityc",
+        "route": "train_01"
+      },
+      {
+        "epoch": 3,
+        "city": "citya",
+        "route": "train_01"
+      },
+      {
+        "epoch": 4,
+        "city": "cityb",
+        "route": "train_01"
+      },
+      {
+        "epoch": 4,
+        "city": "citya",
+        "route": "train_01"
+      },
+      {
+        "epoch": 4,
+        "city": "cityd",
+        "route": "train_01"
+      },
+      {
+        "epoch": 4,
+        "city": "cityc",
+        "route": "train_01"
+      }
+    ],
+    "state_reset": "each route",
+    "shared_optimizer": true
+  },
+  "cities": [
+    "citya",
+    "cityb",
+    "cityc",
+    "cityd"
+  ],
+  "metric_set": [
+    "R@1*_pct",
+    "LSR@15_pct",
+    "HSR@15_pct",
+    "MLE_m",
+    "MHE_deg"
+  ],
+  "rows": {
+    "no_gru": {
+      "variant": "no_gru",
+      "label": "w/o GRU",
+      "frames": 1482,
+      "R@1*_pct": 31.916329284750336,
+      "LSR@15_pct": 4.251012145748987,
+      "HSR@15_pct": 19.163292847503374,
+      "MLE_m": 254.26601047148114,
+      "MHE_deg": 56.441391166992695,
+      "MS_Latency_ms": 10.069054787254474,
+      "heading_fusion_alpha": 1.0
+    },
+    "no_kalman": {
+      "variant": "no_kalman",
+      "label": "w/o Kalman",
+      "frames": 1482,
+      "R@1*_pct": 39.00134952766532,
+      "LSR@15_pct": 11.201079622132253,
+      "HSR@15_pct": 18.960863697705804,
+      "MLE_m": 162.31160337699902,
+      "MHE_deg": 60.37027341918804,
+      "MS_Latency_ms": 10.769722637908387,
+      "heading_fusion_alpha": 1.0
+    },
+    "no_ms": {
+      "variant": "no_ms",
+      "label": "w/o MeanShift",
+      "frames": 1482,
+      "R@1*_pct": 38.394062078272604,
+      "LSR@15_pct": 12.280701754385964,
+      "HSR@15_pct": 18.55600539811066,
+      "MLE_m": 165.0019320901535,
+      "MHE_deg": 61.59788057413811,
+      "MS_Latency_ms": 0.0,
+      "heading_fusion_alpha": 1.0
+    },
+    "full": {
+      "variant": "full",
+      "label": "Full",
+      "frames": 1482,
+      "R@1*_pct": 38.529014844804315,
+      "LSR@15_pct": 12.010796221322536,
+      "HSR@15_pct": 18.55600539811066,
+      "MLE_m": 165.3097489102051,
+      "MHE_deg": 61.63775226194547,
+      "MS_Latency_ms": 11.11749368646724,
+      "heading_fusion_alpha": 1.0
+    }
+  },
+  "full_strictly_better": {
+    "no_gru": {
+      "R@1*": true,
+      "LSR@15": true,
+      "HSR@15": false,
+      "MLE": true,
+      "MHE": false
+    },
+    "no_kalman": {
+      "R@1*": false,
+      "LSR@15": true,
+      "HSR@15": false,
+      "MLE": false,
+      "MHE": false
+    },
+    "no_ms": {
+      "R@1*": true,
+      "LSR@15": false,
+      "HSR@15": false,
+      "MLE": false,
+      "MHE": false
+    }
+  },
+  "full_best_all_component_metrics": false
+}

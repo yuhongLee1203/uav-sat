@@ -1,0 +1,466 @@
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 46/46
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_h03", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=139.8080 elapsed=2.8s eta=10.2s
+[V40 FRAME] 20/46 (43.5%) loss=148.0572 elapsed=5.8s eta=7.5s
+[V40 FRAME] 30/46 (65.2%) loss=162.2092 elapsed=8.7s eta=4.7s
+[V40 FRAME] 40/46 (87.0%) loss=194.9526 elapsed=11.3s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=117.4384 elapsed=12.4s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_h03", "loss": 150.92944300693014, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 31/31
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_h02", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=146.6453 elapsed=2.5s eta=5.3s
+[V40 FRAME] 20/31 (64.5%) loss=181.7436 elapsed=5.5s eta=3.0s
+[V40 FRAME] 30/31 (96.8%) loss=208.6576 elapsed=8.5s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=210.1775 elapsed=8.8s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_h02", "loss": 174.35771714487385, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 31/31
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_h04", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=43.6428 elapsed=2.7s eta=5.6s
+[V40 FRAME] 20/31 (64.5%) loss=38.2307 elapsed=5.7s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=43.0170 elapsed=8.6s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=43.4743 elapsed=8.9s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_h04", "loss": 41.13353206265357, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 31/31
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_v04", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=47.8612 elapsed=2.8s eta=5.8s
+[V40 FRAME] 20/31 (64.5%) loss=31.8692 elapsed=5.7s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=30.2077 elapsed=8.5s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=30.0876 elapsed=8.8s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_v04", "loss": 36.169752982354936, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 31/31
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_h01", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=27.5517 elapsed=2.7s eta=5.7s
+[V40 FRAME] 20/31 (64.5%) loss=31.0549 elapsed=5.7s eta=3.2s
+[V40 FRAME] 30/31 (96.8%) loss=29.5678 elapsed=8.7s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=29.6984 elapsed=9.0s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_h01", "loss": 29.556028919835246, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 31/31
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_h05", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=34.6776 elapsed=2.8s eta=5.9s
+[V40 FRAME] 20/31 (64.5%) loss=27.6068 elapsed=5.8s eta=3.2s
+[V40 FRAME] 30/31 (96.8%) loss=21.8558 elapsed=8.6s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=21.4510 elapsed=8.8s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_h05", "loss": 27.847888515841575, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 31/31
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_v02", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=33.2188 elapsed=2.6s eta=5.4s
+[V40 FRAME] 20/31 (64.5%) loss=29.0774 elapsed=5.5s eta=3.0s
+[V40 FRAME] 30/31 (96.8%) loss=27.9017 elapsed=8.6s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=26.5999 elapsed=8.8s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_v02", "loss": 29.561302615750222, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 66/66
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_01", "frames": 66}
+[V40 FRAME] 10/66 (15.2%) loss=11.2038 elapsed=2.7s eta=15.2s
+[V40 FRAME] 20/66 (30.3%) loss=13.7833 elapsed=5.7s eta=13.1s
+[V40 FRAME] 30/66 (45.5%) loss=16.7737 elapsed=8.6s eta=10.3s
+[V40 FRAME] 40/66 (60.6%) loss=19.2542 elapsed=11.5s eta=7.5s
+[V40 FRAME] 50/66 (75.8%) loss=25.7206 elapsed=14.5s eta=4.6s
+[V40 FRAME] 60/66 (90.9%) loss=35.7976 elapsed=17.4s eta=1.7s
+[V40 FRAME] 66/66 (100.0%) loss=32.7359 elapsed=18.6s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_01", "loss": 21.50722894524083, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 31/31
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_v01", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=35.4130 elapsed=2.7s eta=5.7s
+[V40 FRAME] 20/31 (64.5%) loss=22.2403 elapsed=5.6s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=18.9259 elapsed=8.6s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=18.6496 elapsed=8.8s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_v01", "loss": 25.162304847471177, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 46/46
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_v03", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=18.0848 elapsed=2.7s eta=9.6s
+[V40 FRAME] 20/46 (43.5%) loss=17.5048 elapsed=5.9s eta=7.6s
+[V40 FRAME] 30/46 (65.2%) loss=10.2599 elapsed=8.8s eta=4.7s
+[V40 FRAME] 40/46 (87.0%) loss=15.1490 elapsed=11.7s eta=1.8s
+[V40 FRAME] 46/46 (100.0%) loss=14.0238 elapsed=13.1s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_v03", "loss": 14.987107121426126, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 31/31
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_v05", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=30.0082 elapsed=2.6s eta=5.5s
+[V40 FRAME] 20/31 (64.5%) loss=23.2890 elapsed=5.5s eta=3.0s
+[V40 FRAME] 30/31 (96.8%) loss=18.1732 elapsed=8.4s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=16.1159 elapsed=8.6s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_v05", "loss": 23.260299467271373, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 46/46
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_v00", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=18.7263 elapsed=2.6s eta=9.4s
+[V40 FRAME] 20/46 (43.5%) loss=11.9026 elapsed=5.4s eta=7.0s
+[V40 FRAME] 30/46 (65.2%) loss=10.6083 elapsed=8.3s eta=4.4s
+[V40 FRAME] 40/46 (87.0%) loss=13.3702 elapsed=11.2s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=19.0447 elapsed=12.8s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_v00", "loss": 14.680308896562327, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 46/46
+[V40 ROUTE START] {"epoch": 1, "epochs": 4, "city": "citya", "route": "train_grid_h00", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=17.3399 elapsed=2.9s eta=10.6s
+[V40 FRAME] 20/46 (43.5%) loss=11.6884 elapsed=6.1s eta=7.9s
+[V40 FRAME] 30/46 (65.2%) loss=16.4596 elapsed=9.2s eta=4.9s
+[V40 FRAME] 40/46 (87.0%) loss=14.7445 elapsed=12.2s eta=1.8s
+[V40 FRAME] 46/46 (100.0%) loss=23.7936 elapsed=13.7s eta=0.0s
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_grid_h00", "loss": 16.75024186009946, "training_GT_used": true}
+route_V backbone cache: 63/63
+route_V final MLE=5.955m P90=11.302m LSR@15=96.83% selected_capture=90.48% bank_capture=98.41% acq_acc=N/A speed_mae=13.342m/frame progress_mae=5.096m heading_mae=58.6deg jump_rate=24.19% max_step=86.89m final_leg=4 gt_leg=4
+[V40 VALIDATION] {"epoch": 1, "validation_mle_by_city": {"citya": 5.955344704404038}, "validation_mean_mle_m": 5.955344704404038}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_v00", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=18.4461 elapsed=2.8s eta=10.1s
+[V40 FRAME] 20/46 (43.5%) loss=11.2499 elapsed=5.7s eta=7.4s
+[V40 FRAME] 30/46 (65.2%) loss=9.9016 elapsed=8.6s eta=4.6s
+[V40 FRAME] 40/46 (87.0%) loss=13.2137 elapsed=11.5s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=19.0574 elapsed=13.0s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_v00", "loss": 14.311869895976523, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_h00", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=15.8044 elapsed=2.7s eta=9.9s
+[V40 FRAME] 20/46 (43.5%) loss=12.2187 elapsed=5.8s eta=7.5s
+[V40 FRAME] 30/46 (65.2%) loss=15.5213 elapsed=8.7s eta=4.6s
+[V40 FRAME] 40/46 (87.0%) loss=12.8997 elapsed=11.6s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=21.8806 elapsed=13.1s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_h00", "loss": 15.778599251871524, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_h02", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=27.9490 elapsed=2.8s eta=5.8s
+[V40 FRAME] 20/31 (64.5%) loss=22.5062 elapsed=5.7s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=17.6921 elapsed=8.6s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=18.6732 elapsed=8.8s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_h02", "loss": 22.538980514772476, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_v02", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=31.3744 elapsed=2.6s eta=5.4s
+[V40 FRAME] 20/31 (64.5%) loss=20.0666 elapsed=5.4s eta=3.0s
+[V40 FRAME] 30/31 (96.8%) loss=22.7917 elapsed=8.4s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=22.7480 elapsed=8.6s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_v02", "loss": 24.454365699521958, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_h01", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=25.3532 elapsed=2.6s eta=5.6s
+[V40 FRAME] 20/31 (64.5%) loss=19.2580 elapsed=5.6s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=14.9815 elapsed=8.6s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=13.7069 elapsed=8.8s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_h01", "loss": 19.53292775923206, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_h03", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=16.4176 elapsed=2.6s eta=9.5s
+[V40 FRAME] 20/46 (43.5%) loss=12.6398 elapsed=5.4s eta=7.0s
+[V40 FRAME] 30/46 (65.2%) loss=15.3416 elapsed=8.3s eta=4.4s
+[V40 FRAME] 40/46 (87.0%) loss=25.2879 elapsed=11.2s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=28.9780 elapsed=12.8s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_h03", "loss": 18.816788590472676, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_h04", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=27.9553 elapsed=3.0s eta=6.4s
+[V40 FRAME] 20/31 (64.5%) loss=18.7533 elapsed=6.0s eta=3.3s
+[V40 FRAME] 30/31 (96.8%) loss=14.2555 elapsed=8.9s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=14.6857 elapsed=9.1s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_h04", "loss": 20.133149346997662, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_01", "frames": 66}
+[V40 FRAME] 10/66 (15.2%) loss=9.6249 elapsed=2.9s eta=16.1s
+[V40 FRAME] 20/66 (30.3%) loss=17.2873 elapsed=5.8s eta=13.5s
+[V40 FRAME] 30/66 (45.5%) loss=24.3263 elapsed=9.0s eta=10.8s
+[V40 FRAME] 40/66 (60.6%) loss=30.1172 elapsed=12.0s eta=7.8s
+[V40 FRAME] 50/66 (75.8%) loss=37.3781 elapsed=15.1s eta=4.8s
+[V40 FRAME] 60/66 (90.9%) loss=46.7179 elapsed=18.0s eta=1.8s
+[V40 FRAME] 66/66 (100.0%) loss=46.4225 elapsed=19.2s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_01", "loss": 29.176048401630286, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_h05", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=32.1621 elapsed=2.8s eta=5.8s
+[V40 FRAME] 20/31 (64.5%) loss=18.7348 elapsed=5.6s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=11.2269 elapsed=8.3s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=10.7828 elapsed=8.5s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_h05", "loss": 20.47044837090277, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_v04", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=35.6187 elapsed=2.7s eta=5.6s
+[V40 FRAME] 20/31 (64.5%) loss=21.3852 elapsed=5.6s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=11.6004 elapsed=8.5s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=12.2653 elapsed=8.7s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_v04", "loss": 22.640335021480436, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_v01", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=30.9034 elapsed=2.7s eta=5.6s
+[V40 FRAME] 20/31 (64.5%) loss=14.2215 elapsed=5.5s eta=3.0s
+[V40 FRAME] 30/31 (96.8%) loss=9.9952 elapsed=8.2s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=10.7667 elapsed=8.4s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_v01", "loss": 18.270643895672215, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_v05", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=29.4974 elapsed=2.7s eta=5.6s
+[V40 FRAME] 20/31 (64.5%) loss=16.0173 elapsed=5.6s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=12.2383 elapsed=8.5s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=12.4660 elapsed=8.6s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_v05", "loss": 19.260647281523674, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 2, "epochs": 4, "city": "citya", "route": "train_grid_v03", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=15.3927 elapsed=2.8s eta=9.9s
+[V40 FRAME] 20/46 (43.5%) loss=17.4900 elapsed=5.8s eta=7.5s
+[V40 FRAME] 30/46 (65.2%) loss=19.7469 elapsed=8.8s eta=4.7s
+[V40 FRAME] 40/46 (87.0%) loss=30.7842 elapsed=11.6s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=33.0726 elapsed=13.0s eta=0.0s
+[V40 EPISODE] {"epoch": 2, "city": "citya", "route": "train_grid_v03", "loss": 22.48078727203867, "training_GT_used": true}
+route_V: reuse UAV backbone cache
+route_V final MLE=5.711m P90=10.314m LSR@15=96.83% selected_capture=92.06% bank_capture=98.41% acq_acc=N/A speed_mae=16.200m/frame progress_mae=4.795m heading_mae=58.6deg jump_rate=22.58% max_step=86.89m final_leg=4 gt_leg=4
+[V40 VALIDATION] {"epoch": 2, "validation_mle_by_city": {"citya": 5.710521211830176}, "validation_mean_mle_m": 5.710521211830176}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_v05", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=29.1104 elapsed=2.6s eta=5.5s
+[V40 FRAME] 20/31 (64.5%) loss=16.3780 elapsed=5.5s eta=3.0s
+[V40 FRAME] 30/31 (96.8%) loss=11.7788 elapsed=8.2s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=11.9171 elapsed=8.4s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_v05", "loss": 19.083244123766498, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_v03", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=15.2786 elapsed=2.6s eta=9.5s
+[V40 FRAME] 20/46 (43.5%) loss=17.4081 elapsed=5.5s eta=7.2s
+[V40 FRAME] 30/46 (65.2%) loss=19.3822 elapsed=8.5s eta=4.5s
+[V40 FRAME] 40/46 (87.0%) loss=30.8500 elapsed=11.4s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=31.9652 elapsed=12.8s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_v03", "loss": 22.22404618366905, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_01", "frames": 66}
+[V40 FRAME] 10/66 (15.2%) loss=9.6739 elapsed=2.6s eta=14.6s
+[V40 FRAME] 20/66 (30.3%) loss=18.7824 elapsed=5.6s eta=13.0s
+[V40 FRAME] 30/66 (45.5%) loss=25.7170 elapsed=8.7s eta=10.5s
+[V40 FRAME] 40/66 (60.6%) loss=32.1565 elapsed=11.7s eta=7.6s
+[V40 FRAME] 50/66 (75.8%) loss=38.9896 elapsed=14.7s eta=4.7s
+[V40 FRAME] 60/66 (90.9%) loss=47.7573 elapsed=17.5s eta=1.8s
+[V40 FRAME] 66/66 (100.0%) loss=46.3568 elapsed=18.8s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_01", "loss": 30.321367516662136, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_h00", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=14.5212 elapsed=2.6s eta=9.5s
+[V40 FRAME] 20/46 (43.5%) loss=10.5907 elapsed=5.6s eta=7.3s
+[V40 FRAME] 30/46 (65.2%) loss=18.3015 elapsed=8.7s eta=4.6s
+[V40 FRAME] 40/46 (87.0%) loss=19.4793 elapsed=11.6s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=27.1291 elapsed=13.0s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_h00", "loss": 17.919207997944046, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_h01", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=24.4219 elapsed=2.7s eta=5.8s
+[V40 FRAME] 20/31 (64.5%) loss=19.2231 elapsed=5.7s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=15.7117 elapsed=8.6s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=14.1034 elapsed=8.9s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_h01", "loss": 19.420544193636985, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_h03", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=15.8151 elapsed=2.7s eta=9.7s
+[V40 FRAME] 20/46 (43.5%) loss=12.4853 elapsed=5.9s eta=7.6s
+[V40 FRAME] 30/46 (65.2%) loss=13.9787 elapsed=9.2s eta=4.9s
+[V40 FRAME] 40/46 (87.0%) loss=23.7411 elapsed=12.5s eta=1.9s
+[V40 FRAME] 46/46 (100.0%) loss=26.8490 elapsed=14.4s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_h03", "loss": 17.609582579654194, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_h02", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=26.9943 elapsed=3.6s eta=7.6s
+[V40 FRAME] 20/31 (64.5%) loss=20.4421 elapsed=7.5s eta=4.1s
+[V40 FRAME] 30/31 (96.8%) loss=11.5194 elapsed=11.3s eta=0.4s
+[V40 FRAME] 31/31 (100.0%) loss=12.8894 elapsed=11.5s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_h02", "loss": 19.545579633405133, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_v04", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=35.1574 elapsed=3.6s eta=7.5s
+[V40 FRAME] 20/31 (64.5%) loss=19.0608 elapsed=6.9s eta=3.8s
+[V40 FRAME] 30/31 (96.8%) loss=12.1679 elapsed=10.4s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=12.7993 elapsed=10.6s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_v04", "loss": 21.952085479613274, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_v00", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=14.6472 elapsed=2.7s eta=9.9s
+[V40 FRAME] 20/46 (43.5%) loss=9.0381 elapsed=5.6s eta=7.3s
+[V40 FRAME] 30/46 (65.2%) loss=16.7066 elapsed=8.5s eta=4.5s
+[V40 FRAME] 40/46 (87.0%) loss=21.1577 elapsed=11.6s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=28.0052 elapsed=13.1s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_v00", "loss": 17.411775785943735, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_v02", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=29.8053 elapsed=3.2s eta=6.7s
+[V40 FRAME] 20/31 (64.5%) loss=17.1569 elapsed=6.7s eta=3.7s
+[V40 FRAME] 30/31 (96.8%) loss=19.4597 elapsed=9.8s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=20.7773 elapsed=10.0s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_v02", "loss": 22.080330956366755, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_h04", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=27.3029 elapsed=2.9s eta=6.0s
+[V40 FRAME] 20/31 (64.5%) loss=15.0803 elapsed=5.9s eta=3.3s
+[V40 FRAME] 30/31 (96.8%) loss=12.7787 elapsed=8.8s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=14.2966 elapsed=9.0s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_h04", "loss": 18.46903053406746, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_v01", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=30.0552 elapsed=2.8s eta=5.9s
+[V40 FRAME] 20/31 (64.5%) loss=12.5562 elapsed=5.7s eta=3.2s
+[V40 FRAME] 30/31 (96.8%) loss=10.4904 elapsed=8.6s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=11.8719 elapsed=8.9s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_v01", "loss": 17.73440262579149, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 3, "epochs": 4, "city": "citya", "route": "train_grid_h05", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=30.2000 elapsed=2.8s eta=5.8s
+[V40 FRAME] 20/31 (64.5%) loss=14.1171 elapsed=5.8s eta=3.2s
+[V40 FRAME] 30/31 (96.8%) loss=11.4236 elapsed=8.7s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=12.7066 elapsed=8.9s eta=0.0s
+[V40 EPISODE] {"epoch": 3, "city": "citya", "route": "train_grid_h05", "loss": 18.70091669021114, "training_GT_used": true}
+route_V: reuse UAV backbone cache
+route_V final MLE=5.788m P90=10.395m LSR@15=96.83% selected_capture=90.48% bank_capture=98.41% acq_acc=N/A speed_mae=16.550m/frame progress_mae=4.856m heading_mae=58.6deg jump_rate=24.19% max_step=86.89m final_leg=4 gt_leg=4
+[V40 VALIDATION] {"epoch": 3, "validation_mle_by_city": {"citya": 5.7883576969751305}, "validation_mean_mle_m": 5.7883576969751305}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_h04", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=25.6118 elapsed=3.5s eta=7.3s
+[V40 FRAME] 20/31 (64.5%) loss=12.5180 elapsed=6.8s eta=3.7s
+[V40 FRAME] 30/31 (96.8%) loss=13.6897 elapsed=9.7s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=15.2499 elapsed=9.8s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_h04", "loss": 17.528587987346032, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_v01", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=29.3849 elapsed=2.7s eta=5.6s
+[V40 FRAME] 20/31 (64.5%) loss=10.9989 elapsed=5.5s eta=3.0s
+[V40 FRAME] 30/31 (96.8%) loss=11.9647 elapsed=8.2s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=13.6009 elapsed=8.4s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_v01", "loss": 17.602248630216046, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_h02", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=24.5121 elapsed=2.7s eta=5.7s
+[V40 FRAME] 20/31 (64.5%) loss=12.5434 elapsed=5.6s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=14.8732 elapsed=8.4s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=16.6114 elapsed=8.6s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_h02", "loss": 17.668410455026933, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_h05", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=28.5200 elapsed=2.7s eta=5.7s
+[V40 FRAME] 20/31 (64.5%) loss=12.6267 elapsed=5.6s eta=3.1s
+[V40 FRAME] 30/31 (96.8%) loss=14.2724 elapsed=8.5s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=16.0126 elapsed=8.7s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_h05", "loss": 18.704868778105705, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_v03", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=15.2769 elapsed=2.6s eta=9.5s
+[V40 FRAME] 20/46 (43.5%) loss=18.7194 elapsed=5.5s eta=7.2s
+[V40 FRAME] 30/46 (65.2%) loss=21.9937 elapsed=8.6s eta=4.6s
+[V40 FRAME] 40/46 (87.0%) loss=34.5259 elapsed=11.4s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=34.7716 elapsed=12.9s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_v03", "loss": 24.12126900838769, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_v05", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=24.3414 elapsed=3.5s eta=7.2s
+[V40 FRAME] 20/31 (64.5%) loss=13.3513 elapsed=6.8s eta=3.8s
+[V40 FRAME] 30/31 (96.8%) loss=13.4312 elapsed=9.8s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=14.0200 elapsed=10.0s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_v05", "loss": 17.16970468336536, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_h00", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=11.5885 elapsed=2.8s eta=10.0s
+[V40 FRAME] 20/46 (43.5%) loss=13.4248 elapsed=5.9s eta=7.7s
+[V40 FRAME] 30/46 (65.2%) loss=25.9542 elapsed=9.0s eta=4.8s
+[V40 FRAME] 40/46 (87.0%) loss=28.4733 elapsed=11.8s eta=1.8s
+[V40 FRAME] 46/46 (100.0%) loss=36.1028 elapsed=13.3s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_h00", "loss": 22.60308169282001, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_v04", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=32.8461 elapsed=3.1s eta=6.5s
+[V40 FRAME] 20/31 (64.5%) loss=16.2346 elapsed=6.0s eta=3.3s
+[V40 FRAME] 30/31 (96.8%) loss=11.3631 elapsed=8.8s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=12.1787 elapsed=9.0s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_v04", "loss": 20.104185088988274, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_h01", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=22.6089 elapsed=2.9s eta=6.0s
+[V40 FRAME] 20/31 (64.5%) loss=15.1614 elapsed=5.8s eta=3.2s
+[V40 FRAME] 30/31 (96.8%) loss=14.4266 elapsed=8.5s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=14.1881 elapsed=8.7s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_h01", "loss": 17.33626085712064, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_h03", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=15.1078 elapsed=2.8s eta=10.3s
+[V40 FRAME] 20/46 (43.5%) loss=14.3195 elapsed=5.7s eta=7.4s
+[V40 FRAME] 30/46 (65.2%) loss=19.1785 elapsed=8.5s eta=4.5s
+[V40 FRAME] 40/46 (87.0%) loss=29.0231 elapsed=11.4s eta=1.7s
+[V40 FRAME] 46/46 (100.0%) loss=30.4224 elapsed=12.9s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_h03", "loss": 20.58682680130005, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_v02", "frames": 31}
+[V40 FRAME] 10/31 (32.3%) loss=27.9180 elapsed=3.1s eta=6.6s
+[V40 FRAME] 20/31 (64.5%) loss=14.3604 elapsed=6.2s eta=3.4s
+[V40 FRAME] 30/31 (96.8%) loss=16.8342 elapsed=9.1s eta=0.3s
+[V40 FRAME] 31/31 (100.0%) loss=18.1395 elapsed=9.3s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_v02", "loss": 19.68563010615687, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_grid_v00", "frames": 46}
+[V40 FRAME] 10/46 (21.7%) loss=13.5645 elapsed=3.1s eta=11.1s
+[V40 FRAME] 20/46 (43.5%) loss=10.3702 elapsed=6.5s eta=8.5s
+[V40 FRAME] 30/46 (65.2%) loss=17.9421 elapsed=10.4s eta=5.5s
+[V40 FRAME] 40/46 (87.0%) loss=19.0123 elapsed=13.3s eta=2.0s
+[V40 FRAME] 46/46 (100.0%) loss=22.7867 elapsed=14.9s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_grid_v00", "loss": 16.319233541903287, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[V40 ROUTE START] {"epoch": 4, "epochs": 4, "city": "citya", "route": "train_01", "frames": 66}
+[V40 FRAME] 10/66 (15.2%) loss=10.4568 elapsed=3.2s eta=17.8s
+[V40 FRAME] 20/66 (30.3%) loss=17.2086 elapsed=6.5s eta=15.0s
+[V40 FRAME] 30/66 (45.5%) loss=20.9156 elapsed=9.6s eta=11.6s
+[V40 FRAME] 40/66 (60.6%) loss=19.4374 elapsed=12.8s eta=8.3s
+[V40 FRAME] 50/66 (75.8%) loss=16.8223 elapsed=15.9s eta=5.1s
+[V40 FRAME] 60/66 (90.9%) loss=16.0338 elapsed=18.9s eta=1.9s
+[V40 FRAME] 66/66 (100.0%) loss=12.2350 elapsed=20.8s eta=0.0s
+[V40 EPISODE] {"epoch": 4, "city": "citya", "route": "train_01", "loss": 16.171804478674225, "training_GT_used": true}
+route_V: reuse UAV backbone cache
+route_V final MLE=5.739m P90=10.957m LSR@15=96.83% selected_capture=92.06% bank_capture=98.41% acq_acc=N/A speed_mae=17.262m/frame progress_mae=4.929m heading_mae=58.6deg jump_rate=20.97% max_step=86.89m final_leg=4 gt_leg=4
+[V40 VALIDATION] {"epoch": 4, "validation_mle_by_city": {"citya": 5.739395597517671}, "validation_mean_mle_m": 5.739395597517671}
+# Bearing-UAV prepared-route model evaluation
+
+Training supervision: `gt_train`; temporal initialization: `random_temporal`.
+Inference does not read the current-frame GT column. Held-out waypoints are predeclared independently of selected GT; GT was used offline to assemble synthetic episodes.
+This is a custom route subset of Bearing-UAV 90K, not official Table 6.
+
+| City | Route | Frames | MLE (m) | P90 (m) | LSR@15 | Capture |
+|---|---|---:|---:|---:|---:|---:|
+Held-out test was not evaluated in this training run.
+[V40 DONE] /yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/temporal_raw_peak/peak_raw0/train/report.md

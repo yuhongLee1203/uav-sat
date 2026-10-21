@@ -1,0 +1,51 @@
+All 1482 predictions validated: {'Argmax': 0.0, 'Weighted Average': 0.00017503547591620497, 'Mean Shift (original post-iteration tail)': 0.0}
+Trial 1 a/test_01 done
+Trial 1 a/test_02 done
+Trial 1 b/test_01 done
+Trial 1 b/test_02 done
+Trial 1 c/test_01 done
+Trial 1 c/test_02 done
+Trial 1 d/test_01 done
+Trial 1 d/test_02 done
+Trial 2 a/test_01 done
+Trial 2 a/test_02 done
+Trial 2 b/test_01 done
+Trial 2 b/test_02 done
+Trial 2 c/test_01 done
+Trial 2 c/test_02 done
+Trial 2 d/test_01 done
+Trial 2 d/test_02 done
+Trial 3 a/test_01 done
+Trial 3 a/test_02 done
+Trial 3 b/test_01 done
+Trial 3 b/test_02 done
+Trial 3 c/test_01 done
+Trial 3 c/test_02 done
+Trial 3 d/test_01 done
+Trial 3 d/test_02 done
+# 原實作比較：MS只排除迭代（2026-10-17）
+
+本次不把MS改寫成直接加權平均，也不先合併成1點。GPU0 RTX3090、batch=1、FP32；8條route各1幀、3輪輪替順序、每輪每方法每幀50次，共每方法1,200次。誤差在全部1,482筆核對。
+
+## 明確起訖
+
+- Argmax：36候選座標與原logits已在GPU → 找最大索引 → 讀取XY。
+- Weighted Average：相同座標／logits已在GPU → τ縮放／softmax → 36點加權加總 → XY。
+- MS：原版設定的3次迭代已完成，36個收斂seed及迭代用候選機率已在GPU → density → β softmax → 原碼basin合併 → 最終XY。
+- MS原始機率是迭代已必需的中間狀態，沒有重算；density及seed權重不預先計算。
+- 三者統一使用perf_counter_ns，前後CUDA同步；包含實際Python發射／控制流程與GPU完成時間。沒有使用CUDA graph或除以batch數。排除模型特徵與candidate scoring；不計輸出XY以後的padding／compact等metadata。
+
+| 方法 | 實際耗時 median (ms) | P10–P90 (ms) | MLE (m) |
+| --- | ---: | ---: | ---: |
+| Argmax | 0.074228 | 0.072668–0.084231 | 4.135790 |
+| Weighted Average | 0.093070 | 0.091302–0.109160 | 3.748509 |
+| Mean Shift (original post-iteration tail) | 3.025765 | 2.925137–3.353610 | 3.759128 |
+
+這是「MS迭代已完成」條件下的原實作剩餘解碼時間；與舊graph純GPU加總數值口徑不同，不能直接混成同一表。MS合併原碼含逐seed的nonzero／tolist及Python集合遍歷，涉及GPU到CPU同步，因此實際延遲明顯較高。此數字描述目前原碼，不表示所有MS GPU實作都有相同成本。
+
+原版同一批資料固定執行3次迭代，沒有額外檢查數學收斂容差；此處「收斂後」沿用原版迭代已完成的狀態。權重、候選與分數來源維持1016原版本；沒有重訓，也沒有更改輸出以符合速度或精度排序。
+
+完整數值：results.json；逐次時間：timing_raw.csv；被計時的原合併片段：original_merge_timed_source.txt。
+
+重跑：`python3 report/1016/benchmark_decoder_native.py`。
+

@@ -1,0 +1,50 @@
+{
+  "protocol": "final-coordinate aggregation only",
+  "formal_search_protocol": {
+    "protocol_name": "unified_fixed_radial_8m_v1",
+    "main_jitter_m": 8.0,
+    "jitter_definition": "fixed radial magnitude; deterministic changing direction",
+    "main_grid_size": 6,
+    "main_candidate_count": 36,
+    "decoder": "softms",
+    "meanshift_bandwidth_m": 8.0,
+    "score_temperature_tau": 0.3,
+    "seed": 2026,
+    "minimum_candidate_capture_rate_pct": 95.0,
+    "formal_oracle_zero_m": false,
+    "train_route": "route_A",
+    "test_routes": [
+      "route_B",
+      "route_C"
+    ]
+  },
+  "excluded_from_timing": [
+    "feature extraction",
+    "candidate retrieval",
+    "similarity scoring",
+    "softmax construction",
+    "MeanShift iterations/convergence",
+    "basin consolidation",
+    "Kalman",
+    "GRU",
+    "full-pipeline latency/FPS"
+  ],
+  "grid_size": 6,
+  "patch_count_N": 36,
+  "sampled_frames": 512,
+  "routes": [
+    "route_B",
+    "route_C"
+  ],
+  "mean_active_ms_modes_K": 1.525390625,
+  "median_active_ms_modes_K": 1.0,
+  "min_active_ms_modes_K": 1,
+  "max_active_ms_modes_K": 13,
+  "weighted_centroid_aggregation_ms": 0.02856426000595093,
+  "softms_final_mode_aggregation_ms": 0.027591910362243652,
+  "aggregation_speed_ratio_weighted_over_softms": 1.035240388611795,
+  "repeats": 200,
+  "warmup": 20,
+  "timing_device": "cuda:0",
+  "fps_reported": false
+}

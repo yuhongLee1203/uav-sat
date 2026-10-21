@@ -1,0 +1,17 @@
+{
+  "selection_data": "Route-A validation only",
+  "source_suite": "/yh/study/uav-sat/v39_DirectFinalMS/temporal_context_v3_noinnovation_20260919_135243",
+  "source_architecture": "V39_Forward18_TemporalContextV3_VisualPosition_NoInnovation_GRU_Kalman_Final6",
+  "gru_inputs": ["temporal_mean", "delta", "delta2", "satellite_context", "forward18_softms_visual_position", "previous_state"],
+  "position_innovation_input": false,
+  "gru_correction_gain": 0.05,
+  "gru_motion_gain": 0.15,
+  "gru_variance_gain": 0.00,
+  "final_ms_grid": 6,
+  "ms_bandwidth_m": 6.0,
+  "ms_kf_prior_weight": 1.5,
+  "ms_reference_prior_weight": 3.0,
+  "routeA_val_mle_m": 1.448800308,
+  "routeA_val_p90_m": 2.441392619,
+  "routeA_val_lsr5_pct": 100.000000000
+}

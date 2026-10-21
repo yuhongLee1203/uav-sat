@@ -1,0 +1,13 @@
+Original replay root: /yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368
+CPU: Intel(R) Xeon(R) Gold 5218 CPU @ 2.30GHz
+GPU: NVIDIA GeForce RTX 3090; city evaluations ran on GPU 0/5/6
+Current PyTorch used to analyze checkpoints: 1.13.1+cu117
+Current PyTorch CUDA build: 11.7
+Original timing source: full variant per-frame end_to_end_latency_ms fields
+Original timing implementation: full/runtime/robust_tracker.py run_route_inference
+Timing includes 256x256 UAV backbone feature extraction, cross-view scoring, front Mean Shift, GRU, Kalman, final candidate scoring, and final Mean Shift.
+Timing excludes image disk I/O, tensor preprocessing, model loading, satellite gallery construction.
+CUDA synchronization occurs before timer start and after final prediction. First 50 observations from each route excluded in analysis; no new inference was run.
+Original replay timing 8 routes x (route length minus 50) = 1082 measured observations.
+Architecture parameter breakdown: frozen MobileNetV3-small=927008, visual heads=1116161, temporal model=1731860. The visual backbone is frozen during training.
+Precision: no autocast detected in replay code; model operations use FP32; cached feature storage can be FP16.

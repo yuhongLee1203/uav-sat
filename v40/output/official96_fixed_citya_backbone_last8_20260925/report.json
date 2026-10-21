@@ -1,0 +1,41 @@
+{
+  "city": "citya",
+  "samples": 18000,
+  "architecture": "ICLR_Bearing4City_Forward18SoftMS_ResidualTemporalGRU_Kalman_FinalMS",
+  "backbone": "torchvision:mobilenet_v3_small",
+  "backbone_unfreeze_last_blocks": 8,
+  "resumed_from_interim": null,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "best_val_global_top1_MLE_m": 9.47015380859375,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 5.090916333236094,
+      "validation": {
+        "global_top1_MLE_m": 10.415779113769531,
+        "global_top1_P90_m": 18.724271774291992,
+        "global_top1_LSR15_pct": 82.66666412353516
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 4.916954603720837,
+      "validation": {
+        "global_top1_MLE_m": 9.720025062561035,
+        "global_top1_P90_m": 17.323076248168945,
+        "global_top1_LSR15_pct": 85.38888549804688
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 4.814397496501292,
+      "validation": {
+        "global_top1_MLE_m": 9.47015380859375,
+        "global_top1_P90_m": 16.32926368713379,
+        "global_top1_LSR15_pct": 86.8888931274414
+      }
+    }
+  ],
+  "checkpoint": "/yh/study/uav-sat/v40/output/official96_fixed_citya_backbone_last8_20260925/checkpoints/citya/visual_retrieval_A_only.pt"
+}

@@ -1,0 +1,38 @@
+[unified-runner] GPU grid lookup; CPU threads=2; Stage-1 jitter=fixed-radius
+satellite backbone cache: 256/95480
+satellite backbone cache: 5376/95480
+satellite backbone cache: 10496/95480
+satellite backbone cache: 15616/95480
+satellite backbone cache: 20736/95480
+satellite backbone cache: 25856/95480
+satellite backbone cache: 30976/95480
+satellite backbone cache: 36096/95480
+satellite backbone cache: 41216/95480
+satellite backbone cache: 46336/95480
+satellite backbone cache: 51456/95480
+satellite backbone cache: 56576/95480
+satellite backbone cache: 61696/95480
+satellite backbone cache: 66816/95480
+satellite backbone cache: 71936/95480
+satellite backbone cache: 77056/95480
+satellite backbone cache: 82176/95480
+satellite backbone cache: 87296/95480
+satellite backbone cache: 92416/95480
+satellite backbone cache: 95480/95480
+satellite gallery size=95480
+Route A backbone cache: 256/1732
+Route A backbone cache: 1732/1732
+Route A visual candidate capture=100.00%
+visual epoch=001/30 loss=4.72094 val_softms_mle=10.371m val_p90=16.630m val_lsr10=46.05%
+visual epoch=002/30 loss=4.14166 val_softms_mle=11.189m val_p90=18.127m val_lsr10=41.23%
+visual epoch=003/30 loss=3.80119 val_softms_mle=10.057m val_p90=16.953m val_lsr10=53.07%
+visual epoch=004/30 loss=3.53706 val_softms_mle=11.004m val_p90=18.703m val_lsr10=44.30%
+visual epoch=005/30 loss=3.31620 val_softms_mle=10.570m val_p90=16.930m val_lsr10=45.61%
+visual epoch=006/30 loss=3.12460 val_softms_mle=10.447m val_p90=17.557m val_lsr10=46.93%
+visual epoch=007/30 loss=3.02104 val_softms_mle=10.401m val_p90=17.479m val_lsr10=49.56%
+visual epoch=008/30 loss=2.84482 val_softms_mle=10.767m val_p90=17.941m val_lsr10=46.93%
+visual epoch=009/30 loss=2.79138 val_softms_mle=10.135m val_p90=18.379m val_lsr10=53.07%
+visual epoch=010/30 loss=2.71411 val_softms_mle=10.692m val_p90=18.368m val_lsr10=48.68%
+visual epoch=011/30 loss=2.62339 val_softms_mle=10.629m val_p90=18.593m val_lsr10=49.12%
+visual early stopping: Route A validation stopped improving
+best Route A visual validation SoftMS MLE=10.057m

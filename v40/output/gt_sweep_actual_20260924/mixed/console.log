@@ -1,0 +1,54 @@
+[V40] train=citya cityb eval=citya cityb supervision=gt_train output=v40/output/gt_sweep_actual_20260924/mixed
+[V40 CACHE] reused prior UAV backbone features; GT discarded
+route_A: reuse UAV backbone cache
+[visual_pseudo] frame=25 loss=11.1798
+[visual_pseudo] frame=50 loss=9.9171
+[visual_pseudo] frame=75 loss=12.0261
+[visual_pseudo] frame=100 loss=11.6300
+[visual_pseudo] frame=125 loss=7.2040
+[V40 EPISODE] {"epoch": 1, "city": "citya", "loss": 10.260912571595433, "training_GT_used": true}
+[V40 CACHE] reused prior UAV backbone features; GT discarded
+route_A: reuse UAV backbone cache
+[visual_pseudo] frame=25 loss=17.7233
+[visual_pseudo] frame=50 loss=16.0477
+[visual_pseudo] frame=75 loss=12.2738
+[visual_pseudo] frame=100 loss=14.6809
+[visual_pseudo] frame=125 loss=17.4040
+[V40 EPISODE] {"epoch": 1, "city": "cityb", "loss": 15.915879742187613, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[visual_pseudo] frame=25 loss=18.3023
+[visual_pseudo] frame=50 loss=12.5179
+[visual_pseudo] frame=75 loss=12.2264
+[visual_pseudo] frame=100 loss=12.0103
+[visual_pseudo] frame=125 loss=13.3005
+[V40 EPISODE] {"epoch": 2, "city": "cityb", "loss": 13.833357674234053, "training_GT_used": true}
+[V40 CACHE] reuse image-only train cache
+route_A: reuse UAV backbone cache
+[visual_pseudo] frame=25 loss=10.1031
+[visual_pseudo] frame=50 loss=9.3757
+[visual_pseudo] frame=75 loss=10.3538
+[visual_pseudo] frame=100 loss=8.9766
+[visual_pseudo] frame=125 loss=6.3679
+[V40 EPISODE] {"epoch": 2, "city": "citya", "loss": 9.069752730648307, "training_GT_used": true}
+route_B: reuse UAV backbone cache
+route_B final MLE=13.193m P90=25.597m LSR@15=65.22% selected_capture=62.73% bank_capture=96.89% acq_acc=N/A speed_mae=2.901m/frame progress_mae=12.125m heading_mae=35.4deg jump_rate=5.00% max_step=9.58m final_leg=11 gt_leg=11
+route_C: reuse UAV backbone cache
+route_C final MLE=25.720m P90=50.412m LSR@15=31.51% selected_capture=34.25% bank_capture=63.93% acq_acc=N/A speed_mae=2.789m/frame progress_mae=25.787m heading_mae=40.7deg jump_rate=3.21% max_step=11.25m final_leg=8 gt_leg=8
+route_B: reuse UAV backbone cache
+route_B final MLE=14.687m P90=24.814m LSR@15=58.22% selected_capture=58.22% bank_capture=92.47% acq_acc=N/A speed_mae=3.143m/frame progress_mae=13.011m heading_mae=37.5deg jump_rate=4.14% max_step=10.47m final_leg=11 gt_leg=11
+route_C: reuse UAV backbone cache
+route_C final MLE=32.795m P90=45.312m LSR@15=2.92% selected_capture=2.92% bank_capture=23.39% acq_acc=N/A speed_mae=3.002m/frame progress_mae=33.408m heading_mae=53.1deg jump_rate=6.47% max_step=9.76m final_leg=9 gt_leg=9
+# Bearing-UAV prepared-route model evaluation
+
+Training supervision: `gt_train`; temporal initialization: `shared`.
+Testing uses images + map/waypoints, no current-frame GT or route-duration pace prior.
+This is a custom route subset of Bearing-UAV 90K, not official Table 6.
+
+| City | Route | Frames | MLE (m) | P90 (m) | LSR@15 | Capture |
+|---|---|---:|---:|---:|---:|---:|
+| citya | test_01 | 161 | 13.193 | 25.597 | 65.22% | 62.73% |
+| citya | test_02 | 219 | 25.720 | 50.412 | 31.51% | 34.25% |
+| cityb | test_01 | 146 | 14.687 | 24.814 | 58.22% | 58.22% |
+| cityb | test_02 | 171 | 32.795 | 45.312 | 2.92% | 2.92% |
+[V40 DONE] v40/output/gt_sweep_actual_20260924/mixed/report.md

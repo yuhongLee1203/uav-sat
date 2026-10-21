@@ -1,0 +1,59 @@
+[PREPARED] PASS | city=cityb | step=8 m | selection=official_rsi96_seed42_temporal_v1 | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=9.148515 m | p90=13.842072 m | p95=14.898917 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[PATCH OK] stable UAV model-state feature cache
+[ARCH-AUDIT] forward_18: PASS
+[ARCH-AUDIT] base_geometry_6x6: PASS
+[ARCH-AUDIT] front_softms_source: PASS
+[ARCH-AUDIT] one_final_ms_source: PASS
+[ARCH-AUDIT] front_decoder_softms: PASS
+[ARCH-AUDIT] simple_seven_block_gru: PASS
+[ARCH-AUDIT] residual_motion_head: PASS
+[ARCH-AUDIT] temporal_reliability_gate: PASS
+[ARCH-AUDIT] causal_visual_displacement: PASS
+[ARCH-AUDIT] cadence_initialized_tracker: PASS
+[ARCH-AUDIT] motion_training_inference_aligned: PASS
+[ARCH-AUDIT] training_city_motion_scale_init: PASS
+[ARCH-AUDIT] forward_origin_backshift_covers_jitter: PASS
+[ARCH-AUDIT] protocol: PASS
+[ARCH-AUDIT] controlled_gt_reference_enabled: PASS
+[ARCH-AUDIT] frame_count: PASS
+[ARCH-AUDIT] gru_flag: PASS
+[ARCH-AUDIT] kalman_flag: PASS
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+Route A backbone cache: 99/99
+Route A visual candidate capture=100.00%
+resume visual training from epoch 25
+visual epoch=026/30 loss=4.62276 val_softms_mle=8.828m val_p90=13.178m val_lsr10=63.64%
+visual epoch=027/30 loss=4.66710 val_softms_mle=7.962m val_p90=11.482m val_lsr10=72.73%
+visual epoch=028/30 loss=4.24037 val_softms_mle=6.920m val_p90=13.222m val_lsr10=81.82%
+visual epoch=029/30 loss=3.90576 val_softms_mle=7.053m val_p90=11.336m val_lsr10=81.82%
+visual epoch=030/30 loss=3.83007 val_softms_mle=7.790m val_p90=11.856m val_lsr10=63.64%
+best Route A visual validation SoftMS MLE=6.821m
+route_A: reuse UAV backbone cache
+[ABCD CHECKPOINT] materialized carried best -> /yh/study/uav-sat/v39_otherdata/output/official96_gt_retrained_20260925_193430_1497825/cityb/train_frames1/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt
+resume temporal training from epoch 61
+temporal split train=[0,67) val=[71,82) route_length=781.2m
+City training-sequence mean forward step=9.121m/frame p90=13.857m/frame
+temporal epoch=061/72 loss=10.33648 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.504 radius=0.0m pred_step=8.227 target_step=9.121 pred_v=8.340 target_v=9.121 val_mle=3.452m val_p90=5.732m val_speed_mae=3.869 heading=0.1/-0.4deg val_progress_mae=0.000m val_heading_mae=22.0deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=3.690 best=1.813 patience=19/20
+temporal epoch=062/72 loss=9.91604 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.504 radius=0.0m pred_step=8.856 target_step=9.121 pred_v=8.892 target_v=9.121 val_mle=2.951m val_p90=5.723m val_speed_mae=4.060 heading=0.1/-0.4deg val_progress_mae=0.000m val_heading_mae=22.0deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=3.198 best=1.813 patience=20/20
+EARLY STOP: controlled local-prior validation score did not improve by 0.003 for 20 epochs.

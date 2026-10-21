@@ -1,0 +1,15 @@
+[submodule "v36-exp/others_paper/Bearing-UAV"]
+	path = v36-exp/others_paper/Bearing-UAV
+	url = https://github.com/liukejia121/bearinguav.git
+[submodule "v36-exp/others_paper/DenseUAV"]
+	path = v36-exp/others_paper/DenseUAV
+	url = https://github.com/Dmmm1997/DenseUAV.git
+[submodule "v36-exp/others_paper/GTA-UAV"]
+	path = v36-exp/others_paper/GTA-UAV
+	url = https://github.com/Yux1angJi/GTA-UAV.git
+[submodule "v36-exp/others_paper/InfoGeo"]
+	path = v36-exp/others_paper/InfoGeo
+	url = https://github.com/HRT00/Official_InfoGeo.git
+[submodule "v36-exp/others_paper/Sample4Geo"]
+	path = v36-exp/others_paper/Sample4Geo
+	url = https://github.com/Skyy93/Sample4Geo.git

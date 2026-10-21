@@ -1,0 +1,17 @@
+{
+  "method": "Game4Loc",
+  "protocol": "native class-paired training; fixed global gallery; no local prior",
+  "distance_definition": "Top-1 predicted gallery centre minus positive gallery centre",
+  "combined": {
+    "frames": 3534,
+    "MLE_m": 184.18230456123342,
+    "Median_m": 124.47972423982367,
+    "P90_m": 434.2765126696938,
+    "P95_m": 559.4386143320587,
+    "LSR@3_pct": 2.2354272778720996,
+    "LSR@5_pct": 5.065082059988681,
+    "LSR@10_pct": 7.838143746462932,
+    "LSR@15_pct": 12.054329371816639,
+    "FPS": 229.34759604009307
+  }
+}

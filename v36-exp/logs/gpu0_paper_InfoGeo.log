@@ -1,0 +1,15 @@
+InfoGeo epoch 01/12 loss=0.46836
+InfoGeo epoch 02/12 loss=0.18684
+InfoGeo epoch 03/12 loss=0.16657
+InfoGeo epoch 04/12 loss=0.13121
+InfoGeo epoch 05/12 loss=0.10498
+InfoGeo epoch 06/12 loss=0.11264
+InfoGeo epoch 07/12 loss=0.08276
+InfoGeo epoch 08/12 loss=0.07851
+InfoGeo epoch 09/12 loss=0.07284
+InfoGeo epoch 10/12 loss=0.11816
+InfoGeo epoch 11/12 loss=0.05710
+InfoGeo epoch 12/12 loss=0.09195
+InfoGeo route_B {'frames': 2276, 'MLE_m': 12.093052155929103, 'Median_m': 12.236906051635742, 'P90_m': 19.02794361114502, 'P95_m': 20.717868328094482, 'LSR@5_pct': 10.23725834797891, 'LSR@10_pct': 35.89630931458699, 'LSR@15_pct': 68.49736379613357, 'latency_ms': 9.49772205228651, 'FPS': 105.28840436631403}
+InfoGeo route_C {'frames': 1258, 'MLE_m': 12.593820943504525, 'Median_m': 12.715499877929688, 'P90_m': 19.730796241760252, 'P95_m': 21.206919288635248, 'LSR@5_pct': 9.220985691573928, 'LSR@10_pct': 32.98887122416534, 'LSR@15_pct': 66.21621621621621, 'latency_ms': 9.6099483416528, 'FPS': 104.05883199867561}
+wrote /yh/study/uav-sat/v36-exp/outputs/papers/InfoGeo/summary.json

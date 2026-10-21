@@ -1,0 +1,48 @@
+[PREPARED] PASS | city=citya | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.359172 m | p90=10.084329 m | p95=11.123011 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[ROUTE-REF-AUDIT] forward_18: PASS
+[ROUTE-REF-AUDIT] base_geometry_6x6: PASS
+[ROUTE-REF-AUDIT] front_decoder_softms: PASS
+[ROUTE-REF-AUDIT] one_final_ms_source: PASS
+[ROUTE-REF-AUDIT] simple_seven_block_gru: PASS
+[ROUTE-REF-AUDIT] residual_motion_head: PASS
+[ROUTE-REF-AUDIT] temporal_reliability_gate: PASS
+[ROUTE-REF-AUDIT] protocol_route_reference: PASS
+[ROUTE-REF-AUDIT] no_current_frame_gt_inference: PASS
+[ROUTE-REF-AUDIT] route_reference_only: PASS
+[ROUTE-REF-AUDIT] frame_count: PASS
+[ROUTE-REF-AUDIT] gru_flag: PASS
+[ROUTE-REF-AUDIT] kalman_flag: PASS
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+Route A backbone cache: 198/198
+Route A visual candidate capture=100.00%
+resume visual training from epoch 40
+visual epoch=041/41 loss=3.74102 val_softms_mle=10.768m val_p90=15.301m val_lsr10=30.77%
+best Route A visual validation SoftMS MLE=6.319m
+route_A backbone cache: 198/198
+[ABCD CHECKPOINT] materialized carried best -> /yh/study/uav-sat/v39_otherdata/output/abcd_table6_route_reference_20260923/citya/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt
+resume temporal training from epoch 94
+temporal split train=[0,136) val=[140,166) route_length=789.4m
+City training-sequence mean forward step=5.426m/frame p90=9.912m/frame
+temporal epoch=094/105 loss=18.63258 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=9.63% acq_conf=0.547 radius=60.0m pred_step=4.001 target_step=4.003 pred_v=3.814 target_v=4.003 val_mle=132.114m val_p90=164.338m val_speed_mae=3.124 heading=2.9/1.2deg val_progress_mae=132.179m val_heading_mae=36.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=0.00% score=138.308 best=5.629 patience=21/20
+EARLY STOP: controlled local-prior validation score did not improve by 0.003 for 20 epochs.

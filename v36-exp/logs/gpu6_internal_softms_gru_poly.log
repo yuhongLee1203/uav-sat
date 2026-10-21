@@ -1,0 +1,22 @@
+============================================================================================================
+V36Exp_softms_gru_poly
+device=cuda
+Protocol: CONTROLLED GT+smooth-jitter local prior. The current-frame GT coordinate is intentionally used only to center the local SAT search window; this is not autonomous localization.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+reuse visual checkpoint: /yh/study/uav-sat/v36-exp/outputs/internal/final_4x6_v2/softms_gru_poly/checkpoints/visual_retrieval_A_only.pt
+route_A: reuse UAV backbone cache
+temporal split train=[0,1196) val=[1228,1456) route_length=4938.3m
+Route-A GT mean forward step=2.937m/frame p90=3.555m/frame
+Traceback (most recent call last):
+  File "run_v36_4x6.py", line 98, in <module>
+    robust_tracker.main()
+  File "git:bfb9fdba/robust_tracker.py", line 2837, in main
+  File "git:bfb9fdba/robust_tracker.py", line 2707, in train_pipeline
+  File "git:bfb9fdba/robust_tracker.py", line 1948, in train_temporal_model
+  File "git:bfb9fdba/robust_tracker.py", line 1240, in visual_observation
+  File "run_v36_4x6.py", line 91, in forward_nx6_candidate_batch
+    return CandidateBatch(selected_indices, centers, z_uav, z_sat, raw_logits, raw_prob, raw_top1_xy, softms_xy, softms_support)
+TypeError: __init__() missing 1 required positional argument: 'softms_mode_count'

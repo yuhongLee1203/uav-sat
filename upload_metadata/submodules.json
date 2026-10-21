@@ -1,0 +1,46 @@
+[
+  {
+    "path": "v36-exp/others_paper/Bearing-UAV",
+    "url": "https://github.com/liukejia121/bearinguav.git",
+    "gitlink_commit": "d16e558a14bd0a9142c6901793fe6a6813e4e954",
+    "local_HEAD": "d16e558a14bd0a9142c6901793fe6a6813e4e954",
+    "patch": null,
+    "untracked_code": []
+  },
+  {
+    "path": "v36-exp/others_paper/DenseUAV",
+    "url": "https://github.com/Dmmm1997/DenseUAV.git",
+    "gitlink_commit": "b8de18751675fcc0a7a40938b4cd66549647d690",
+    "local_HEAD": "b8de18751675fcc0a7a40938b4cd66549647d690",
+    "patch": null,
+    "untracked_code": [
+      "upload_metadata/submodules/DenseUAV/untracked/datasets/__init__.py"
+    ]
+  },
+  {
+    "path": "v36-exp/others_paper/GTA-UAV",
+    "url": "https://github.com/Yux1angJi/GTA-UAV.git",
+    "gitlink_commit": "1fbc3dbe452db75e82539474f6e2c79d54ad52ac",
+    "local_HEAD": "1fbc3dbe452db75e82539474f6e2c79d54ad52ac",
+    "patch": "upload_metadata/submodules/GTA-UAV/local_changes.patch",
+    "untracked_code": []
+  },
+  {
+    "path": "v36-exp/others_paper/InfoGeo",
+    "url": "https://github.com/HRT00/Official_InfoGeo.git",
+    "gitlink_commit": "70dabff068fce636be5ea9b35f18bb3e68bd1f4b",
+    "local_HEAD": "70dabff068fce636be5ea9b35f18bb3e68bd1f4b",
+    "patch": null,
+    "untracked_code": [
+      "upload_metadata/submodules/InfoGeo/untracked/cvgl_base/helper.py"
+    ]
+  },
+  {
+    "path": "v36-exp/others_paper/Sample4Geo",
+    "url": "https://github.com/Skyy93/Sample4Geo.git",
+    "gitlink_commit": "498c6511478053ddb4a43f24a9f4942fab238f09",
+    "local_HEAD": "498c6511478053ddb4a43f24a9f4942fab238f09",
+    "patch": "upload_metadata/submodules/Sample4Geo/local_changes.patch",
+    "untracked_code": []
+  }
+]

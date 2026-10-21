@@ -1,0 +1,35 @@
+{
+  "route_name": "train_wide_h00",
+  "coordinate_system": "bearing_rsi_map_meters",
+  "mpp": 0.25,
+  "waypoints": [
+    {
+      "waypoint_order": 0,
+      "latitude": 128.0,
+      "longitude": 64.0,
+      "pixel_x": 256.0,
+      "pixel_y": 512.0
+    },
+    {
+      "waypoint_order": 1,
+      "latitude": 128.0,
+      "longitude": 960.0,
+      "pixel_x": 3840.0,
+      "pixel_y": 512.0
+    },
+    {
+      "waypoint_order": 2,
+      "latitude": 281.6,
+      "longitude": 960.0,
+      "pixel_x": 3840.0,
+      "pixel_y": 1126.4
+    },
+    {
+      "waypoint_order": 3,
+      "latitude": 281.6,
+      "longitude": 64.0,
+      "pixel_x": 256.0,
+      "pixel_y": 1126.4
+    }
+  ]
+}

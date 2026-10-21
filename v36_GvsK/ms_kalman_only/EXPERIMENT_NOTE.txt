@@ -1,0 +1,19 @@
+SoftMS + Kalman-only ablation
+==============================
+Main estimator flow:
+  SoftMS anchor + SoftMS response variance -> RouteKalman.update()
+  RouteKalman posterior [s,e,vs,ve] -> constant-velocity RouteKalman.predict()
+
+Disabled:
+  GRU recurrent correction
+  GRU velocity / acceleration
+  GRU heading / turn-rate
+  learned second-order polynomial
+
+Preserved:
+  original visual checkpoint
+  forward 3x6 local candidate search
+  Soft Mean-Shift decoder
+  visual confidence / response variance used by Kalman update
+  original constrained route-coordinate Kalman
+  same controlled 8 m smooth-jitter protocol

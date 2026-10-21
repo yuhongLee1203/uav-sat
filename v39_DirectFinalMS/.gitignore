@@ -1,0 +1,8 @@
+# The 2026-09-18 5x5 core ablation is the sole retained V39 result bundle.
+# Checkpoints and copied runtime trees are reproducibility by-products, not
+# paper results; keep them local and publish only tables, summaries, logs, and
+# per-route raw CSV predictions.
+/softms_5x5_core_ablation_20260918_220846/runtime_*/
+/softms_5x5_core_ablation_20260918_220846/**/checkpoints/
+/softms_5x5_core_ablation_20260918_220846/**/__pycache__/
+/softms_5x5_core_ablation_20260918_220846/**/*.pyc

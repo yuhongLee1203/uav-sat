@@ -1,0 +1,41 @@
+{
+  "original_replay": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_220434_1615534",
+  "original_protocol_file": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_220434_1615534/PROTOCOL.txt",
+  "primary_published_benchmark_paper": "https://arxiv.org/abs/2603.22153",
+  "published_values": {
+    "University-1652": {
+      "MLE_m": 33.15,
+      "LSR@15_pct": 15.11
+    },
+    "SUES-200": {
+      "MLE_m": 30.83,
+      "LSR@15_pct": 15.76
+    },
+    "DenseUAV": {
+      "MLE_m": 28.79,
+      "LSR@15_pct": 16.54
+    },
+    "GTA-UAV": {
+      "MLE_m": 28.43,
+      "LSR@15_pct": 27.96
+    },
+    "Bearing-UAV": {
+      "MLE_m": 8.61,
+      "LSR@15_pct": 89.36
+    },
+    "Bearing-UAV + WA": {
+      "MLE_m": 7.48,
+      "LSR@15_pct": 92.88
+    }
+  },
+  "all_our_metric_sources": "original replay per-frame CSV; recomputed here",
+  "n_frames": 1482,
+  "n_routes": 8,
+  "cities": [
+    "citya",
+    "cityb",
+    "cityc",
+    "cityd"
+  ],
+  "warning": "Our Method uses current-frame GT-assisted local/path reference; published Table 2 UAV-view methods use different reference protocol."
+}

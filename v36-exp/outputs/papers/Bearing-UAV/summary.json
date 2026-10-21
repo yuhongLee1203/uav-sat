@@ -1,0 +1,50 @@
+{
+  "method": "Bearing-UAV",
+  "official_source": "/yh/study/uav-sat/v36-exp/others_paper/Bearing-UAV",
+  "model": "vgg16.tv_in1k",
+  "adapter": "official Bearing-UAV VGG-16 backbone family; common local-gallery adapter",
+  "fairness_protocol": "same Route-A train / Route-B,C test; controlled GT+jitter forward 3x6 local gallery",
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "route_B": {
+    "frames": 2276,
+    "MLE_m": 12.463965240977247,
+    "Median_m": 12.549238204956055,
+    "P90_m": 19.078750610351562,
+    "P95_m": 20.704697608947754,
+    "LSR@5_pct": 7.864674868189807,
+    "LSR@10_pct": 31.942003514938488,
+    "LSR@15_pct": 68.62917398945518,
+    "latency_ms": 5.230096951276329,
+    "FPS": 191.20104451523878
+  },
+  "route_C": {
+    "frames": 1258,
+    "MLE_m": 12.624869401082515,
+    "Median_m": 12.574878215789795,
+    "P90_m": 19.42168769836426,
+    "P95_m": 20.951884746551514,
+    "LSR@5_pct": 6.43879173290938,
+    "LSR@10_pct": 31.24006359300477,
+    "LSR@15_pct": 67.32909379968204,
+    "latency_ms": 5.157856721922464,
+    "FPS": 193.87897995492878
+  },
+  "combined": {
+    "frames": 3534,
+    "MLE_m": 12.52124238682117,
+    "Median_m": 12.560868263244629,
+    "P90_m": 19.184045982360846,
+    "P95_m": 20.74403257369995,
+    "LSR@5_pct": 7.357102433503113,
+    "LSR@10_pct": 31.692133559705717,
+    "LSR@15_pct": 68.16638370118847,
+    "latency_ms": 5.204561257077554,
+    "FPS": 192.13915460023162
+  }
+}

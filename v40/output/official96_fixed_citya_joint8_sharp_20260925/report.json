@@ -1,0 +1,107 @@
+{
+  "city": "citya",
+  "samples": 18000,
+  "arguments": {
+    "city": "citya",
+    "source_checkpoint": "/yh/study/uav-sat/v40/output/official96_fixed_citya_joint_live4lr30_20260925/checkpoints/citya/visual_retrieval_A_only.pt",
+    "resume_interim": null,
+    "samples": 18000,
+    "epochs": 8,
+    "batch_size": 32,
+    "backbone_lr": 3e-05,
+    "head_lr": 3e-05,
+    "unfreeze_last_blocks": 8,
+    "target_sigma_m": 2.0,
+    "distance_loss_weight": 5.0,
+    "live_sat_topk": 4,
+    "live_sat_random": 16,
+    "uav_quarter_turn_augment": false,
+    "output": "/yh/study/uav-sat/v40/output/official96_fixed_citya_joint8_sharp_20260925",
+    "seed": 2033
+  },
+  "architecture": "ICLR_Bearing4City_Forward18SoftMS_ResidualTemporalGRU_Kalman_FinalMS",
+  "backbone": "torchvision:mobilenet_v3_small",
+  "backbone_unfreeze_last_blocks": 8,
+  "live_sat_topk": 4,
+  "live_sat_random": 16,
+  "uav_quarter_turn_augment": false,
+  "resumed_from_interim": null,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "best_val_global_top1_MLE_m": 7.308150291442871,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 4.142487675950842,
+      "validation": {
+        "global_top1_MLE_m": 8.195903778076172,
+        "global_top1_P90_m": 14.261310577392578,
+        "global_top1_LSR15_pct": 91.22222137451172
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 4.048120275286763,
+      "validation": {
+        "global_top1_MLE_m": 7.99306058883667,
+        "global_top1_P90_m": 13.89282512664795,
+        "global_top1_LSR15_pct": 92.05554962158203
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 3.976362786584587,
+      "validation": {
+        "global_top1_MLE_m": 7.892990589141846,
+        "global_top1_P90_m": 13.562658309936523,
+        "global_top1_LSR15_pct": 92.05554962158203
+      }
+    },
+    {
+      "epoch": 4,
+      "train_loss": 3.922670237411409,
+      "validation": {
+        "global_top1_MLE_m": 7.883219242095947,
+        "global_top1_P90_m": 13.713706016540527,
+        "global_top1_LSR15_pct": 92.11111450195312
+      }
+    },
+    {
+      "epoch": 5,
+      "train_loss": 3.857879960325343,
+      "validation": {
+        "global_top1_MLE_m": 7.617119789123535,
+        "global_top1_P90_m": 13.607731819152832,
+        "global_top1_LSR15_pct": 92.55554962158203
+      }
+    },
+    {
+      "epoch": 6,
+      "train_loss": 3.7939150798955614,
+      "validation": {
+        "global_top1_MLE_m": 7.614725112915039,
+        "global_top1_P90_m": 13.516500473022461,
+        "global_top1_LSR15_pct": 92.66666412353516
+      }
+    },
+    {
+      "epoch": 7,
+      "train_loss": 3.7340471086182303,
+      "validation": {
+        "global_top1_MLE_m": 7.575420379638672,
+        "global_top1_P90_m": 13.503509521484375,
+        "global_top1_LSR15_pct": 92.55554962158203
+      }
+    },
+    {
+      "epoch": 8,
+      "train_loss": 3.6759033203125,
+      "validation": {
+        "global_top1_MLE_m": 7.308150291442871,
+        "global_top1_P90_m": 12.952228546142578,
+        "global_top1_LSR15_pct": 93.3888931274414
+      }
+    }
+  ],
+  "checkpoint": "/yh/study/uav-sat/v40/output/official96_fixed_citya_joint8_sharp_20260925/checkpoints/citya/visual_retrieval_A_only.pt"
+}

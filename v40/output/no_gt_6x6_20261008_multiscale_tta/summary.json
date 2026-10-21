@@ -1,0 +1,29 @@
+[
+  {
+    "name": "crop095",
+    "gpu": "0",
+    "scales": "1.0,0.95",
+    "MLE_m": 4.943735140773337,
+    "P90_m": 8.498678166942849,
+    "SelectedCandidateCapture_pct": 85.71428571428571,
+    "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_multiscale_tta/crop095/report.json"
+  },
+  {
+    "name": "crop090",
+    "gpu": "5",
+    "scales": "1.0,0.90",
+    "MLE_m": 5.01165427317735,
+    "P90_m": 11.6314562034113,
+    "SelectedCandidateCapture_pct": 85.71428571428571,
+    "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_multiscale_tta/crop090/report.json"
+  },
+  {
+    "name": "crop080",
+    "gpu": "6",
+    "scales": "1.0,0.80",
+    "MLE_m": 5.704111208493664,
+    "P90_m": 11.299327474156527,
+    "SelectedCandidateCapture_pct": 85.71428571428571,
+    "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_multiscale_tta/crop080/report.json"
+  }
+]

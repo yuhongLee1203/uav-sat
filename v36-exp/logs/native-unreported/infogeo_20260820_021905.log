@@ -1,0 +1,44 @@
+InfoGeo Route-A epoch 1/12: loss=2.096341
+InfoGeo Route-A epoch 2/12: loss=1.228519
+InfoGeo Route-A epoch 3/12: loss=0.787201
+InfoGeo Route-A epoch 4/12: loss=0.521954
+InfoGeo Route-A epoch 5/12: loss=0.401174
+InfoGeo Route-A epoch 6/12: loss=0.331259
+InfoGeo Route-A epoch 7/12: loss=0.267630
+InfoGeo Route-A epoch 8/12: loss=0.236113
+InfoGeo Route-A epoch 9/12: loss=0.202797
+InfoGeo Route-A epoch 10/12: loss=0.201746
+InfoGeo Route-A epoch 11/12: loss=0.152308
+InfoGeo Route-A epoch 12/12: loss=0.158658
+{
+  "method": "InfoGeo",
+  "implementation": "released InfoGeo slot/DIAS/cross-view fusion modules with portable public DINOv2-B replacement for omitted upstream local backbone paths",
+  "protocol": "Route A train; fixed global satellite gallery; Route B/C test; no local prior/jitter/temporal state",
+  "checkpoint": "/yh/study/uav-sat/v36-exp/outputs/native-unreported/InfoGeo/route_A_infogeo_released_slots.pt",
+  "routes": {
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 241.98922309345696,
+      "Median_m": 159.68209109724071,
+      "P90_m": 536.4399515981193,
+      "P95_m": 673.7610838571472,
+      "LSR@5_pct": 1.5377855887521967,
+      "LSR@10_pct": 4.130052724077329,
+      "LSR@15_pct": 7.293497363796134,
+      "latency_ms_fixed_gallery_similarity_only": 0.0013200801867592313,
+      "FPS_fixed_gallery_similarity_only": 757529.739503915
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 231.9158834738373,
+      "Median_m": 92.66500907189814,
+      "P90_m": 558.7197286295656,
+      "P95_m": 896.4346844534216,
+      "LSR@5_pct": 1.4308426073131957,
+      "LSR@10_pct": 4.213036565977743,
+      "LSR@15_pct": 8.187599364069953,
+      "latency_ms_fixed_gallery_similarity_only": 0.0014266299767884615,
+      "FPS_fixed_gallery_similarity_only": 700952.6059806596
+    }
+  }
+}

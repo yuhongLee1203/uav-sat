@@ -1,0 +1,6 @@
+# Install a JetPack-compatible CUDA build of torch/torchvision first.
+numpy
+Pillow
+open_clip_torch==2.32.0
+timm
+huggingface_hub

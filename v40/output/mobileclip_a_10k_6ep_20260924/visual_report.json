@@ -1,0 +1,97 @@
+{
+  "cities": [
+    "citya"
+  ],
+  "samples_per_city": 10000,
+  "coord_loss_weight": 0.25,
+  "label_smoothing": 0.05,
+  "hard_negatives": 0,
+  "hard_negative_weight": 1.0,
+  "fresh_visual_head": true,
+  "backbone": "mobileclip2_s2",
+  "test_paths_excluded_sha256": {
+    "citya": "96aa0b92836b3b3faa12fa04f48006e2fd516807eca4307aca7427857b47305d"
+  },
+  "best_val_mle": 5.263822555541992,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 4.361352568822549,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 12.283431053161621,
+          "SoftMS_MLE_m": 5.4243292808532715,
+          "SoftMS_P90_m": 9.18413257598877,
+          "LSR@10_pct": 94.40000057220459
+        }
+      },
+      "macro_val_mle": 5.4243292808532715
+    },
+    {
+      "epoch": 2,
+      "train_loss": 4.314230641574724,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 11.444478988647461,
+          "SoftMS_MLE_m": 5.3369855880737305,
+          "SoftMS_P90_m": 8.847774505615234,
+          "LSR@10_pct": 94.90000009536743
+        }
+      },
+      "macro_val_mle": 5.3369855880737305
+    },
+    {
+      "epoch": 3,
+      "train_loss": 4.273229561798962,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 10.908773422241211,
+          "SoftMS_MLE_m": 5.263822555541992,
+          "SoftMS_P90_m": 8.736004829406738,
+          "LSR@10_pct": 94.9999988079071
+        }
+      },
+      "macro_val_mle": 5.263822555541992
+    },
+    {
+      "epoch": 4,
+      "train_loss": 4.229784424423326,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 10.658255577087402,
+          "SoftMS_MLE_m": 5.40943717956543,
+          "SoftMS_P90_m": 9.01067066192627,
+          "LSR@10_pct": 93.99999976158142
+        }
+      },
+      "macro_val_mle": 5.40943717956543
+    },
+    {
+      "epoch": 5,
+      "train_loss": 4.197152381247663,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 10.494759559631348,
+          "SoftMS_MLE_m": 5.325737476348877,
+          "SoftMS_P90_m": 8.996737480163574,
+          "LSR@10_pct": 94.30000185966492
+        }
+      },
+      "macro_val_mle": 5.325737476348877
+    },
+    {
+      "epoch": 6,
+      "train_loss": 4.164527257283528,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 10.423937797546387,
+          "SoftMS_MLE_m": 5.33443546295166,
+          "SoftMS_P90_m": 8.795988082885742,
+          "LSR@10_pct": 94.40000057220459
+        }
+      },
+      "macro_val_mle": 5.33443546295166
+    }
+  ],
+  "checkpoint_root": "v40/output/mobileclip_a_10k_6ep_20260924/checkpoints"
+}

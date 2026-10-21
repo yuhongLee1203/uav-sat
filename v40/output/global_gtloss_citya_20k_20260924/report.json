@@ -1,0 +1,57 @@
+{
+  "city": "citya",
+  "samples": 20000,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "previous_task_checkpoint_loaded": false,
+  "excluded_test_manifest_sha256": "96aa0b92836b3b3faa12fa04f48006e2fd516807eca4307aca7427857b47305d",
+  "best_val_global_top1_MLE_m": 20.123228073120117,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 7.625140903689337,
+      "validation": {
+        "global_top1_MLE_m": 80.63542938232422,
+        "global_top1_P90_m": 258.7877502441406,
+        "global_top1_LSR15_pct": 36.599998474121094
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 6.107847609418504,
+      "validation": {
+        "global_top1_MLE_m": 40.45866394042969,
+        "global_top1_P90_m": 71.2519302368164,
+        "global_top1_LSR15_pct": 50.70000457763672
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 5.557968119357494,
+      "validation": {
+        "global_top1_MLE_m": 30.477025985717773,
+        "global_top1_P90_m": 41.095359802246094,
+        "global_top1_LSR15_pct": 56.69999694824219
+      }
+    },
+    {
+      "epoch": 4,
+      "train_loss": 5.222526540147498,
+      "validation": {
+        "global_top1_MLE_m": 26.01001739501953,
+        "global_top1_P90_m": 36.18147659301758,
+        "global_top1_LSR15_pct": 60.650001525878906
+      }
+    },
+    {
+      "epoch": 5,
+      "train_loss": 4.9910366957914745,
+      "validation": {
+        "global_top1_MLE_m": 20.123228073120117,
+        "global_top1_P90_m": 28.92342758178711,
+        "global_top1_LSR15_pct": 66.0999984741211
+      }
+    }
+  ],
+  "checkpoint": "v40/output/global_gtloss_citya_20k_20260924/checkpoints/citya/visual_retrieval_A_only.pt"
+}

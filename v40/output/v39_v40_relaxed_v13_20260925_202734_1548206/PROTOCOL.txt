@@ -1,0 +1,4 @@
+ABCD shared episodic training
+One model is updated by A/B/C/D route episodes; recurrent/filter state resets at every episode.
+suite=/yh/study/uav-sat/v40/output/v39_v40_relaxed_v13_20260925_202734_1548206
+completed=2026-09-25T21:44:06+08:00

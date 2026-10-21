@@ -1,0 +1,58 @@
+{
+  "city": "citya",
+  "samples": 18000,
+  "arguments": {
+    "city": "citya",
+    "source_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/train/checkpoints/citya/visual_retrieval_A_only.pt",
+    "resume_interim": null,
+    "samples": 18000,
+    "extra_train_routes_dir": "/yh/study/uav-sat/v40/data/official96_fixed_train_grid",
+    "extra_route_oversample": 5,
+    "epochs": 1,
+    "batch_size": 48,
+    "backbone_lr": 5e-06,
+    "head_lr": 3e-05,
+    "unfreeze_last_blocks": 8,
+    "target_sigma_m": 4.0,
+    "distance_loss_weight": 10.0,
+    "live_sat_topk": 16,
+    "live_sat_random": 16,
+    "live_sat_gt_nearest": 0,
+    "uav_quarter_turn_augment": true,
+    "output": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_route_oversample/route_repeat5/train",
+    "seed": 2081
+  },
+  "architecture": "ICLR_Bearing4City_Forward18SoftMS_ResidualTemporalGRU_Kalman_FinalMS",
+  "backbone": "torchvision:mobilenet_v3_small",
+  "backbone_unfreeze_last_blocks": 8,
+  "live_sat_topk": 16,
+  "live_sat_random": 16,
+  "live_sat_gt_nearest": 0,
+  "uav_quarter_turn_augment": true,
+  "resumed_from_interim": null,
+  "best_checkpoint_improved_in_this_run": false,
+  "best_checkpoint_training_protocol": "global_gallery_gt_loss_only",
+  "best_checkpoint_GT_selected_patches": false,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "best_val_global_top1_MLE_m": 5.2957682609558105,
+  "source_same_split_validation": {
+    "global_top1_MLE_m": 5.2957682609558105,
+    "global_top1_P90_m": 8.857731819152832,
+    "global_top1_LSR15_pct": 96.94444274902344
+  },
+  "extra_route_unique_train_images": 390,
+  "candidate_epoch_last": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_route_oversample/route_repeat5/train/candidate_epoch_last.pt",
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 4.6722563954959755,
+      "validation": {
+        "global_top1_MLE_m": 5.44591760635376,
+        "global_top1_P90_m": 9.148139953613281,
+        "global_top1_LSR15_pct": 96.44444274902344
+      }
+    }
+  ],
+  "checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_route_oversample/route_repeat5/train/checkpoints/citya/visual_retrieval_A_only.pt"
+}

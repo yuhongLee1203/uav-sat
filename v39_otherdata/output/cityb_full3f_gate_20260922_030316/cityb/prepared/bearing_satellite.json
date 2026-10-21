@@ -1,0 +1,10 @@
+{
+  "mode": "bearing_uav_pixel_meter",
+  "mpp": 0.25,
+  "width": 4096,
+  "height": 4096,
+  "city": "cityb",
+  "rsi_id": "36bc",
+  "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+  "metadata_csv": "/yh/study/cvpr_data/Bearing_UAV_90K/c4m_254k_96bc_b15_s100_v3d/metadata/metadata.csv"
+}

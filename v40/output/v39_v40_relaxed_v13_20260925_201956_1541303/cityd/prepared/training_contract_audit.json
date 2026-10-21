@@ -1,0 +1,27 @@
+{
+  "status": "PASS",
+  "city": "cityd",
+  "checked_frames": 801,
+  "coordinate_formula": "block*256 + 256 + norm*128",
+  "meters_per_pixel": 0.25,
+  "max_pixel_error": 4.992041340301512e-07,
+  "max_meter_error": 4.998646545573138e-07,
+  "native_gt": [
+    "block_x",
+    "block_y",
+    "x_norm",
+    "y_norm",
+    "theta"
+  ],
+  "derived_temporal_targets": [
+    "step",
+    "velocity",
+    "acceleration",
+    "ground_track_heading"
+  ],
+  "active_losses": [
+    "measurement",
+    "next_step",
+    "variance_nll"
+  ]
+}

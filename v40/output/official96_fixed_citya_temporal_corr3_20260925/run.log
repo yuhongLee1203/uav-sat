@@ -1,0 +1,22 @@
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 32/32
+[visual_pseudo] frame=25 loss=14.3902
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_02_shiftn20_step25", "loss": 13.738445401191711, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 41/41
+[visual_pseudo] frame=25 loss=9.6407
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_02_shiftp20_step20", "loss": 11.80345158751418, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 28/28
+[visual_pseudo] frame=25 loss=127.4947
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_03_shiftp25_step30", "loss": 169.915193097932, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 28/28
+[visual_pseudo] frame=25 loss=258.2039
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_03_shiftn25_step30", "loss": 306.29982004846846, "training_GT_used": true}
+[V40 CACHE] built image-only train cache
+route_A backbone cache: 66/66
+[visual_pseudo] frame=25 loss=9.9564
+[visual_pseudo] frame=50 loss=11.7920
+[V40 EPISODE] {"epoch": 1, "city": "citya", "route": "train_01", "loss": 12.117173530838706, "training_GT_used": true}
+route_V backbone cache: 63/63

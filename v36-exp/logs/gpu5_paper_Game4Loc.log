@@ -1,0 +1,15 @@
+Game4Loc epoch 01/12 loss=0.77669
+Game4Loc epoch 02/12 loss=0.19027
+Game4Loc epoch 03/12 loss=0.12906
+Game4Loc epoch 04/12 loss=0.09644
+Game4Loc epoch 05/12 loss=0.09433
+Game4Loc epoch 06/12 loss=0.06908
+Game4Loc epoch 07/12 loss=0.06524
+Game4Loc epoch 08/12 loss=0.06858
+Game4Loc epoch 09/12 loss=0.05803
+Game4Loc epoch 10/12 loss=0.05283
+Game4Loc epoch 11/12 loss=0.05566
+Game4Loc epoch 12/12 loss=0.05464
+Game4Loc route_B {'frames': 2276, 'MLE_m': 11.866837019248095, 'Median_m': 11.768649578094482, 'P90_m': 18.954254150390625, 'P95_m': 20.660974502563477, 'LSR@5_pct': 9.885764499121265, 'LSR@10_pct': 38.62038664323374, 'LSR@15_pct': 72.23198594024605, 'latency_ms': 17.513666453730657, 'FPS': 57.098266810202155}
+Game4Loc route_C {'frames': 1258, 'MLE_m': 12.80030351431836, 'Median_m': 13.165882587432861, 'P90_m': 20.109406852722167, 'P95_m': 21.888817882537836, 'LSR@5_pct': 8.505564387917328, 'LSR@10_pct': 33.147853736089026, 'LSR@15_pct': 65.26232114467409, 'latency_ms': 18.57658125178021, 'FPS': 53.83121826596426}
+wrote /yh/study/uav-sat/v36-exp/outputs/papers/Game4Loc/summary.json

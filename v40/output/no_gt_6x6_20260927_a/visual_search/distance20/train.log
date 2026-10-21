@@ -1,0 +1,21 @@
+[BACKBONE GTLOSS] epoch=1 samples=48/16200 loss=6.1635
+[BACKBONE GTLOSS] epoch=1 samples=2448/16200 loss=5.8012
+[BACKBONE GTLOSS] epoch=1 samples=4848/16200 loss=5.2710
+[BACKBONE GTLOSS] epoch=1 samples=7248/16200 loss=6.2223
+[BACKBONE GTLOSS] epoch=1 samples=9648/16200 loss=5.6571
+[BACKBONE GTLOSS] epoch=1 samples=12048/16200 loss=5.8213
+[BACKBONE GTLOSS] epoch=1 samples=14448/16200 loss=5.9765
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+[BACKBONE GTLOSS] {"epoch": 1, "train_loss": 5.817887234264577, "validation": {"global_top1_MLE_m": 5.452739238739014, "global_top1_P90_m": 9.161271095275879, "global_top1_LSR15_pct": 96.94444274902344}}
+[BACKBONE GTLOSS DONE] /yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_search/distance20/train/report.json

@@ -1,0 +1,54 @@
+{
+  "temporal_checkpoint": "/yh/study/uav-sat/v40/output/fused_temporal_citya_grid_parallel_20260926/grid_06x06/train/best_temporal_interim.pt",
+  "visual_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_search/continue_seed2061/train/checkpoints/citya/visual_retrieval_A_only.pt",
+  "variants": [
+    {
+      "weight": 6,
+      "gpu": 6,
+      "MLE_m": 4.931824293470856,
+      "P90_m": 8.349607438474166,
+      "SelectedCandidateCapture_pct": 90.47619047619048,
+      "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/scorer_sweep/raw_weight_06/report.json"
+    },
+    {
+      "weight": 3,
+      "gpu": 0,
+      "MLE_m": 4.983822276517615,
+      "P90_m": 9.563413271372653,
+      "SelectedCandidateCapture_pct": 93.65079365079364,
+      "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/scorer_sweep/raw_weight_03/report.json"
+    },
+    {
+      "weight": 2,
+      "gpu": 6,
+      "MLE_m": 5.033127106763058,
+      "P90_m": 9.727656679357288,
+      "SelectedCandidateCapture_pct": 93.65079365079364,
+      "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/scorer_sweep/raw_weight_02/report.json"
+    },
+    {
+      "weight": 4,
+      "gpu": 5,
+      "MLE_m": 5.061572645705929,
+      "P90_m": 9.563413271372653,
+      "SelectedCandidateCapture_pct": 93.65079365079364,
+      "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/scorer_sweep/raw_weight_04/report.json"
+    },
+    {
+      "weight": 1,
+      "gpu": 5,
+      "MLE_m": 5.304784327404099,
+      "P90_m": 9.87251760127264,
+      "SelectedCandidateCapture_pct": 87.3015873015873,
+      "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/scorer_sweep/raw_weight_01/report.json"
+    },
+    {
+      "weight": 0,
+      "gpu": 0,
+      "MLE_m": 322.70288965306895,
+      "P90_m": 601.3180727792965,
+      "SelectedCandidateCapture_pct": 3.1746031746031744,
+      "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/scorer_sweep/raw_weight_00/report.json"
+    }
+  ]
+}

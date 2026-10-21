@@ -1,0 +1,84 @@
+{
+  "route_name": "test_02",
+  "coordinate_system": "bearing_rsi_map_meters",
+  "mpp": 0.25,
+  "waypoints": [
+    {
+      "waypoint_order": 0,
+      "latitude": 975.0,
+      "longitude": 87.5,
+      "pixel_x": 350.0,
+      "pixel_y": 3900.0
+    },
+    {
+      "waypoint_order": 1,
+      "latitude": 900.0,
+      "longitude": 150.0,
+      "pixel_x": 600.0,
+      "pixel_y": 3600.0
+    },
+    {
+      "waypoint_order": 2,
+      "latitude": 925.0,
+      "longitude": 212.5,
+      "pixel_x": 850.0,
+      "pixel_y": 3700.0
+    },
+    {
+      "waypoint_order": 3,
+      "latitude": 837.5,
+      "longitude": 275.0,
+      "pixel_x": 1100.0,
+      "pixel_y": 3350.0
+    },
+    {
+      "waypoint_order": 4,
+      "latitude": 850.0,
+      "longitude": 337.5,
+      "pixel_x": 1350.0,
+      "pixel_y": 3400.0
+    },
+    {
+      "waypoint_order": 5,
+      "latitude": 775.0,
+      "longitude": 400.0,
+      "pixel_x": 1600.0,
+      "pixel_y": 3100.0
+    },
+    {
+      "waypoint_order": 6,
+      "latitude": 787.5,
+      "longitude": 462.5,
+      "pixel_x": 1850.0,
+      "pixel_y": 3150.0
+    },
+    {
+      "waypoint_order": 7,
+      "latitude": 700.0,
+      "longitude": 525.0,
+      "pixel_x": 2100.0,
+      "pixel_y": 2800.0
+    },
+    {
+      "waypoint_order": 8,
+      "latitude": 725.0,
+      "longitude": 587.5,
+      "pixel_x": 2350.0,
+      "pixel_y": 2900.0
+    },
+    {
+      "waypoint_order": 9,
+      "latitude": 637.5,
+      "longitude": 650.0,
+      "pixel_x": 2600.0,
+      "pixel_y": 2550.0
+    },
+    {
+      "waypoint_order": 10,
+      "latitude": 662.5,
+      "longitude": 712.5,
+      "pixel_x": 2850.0,
+      "pixel_y": 2650.0
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+City,Train Sequence,Train Samples,Validation Samples,Test_01 Samples,Test_02 Samples,Train Route Total,Unused Guard/Tail Samples
+A,train_01,122,1,161,219,198,75
+B,train_01,121,1,146,171,196,74
+C,train_01,121,1,148,226,196,74
+D,train_01,120,1,150,261,195,74

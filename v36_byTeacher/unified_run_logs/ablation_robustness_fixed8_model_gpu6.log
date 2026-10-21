@@ -1,0 +1,3 @@
+[unified-runner] GPU grid lookup; CPU threads=2; Stage-1 jitter=fixed-radius
+[robustness] jitter=16.0m SKIP because capture < 95.0%
+[robustness] jitter=20.0m SKIP because capture < 95.0%

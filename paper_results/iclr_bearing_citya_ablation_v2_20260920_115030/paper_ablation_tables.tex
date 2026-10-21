@@ -1,0 +1,45 @@
+% Auto-generated from measured Bearing-UAV outputs. Do not edit values manually.
+\begin{table}[t]
+\caption{Component ablation across Bearing-UAV Cities A--D.}
+\label{tab:component-ablation}
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Variant & MLE$\downarrow$ & P90$\downarrow$ & LSR@3$\uparrow$ & LSR@5$\uparrow$ & LSR@10$\uparrow$ \\
+\midrule
+w/o GRU & 4.406 & 7.257 & 28.88 & 62.13 & 98.37 \\
+w/o Kalman & 3.674 & 6.668 & 41.14 & 76.57 & 99.73 \\
+w/o MeanShift & 6.331 & 11.461 & 21.80 & 38.69 & 85.01 \\
+Full & 3.785 & 6.750 & 39.24 & 75.48 & 99.46 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\caption{Temporal input and final MeanShift window ablations.}
+\label{tab:temporal-window-ablation}
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Temporal input & MLE$\downarrow$ & P90$\downarrow$ & LSR@3$\uparrow$ & LSR@5$\uparrow$ \\
+\midrule
+1 frame & 3.763 & 6.784 & 39.51 & 74.11 \\
+2 frames & 3.723 & 6.653 & 43.60 & 76.02 \\
+Full & 3.785 & 6.750 & 39.24 & 75.48 \\
+\bottomrule
+\end{tabular}
+\vspace{0.8em}
+\begin{tabular}{lrrrr}
+\toprule
+MS window & Candidates & MLE$\downarrow$ & LSR@5$\uparrow$ & Latency (ms)$\downarrow$ \\
+\midrule
+4$\times$4 & 16 & 4.234 & 69.21 & 12.725 \\
+5$\times$5 & 25 & 3.784 & 75.48 & 10.953 \\
+6$\times$6 & 36 & 3.785 & 75.48 & 9.445 \\
+7$\times$7 & 49 & 3.761 & 76.02 & 17.301 \\
+8$\times$8 & 64 & 3.761 & 76.02 & 18.164 \\
+\bottomrule
+\end{tabular}
+\end{table}

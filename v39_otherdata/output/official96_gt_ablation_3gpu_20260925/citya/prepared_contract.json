@@ -1,0 +1,21 @@
+{
+  "prepared_root": "/yh/study/uav-sat/v39_otherdata/output/official96_gt_ablation_3gpu_20260925/citya/prepared",
+  "selection_version": "official_rsi96_seed42_temporal_v1",
+  "selection_version_status": "recorded",
+  "sample_step_m": {
+    "train_01": 8.0,
+    "test_01": 8.0,
+    "test_02": 8.0
+  },
+  "sha256": {
+    "routes/train_01/manifest.csv": "5b6290ca67f8c9ccab74aa86e08c4251fd1440967f625a76c163b9a04608be9e",
+    "routes/train_01/waypoints.json": "48f972268338f7e291a93a70cf6f7b5ec623c3e7d67c93f74abf9f23beab902f",
+    "routes/test_01/manifest.csv": "f15929f97a2c022ddcd39d96e863d2f704a4644621c282337c45509cc9f31d59",
+    "routes/test_01/waypoints.json": "0e4fa07ecad95bbfe0b16df5e09deb34160519c1f0e7415a416a5dd92b6ffaef",
+    "routes/test_02/manifest.csv": "ec7826c01f5d3f86ed41aa58aca61ae8ffdfed740d872e60b719c2f71945ede9",
+    "routes/test_02/waypoints.json": "63076812d1b89f20f6359cc7bdf68638abdea35dd6460d4cf4cae84b061907ad",
+    "experiment.json": "90100e0ca04d2f25461e8f87bfc5cc01e7a826d52be769c1aa1fa26b5899ec02",
+    "bearing_satellite.json": "af457a666afcd450c93b5ea518a9a5f10759bcd0441ec770e32f44d8f384a3a9"
+  },
+  "data_modified": false
+}

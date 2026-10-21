@@ -1,0 +1,122 @@
+{
+  "city": "cityb",
+  "samples": 18000,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "previous_task_checkpoint_loaded": false,
+  "excluded_test_manifest_sha256": "cf758d987229f47779d9eea483e6af073927387a388488fc8bf42b8f17b379ce",
+  "best_val_global_top1_MLE_m": 16.375205993652344,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 19.593932872682107,
+      "image_selected_local_capture_pct": 22.622758103167918,
+      "validation": {
+        "global_top1_MLE_m": 219.67132568359375,
+        "global_top1_P90_m": 698.384765625,
+        "global_top1_LSR15_pct": 23.77777862548828
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 31.622735151155727,
+      "image_selected_local_capture_pct": 53.701197490917416,
+      "validation": {
+        "global_top1_MLE_m": 81.43062591552734,
+        "global_top1_P90_m": 248.8661346435547,
+        "global_top1_LSR15_pct": 37.16666793823242
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 25.949084214338168,
+      "image_selected_local_capture_pct": 69.88872486775315,
+      "validation": {
+        "global_top1_MLE_m": 54.658531188964844,
+        "global_top1_P90_m": 137.19064331054688,
+        "global_top1_LSR15_pct": 45.61111068725586
+      }
+    },
+    {
+      "epoch": 4,
+      "train_loss": 23.343060350793554,
+      "image_selected_local_capture_pct": 78.64378282404321,
+      "validation": {
+        "global_top1_MLE_m": 37.81429672241211,
+        "global_top1_P90_m": 78.43042755126953,
+        "global_top1_LSR15_pct": 53.4444465637207
+      }
+    },
+    {
+      "epoch": 5,
+      "train_loss": 21.577036699910803,
+      "image_selected_local_capture_pct": 83.53291778113898,
+      "validation": {
+        "global_top1_MLE_m": 29.16684913635254,
+        "global_top1_P90_m": 54.273597717285156,
+        "global_top1_LSR15_pct": 57.611114501953125
+      }
+    },
+    {
+      "epoch": 6,
+      "train_loss": 20.25492888923705,
+      "image_selected_local_capture_pct": 86.78299977084784,
+      "validation": {
+        "global_top1_MLE_m": 24.34642219543457,
+        "global_top1_P90_m": 38.788944244384766,
+        "global_top1_LSR15_pct": 60.77777862548828
+      }
+    },
+    {
+      "epoch": 7,
+      "train_loss": 19.323545636154535,
+      "image_selected_local_capture_pct": 89.22312447405237,
+      "validation": {
+        "global_top1_MLE_m": 21.12934684753418,
+        "global_top1_P90_m": 32.681129455566406,
+        "global_top1_LSR15_pct": 63.222225189208984
+      }
+    },
+    {
+      "epoch": 8,
+      "train_loss": 18.559587328452764,
+      "image_selected_local_capture_pct": 91.08226707601172,
+      "validation": {
+        "global_top1_MLE_m": 18.493606567382812,
+        "global_top1_P90_m": 29.327259063720703,
+        "global_top1_LSR15_pct": 65.61111450195312
+      }
+    },
+    {
+      "epoch": 9,
+      "train_loss": 17.95183090149887,
+      "image_selected_local_capture_pct": 92.62221127044498,
+      "validation": {
+        "global_top1_MLE_m": 17.074256896972656,
+        "global_top1_P90_m": 27.81113052368164,
+        "global_top1_LSR15_pct": 69.33333587646484
+      }
+    },
+    {
+      "epoch": 10,
+      "train_loss": 17.464207746851162,
+      "image_selected_local_capture_pct": 93.9092574626442,
+      "validation": {
+        "global_top1_MLE_m": 16.375205993652344,
+        "global_top1_P90_m": 26.554176330566406,
+        "global_top1_LSR15_pct": 70.55555725097656
+      }
+    }
+  ],
+  "distance_loss_weight": 5.0,
+  "local_loss_weight": 3.0,
+  "local_topk_windows": 3,
+  "official96_train_only": true,
+  "sat_crop_size_m": 45.0,
+  "sat_crop_size_px": 180,
+  "satellite_gallery_rebuilt": false,
+  "same_task_checkpoint_resumed": null,
+  "checkpoint": "/yh/study/uav-sat/v40/output/no_gt_multicity_retrain_20261009/visual_base/cityb/checkpoints/cityb/visual_retrieval_A_only.pt",
+  "last_epoch_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_multicity_retrain_20261009/visual_base/cityb/checkpoints_last/cityb/visual_retrieval_A_only.pt",
+  "last_epoch_val_global_top1_MLE_m": 16.375205993652344
+}

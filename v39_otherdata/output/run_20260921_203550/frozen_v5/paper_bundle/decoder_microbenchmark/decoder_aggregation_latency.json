@@ -1,0 +1,25 @@
+{
+  "device": "cuda:0",
+  "repeats": 5000,
+  "scope": "aggregation-only; MeanShift convergence excluded",
+  "rows": [
+    {
+      "Decoder": "Weighted",
+      "Inputs": 36,
+      "Scope": "36 scored patch coordinates",
+      "latency_mean_ms": 0.03656069189608097,
+      "latency_median_ms": 0.035840000957250595,
+      "latency_p90_ms": 0.03993599861860275,
+      "latency_stdev_ms": 0.00362439057884903
+    },
+    {
+      "Decoder": "MeanShift",
+      "Inputs": 2,
+      "Scope": "2 converged modes; convergence excluded",
+      "latency_mean_ms": 0.035802586171031,
+      "latency_median_ms": 0.03481600061058998,
+      "latency_p90_ms": 0.03686400130391121,
+      "latency_stdev_ms": 0.0020737031877159293
+    }
+  ]
+}

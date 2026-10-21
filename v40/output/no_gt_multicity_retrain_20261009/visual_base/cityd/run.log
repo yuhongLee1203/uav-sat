@@ -1,0 +1,170 @@
+[GLOBAL UAV CACHE] cityd 64 / 18000
+[GLOBAL UAV CACHE] cityd 704 / 18000
+[GLOBAL UAV CACHE] cityd 1344 / 18000
+[GLOBAL UAV CACHE] cityd 1984 / 18000
+[GLOBAL UAV CACHE] cityd 2624 / 18000
+[GLOBAL UAV CACHE] cityd 3264 / 18000
+[GLOBAL UAV CACHE] cityd 3904 / 18000
+[GLOBAL UAV CACHE] cityd 4544 / 18000
+[GLOBAL UAV CACHE] cityd 5184 / 18000
+[GLOBAL UAV CACHE] cityd 5824 / 18000
+[GLOBAL UAV CACHE] cityd 6464 / 18000
+[GLOBAL UAV CACHE] cityd 7104 / 18000
+[GLOBAL UAV CACHE] cityd 7744 / 18000
+[GLOBAL UAV CACHE] cityd 8384 / 18000
+[GLOBAL UAV CACHE] cityd 9024 / 18000
+[GLOBAL UAV CACHE] cityd 9664 / 18000
+[GLOBAL UAV CACHE] cityd 10304 / 18000
+[GLOBAL UAV CACHE] cityd 10944 / 18000
+[GLOBAL UAV CACHE] cityd 11584 / 18000
+[GLOBAL UAV CACHE] cityd 12224 / 18000
+[GLOBAL UAV CACHE] cityd 12864 / 18000
+[GLOBAL UAV CACHE] cityd 13504 / 18000
+[GLOBAL UAV CACHE] cityd 14144 / 18000
+[GLOBAL UAV CACHE] cityd 14784 / 18000
+[GLOBAL UAV CACHE] cityd 15424 / 18000
+[GLOBAL UAV CACHE] cityd 16064 / 18000
+[GLOBAL UAV CACHE] cityd 16704 / 18000
+[GLOBAL UAV CACHE] cityd 17344 / 18000
+[GLOBAL UAV CACHE] cityd 17984 / 18000
+[GLOBAL GTLOSS] epoch=1 samples=128/16200 loss=10.9157
+[GLOBAL GTLOSS] epoch=1 samples=1408/16200 loss=21.1159
+[GLOBAL GTLOSS] epoch=1 samples=2688/16200 loss=20.2135
+[GLOBAL GTLOSS] epoch=1 samples=3968/16200 loss=20.2070
+[GLOBAL GTLOSS] epoch=1 samples=5248/16200 loss=20.0423
+[GLOBAL GTLOSS] epoch=1 samples=6528/16200 loss=19.7257
+[GLOBAL GTLOSS] epoch=1 samples=7808/16200 loss=19.0748
+[GLOBAL GTLOSS] epoch=1 samples=9088/16200 loss=19.2892
+[GLOBAL GTLOSS] epoch=1 samples=10368/16200 loss=18.9194
+[GLOBAL GTLOSS] epoch=1 samples=11648/16200 loss=18.8217
+[GLOBAL GTLOSS] epoch=1 samples=12928/16200 loss=18.6367
+[GLOBAL GTLOSS] epoch=1 samples=14208/16200 loss=18.4505
+[GLOBAL GTLOSS] epoch=1 samples=15488/16200 loss=18.7248
+[GLOBAL GTLOSS] {"epoch": 1, "train_loss": 19.440491218266526, "image_selected_local_capture_pct": 19.220937237026185, "validation": {"global_top1_MLE_m": 178.98004150390625, "global_top1_P90_m": 538.33935546875, "global_top1_LSR15_pct": 19.94444465637207}}
+[GLOBAL GTLOSS] epoch=2 samples=128/16200 loss=36.1585
+[GLOBAL GTLOSS] epoch=2 samples=1408/16200 loss=34.5326
+[GLOBAL GTLOSS] epoch=2 samples=2688/16200 loss=31.6698
+[GLOBAL GTLOSS] epoch=2 samples=3968/16200 loss=30.1416
+[GLOBAL GTLOSS] epoch=2 samples=5248/16200 loss=28.9810
+[GLOBAL GTLOSS] epoch=2 samples=6528/16200 loss=28.3300
+[GLOBAL GTLOSS] epoch=2 samples=7808/16200 loss=28.3529
+[GLOBAL GTLOSS] epoch=2 samples=9088/16200 loss=27.7660
+[GLOBAL GTLOSS] epoch=2 samples=10368/16200 loss=27.4237
+[GLOBAL GTLOSS] epoch=2 samples=11648/16200 loss=27.2604
+[GLOBAL GTLOSS] epoch=2 samples=12928/16200 loss=26.0845
+[GLOBAL GTLOSS] epoch=2 samples=14208/16200 loss=26.6566
+[GLOBAL GTLOSS] epoch=2 samples=15488/16200 loss=25.6232
+[GLOBAL GTLOSS] {"epoch": 2, "train_loss": 28.992599997933457, "image_selected_local_capture_pct": 52.30615706894341, "validation": {"global_top1_MLE_m": 73.10859680175781, "global_top1_P90_m": 207.3083038330078, "global_top1_LSR15_pct": 35.44444274902344}}
+[GLOBAL GTLOSS] epoch=3 samples=128/16200 loss=25.8209
+[GLOBAL GTLOSS] epoch=3 samples=1408/16200 loss=25.9634
+[GLOBAL GTLOSS] epoch=3 samples=2688/16200 loss=25.2644
+[GLOBAL GTLOSS] epoch=3 samples=3968/16200 loss=24.9036
+[GLOBAL GTLOSS] epoch=3 samples=5248/16200 loss=24.3939
+[GLOBAL GTLOSS] epoch=3 samples=6528/16200 loss=24.3128
+[GLOBAL GTLOSS] epoch=3 samples=7808/16200 loss=23.9253
+[GLOBAL GTLOSS] epoch=3 samples=9088/16200 loss=23.6123
+[GLOBAL GTLOSS] epoch=3 samples=10368/16200 loss=23.9391
+[GLOBAL GTLOSS] epoch=3 samples=11648/16200 loss=23.6593
+[GLOBAL GTLOSS] epoch=3 samples=12928/16200 loss=23.9420
+[GLOBAL GTLOSS] epoch=3 samples=14208/16200 loss=23.4562
+[GLOBAL GTLOSS] epoch=3 samples=15488/16200 loss=22.7603
+[GLOBAL GTLOSS] {"epoch": 3, "train_loss": 24.23209866200845, "image_selected_local_capture_pct": 70.07327211184764, "validation": {"global_top1_MLE_m": 43.92683029174805, "global_top1_P90_m": 106.81869506835938, "global_top1_LSR15_pct": 47.4444465637207}}
+[GLOBAL GTLOSS] epoch=4 samples=128/16200 loss=23.6434
+[GLOBAL GTLOSS] epoch=4 samples=1408/16200 loss=22.2211
+[GLOBAL GTLOSS] epoch=4 samples=2688/16200 loss=22.5639
+[GLOBAL GTLOSS] epoch=4 samples=3968/16200 loss=21.9990
+[GLOBAL GTLOSS] epoch=4 samples=5248/16200 loss=21.7983
+[GLOBAL GTLOSS] epoch=4 samples=6528/16200 loss=22.7713
+[GLOBAL GTLOSS] epoch=4 samples=7808/16200 loss=22.4092
+[GLOBAL GTLOSS] epoch=4 samples=9088/16200 loss=21.8844
+[GLOBAL GTLOSS] epoch=4 samples=10368/16200 loss=20.8124
+[GLOBAL GTLOSS] epoch=4 samples=11648/16200 loss=21.5681
+[GLOBAL GTLOSS] epoch=4 samples=12928/16200 loss=21.8735
+[GLOBAL GTLOSS] epoch=4 samples=14208/16200 loss=21.6878
+[GLOBAL GTLOSS] epoch=4 samples=15488/16200 loss=21.3050
+[GLOBAL GTLOSS] {"epoch": 4, "train_loss": 22.018159100389855, "image_selected_local_capture_pct": 78.00401904451566, "validation": {"global_top1_MLE_m": 34.292274475097656, "global_top1_P90_m": 62.91748809814453, "global_top1_LSR15_pct": 50.16666793823242}}
+[GLOBAL GTLOSS] epoch=5 samples=128/16200 loss=20.6405
+[GLOBAL GTLOSS] epoch=5 samples=1408/16200 loss=20.6372
+[GLOBAL GTLOSS] epoch=5 samples=2688/16200 loss=20.9992
+[GLOBAL GTLOSS] epoch=5 samples=3968/16200 loss=20.5345
+[GLOBAL GTLOSS] epoch=5 samples=5248/16200 loss=21.1144
+[GLOBAL GTLOSS] epoch=5 samples=6528/16200 loss=20.6221
+[GLOBAL GTLOSS] epoch=5 samples=7808/16200 loss=20.9790
+[GLOBAL GTLOSS] epoch=5 samples=9088/16200 loss=20.9041
+[GLOBAL GTLOSS] epoch=5 samples=10368/16200 loss=20.8343
+[GLOBAL GTLOSS] epoch=5 samples=11648/16200 loss=20.6660
+[GLOBAL GTLOSS] epoch=5 samples=12928/16200 loss=20.0399
+[GLOBAL GTLOSS] epoch=5 samples=14208/16200 loss=20.0826
+[GLOBAL GTLOSS] epoch=5 samples=15488/16200 loss=20.1229
+[GLOBAL GTLOSS] {"epoch": 5, "train_loss": 20.636343137485774, "image_selected_local_capture_pct": 82.94031605945797, "validation": {"global_top1_MLE_m": 28.930362701416016, "global_top1_P90_m": 52.892948150634766, "global_top1_LSR15_pct": 53.38888931274414}}
+[GLOBAL GTLOSS] epoch=6 samples=128/16200 loss=19.6366
+[GLOBAL GTLOSS] epoch=6 samples=1408/16200 loss=19.6969
+[GLOBAL GTLOSS] epoch=6 samples=2688/16200 loss=19.6031
+[GLOBAL GTLOSS] epoch=6 samples=3968/16200 loss=19.7972
+[GLOBAL GTLOSS] epoch=6 samples=5248/16200 loss=19.3896
+[GLOBAL GTLOSS] epoch=6 samples=6528/16200 loss=19.8249
+[GLOBAL GTLOSS] epoch=6 samples=7808/16200 loss=19.5498
+[GLOBAL GTLOSS] epoch=6 samples=9088/16200 loss=18.8883
+[GLOBAL GTLOSS] epoch=6 samples=10368/16200 loss=19.6482
+[GLOBAL GTLOSS] epoch=6 samples=11648/16200 loss=19.2971
+[GLOBAL GTLOSS] epoch=6 samples=12928/16200 loss=19.8700
+[GLOBAL GTLOSS] epoch=6 samples=14208/16200 loss=19.7435
+[GLOBAL GTLOSS] epoch=6 samples=15488/16200 loss=19.0273
+[GLOBAL GTLOSS] {"epoch": 6, "train_loss": 19.612878754382997, "image_selected_local_capture_pct": 86.16100723349203, "validation": {"global_top1_MLE_m": 25.81562042236328, "global_top1_P90_m": 45.365745544433594, "global_top1_LSR15_pct": 57.55555725097656}}
+[GLOBAL GTLOSS] epoch=7 samples=128/16200 loss=19.3622
+[GLOBAL GTLOSS] epoch=7 samples=1408/16200 loss=19.0623
+[GLOBAL GTLOSS] epoch=7 samples=2688/16200 loss=19.3420
+[GLOBAL GTLOSS] epoch=7 samples=3968/16200 loss=18.9141
+[GLOBAL GTLOSS] epoch=7 samples=5248/16200 loss=19.1235
+[GLOBAL GTLOSS] epoch=7 samples=6528/16200 loss=18.6675
+[GLOBAL GTLOSS] epoch=7 samples=7808/16200 loss=18.9198
+[GLOBAL GTLOSS] epoch=7 samples=9088/16200 loss=19.1526
+[GLOBAL GTLOSS] epoch=7 samples=10368/16200 loss=18.6073
+[GLOBAL GTLOSS] epoch=7 samples=11648/16200 loss=19.4299
+[GLOBAL GTLOSS] epoch=7 samples=12928/16200 loss=18.7423
+[GLOBAL GTLOSS] epoch=7 samples=14208/16200 loss=18.7221
+[GLOBAL GTLOSS] epoch=7 samples=15488/16200 loss=18.3027
+[GLOBAL GTLOSS] {"epoch": 7, "train_loss": 18.862897782813846, "image_selected_local_capture_pct": 88.00237859327962, "validation": {"global_top1_MLE_m": 21.803897857666016, "global_top1_P90_m": 42.01744079589844, "global_top1_LSR15_pct": 60.833335876464844}}
+[GLOBAL GTLOSS] epoch=8 samples=128/16200 loss=18.2416
+[GLOBAL GTLOSS] epoch=8 samples=1408/16200 loss=18.1700
+[GLOBAL GTLOSS] epoch=8 samples=2688/16200 loss=18.6936
+[GLOBAL GTLOSS] epoch=8 samples=3968/16200 loss=18.3267
+[GLOBAL GTLOSS] epoch=8 samples=5248/16200 loss=18.6377
+[GLOBAL GTLOSS] epoch=8 samples=6528/16200 loss=18.7825
+[GLOBAL GTLOSS] epoch=8 samples=7808/16200 loss=18.5744
+[GLOBAL GTLOSS] epoch=8 samples=9088/16200 loss=18.2287
+[GLOBAL GTLOSS] epoch=8 samples=10368/16200 loss=18.2202
+[GLOBAL GTLOSS] epoch=8 samples=11648/16200 loss=18.0183
+[GLOBAL GTLOSS] epoch=8 samples=12928/16200 loss=17.8420
+[GLOBAL GTLOSS] epoch=8 samples=14208/16200 loss=18.1157
+[GLOBAL GTLOSS] epoch=8 samples=15488/16200 loss=18.2674
+[GLOBAL GTLOSS] {"epoch": 8, "train_loss": 18.21472944424847, "image_selected_local_capture_pct": 89.7535269185314, "validation": {"global_top1_MLE_m": 20.601083755493164, "global_top1_P90_m": 37.871089935302734, "global_top1_LSR15_pct": 61.888893127441406}}
+[GLOBAL GTLOSS] epoch=9 samples=128/16200 loss=17.2739
+[GLOBAL GTLOSS] epoch=9 samples=1408/16200 loss=17.4056
+[GLOBAL GTLOSS] epoch=9 samples=2688/16200 loss=17.4158
+[GLOBAL GTLOSS] epoch=9 samples=3968/16200 loss=17.4086
+[GLOBAL GTLOSS] epoch=9 samples=5248/16200 loss=18.2427
+[GLOBAL GTLOSS] epoch=9 samples=6528/16200 loss=17.7919
+[GLOBAL GTLOSS] epoch=9 samples=7808/16200 loss=17.6433
+[GLOBAL GTLOSS] epoch=9 samples=9088/16200 loss=17.6234
+[GLOBAL GTLOSS] epoch=9 samples=10368/16200 loss=17.4106
+[GLOBAL GTLOSS] epoch=9 samples=11648/16200 loss=17.3881
+[GLOBAL GTLOSS] epoch=9 samples=12928/16200 loss=17.7502
+[GLOBAL GTLOSS] epoch=9 samples=14208/16200 loss=17.5545
+[GLOBAL GTLOSS] epoch=9 samples=15488/16200 loss=18.1048
+[GLOBAL GTLOSS] {"epoch": 9, "train_loss": 17.748699668824205, "image_selected_local_capture_pct": 90.99204394761033, "validation": {"global_top1_MLE_m": 18.823392868041992, "global_top1_P90_m": 33.58648681640625, "global_top1_LSR15_pct": 65.27777862548828}}
+[GLOBAL GTLOSS] epoch=10 samples=128/16200 loss=17.2506
+[GLOBAL GTLOSS] epoch=10 samples=1408/16200 loss=17.4873
+[GLOBAL GTLOSS] epoch=10 samples=2688/16200 loss=17.4026
+[GLOBAL GTLOSS] epoch=10 samples=3968/16200 loss=16.7764
+[GLOBAL GTLOSS] epoch=10 samples=5248/16200 loss=17.3933
+[GLOBAL GTLOSS] epoch=10 samples=6528/16200 loss=16.9410
+[GLOBAL GTLOSS] epoch=10 samples=7808/16200 loss=17.5397
+[GLOBAL GTLOSS] epoch=10 samples=9088/16200 loss=17.2966
+[GLOBAL GTLOSS] epoch=10 samples=10368/16200 loss=17.3620
+[GLOBAL GTLOSS] epoch=10 samples=11648/16200 loss=17.0815
+[GLOBAL GTLOSS] epoch=10 samples=12928/16200 loss=17.4801
+[GLOBAL GTLOSS] epoch=10 samples=14208/16200 loss=16.9623
+[GLOBAL GTLOSS] epoch=10 samples=15488/16200 loss=17.2480
+[GLOBAL GTLOSS] {"epoch": 10, "train_loss": 17.3543107340655, "image_selected_local_capture_pct": 91.74321960276507, "validation": {"global_top1_MLE_m": 17.763980865478516, "global_top1_P90_m": 32.66094207763672, "global_top1_LSR15_pct": 67.16667175292969}}
+[GLOBAL GTLOSS DONE] /yh/study/uav-sat/v40/output/no_gt_multicity_retrain_20261009/visual_base/cityd/report.json

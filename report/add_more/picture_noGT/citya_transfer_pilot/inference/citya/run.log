@@ -1,0 +1,5 @@
+route_B backbone cache: 64/64
+route_B final MLE=4.875m P90=8.791m LSR@15=96.88% selected_capture=93.75% bank_capture=100.00% acq_acc=N/A speed_mae=20.158m/frame progress_mae=3.872m heading_mae=50.5deg jump_rate=20.63% max_step=59.11m final_leg=11 gt_leg=11
+route_C backbone cache: 89/89
+route_C final MLE=4.098m P90=6.411m LSR@15=97.75% selected_capture=92.13% bank_capture=98.88% acq_acc=N/A speed_mae=21.529m/frame progress_mae=3.524m heading_mae=55.1deg jump_rate=17.05% max_step=66.73m final_leg=8 gt_leg=8
+[DONE] citya [('test_01', 4.875), ('test_02', 4.098)]

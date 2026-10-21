@@ -1,0 +1,62 @@
+{
+  "visual_retrieval_A_only.pt": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_visual_seed2059_20260926_a/checkpoints/citya/visual_retrieval_A_only.pt",
+    "sha256": "74d12930109e9f7273b9a7f208b121ab8c27ea18b6e0dbf6d2508f8ea463d07e",
+    "bytes": 64322501
+  },
+  "best_temporal_interim.pt": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_search_20260926_a/temporal_grid/best_temporal_interim.pt",
+    "sha256": "1d4b0aa905ee07e7669d4b6a854b53de1a2f6afd5454fb654199dc8adc74ac28",
+    "bytes": 6953347
+  },
+  "report.json": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_visual_seed2059_route_20260926_a/report.json",
+    "sha256": "eb7750fcf0da0755f7968b33bca0ad7623006119130b071e92f696aeb3ff4077",
+    "bytes": 973
+  },
+  "run_settings_original.json": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_visual_seed2059_route_20260926_a/run_settings.json",
+    "sha256": "91e3a269cc76875b1a27bce864ae57f06dc357becdb92477fe69e9a60eb690a8",
+    "bytes": 2476
+  },
+  "visual_training_report.json": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_visual_seed2059_20260926_a/report.json",
+    "sha256": "e64ab8bb9a9e6935072c7087d1c363cae30a17a96e69fdb2da5059026952814e",
+    "bytes": 1688
+  },
+  "gt_independence_audit.json": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_best_gt_independence_audit_20260926_a/audit.json",
+    "sha256": "651880ec6de01f67b8bff707d80200a3221164256645706c8cd1bec66e9b73d9",
+    "bytes": 227
+  },
+  "baseline_20260925_report.json": {
+    "source": "/yh/study/uav-sat/v40/output/official96_fixed_citya_val_joint8_blend0_20260925/report.json",
+    "sha256": "78d000f4871cfeb7049e55185f7b7edb6942e5df452f39a550af93b18cc736dc",
+    "bytes": 955
+  },
+  "parent_epoch1_visual.pt": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_visual_augmented_mild_epoch1_snapshot/checkpoints/citya/visual_retrieval_A_only.pt",
+    "sha256": "41a90a4793b511afdf0037a17aa59176a5756fa6088b7c278220b76fd4b3ff62",
+    "bytes": 64322501
+  },
+  "parent_epoch1_val_report.json": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_visual_augmented_mild_epoch1_prior_20260926_a/report.json",
+    "sha256": "e15eb81ed4c6fbb8d40e2472012478b7827c2af57a7e2f4873ef69db03c3ade8",
+    "bytes": 996
+  },
+  "parent_epoch1_training_report.json": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_visual_augmented_mild_20260926_a/report.json",
+    "sha256": "5dacc33838f10a380910258b935e65a7cff04c72645a070713e386ca6a0042ee",
+    "bytes": 2439
+  },
+  "temporal_training_report.json": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_search_20260926_a/temporal_grid/report.json",
+    "sha256": "397a5bcc9d26ff775df48229c149cad7ecc3c5ade22c7a0d8ee0fe0389673ed8",
+    "bytes": 10201
+  },
+  "temporal_training_settings.json": {
+    "source": "/yh/study/uav-sat/v40/output/causal_4m_search_20260926_a/temporal_grid/run_settings.json",
+    "sha256": "80a387542c85a74164eb25e268725a370fd3b401fd72d3bc64f28c245f5223dd",
+    "bytes": 2868
+  }
+}

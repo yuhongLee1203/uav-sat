@@ -1,0 +1,5 @@
+Variant,GRU,Kalman,Final Refinement,LSR@3 (%),LSR@15 (%),MLE (m)
+w/o GRU,No,Yes,Yes,32.66,99.87,4.28
+w/o Kalman,Yes,No,Yes,41.30,100.00,3.76
+w/o Final Refinement,Yes,Yes,No,15.45,98.04,6.79
+Full,Yes,Yes,Yes,41.90,100.00,3.76

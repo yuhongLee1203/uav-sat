@@ -1,0 +1,37 @@
+[PREPARED] PASS | city=citya | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.359172 m | p90=10.084329 m | p95=11.123011 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] 3-frame delta2 directly corrects acceleration + next_step
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[ARCH-AUDIT] forward_18: PASS
+[ARCH-AUDIT] base_geometry_6x6: PASS
+[ARCH-AUDIT] front_softms_source: PASS
+[ARCH-AUDIT] one_final_ms_source: PASS
+[ARCH-AUDIT] front_decoder_softms: PASS
+[ARCH-AUDIT] simple_seven_block_gru: PASS
+[ARCH-AUDIT] residual_motion_head: PASS
+[ARCH-AUDIT] causal_visual_displacement: PASS
+[ARCH-AUDIT] cadence_initialized_tracker: PASS
+[ARCH-AUDIT] motion_training_inference_aligned: PASS
+[ARCH-AUDIT] training_city_motion_scale_init: PASS
+[ARCH-AUDIT] forward_origin_backshift_covers_jitter: PASS
+[ARCH-AUDIT] protocol: PASS
+[ARCH-AUDIT] controlled_gt_reference_enabled: PASS
+[ARCH-AUDIT] frame_count: PASS
+[ARCH-AUDIT] gru_flag: PASS
+[ARCH-AUDIT] kalman_flag: PASS
+route_B: reuse UAV backbone cache
+
+=== citya grid7: nav50 ===
+route_B final MLE=3.897m P90=6.763m LSR@15=100.00% selected_capture=99.38% bank_capture=99.38% acq_acc=100.00% speed_mae=2.794m/frame progress_mae=1.748m heading_mae=34.7deg jump_rate=0.62% max_step=22.16m final_leg=11 gt_leg=11
+route_C: reuse UAV backbone cache
+
+=== citya grid7: nav51 ===
+route_C final MLE=4.253m P90=7.375m LSR@15=100.00% selected_capture=98.17% bank_capture=98.17% acq_acc=100.00% speed_mae=2.883m/frame progress_mae=2.496m heading_mae=35.5deg jump_rate=1.83% max_step=21.90m final_leg=8 gt_leg=8
+[DONE] /yh/study/uav-sat/v39_otherdata/output/minimal_loss_correct_gt_20260921_223816/citya/variants/grid7/bearing_v39_summary.json

@@ -1,0 +1,320 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "physical_gpu": 0,
+  "sample_key": "a/test_01/80",
+  "active_mode_count": 1,
+  "merged_mode_weights": [
+    1.0
+  ],
+  "trials": [
+    {
+      "trial": 1,
+      "case": "Argmax: search 36 + gather XY",
+      "gpu_only": {
+        "mean_ms": 0.004004640045265357,
+        "median_ms": 0.003984000068157911,
+        "p10_ms": 0.003976000007241964,
+        "p90_ms": 0.004056800156831741
+      },
+      "single_call": {
+        "mean_ms": 0.03428351983428001,
+        "median_ms": 0.03174399957060814,
+        "p10_ms": 0.03174399957060814,
+        "p90_ms": 0.03696640133857727
+      }
+    },
+    {
+      "trial": 1,
+      "case": "MS: final aggregation after merging (1 mode)",
+      "gpu_only": {
+        "mean_ms": 0.002628578304623564,
+        "median_ms": 0.002623999956995249,
+        "p10_ms": 0.0026237498968839645,
+        "p90_ms": 0.002640775078907609
+      },
+      "single_call": {
+        "mean_ms": 0.03088576041162014,
+        "median_ms": 0.028704000636935234,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.03082239925861359
+      }
+    },
+    {
+      "trial": 1,
+      "case": "Weighted Average: aggregate 36 candidates",
+      "gpu_only": {
+        "mean_ms": 0.003922503354648749,
+        "median_ms": 0.003911999985575676,
+        "p10_ms": 0.003911199979484081,
+        "p90_ms": 0.00395999988541007
+      },
+      "single_call": {
+        "mean_ms": 0.030598400384187697,
+        "median_ms": 0.028672000393271446,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.03092479929327965
+      }
+    },
+    {
+      "trial": 1,
+      "case": "MS control: aggregate 36 converged seeds BEFORE merging",
+      "gpu_only": {
+        "mean_ms": 0.0039220266851286096,
+        "median_ms": 0.003920000046491623,
+        "p10_ms": 0.003911999985575676,
+        "p90_ms": 0.003928800113499165
+      },
+      "single_call": {
+        "mean_ms": 0.031251200586557386,
+        "median_ms": 0.02969600073993206,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.035840000957250595
+      }
+    },
+    {
+      "trial": 1,
+      "case": "Argmax control: search 36 only (NO XY gather)",
+      "gpu_only": {
+        "mean_ms": 0.0019598366576246916,
+        "median_ms": 0.0019519999623298645,
+        "p10_ms": 0.0019519999623298645,
+        "p90_ms": 0.0019759999122470617
+      },
+      "single_call": {
+        "mean_ms": 0.02310271982103586,
+        "median_ms": 0.021503999829292297,
+        "p10_ms": 0.020479999482631683,
+        "p90_ms": 0.02478080075234175
+      }
+    },
+    {
+      "trial": 2,
+      "case": "MS: final aggregation after merging (1 mode)",
+      "gpu_only": {
+        "mean_ms": 0.002639251658692956,
+        "median_ms": 0.0026320000179111958,
+        "p10_ms": 0.002623999956995249,
+        "p90_ms": 0.002655999967828393
+      },
+      "single_call": {
+        "mean_ms": 0.03168064046651125,
+        "median_ms": 0.02969600073993206,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.03092479929327965
+      }
+    },
+    {
+      "trial": 2,
+      "case": "Weighted Average: aggregate 36 candidates",
+      "gpu_only": {
+        "mean_ms": 0.003924798360094428,
+        "median_ms": 0.003920000046491623,
+        "p10_ms": 0.003911999985575676,
+        "p90_ms": 0.003952799830585718
+      },
+      "single_call": {
+        "mean_ms": 0.031171200461685658,
+        "median_ms": 0.029680000618100166,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.03194879963994027
+      }
+    },
+    {
+      "trial": 2,
+      "case": "MS control: aggregate 36 converged seeds BEFORE merging",
+      "gpu_only": {
+        "mean_ms": 0.003918553354839484,
+        "median_ms": 0.003911999985575676,
+        "p10_ms": 0.003911999985575676,
+        "p90_ms": 0.00392800010740757
+      },
+      "single_call": {
+        "mean_ms": 0.03106688044965267,
+        "median_ms": 0.02969600073993206,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.03287039995193482
+      }
+    },
+    {
+      "trial": 2,
+      "case": "Argmax control: search 36 only (NO XY gather)",
+      "gpu_only": {
+        "mean_ms": 0.001959093330272784,
+        "median_ms": 0.0019519999623298645,
+        "p10_ms": 0.0019440000178292394,
+        "p90_ms": 0.0019759999122470617
+      },
+      "single_call": {
+        "mean_ms": 0.019642880409955977,
+        "median_ms": 0.018432000651955605,
+        "p10_ms": 0.0174368005245924,
+        "p90_ms": 0.01976319923996926
+      }
+    },
+    {
+      "trial": 2,
+      "case": "Argmax: search 36 + gather XY",
+      "gpu_only": {
+        "mean_ms": 0.0034503449592739343,
+        "median_ms": 0.003447999944910407,
+        "p10_ms": 0.00343999988399446,
+        "p90_ms": 0.003464000066742301
+      },
+      "single_call": {
+        "mean_ms": 0.03882944092154503,
+        "median_ms": 0.036848001182079315,
+        "p10_ms": 0.03484480082988739,
+        "p90_ms": 0.03891199827194214
+      }
+    },
+    {
+      "trial": 3,
+      "case": "Weighted Average: aggregate 36 candidates",
+      "gpu_only": {
+        "mean_ms": 0.003924585026688874,
+        "median_ms": 0.003920000046491623,
+        "p10_ms": 0.003911999985575676,
+        "p90_ms": 0.003944000229239464
+      },
+      "single_call": {
+        "mean_ms": 0.031006080359220506,
+        "median_ms": 0.028672000393271446,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.03082239925861359
+      }
+    },
+    {
+      "trial": 3,
+      "case": "MS control: aggregate 36 converged seeds BEFORE merging",
+      "gpu_only": {
+        "mean_ms": 0.003920158351150652,
+        "median_ms": 0.003911999985575676,
+        "p10_ms": 0.003911199979484081,
+        "p90_ms": 0.003936000168323517
+      },
+      "single_call": {
+        "mean_ms": 0.030863360241055487,
+        "median_ms": 0.028672000393271446,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.03082239925861359
+      }
+    },
+    {
+      "trial": 3,
+      "case": "Argmax control: search 36 only (NO XY gather)",
+      "gpu_only": {
+        "mean_ms": 0.0019651650156204898,
+        "median_ms": 0.0019600000232458115,
+        "p10_ms": 0.0019440000178292394,
+        "p90_ms": 0.0019839999731630087
+      },
+      "single_call": {
+        "mean_ms": 0.022652799747884273,
+        "median_ms": 0.021503999829292297,
+        "p10_ms": 0.020479999482631683,
+        "p90_ms": 0.024678400717675686
+      }
+    },
+    {
+      "trial": 3,
+      "case": "Argmax: search 36 + gather XY",
+      "gpu_only": {
+        "mean_ms": 0.0034462366066873073,
+        "median_ms": 0.00343999988399446,
+        "p10_ms": 0.003432000055909157,
+        "p90_ms": 0.003464000066742301
+      },
+      "single_call": {
+        "mean_ms": 0.03344383969902992,
+        "median_ms": 0.03174399957060814,
+        "p10_ms": 0.030719999223947525,
+        "p90_ms": 0.03287039995193482
+      }
+    },
+    {
+      "trial": 3,
+      "case": "MS: final aggregation after merging (1 mode)",
+      "gpu_only": {
+        "mean_ms": 0.00263434498415639,
+        "median_ms": 0.002623999956995249,
+        "p10_ms": 0.002623999956995249,
+        "p90_ms": 0.0026567999739199877
+      },
+      "single_call": {
+        "mean_ms": 0.031189120449125765,
+        "median_ms": 0.029680000618100166,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.03376320004463196
+      }
+    }
+  ],
+  "profiles": [
+    {
+      "case": "Argmax: search 36 + gather XY",
+      "cuda_kernel_count": 2,
+      "kernels": [
+        {
+          "kernel": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::ArgMaxOps<float>, unsigned int, long, 4> >(at::native::ReduceOp<float, at::native::ArgMaxOps<float>, unsigned int, long, 4>)",
+          "duration_us": 4.0
+        },
+        {
+          "kernel": "void at::native::(anonymous namespace)::indexSelectSmallIndex<float, long, unsigned int, 2, 2, -2>(at::cuda::detail::TensorInfo<float, unsigned int>, at::cuda::detail::TensorInfo<float, unsigned int>, at::cuda::detail::TensorInfo<long, unsigned int>, int, int, unsigned int, long)",
+          "duration_us": 3.0
+        }
+      ]
+    },
+    {
+      "case": "MS: final aggregation after merging (1 mode)",
+      "cuda_kernel_count": 2,
+      "kernels": [
+        {
+          "kernel": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+          "duration_us": 2.0
+        },
+        {
+          "kernel": "void at::native::reduce_kernel<256, 2, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4>)",
+          "duration_us": 3.0
+        }
+      ]
+    },
+    {
+      "case": "Weighted Average: aggregate 36 candidates",
+      "cuda_kernel_count": 2,
+      "kernels": [
+        {
+          "kernel": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+          "duration_us": 2.0
+        },
+        {
+          "kernel": "void at::native::reduce_kernel<256, 2, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4>)",
+          "duration_us": 4.0
+        }
+      ]
+    },
+    {
+      "case": "MS control: aggregate 36 converged seeds BEFORE merging",
+      "cuda_kernel_count": 2,
+      "kernels": [
+        {
+          "kernel": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+          "duration_us": 9.0
+        },
+        {
+          "kernel": "void at::native::reduce_kernel<256, 2, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4>)",
+          "duration_us": 14.0
+        }
+      ]
+    },
+    {
+      "case": "Argmax control: search 36 only (NO XY gather)",
+      "cuda_kernel_count": 1,
+      "kernels": [
+        {
+          "kernel": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::ArgMaxOps<float>, unsigned int, long, 4> >(at::native::ReduceOp<float, at::native::ArgMaxOps<float>, unsigned int, long, 4>)",
+          "duration_us": 3.0
+        }
+      ]
+    }
+  ],
+  "scope_note": "Original MS timing starts AFTER basin merging, so it measures 1 mode. 36-seed control starts after iterations but BEFORE merging and times only reduction; it does not time merging. Controls are diagnostic, not replacements for original method results."
+}

@@ -1,0 +1,15 @@
+Bearing-UAV epoch 01/12 loss=0.51505
+Bearing-UAV epoch 02/12 loss=0.13119
+Bearing-UAV epoch 03/12 loss=0.08107
+Bearing-UAV epoch 04/12 loss=0.06752
+Bearing-UAV epoch 05/12 loss=0.05606
+Bearing-UAV epoch 06/12 loss=0.06095
+Bearing-UAV epoch 07/12 loss=0.04088
+Bearing-UAV epoch 08/12 loss=0.05684
+Bearing-UAV epoch 09/12 loss=0.04707
+Bearing-UAV epoch 10/12 loss=0.04373
+Bearing-UAV epoch 11/12 loss=0.03424
+Bearing-UAV epoch 12/12 loss=0.03849
+Bearing-UAV route_B {'frames': 2276, 'MLE_m': 12.463965240977247, 'Median_m': 12.549238204956055, 'P90_m': 19.078750610351562, 'P95_m': 20.704697608947754, 'LSR@5_pct': 7.864674868189807, 'LSR@10_pct': 31.942003514938488, 'LSR@15_pct': 68.62917398945518, 'latency_ms': 5.230096951276329, 'FPS': 191.20104451523878}
+Bearing-UAV route_C {'frames': 1258, 'MLE_m': 12.624869401082515, 'Median_m': 12.574878215789795, 'P90_m': 19.42168769836426, 'P95_m': 20.951884746551514, 'LSR@5_pct': 6.43879173290938, 'LSR@10_pct': 31.24006359300477, 'LSR@15_pct': 67.32909379968204, 'latency_ms': 5.157856721922464, 'FPS': 193.87897995492878}
+wrote /yh/study/uav-sat/v36-exp/outputs/papers/Bearing-UAV/summary.json

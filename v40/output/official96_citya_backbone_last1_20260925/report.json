@@ -1,0 +1,40 @@
+{
+  "city": "citya",
+  "samples": 18000,
+  "architecture": "ICLR_Bearing4City_Forward18SoftMS_ResidualTemporalGRU_Kalman_FinalMS",
+  "backbone": "torchvision:mobilenet_v3_small",
+  "backbone_unfreeze_last_blocks": 1,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "best_val_global_top1_MLE_m": 10.040371894836426,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 4.349257647521853,
+      "validation": {
+        "global_top1_MLE_m": 10.162331581115723,
+        "global_top1_P90_m": 18.205595016479492,
+        "global_top1_LSR15_pct": 83.5
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 4.331498515887524,
+      "validation": {
+        "global_top1_MLE_m": 10.040371894836426,
+        "global_top1_P90_m": 17.743331909179688,
+        "global_top1_LSR15_pct": 84.5
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 4.31163685340581,
+      "validation": {
+        "global_top1_MLE_m": 10.220684051513672,
+        "global_top1_P90_m": 17.993337631225586,
+        "global_top1_LSR15_pct": 84.38888549804688
+      }
+    }
+  ],
+  "checkpoint": "v40/output/official96_citya_backbone_last1_20260925/checkpoints/citya/visual_retrieval_A_only.pt"
+}

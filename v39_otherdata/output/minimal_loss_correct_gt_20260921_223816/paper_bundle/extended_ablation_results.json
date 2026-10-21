@@ -1,0 +1,93 @@
+{
+  "grid": [
+    {
+      "Grid": "4x4",
+      "MLE_m": 4.372555404489596,
+      "P90_m": 7.893628846015782,
+      "LSR@5_pct": 63.90013495276653,
+      "Capture_pct": 98.65047233468286,
+      "EndToEndLatency_ms": 31.608982858789755,
+      "FinalMSLatency_ms": 2.8989566964513336
+    },
+    {
+      "Grid": "5x5",
+      "MLE_m": 3.889075899684962,
+      "P90_m": 6.805391636876072,
+      "LSR@5_pct": 71.86234817813765,
+      "Capture_pct": 98.65047233468286,
+      "EndToEndLatency_ms": 32.926806333875746,
+      "FinalMSLatency_ms": 3.8153023915252224
+    },
+    {
+      "Grid": "6x6",
+      "MLE_m": 3.8863243368815383,
+      "P90_m": 6.803573046737558,
+      "LSR@5_pct": 71.9298245614035,
+      "Capture_pct": 98.65047233468286,
+      "EndToEndLatency_ms": 32.43784749517205,
+      "FinalMSLatency_ms": 6.041027610875194
+    },
+    {
+      "Grid": "7x7",
+      "MLE_m": 3.865569587280202,
+      "P90_m": 6.730653332306812,
+      "LSR@5_pct": 72.40215924426451,
+      "Capture_pct": 98.65047233468286,
+      "EndToEndLatency_ms": 35.905932320417605,
+      "FinalMSLatency_ms": 6.718751838350324
+    },
+    {
+      "Grid": "8x8",
+      "MLE_m": 3.8661711291847016,
+      "P90_m": 6.731222605532897,
+      "LSR@5_pct": 72.40215924426451,
+      "Capture_pct": 98.65047233468286,
+      "EndToEndLatency_ms": 39.10790637038728,
+      "FinalMSLatency_ms": 8.598825917862024
+    }
+  ],
+  "search": [
+    {
+      "Search": "Full 6x6",
+      "Candidates": 36,
+      "MLE_m": 3.624112642105343,
+      "P90_m": 6.623885723910989,
+      "LSR@5_pct": 74.7638326585695,
+      "Capture_pct": 100.0,
+      "EndToEndLatency_ms": 42.41319621131377,
+      "FinalMSLatency_ms": 6.208898280288486
+    },
+    {
+      "Search": "Forward 3x6",
+      "Candidates": 18,
+      "MLE_m": 3.8863243368815383,
+      "P90_m": 6.803573046737558,
+      "LSR@5_pct": 71.9298245614035,
+      "Capture_pct": 98.65047233468286,
+      "EndToEndLatency_ms": 32.43784749517205,
+      "FinalMSLatency_ms": 6.041027610875194
+    }
+  ],
+  "decoder": [
+    {
+      "Decoder": "Weighted",
+      "Candidates": 36,
+      "MLE_m": 3.807730390585379,
+      "P90_m": 6.880442833229256,
+      "LSR@5_pct": 72.13225371120107,
+      "Capture_pct": 100.0,
+      "EndToEndLatency_ms": 32.20319515659742,
+      "FinalMSLatency_ms": 5.162404631434182
+    },
+    {
+      "Decoder": "MeanShift",
+      "Candidates": 36,
+      "MLE_m": 3.624112642105343,
+      "P90_m": 6.623885723910989,
+      "LSR@5_pct": 74.7638326585695,
+      "Capture_pct": 100.0,
+      "EndToEndLatency_ms": 42.41319621131377,
+      "FinalMSLatency_ms": 6.208898280288486
+    }
+  ]
+}

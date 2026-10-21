@@ -1,0 +1,196 @@
+{
+  "cities": [
+    "citya",
+    "cityb",
+    "cityc",
+    "cityd"
+  ],
+  "metric_set": [
+    "R@1*_pct",
+    "LSR@15_pct",
+    "HSR@15_pct",
+    "MLE_m",
+    "MHE_deg"
+  ],
+  "rows": {
+    "frames1": {
+      "variant": "frames1",
+      "label": "1 frame",
+      "frames": 1482,
+      "R@1*_pct": 93.31983805668017,
+      "LSR@15_pct": 100.0,
+      "HSR@15_pct": 39.67611336032389,
+      "MLE_m": 3.882988872803729,
+      "MHE_deg": 36.895584710754015,
+      "MS_Latency_ms": 5.646433481539991
+    },
+    "frames2": {
+      "variant": "frames2",
+      "label": "2 frames",
+      "frames": 1482,
+      "R@1*_pct": 93.58974358974359,
+      "LSR@15_pct": 100.0,
+      "HSR@15_pct": 37.85425101214575,
+      "MLE_m": 3.921011143065327,
+      "MHE_deg": 37.00866640488533,
+      "MS_Latency_ms": 6.013534184132258
+    },
+    "full": {
+      "variant": "full",
+      "label": "Full",
+      "frames": 1482,
+      "R@1*_pct": 93.65721997300945,
+      "LSR@15_pct": 100.0,
+      "HSR@15_pct": 39.60863697705803,
+      "MLE_m": 3.7591276968535423,
+      "MHE_deg": 36.87131222906896,
+      "MS_Latency_ms": 6.895653523341489
+    },
+    "grid4": {
+      "variant": "grid4",
+      "label": "4x4",
+      "frames": 1482,
+      "R@1*_pct": 92.98245614035088,
+      "LSR@15_pct": 99.93252361673414,
+      "HSR@15_pct": 39.473684210526315,
+      "MLE_m": 4.1681959167593226,
+      "MHE_deg": 36.96198149959982,
+      "MS_Latency_ms": 3.0126868889893665
+    },
+    "grid5": {
+      "variant": "grid5",
+      "label": "5x5",
+      "frames": 1482,
+      "R@1*_pct": 93.65721997300945,
+      "LSR@15_pct": 100.0,
+      "HSR@15_pct": 39.60863697705803,
+      "MLE_m": 3.762507319985099,
+      "MHE_deg": 36.87330017948923,
+      "MS_Latency_ms": 3.962167274195421
+    },
+    "grid7": {
+      "variant": "grid7",
+      "label": "7x7",
+      "frames": 1482,
+      "R@1*_pct": 93.7246963562753,
+      "LSR@15_pct": 100.0,
+      "HSR@15_pct": 39.67611336032389,
+      "MLE_m": 3.7378888053354555,
+      "MHE_deg": 36.852024238459265,
+      "MS_Latency_ms": 6.342284942204558
+    },
+    "grid8": {
+      "variant": "grid8",
+      "label": "8x8",
+      "frames": 1482,
+      "R@1*_pct": 93.7246963562753,
+      "LSR@15_pct": 100.0,
+      "HSR@15_pct": 39.67611336032389,
+      "MLE_m": 3.738302152364399,
+      "MHE_deg": 36.852181855914495,
+      "MS_Latency_ms": 8.5416817678104
+    },
+    "no_gru": {
+      "variant": "no_gru",
+      "label": "w/o GRU",
+      "frames": 1482,
+      "R@1*_pct": 92.10526315789474,
+      "LSR@15_pct": 99.86504723346829,
+      "HSR@15_pct": 39.54116059379217,
+      "MLE_m": 4.2750757389974705,
+      "MHE_deg": 37.04981881727849,
+      "MS_Latency_ms": 5.730952217516139
+    },
+    "no_kalman": {
+      "variant": "no_kalman",
+      "label": "w/o Kalman",
+      "frames": 1482,
+      "R@1*_pct": 93.65721997300945,
+      "LSR@15_pct": 100.0,
+      "HSR@15_pct": 39.60863697705803,
+      "MLE_m": 3.762718966738891,
+      "MHE_deg": 36.808880638385574,
+      "MS_Latency_ms": 6.774544212821925
+    },
+    "no_ms": {
+      "variant": "no_ms",
+      "label": "w/o MeanShift",
+      "frames": 1482,
+      "R@1*_pct": 86.77462887989203,
+      "LSR@15_pct": 98.04318488529015,
+      "HSR@15_pct": 39.203778677462886,
+      "MLE_m": 6.785480975818239,
+      "MHE_deg": 37.749962985193925,
+      "MS_Latency_ms": 0.0
+    }
+  },
+  "audit": {
+    "LOCALIZATION_TREND_CHECK": "PASS",
+    "component_full_localization_best": true,
+    "three_frame_full_localization_best": true,
+    "paired_bootstrap": {
+      "no_gru": {
+        "full_minus_ablation_MLE_m": -0.5159480421439282,
+        "MLE_95CI": [
+          -0.5665847697793608,
+          -0.4682413614657931
+        ],
+        "full_minus_ablation_LSR@15_pct": 0.13495276653171517,
+        "LSR@15_95CI": [
+          0.0,
+          0.3373819163292824
+        ]
+      },
+      "no_kalman": {
+        "full_minus_ablation_MLE_m": -0.003591269885348858,
+        "MLE_95CI": [
+          -0.015283561184856752,
+          0.008517995549820197
+        ],
+        "full_minus_ablation_LSR@15_pct": 0.0,
+        "LSR@15_95CI": [
+          0.0,
+          0.0
+        ]
+      },
+      "no_ms": {
+        "full_minus_ablation_MLE_m": -3.026353278964697,
+        "MLE_95CI": [
+          -3.164048334581185,
+          -2.8925230283973926
+        ],
+        "full_minus_ablation_LSR@15_pct": 1.9568151147098534,
+        "LSR@15_95CI": [
+          1.2145748987854255,
+          2.6990553306342813
+        ]
+      },
+      "frames1": {
+        "full_minus_ablation_MLE_m": -0.12386117595018664,
+        "MLE_95CI": [
+          -0.1552777824515345,
+          -0.09248401627824904
+        ],
+        "full_minus_ablation_LSR@15_pct": 0.0,
+        "LSR@15_95CI": [
+          0.0,
+          0.0
+        ]
+      },
+      "frames2": {
+        "full_minus_ablation_MLE_m": -0.16188344621178485,
+        "MLE_95CI": [
+          -0.19938874578199645,
+          -0.12698676017892913
+        ],
+        "full_minus_ablation_LSR@15_pct": 0.0,
+        "LSR@15_95CI": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "claim_guidance": "Full is numerically best on MLE and LSR@15 across the checked component/temporal ablations; inspect confidence intervals before claiming significance.",
+    "integrity": "All values are recomputed from measured frame-level outputs."
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "protocol": "current-frame GT-assisted localization on synthetic routes",
+  "cities": [
+    "citya",
+    "cityb",
+    "cityc",
+    "cityd"
+  ],
+  "test_frames": 1482,
+  "reported_metrics": [
+    "LSR@3_pct",
+    "LSR@5_pct",
+    "LSR@15_pct",
+    "MLE_m"
+  ],
+  "excluded_metrics": {
+    "HSR@15/MHE": "The heading head predicts synthetic route-motion direction; its training target is not UAV image yaw_deg.",
+    "Recall@1": "The inference did not produce an official four-tile ranking.",
+    "SR@20/SPL/NE": "No closed-loop navigation rollout was recorded."
+  },
+  "historical_paper_value_check": {
+    "status": "PASS",
+    "differences": [],
+    "exact_printed_match": false,
+    "exact_mismatches": [
+      "no_kalman: MLE 3.763/3.763; LSR@5 73.82%/73.68%"
+    ]
+  },
+  "rows": {
+    "no_gru": {
+      "MLE_m": 4.2750757389974705,
+      "LSR@3_pct": 32.658569500674766,
+      "LSR@5_pct": 65.92442645074225,
+      "LSR@15_pct": 99.86504723346829
+    },
+    "no_kalman": {
+      "MLE_m": 3.762718966738891,
+      "LSR@3_pct": 41.29554655870445,
+      "LSR@5_pct": 73.8191632928475,
+      "LSR@15_pct": 100.0
+    },
+    "no_ms": {
+      "MLE_m": 6.785480975818239,
+      "LSR@3_pct": 15.452091767881242,
+      "LSR@5_pct": 33.40080971659919,
+      "LSR@15_pct": 98.04318488529015
+    },
+    "full": {
+      "MLE_m": 3.7591276968535423,
+      "LSR@3_pct": 41.902834008097166,
+      "LSR@5_pct": 73.75168690958165,
+      "LSR@15_pct": 100.0
+    },
+    "frames1": {
+      "MLE_m": 3.882988872803729,
+      "LSR@3_pct": 39.8110661268556,
+      "LSR@5_pct": 72.46963562753037,
+      "LSR@15_pct": 100.0
+    },
+    "frames2": {
+      "MLE_m": 3.921011143065327,
+      "LSR@3_pct": 39.13630229419703,
+      "LSR@5_pct": 71.7948717948718,
+      "LSR@15_pct": 100.0
+    },
+    "grid4": {
+      "MLE_m": 4.1681959167593226,
+      "LSR@3_pct": 37.65182186234818,
+      "LSR@5_pct": 67.13900134952766,
+      "LSR@15_pct": 99.93252361673414
+    },
+    "grid5": {
+      "MLE_m": 3.762507319985099,
+      "LSR@3_pct": 41.902834008097166,
+      "LSR@5_pct": 73.75168690958165,
+      "LSR@15_pct": 100.0
+    },
+    "grid7": {
+      "MLE_m": 3.7378888053354555,
+      "LSR@3_pct": 42.03778677462888,
+      "LSR@5_pct": 73.95411605937922,
+      "LSR@15_pct": 100.0
+    },
+    "grid8": {
+      "MLE_m": 3.738302152364399,
+      "LSR@3_pct": 42.03778677462888,
+      "LSR@5_pct": 74.08906882591093,
+      "LSR@15_pct": 100.0
+    }
+  }
+}

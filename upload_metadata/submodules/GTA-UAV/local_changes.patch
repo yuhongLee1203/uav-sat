@@ -1,0 +1,18 @@
+diff --git a/Game4Loc/game4loc/evaluate/university.py b/Game4Loc/game4loc/evaluate/university.py
+index 43924b9..17c05bb 100644
+--- a/Game4Loc/game4loc/evaluate/university.py
++++ b/Game4Loc/game4loc/evaluate/university.py
+@@ -2,7 +2,7 @@ import torch
+ import numpy as np
+ from tqdm import tqdm
+ import gc
+-from ..trainer import predict
++from ..trainer.trainer import predict
+ 
+ 
+ def evaluate(config,
+@@ -112,4 +112,3 @@ def compute_mAP(index, good_index, junk_index):
+ 
+ 
+ 
+-

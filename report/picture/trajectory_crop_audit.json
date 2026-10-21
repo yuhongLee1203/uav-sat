@@ -1,0 +1,146 @@
+{
+  "source_map_size_px": [
+    4096,
+    4096
+  ],
+  "mpp": 0.25,
+  "largest_route_axis_span_m": 790.8763656616211,
+  "crop_size_px": [
+    4096,
+    4096
+  ],
+  "crop_size_m": [
+    1024.0,
+    1024.0
+  ],
+  "routes": {
+    "citya/test_01": {
+      "map": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
+      "crop_box_px": [
+        0,
+        0,
+        4096,
+        4096
+      ],
+      "path_bbox_px": [
+        1669.0,
+        3064.1569736920164,
+        3415.255907171875,
+        3816.0
+      ],
+      "all_path_points_inside": true
+    },
+    "cityb/test_01": {
+      "map": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+      "crop_box_px": [
+        0,
+        0,
+        4096,
+        4096
+      ],
+      "path_bbox_px": [
+        1669.0,
+        3084.0,
+        3412.0,
+        3828.888874265625
+      ],
+      "all_path_points_inside": true
+    },
+    "cityc/test_01": {
+      "map": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/1.2897673873873876_103.84197619336068_1791.95_1024_1024_4326_city.jpg",
+      "crop_box_px": [
+        0,
+        0,
+        4096,
+        4096
+      ],
+      "path_bbox_px": [
+        1669.0,
+        3084.0,
+        3412.0,
+        3816.935313
+      ],
+      "all_path_points_inside": true
+    },
+    "cityd/test_01": {
+      "map": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/37.75538738738739_-122.4533351740761_1791.95_1024_1024_4326_city.jpg",
+      "crop_box_px": [
+        0,
+        0,
+        4096,
+        4096
+      ],
+      "path_bbox_px": [
+        1669.0,
+        3084.0,
+        3412.0,
+        3816.0
+      ],
+      "all_path_points_inside": true
+    },
+    "citya/test_02": {
+      "map": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
+      "crop_box_px": [
+        0,
+        0,
+        4096,
+        4096
+      ],
+      "path_bbox_px": [
+        519.5442219912109,
+        260.0,
+        1480.0,
+        2900.0
+      ],
+      "all_path_points_inside": true
+    },
+    "cityb/test_02": {
+      "map": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+      "crop_box_px": [
+        0,
+        0,
+        4096,
+        4096
+      ],
+      "path_bbox_px": [
+        336.04409269580077,
+        2550.0,
+        2850.0,
+        3900.0
+      ],
+      "all_path_points_inside": true
+    },
+    "cityc/test_02": {
+      "map": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/1.2897673873873876_103.84197619336068_1791.95_1024_1024_4326_city.jpg",
+      "crop_box_px": [
+        0,
+        0,
+        4096,
+        4096
+      ],
+      "path_bbox_px": [
+        800.0,
+        1496.480234875,
+        3950.0,
+        3300.0
+      ],
+      "all_path_points_inside": true
+    },
+    "cityd/test_02": {
+      "map": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/37.75538738738739_-122.4533351740761_1791.95_1024_1024_4326_city.jpg",
+      "crop_box_px": [
+        0,
+        0,
+        4096,
+        4096
+      ],
+      "path_bbox_px": [
+        794.0306694785156,
+        1500.0,
+        3957.536132125,
+        3300.0
+      ],
+      "all_path_points_inside": true
+    }
+  }
+}

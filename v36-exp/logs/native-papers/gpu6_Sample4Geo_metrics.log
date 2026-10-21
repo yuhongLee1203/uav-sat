@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "v36-exp/collect_native_retrieval.py", line 72, in <module>
+    main()
+  File "v36-exp/collect_native_retrieval.py", line 56, in main
+    errors = [float(np.linalg.norm(xy[int(pred)] - xy[int(gt)])) for pred, gt in zip(predicted_labels, query_labels)]
+  File "v36-exp/collect_native_retrieval.py", line 56, in <listcomp>
+    errors = [float(np.linalg.norm(xy[int(pred)] - xy[int(gt)])) for pred, gt in zip(predicted_labels, query_labels)]
+KeyError: -1

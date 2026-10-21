@@ -1,0 +1,9 @@
+Inference only: historical ABCD shared v13 GT-assisted checkpoints
+source=/yh/study/uav-sat/v39_otherdata/output/abcd_shared_20260922_121010
+output=/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_220434_1615534
+dataset=original v13 4 m prepared routes; City A/B/C/D; 1482 test frames
+weights=historical; no retraining; city-specific gallery binding retained
+kalman=historical positive_three_frame_path_primary_v7 profiles
+GPUs=0,5,6
+started=2026-09-25T22:04:35+08:00
+completed=2026-09-25T22:11:44+08:00

@@ -1,0 +1,56 @@
+[PREPARED] PASS | city=cityb | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.550783 m | p90=9.862441 m | p95=11.094216 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[ARCH-AUDIT] forward_18: PASS
+[ARCH-AUDIT] base_geometry_6x6: PASS
+[ARCH-AUDIT] front_softms_source: PASS
+[ARCH-AUDIT] one_final_ms_source: PASS
+[ARCH-AUDIT] front_decoder_softms: PASS
+[ARCH-AUDIT] simple_seven_block_gru: PASS
+[ARCH-AUDIT] residual_motion_head: PASS
+[ARCH-AUDIT] temporal_reliability_gate: PASS
+[ARCH-AUDIT] causal_visual_displacement: PASS
+[ARCH-AUDIT] cadence_initialized_tracker: PASS
+[ARCH-AUDIT] motion_training_inference_aligned: PASS
+[ARCH-AUDIT] training_city_motion_scale_init: PASS
+[ARCH-AUDIT] forward_origin_backshift_covers_jitter: PASS
+[ARCH-AUDIT] protocol: PASS
+[ARCH-AUDIT] controlled_gt_reference_enabled: PASS
+[ARCH-AUDIT] frame_count: PASS
+[ARCH-AUDIT] gru_flag: PASS
+[ARCH-AUDIT] kalman_flag: PASS
+route_A: reuse UAV backbone cache
+[FINALMS-TRAINVAL] city=cityb profile=baseline kf=1.50 ref=2.50 kf_sigma=4.00 ref_sigma=4.00
+route_A final MLE=3.387m P90=5.712m LSR@15=100.00% selected_capture=98.47% bank_capture=98.47% acq_acc=100.00% speed_mae=2.236m/frame progress_mae=1.842m heading_mae=36.6deg jump_rate=0.00% max_step=19.62m final_leg=4 gt_leg=4
+[FINALMS-TRAINVAL-RESULT] {"ms_kf_prior_weight": 1.5, "ms_kf_sigma_m": 4.0, "ms_reference_prior_weight": 2.5, "ms_reference_sigma_m": 4.0, "name": "baseline", "objective": 4.802303165058742, "val_frames": 25, "val_hsr15_pct": 48.0, "val_lsr15_pct": 100.0, "val_mhe_deg": 46.86887159910984, "val_mle_m": 4.446908210084974, "val_p90_m": 7.107899099475353}
+[FINALMS-TRAINVAL] city=cityb profile=balanced kf=2.00 ref=2.00 kf_sigma=4.00 ref_sigma=4.00
+route_A final MLE=3.885m P90=6.652m LSR@15=100.00% selected_capture=98.47% bank_capture=98.47% acq_acc=100.00% speed_mae=2.236m/frame progress_mae=2.367m heading_mae=36.6deg jump_rate=1.03% max_step=19.71m final_leg=4 gt_leg=4
+[FINALMS-TRAINVAL-RESULT] {"ms_kf_prior_weight": 2.0, "ms_kf_sigma_m": 4.0, "ms_reference_prior_weight": 2.0, "ms_reference_sigma_m": 4.0, "name": "balanced", "objective": 6.25240910484691, "val_frames": 25, "val_hsr15_pct": 48.0, "val_lsr15_pct": 100.0, "val_mhe_deg": 46.879076147484184, "val_mle_m": 5.819397874937388, "val_p90_m": 8.660224598190444}
+[FINALMS-TRAINVAL] city=cityb profile=kf2p5_ref1p5 kf=2.50 ref=1.50 kf_sigma=4.00 ref_sigma=4.00
+route_A final MLE=4.528m P90=7.932m LSR@15=100.00% selected_capture=98.47% bank_capture=98.47% acq_acc=100.00% speed_mae=2.236m/frame progress_mae=2.892m heading_mae=36.6deg jump_rate=2.56% max_step=19.79m final_leg=4 gt_leg=4
+[FINALMS-TRAINVAL-RESULT] {"ms_kf_prior_weight": 2.5, "ms_kf_sigma_m": 4.0, "ms_reference_prior_weight": 1.5, "ms_reference_sigma_m": 4.0, "name": "kf2p5_ref1p5", "objective": 7.548984102400157, "val_frames": 25, "val_hsr15_pct": 48.0, "val_lsr15_pct": 100.0, "val_mhe_deg": 46.886584385152155, "val_mle_m": 7.071829667096616, "val_p90_m": 9.543088706070813}
+[FINALMS-TRAINVAL] city=cityb profile=kf3_ref1 kf=3.00 ref=1.00 kf_sigma=4.00 ref_sigma=4.00
+route_A final MLE=5.306m P90=9.000m LSR@15=99.49% selected_capture=98.47% bank_capture=98.47% acq_acc=100.00% speed_mae=2.236m/frame progress_mae=3.396m heading_mae=36.6deg jump_rate=4.62% max_step=19.86m final_leg=4 gt_leg=4
+[FINALMS-TRAINVAL-RESULT] {"ms_kf_prior_weight": 3.0, "ms_kf_sigma_m": 4.0, "ms_reference_prior_weight": 1.0, "ms_reference_sigma_m": 4.0, "name": "kf3_ref1", "objective": 8.74393843342177, "val_frames": 25, "val_hsr15_pct": 48.0, "val_lsr15_pct": 96.0, "val_mhe_deg": 46.890657387888034, "val_mle_m": 8.236723111533074, "val_p90_m": 10.14430643777393}
+[FINALMS-TRAINVAL] city=cityb profile=kf3p5_ref0p75 kf=3.50 ref=0.75 kf_sigma=4.00 ref_sigma=4.00
+route_A final MLE=5.789m P90=9.710m LSR@15=99.49% selected_capture=98.47% bank_capture=98.47% acq_acc=100.00% speed_mae=2.236m/frame progress_mae=3.682m heading_mae=36.6deg jump_rate=5.64% max_step=19.86m final_leg=4 gt_leg=4
+[FINALMS-TRAINVAL-RESULT] {"ms_kf_prior_weight": 3.5, "ms_kf_sigma_m": 4.0, "ms_reference_prior_weight": 0.75, "ms_reference_sigma_m": 4.0, "name": "kf3p5_ref0p75", "objective": 9.386387961772101, "val_frames": 25, "val_hsr15_pct": 48.0, "val_lsr15_pct": 96.0, "val_mhe_deg": 46.892286137294576, "val_mle_m": 8.846090066720878, "val_p90_m": 10.805957901024467}
+[FINALMS-TRAINVAL] city=cityb profile=kf4_ref0p5 kf=4.00 ref=0.50 kf_sigma=4.00 ref_sigma=4.00
+route_A final MLE=6.235m P90=10.345m LSR@15=99.49% selected_capture=98.47% bank_capture=98.47% acq_acc=100.00% speed_mae=2.236m/frame progress_mae=3.939m heading_mae=36.6deg jump_rate=6.15% max_step=19.83m final_leg=4 gt_leg=4
+[FINALMS-TRAINVAL-RESULT] {"ms_kf_prior_weight": 4.0, "ms_kf_sigma_m": 4.0, "ms_reference_prior_weight": 0.5, "ms_reference_sigma_m": 4.0, "name": "kf4_ref0p5", "objective": 9.958612784594484, "val_frames": 25, "val_hsr15_pct": 48.0, "val_lsr15_pct": 96.0, "val_mhe_deg": 46.89356600795506, "val_mle_m": 9.391022685858537, "val_p90_m": 11.351801974718944}
+[FINALMS-TRAINVAL] city=cityb profile=kf3_ref1_sharp kf=3.00 ref=1.00 kf_sigma=3.50 ref_sigma=5.00
+route_A final MLE=6.022m P90=10.110m LSR@15=99.49% selected_capture=98.47% bank_capture=98.47% acq_acc=100.00% speed_mae=2.236m/frame progress_mae=3.816m heading_mae=36.6deg jump_rate=5.64% max_step=19.85m final_leg=4 gt_leg=4
+[FINALMS-TRAINVAL-RESULT] {"ms_kf_prior_weight": 3.0, "ms_kf_sigma_m": 3.5, "ms_reference_prior_weight": 1.0, "ms_reference_sigma_m": 5.0, "name": "kf3_ref1_sharp", "objective": 9.692258778394073, "val_frames": 25, "val_hsr15_pct": 48.0, "val_lsr15_pct": 96.0, "val_mhe_deg": 46.892925215791585, "val_mle_m": 9.136106831757452, "val_p90_m": 11.123038932732435}
+[FINALMS-TRAINVAL] city=cityb profile=kf4_ref0p5_sharp kf=4.00 ref=0.50 kf_sigma=3.00 ref_sigma=5.00
+route_A final MLE=6.599m P90=11.060m LSR@15=98.98% selected_capture=98.47% bank_capture=98.47% acq_acc=100.00% speed_mae=2.236m/frame progress_mae=4.181m heading_mae=36.6deg jump_rate=8.21% max_step=19.84m final_leg=4 gt_leg=4
+[FINALMS-TRAINVAL-RESULT] {"ms_kf_prior_weight": 4.0, "ms_kf_sigma_m": 3.0, "ms_reference_prior_weight": 0.5, "ms_reference_sigma_m": 5.0, "name": "kf4_ref0p5_sharp", "objective": 10.413334517954162, "val_frames": 25, "val_hsr15_pct": 48.0, "val_lsr15_pct": 92.0, "val_mhe_deg": 46.8937995347772, "val_mle_m": 9.809736096342377, "val_p90_m": 12.07196843223572}
+[FINALMS-TRAINVAL-BEST] {"ms_kf_prior_weight": 1.5, "ms_kf_sigma_m": 4.0, "ms_reference_prior_weight": 2.5, "ms_reference_sigma_m": 4.0, "name": "baseline", "objective": 4.802303165058742, "val_frames": 25, "val_hsr15_pct": 48.0, "val_lsr15_pct": 100.0, "val_mhe_deg": 46.86887159910984, "val_mle_m": 4.446908210084974, "val_p90_m": 7.107899099475353}
+[FINALMS-TRAINVAL-JSON] /yh/study/uav-sat/v39_otherdata/output/abcd_shared_20260922_121010/cityb/train_frames3/finalms_trainval_calibration.json

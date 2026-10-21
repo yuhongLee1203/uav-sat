@@ -1,0 +1,7 @@
+Paper-ready measured experiment; results are never edited or reordered.
+Architecture: Forward 3x6 = 18 scored patches -> SoftMS visual position -> one simple GRU -> fixed-R Kalman -> final 6x6 MeanShift -> XY
+GRU direct inputs: temporal mean + first difference + second difference + SAT context + current Front-SoftMS visual position + previous recurrent state
+Forbidden: split gate / dual gate / residual gate / position innovation
+Training: Route A only; B/C are evaluation only
+Temporal ablation: one trained 3-frame checkpoint; older context is masked at inference to isolate temporal-context contribution
+GPU pool: 0,5,6

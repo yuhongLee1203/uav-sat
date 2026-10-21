@@ -1,0 +1,11 @@
+============================================================================================================
+V39_Forward18_TemporalContextV3_VisualPosition_NoInnovation_GRU_Kalman_Final6
+device=cuda:0
+Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> Forward-3x6 Soft MeanShift visual observation -> GRU -> robust constrained route-coordinate Kalman -> one final 6x6 MeanShift -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+route_A: reuse UAV backbone cache
+route_A final MLE=1.281m P90=2.273m LSR@15=100.00% selected_capture=90.59% bank_capture=90.59% acq_acc=100.00% speed_mae=0.644m/frame progress_mae=0.651m heading_mae=13.4deg jump_rate=0.00% max_step=8.17m final_leg=17 gt_leg=17
+summary: /yh/study/uav-sat/v39_DirectFinalMS/temporal_context_v3_splitgate_eval_20260919_160413/cal_c10_m40_v00/robust_tracker_summary.json

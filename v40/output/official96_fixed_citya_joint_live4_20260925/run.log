@@ -1,0 +1,73 @@
+[BACKBONE GTLOSS] epoch=1 samples=32/16200 loss=4.4480
+[BACKBONE GTLOSS] epoch=1 samples=1632/16200 loss=4.3851
+[BACKBONE GTLOSS] epoch=1 samples=3232/16200 loss=4.8756
+[BACKBONE GTLOSS] epoch=1 samples=4832/16200 loss=4.8614
+[BACKBONE GTLOSS] epoch=1 samples=6432/16200 loss=4.6180
+[BACKBONE GTLOSS] epoch=1 samples=8032/16200 loss=4.8302
+[BACKBONE GTLOSS] epoch=1 samples=9632/16200 loss=4.6483
+[BACKBONE GTLOSS] epoch=1 samples=11232/16200 loss=4.4697
+[BACKBONE GTLOSS] epoch=1 samples=12832/16200 loss=4.5187
+[BACKBONE GTLOSS] epoch=1 samples=14432/16200 loss=4.4926
+[BACKBONE GTLOSS] epoch=1 samples=16032/16200 loss=4.8327
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+[BACKBONE GTLOSS] {"epoch": 1, "train_loss": 4.727195050354305, "validation": {"global_top1_MLE_m": 8.961705207824707, "global_top1_P90_m": 16.168006896972656, "global_top1_LSR15_pct": 87.72222137451172}}
+[BACKBONE GTLOSS] epoch=2 samples=32/16200 loss=4.6544
+[BACKBONE GTLOSS] epoch=2 samples=1632/16200 loss=4.7387
+[BACKBONE GTLOSS] epoch=2 samples=3232/16200 loss=4.5718
+[BACKBONE GTLOSS] epoch=2 samples=4832/16200 loss=4.6814
+[BACKBONE GTLOSS] epoch=2 samples=6432/16200 loss=4.6305
+[BACKBONE GTLOSS] epoch=2 samples=8032/16200 loss=4.5033
+[BACKBONE GTLOSS] epoch=2 samples=9632/16200 loss=4.5419
+[BACKBONE GTLOSS] epoch=2 samples=11232/16200 loss=5.2494
+[BACKBONE GTLOSS] epoch=2 samples=12832/16200 loss=4.6985
+[BACKBONE GTLOSS] epoch=2 samples=14432/16200 loss=4.3131
+[BACKBONE GTLOSS] epoch=2 samples=16032/16200 loss=4.6214
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+[BACKBONE GTLOSS] {"epoch": 2, "train_loss": 4.6300474219538525, "validation": {"global_top1_MLE_m": 8.829973220825195, "global_top1_P90_m": 15.887090682983398, "global_top1_LSR15_pct": 88.83332824707031}}
+[BACKBONE GTLOSS] epoch=3 samples=32/16200 loss=4.8663
+[BACKBONE GTLOSS] epoch=3 samples=1632/16200 loss=4.6229
+[BACKBONE GTLOSS] epoch=3 samples=3232/16200 loss=4.2714
+[BACKBONE GTLOSS] epoch=3 samples=4832/16200 loss=4.7279
+[BACKBONE GTLOSS] epoch=3 samples=6432/16200 loss=4.4736
+[BACKBONE GTLOSS] epoch=3 samples=8032/16200 loss=4.4160
+[BACKBONE GTLOSS] epoch=3 samples=9632/16200 loss=4.7912
+[BACKBONE GTLOSS] epoch=3 samples=11232/16200 loss=4.8523
+[BACKBONE GTLOSS] epoch=3 samples=12832/16200 loss=4.2139
+[BACKBONE GTLOSS] epoch=3 samples=14432/16200 loss=4.2699
+[BACKBONE GTLOSS] epoch=3 samples=16032/16200 loss=4.5360
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+[BACKBONE GTLOSS] {"epoch": 3, "train_loss": 4.5690385641666085, "validation": {"global_top1_MLE_m": 8.681511878967285, "global_top1_P90_m": 15.372900009155273, "global_top1_LSR15_pct": 89.33332824707031}}
+[BACKBONE GTLOSS DONE] /yh/study/uav-sat/v40/output/official96_fixed_citya_joint_live4_20260925/report.json

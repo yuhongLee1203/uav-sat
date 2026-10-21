@@ -1,0 +1,268 @@
+{
+  "background": "complete city satellite image; no route crop",
+  "gt_line": "saved route start/end and waypoints with an absolute direction change of at least 30 degrees, joined by straight segments; display only",
+  "prediction_line": "raw per-frame final_x/final_y in frame order",
+  "metrics_gt": "raw per-frame gt_x/gt_y, not the nominal waypoint line",
+  "routes": {
+    "a/test_01": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
+      "source_size_px": [
+        4096,
+        4096
+      ],
+      "rendered_size_px": [
+        2048,
+        2048
+      ],
+      "map_extent_m": [
+        -100.982739,
+        923.017261,
+        255.11935500000004,
+        -768.880645
+      ],
+      "waypoint_count": 13,
+      "display_waypoint_indices": [
+        0,
+        1,
+        2,
+        3,
+        5,
+        8,
+        11,
+        12
+      ],
+      "display_waypoint_count": 8,
+      "display_turn_threshold_deg": 30.0,
+      "prediction_count": 161,
+      "all_positions_inside": true
+    },
+    "b/test_01": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+      "source_size_px": [
+        4096,
+        4096
+      ],
+      "rendered_size_px": [
+        2048,
+        2048
+      ],
+      "map_extent_m": [
+        -75.597798,
+        948.402202,
+        873.438487,
+        -150.561513
+      ],
+      "waypoint_count": 13,
+      "display_waypoint_indices": [
+        0,
+        1,
+        2,
+        3,
+        5,
+        8,
+        11,
+        12
+      ],
+      "display_waypoint_count": 8,
+      "display_turn_threshold_deg": 30.0,
+      "prediction_count": 146,
+      "all_positions_inside": true
+    },
+    "c/test_01": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/1.2897673873873876_103.84197619336068_1791.95_1024_1024_4326_city.jpg",
+      "source_size_px": [
+        4096,
+        4096
+      ],
+      "rendered_size_px": [
+        2048,
+        2048
+      ],
+      "map_extent_m": [
+        -82.32163,
+        941.67837,
+        864.051328,
+        -159.948672
+      ],
+      "waypoint_count": 13,
+      "display_waypoint_indices": [
+        0,
+        1,
+        2,
+        3,
+        5,
+        8,
+        11,
+        12
+      ],
+      "display_waypoint_count": 8,
+      "display_turn_threshold_deg": 30.0,
+      "prediction_count": 148,
+      "all_positions_inside": true
+    },
+    "d/test_01": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/37.75538738738739_-122.4533351740761_1791.95_1024_1024_4326_city.jpg",
+      "source_size_px": [
+        4096,
+        4096
+      ],
+      "rendered_size_px": [
+        2048,
+        2048
+      ],
+      "map_extent_m": [
+        -89.824951,
+        934.175049,
+        864.601264,
+        -159.398736
+      ],
+      "waypoint_count": 13,
+      "display_waypoint_indices": [
+        0,
+        1,
+        2,
+        3,
+        5,
+        8,
+        11,
+        12
+      ],
+      "display_waypoint_count": 8,
+      "display_turn_threshold_deg": 30.0,
+      "prediction_count": 150,
+      "all_positions_inside": true
+    },
+    "a/test_02": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
+      "source_size_px": [
+        4096,
+        4096
+      ],
+      "rendered_size_px": [
+        2048,
+        2048
+      ],
+      "map_extent_m": [
+        -100.982739,
+        923.017261,
+        255.11935500000004,
+        -768.880645
+      ],
+      "waypoint_count": 10,
+      "display_waypoint_indices": [
+        0,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "display_waypoint_count": 9,
+      "display_turn_threshold_deg": 30.0,
+      "prediction_count": 219,
+      "all_positions_inside": true
+    },
+    "b/test_02": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+      "source_size_px": [
+        4096,
+        4096
+      ],
+      "rendered_size_px": [
+        2048,
+        2048
+      ],
+      "map_extent_m": [
+        -75.597798,
+        948.402202,
+        873.438487,
+        -150.561513
+      ],
+      "waypoint_count": 11,
+      "display_waypoint_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "display_waypoint_count": 11,
+      "display_turn_threshold_deg": 30.0,
+      "prediction_count": 171,
+      "all_positions_inside": true
+    },
+    "c/test_02": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/1.2897673873873876_103.84197619336068_1791.95_1024_1024_4326_city.jpg",
+      "source_size_px": [
+        4096,
+        4096
+      ],
+      "rendered_size_px": [
+        2048,
+        2048
+      ],
+      "map_extent_m": [
+        -82.32163,
+        941.67837,
+        864.051328,
+        -159.948672
+      ],
+      "waypoint_count": 11,
+      "display_waypoint_indices": [
+        0,
+        2,
+        3,
+        5,
+        7,
+        8,
+        9,
+        10
+      ],
+      "display_waypoint_count": 8,
+      "display_turn_threshold_deg": 30.0,
+      "prediction_count": 226,
+      "all_positions_inside": true
+    },
+    "d/test_02": {
+      "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/37.75538738738739_-122.4533351740761_1791.95_1024_1024_4326_city.jpg",
+      "source_size_px": [
+        4096,
+        4096
+      ],
+      "rendered_size_px": [
+        2048,
+        2048
+      ],
+      "map_extent_m": [
+        -89.824951,
+        934.175049,
+        864.601264,
+        -159.398736
+      ],
+      "waypoint_count": 11,
+      "display_waypoint_indices": [
+        0,
+        2,
+        3,
+        5,
+        7,
+        8,
+        9,
+        10
+      ],
+      "display_waypoint_count": 8,
+      "display_turn_threshold_deg": 30.0,
+      "prediction_count": 261,
+      "all_positions_inside": true
+    }
+  }
+}

@@ -1,0 +1,329 @@
+{
+  "architecture": "ICLR_Bearing4City_Forward18SoftMS_ResidualTemporalGRU_Kalman_FinalMS",
+  "source_dataset": "/yh/study/cvpr_data/Bearing_UAV_90K",
+  "protocol": "custom prepared route episodes, not official full-90K Table 6 split",
+  "training_supervision": "gt_train",
+  "initialization": "random_temporal",
+  "training_teacher_acquisition_ratio": 0.0,
+  "training_teacher_center_ratio": 0.0,
+  "training_teacher_state_ratio": 0.0,
+  "training_GT_loss_only": true,
+  "training_GT_model_inputs": false,
+  "extra_train_routes_dir": "v40/data/official96_train_episodes",
+  "best_validation_mean_mle_m": 23.392251234473665,
+  "best_validation_epoch": 4,
+  "dense_offbank_loss": false,
+  "training_loss_weights_acquisition_measurement_motion": [
+    1.0,
+    2.0,
+    2.0
+  ],
+  "visual_weights": "external visual checkpoints: verify training_protocol=global_gallery_gt_loss_only",
+  "visual_checkpoint_root": "/yh/study/uav-sat/v40/output/official96_citya_visual_18k_20260924/checkpoints",
+  "train_cities": [
+    "citya"
+  ],
+  "eval_cities": [
+    "citya"
+  ],
+  "image_counts_train_test01_test02": {
+    "citya": [
+      99,
+      120,
+      120
+    ]
+  },
+  "test_GT_used_by_model": false,
+  "route_duration_prior": false,
+  "checkpoint": "v40/output/official96_citya_multispeed_pilot_20260924/shared_temporal.pt",
+  "history": [
+    {
+      "epoch": 1,
+      "city": "citya",
+      "route": "train_spatial_20",
+      "loss": 58.17536690135797,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 1,
+      "city": "citya",
+      "route": "train_spatial_30",
+      "loss": 25.221657115221024,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 1,
+      "city": "citya",
+      "route": "train_spatial_08",
+      "loss": 28.48006816705068,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 1,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 12.350490630275072,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 1,
+      "validation_mle_by_city": {
+        "citya": 54.11968719073692
+      },
+      "validation_mean_mle_m": 54.11968719073692
+    },
+    {
+      "epoch": 2,
+      "city": "citya",
+      "route": "train_spatial_08",
+      "loss": 27.85152685356637,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 2,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 12.2272770838304,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 2,
+      "city": "citya",
+      "route": "train_spatial_20",
+      "loss": 13.194576819178959,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 2,
+      "city": "citya",
+      "route": "train_spatial_30",
+      "loss": 21.189149018128713,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 2,
+      "validation_mle_by_city": {
+        "citya": 34.25022620936499
+      },
+      "validation_mean_mle_m": 34.25022620936499
+    },
+    {
+      "epoch": 3,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 16.676004111164747,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 3,
+      "city": "citya",
+      "route": "train_spatial_08",
+      "loss": 25.950497096031903,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 3,
+      "city": "citya",
+      "route": "train_spatial_20",
+      "loss": 12.710221395889919,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 3,
+      "city": "citya",
+      "route": "train_spatial_30",
+      "loss": 19.1410857240359,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 3,
+      "validation_mle_by_city": {
+        "citya": 38.29204052722698
+      },
+      "validation_mean_mle_m": 38.29204052722698
+    },
+    {
+      "epoch": 4,
+      "city": "citya",
+      "route": "train_spatial_30",
+      "loss": 18.516845666368802,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 4,
+      "city": "citya",
+      "route": "train_spatial_20",
+      "loss": 14.699143646160762,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 4,
+      "city": "citya",
+      "route": "train_spatial_08",
+      "loss": 16.854615327219168,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 4,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 11.635433461931017,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 4,
+      "validation_mle_by_city": {
+        "citya": 23.392251234473665
+      },
+      "validation_mean_mle_m": 23.392251234473665
+    }
+  ],
+  "results": {
+    "citya": {
+      "test_01": {
+        "MLE_m": 22.05828283661615,
+        "MedLE_m": 21.749538535817887,
+        "P90_m": 40.72713674235038,
+        "P95_m": 48.18222926277976,
+        "P99_m": 55.08207181177891,
+        "LSR@5_pct": 8.333333333333332,
+        "LSR@10_pct": 19.166666666666668,
+        "LSR@15_pct": 34.166666666666664,
+        "LSR@20_pct": 46.666666666666664,
+        "Protocol": "route_reference_motion_prior_forward3x6_SoftMS_3frame_GRU_next_position_polynomial_Kalman",
+        "SelectedCandidateCapture_pct": 45.83333333333333,
+        "BankCandidateCapture_pct": 94.16666666666667,
+        "AcquisitionAccuracy_pct": null,
+        "HeadingMAE_deg": 48.83956289601778,
+        "MeanAcquisitionConfidence": 0.7388638271071631,
+        "MeanAcquisitionRadius_m": 60.0,
+        "FirstSelectedMissFrame": 0,
+        "FirstBankMissFrame": 27,
+        "LongestSelectedMissFrames": 12,
+        "LongestBankMissFrames": 3,
+        "MeanFinalStep_m": 13.409868804993447,
+        "MaxFinalStep_m": 39.24796083990929,
+        "JumpTolerance_m": 5.0,
+        "JumpDefinition": "final_step > current_GT_step + tolerance",
+        "JumpRate_pct": 7.563025210084033,
+        "MeanExcessStepOverGT_m": 1.14319060693759,
+        "LegacyStepOver3mRate_pct": 93.27731092436974,
+        "GTStepOver3mRate_pct": 100.0,
+        "KalmanStepLimited_pct": 1.6666666666666667,
+        "MeanVisualConfidence": 0.7388638271071631,
+        "MeanSpeedError_m_per_frame": 9.722092608535066,
+        "MeanProgressError_m": 11.251552264867728,
+        "MotionPrediction_MAE_m": 30.738066265653636,
+        "MotionPrediction_P90_m": 49.31197292460357,
+        "VisualMeasurement_MAE_m": 16.825293921194987,
+        "VisualMeasurement_P90_m": 36.84015522152207,
+        "Kalman_MAE_m": 26.084329613064728,
+        "MS_MeanShiftFromKalman_m": 5.851144842474525,
+        "MS_MaxShiftFromKalman_m": 14.13729021061294,
+        "VisualObservationDecoder": "Forward-18 Soft MeanShift",
+        "VisualObservationUncertainty": "SoftMS converged-mode variance projected to route parallel/cross coordinates",
+        "MS_Enabled": true,
+        "MS_GridSize": 6,
+        "OnlineMeanShiftCount": 1,
+        "MS_LatencyMean_ms": 0.0,
+        "MS_LatencyP90_ms": 0.0,
+        "MS_ThroughputFPS": 0.0,
+        "MS_LatencyWarmupFrames": 30,
+        "MS_Definition": "exactly one final local Soft MeanShift after the Kalman estimator",
+        "MS_LatencyDefinition": "final candidate centers + regularized logits already prepared -> one soft_mean_shift decoder -> metric XY",
+        "FinalPredictedWaypointLeg": 14,
+        "FinalGTWaypointLeg": 14,
+        "Waypoints": 16,
+        "CSV": "v40/output/official96_citya_multispeed_pilot_20260924/eval/citya/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+        "EndToEndTiming": {
+          "definition": "prepared UAV tensor -> backbone -> visual retrieval/GRU -> external RouteKalman -> final XY",
+          "excluded": [
+            "image disk I/O",
+            "image preprocessing",
+            "model/checkpoint loading",
+            "satellite gallery construction"
+          ],
+          "warmup_frames": 30,
+          "samples": 90,
+          "mean_ms": 414.9292445068972,
+          "median_ms": 400.82233492285013,
+          "p90_ms": 465.2838312089443,
+          "p95_ms": 472.1495852107182,
+          "fps": 2.410049455994364
+        }
+      },
+      "test_02": {
+        "MLE_m": 21.06304102929283,
+        "MedLE_m": 19.384263410995313,
+        "P90_m": 39.20805311998317,
+        "P95_m": 44.14756096274897,
+        "P99_m": 59.003554532702246,
+        "LSR@5_pct": 5.0,
+        "LSR@10_pct": 21.666666666666668,
+        "LSR@15_pct": 40.0,
+        "LSR@20_pct": 52.5,
+        "Protocol": "route_reference_motion_prior_forward3x6_SoftMS_3frame_GRU_next_position_polynomial_Kalman",
+        "SelectedCandidateCapture_pct": 59.166666666666664,
+        "BankCandidateCapture_pct": 97.5,
+        "AcquisitionAccuracy_pct": null,
+        "HeadingMAE_deg": 49.980188378145684,
+        "MeanAcquisitionConfidence": 0.7504841989917755,
+        "MeanAcquisitionRadius_m": 60.0,
+        "FirstSelectedMissFrame": 2,
+        "FirstBankMissFrame": 49,
+        "LongestSelectedMissFrames": 6,
+        "LongestBankMissFrames": 2,
+        "MeanFinalStep_m": 15.864904157654832,
+        "MaxFinalStep_m": 44.154626239773734,
+        "JumpTolerance_m": 5.0,
+        "JumpDefinition": "final_step > current_GT_step + tolerance",
+        "JumpRate_pct": 15.126050420168067,
+        "MeanExcessStepOverGT_m": 2.0409025737798046,
+        "LegacyStepOver3mRate_pct": 97.47899159663865,
+        "GTStepOver3mRate_pct": 100.0,
+        "KalmanStepLimited_pct": 1.6666666666666667,
+        "MeanVisualConfidence": 0.7504841989917755,
+        "MeanSpeedError_m_per_frame": 9.843331798076921,
+        "MeanProgressError_m": 26.2499263749889,
+        "MotionPrediction_MAE_m": 29.99770195695818,
+        "MotionPrediction_P90_m": 51.69462685039506,
+        "VisualMeasurement_MAE_m": 14.151096141989475,
+        "VisualMeasurement_P90_m": 27.188959912983606,
+        "Kalman_MAE_m": 25.752567590197327,
+        "MS_MeanShiftFromKalman_m": 6.522288938878274,
+        "MS_MaxShiftFromKalman_m": 15.540032347990755,
+        "VisualObservationDecoder": "Forward-18 Soft MeanShift",
+        "VisualObservationUncertainty": "SoftMS converged-mode variance projected to route parallel/cross coordinates",
+        "MS_Enabled": true,
+        "MS_GridSize": 6,
+        "OnlineMeanShiftCount": 1,
+        "MS_LatencyMean_ms": 0.0,
+        "MS_LatencyP90_ms": 0.0,
+        "MS_ThroughputFPS": 0.0,
+        "MS_LatencyWarmupFrames": 30,
+        "MS_Definition": "exactly one final local Soft MeanShift after the Kalman estimator",
+        "MS_LatencyDefinition": "final candidate centers + regularized logits already prepared -> one soft_mean_shift decoder -> metric XY",
+        "FinalPredictedWaypointLeg": 14,
+        "FinalGTWaypointLeg": 12,
+        "Waypoints": 16,
+        "CSV": "v40/output/official96_citya_multispeed_pilot_20260924/eval/citya/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+        "EndToEndTiming": {
+          "definition": "prepared UAV tensor -> backbone -> visual retrieval/GRU -> external RouteKalman -> final XY",
+          "excluded": [
+            "image disk I/O",
+            "image preprocessing",
+            "model/checkpoint loading",
+            "satellite gallery construction"
+          ],
+          "warmup_frames": 30,
+          "samples": 90,
+          "mean_ms": 404.10943129099905,
+          "median_ms": 398.9789260085672,
+          "p90_ms": 433.7932665832341,
+          "p95_ms": 461.1492784228176,
+          "fps": 2.474577237173909
+        }
+      }
+    }
+  }
+}

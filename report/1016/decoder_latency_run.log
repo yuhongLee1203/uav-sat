@@ -1,0 +1,30 @@
+Recomputed all 1482 predictions; mode histogram: {1: 1482} max differences: {'Argmax': 0.0, 'Mean Shift': 0.0, 'Weighted Average': 0.00017503547591620497}
+Measured: a/test_01
+Measured: a/test_02
+Measured: b/test_01
+Measured: b/test_02
+Measured: c/test_01
+Measured: c/test_02
+Measured: d/test_01
+Measured: d/test_02
+# 三種解碼：最終座標運算時間與誤差
+
+GPU 0：RTX 3090；batch=1、FP32。誤差使用全部1,482筆；時間使用8條route各一筆中間幀，每方法各1,600次CUDA graph與1,200次單次呼叫量測。
+
+| 方法 | GPU純運算 median (ms) | GPU P90 (ms) | 單次呼叫 median (ms) | MLE (m) | LSR@3 (%) | LSR@5 (%) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Argmax | 0.00352000 | 0.00405600 | 0.03891200 | 4.135790 | 36.10 | 68.08 |
+| Mean Shift | 0.00268800 | 0.00272000 | 0.03481600 | 3.759128 | 41.90 | 73.75 |
+| Weighted Average | 0.00406400 | 0.00409600 | 0.03584000 | 3.748509 | 42.51 | 74.29 |
+
+GPU純運算耗時（小→大）：Mean Shift < Argmax < Weighted Average。
+MLE（小→大、越小越準）：Weighted Average < Mean Shift < Argmax。
+
+計時起點：所有座標、正規化權重都已放在GPU。Argmax包含找最大索引和取出XY；Weighted Average包含36點乘權重後加總；Mean Shift從完成迭代與basin合併後的實際active modes開始乘權重與加總。全部1,482筆實際皆為1個mode，沒有預設或捏造K。MS modes及權重由原保存runtime重新計算，與保存位置最大差異見results.json。
+
+GPU純運算使用CUDA graph：每次replay內128次batch=1運算，CUDA events量整段後除128；排除Python逐kernel發射的空隙，並重用capture時分配的輸出buffer。單次呼叫另列，含host發射間隔。這不是完整decoder、端到端推論時間，也不是MS收斂時間；不能用此欄宣稱整體MS推論較快。
+
+誤差為同一組保存36候選／regularized logits的條件式比較，不回灌tracker；原始協定使用GT-assisted reference。權重路徑及SHA-256保存於weights_manifest.json。沒有因預期排序修改結果。
+
+重跑：`python3 /yh/study/uav-sat/report/1016/benchmark_decoder_latency.py`。原始逐次時間：timing_raw.csv；逐route誤差：accuracy_by_route.csv；完整結果：results.json。
+

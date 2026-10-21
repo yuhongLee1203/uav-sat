@@ -1,0 +1,47 @@
+[PREPARED] PASS | city=citya | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.359172 m | p90=10.084329 m | p95=11.123011 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[PATCH OK] stable UAV model-state feature cache
+[V40 RELAXED V39 RUNTIME] train-only motion bounds; current GT motion caps removed
+[ARCH-AUDIT] forward_18: PASS
+[ARCH-AUDIT] base_geometry_6x6: PASS
+[ARCH-AUDIT] front_softms_source: PASS
+[ARCH-AUDIT] one_final_ms_source: PASS
+[ARCH-AUDIT] front_decoder_softms: PASS
+[ARCH-AUDIT] simple_seven_block_gru: PASS
+[ARCH-AUDIT] residual_motion_head: PASS
+[ARCH-AUDIT] temporal_reliability_gate: PASS
+[ARCH-AUDIT] causal_visual_displacement: PASS
+[ARCH-AUDIT] cadence_initialized_tracker: PASS
+[ARCH-AUDIT] motion_training_inference_aligned: PASS
+[ARCH-AUDIT] training_city_motion_scale_init: PASS
+[ARCH-AUDIT] forward_origin_backshift_covers_jitter: PASS
+[ARCH-AUDIT] protocol: PASS
+[ARCH-AUDIT] controlled_gt_reference_enabled: PASS
+[ARCH-AUDIT] frame_count: PASS
+[ARCH-AUDIT] gru_flag: PASS
+[ARCH-AUDIT] kalman_flag: PASS
+[ARCH-AUDIT] v40_train_only_forward_bound: PASS
+[ARCH-AUDIT] v40_train_only_cross_bound: PASS
+[ARCH-AUDIT] v40_train_only_kalman_bound: PASS
+[ARCH-AUDIT] v40_no_gt_motion_cap: PASS
+[ARCH-AUDIT] v40_direct_metadata_xy_loss: PASS
+[ARCH-AUDIT] v40_raw_xy_motion_labels: PASS
+[ARCH-AUDIT] v40_no_route_frame_smoothing: PASS
+route_B backbone cache: 161/161
+
+=== citya no_gru: test_01 ===
+route_B final MLE=4.531m P90=7.234m LSR@15=100.00% selected_capture=100.00% bank_capture=100.00% acq_acc=100.00% speed_mae=4.694m/frame progress_mae=2.469m heading_mae=35.3deg jump_rate=1.25% max_step=18.99m final_leg=11 gt_leg=11
+route_C backbone cache: 219/219
+
+=== citya no_gru: test_02 ===
+route_C final MLE=4.353m P90=7.239m LSR@15=100.00% selected_capture=100.00% bank_capture=100.00% acq_acc=100.00% speed_mae=4.819m/frame progress_mae=2.912m heading_mae=31.9deg jump_rate=0.92% max_step=23.29m final_leg=8 gt_leg=8
+[DONE] /yh/study/uav-sat/v40/output/v39_v40_relaxed_v13_20260925_202734_1548206/citya/variants/no_gru/bearing_v39_summary.json

@@ -1,0 +1,15 @@
+{
+  "checkpoint": "/yh/study/uav-sat/v40/output/official96_citya_fixedroute_pilot_20260924/shared_temporal.pt",
+  "city": "citya",
+  "validation_only": true,
+  "tta_rotations": [
+    0,
+    2
+  ],
+  "current_frame_GT_model_input": false,
+  "MLE_m": 9.997546672323095,
+  "P90_m": 19.287191341652516,
+  "LSR@15_pct": 76.19047619047619,
+  "SelectedCandidateCapture_pct": 68.25396825396825,
+  "BankCandidateCapture_pct": 96.82539682539682
+}

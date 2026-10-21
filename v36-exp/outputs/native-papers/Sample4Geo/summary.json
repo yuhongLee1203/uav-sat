@@ -1,0 +1,17 @@
+{
+  "method": "Sample4Geo",
+  "protocol": "native class-paired training; fixed global gallery; no local prior",
+  "distance_definition": "Top-1 predicted gallery centre minus positive gallery centre",
+  "combined": {
+    "frames": 3534,
+    "MLE_m": 284.90458025006546,
+    "Median_m": 241.94146976077727,
+    "P90_m": 588.8406029685065,
+    "P95_m": 709.8781759554021,
+    "LSR@3_pct": 0.3395585738539898,
+    "LSR@5_pct": 1.3299377475947936,
+    "LSR@10_pct": 2.320316921335597,
+    "LSR@15_pct": 3.537068477645727,
+    "FPS": 226.2638539527025
+  }
+}

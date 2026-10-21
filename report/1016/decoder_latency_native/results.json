@@ -1,0 +1,857 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "physical_gpu": 0,
+  "torch": "1.13.1+cu117",
+  "cuda": "11.7",
+  "batch_size": 1,
+  "dtype": "float32",
+  "trials": 3,
+  "repeats_per_route_trial": 50,
+  "latency_frames": 8,
+  "accuracy_frames": 1482,
+  "source_suite": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368",
+  "fixture_sha256": "c747915f93a59f8c325ba1ce900fbe26185beab04ed6c252973e4427dcce2a93",
+  "runtime_sha256": "8f74d4a2aba2793ef4350c4c37af2d61e5aea50fec767c00e99cf3d4714a5650",
+  "weight_reference": "/yh/study/uav-sat/report/1016/decoder_latency/weights_manifest.json",
+  "max_xy_difference_from_saved_m": {
+    "Argmax": 0.0,
+    "Weighted Average": 0.00017503547591620497,
+    "Mean Shift (original post-iteration tail)": 0.0
+  },
+  "scope": "All inputs resident on GPU. Argmax: original candidate logits -> argmax -> gather XY. WA: logits -> divide tau -> softmax -> weighted XY. MS: original 3 configured iterations already finished; original probabilities and 36 iterated seeds resident -> density -> beta softmax -> original Python connected basin merge -> XY. Omit only iterations, pre-iteration steps, and post-XY support/padding/compact outputs. No equivalent-output replacement and no pre-merge shortcut. Same synchronous perf_counter_ns wall clock for all three including host control and GPU completion. No CUDA graphs, no per-batch division. This is conditional post-convergence implementation latency, not full MS algorithm runtime.",
+  "rows": [
+    {
+      "decoder": "Argmax",
+      "samples": 1200,
+      "wall_clock": {
+        "mean_ms": 0.07638758666666666,
+        "median_ms": 0.07422799999999999,
+        "p10_ms": 0.0726683,
+        "p90_ms": 0.08423100000000001
+      },
+      "MLE_m": 4.135789900241109,
+      "LSR3_pct": 36.09986504723347,
+      "LSR5_pct": 68.08367071524967
+    },
+    {
+      "decoder": "Weighted Average",
+      "samples": 1200,
+      "wall_clock": {
+        "mean_ms": 0.09617491166666667,
+        "median_ms": 0.09307,
+        "p10_ms": 0.09130239999999999,
+        "p90_ms": 0.10915980000000002
+      },
+      "MLE_m": 3.7485090891854775,
+      "LSR3_pct": 42.51012145748988,
+      "LSR5_pct": 74.2914979757085
+    },
+    {
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "samples": 1200,
+      "wall_clock": {
+        "mean_ms": 3.093244858333333,
+        "median_ms": 3.025765,
+        "p10_ms": 2.9251374,
+        "p90_ms": 3.353609600000001
+      },
+      "MLE_m": 3.7591276968535423,
+      "LSR3_pct": 41.902834008097166,
+      "LSR5_pct": 73.75168690958165
+    }
+  ],
+  "per_route_trial": [
+    {
+      "trial": 1,
+      "route": "a/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.08274294000000001,
+        "median_ms": 0.081788,
+        "p10_ms": 0.0792928,
+        "p90_ms": 0.090951
+      }
+    },
+    {
+      "trial": 1,
+      "route": "a/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09493272,
+        "median_ms": 0.0935095,
+        "p10_ms": 0.09226140000000001,
+        "p90_ms": 0.1033849
+      }
+    },
+    {
+      "trial": 1,
+      "route": "a/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0359232599999997,
+        "median_ms": 2.9922335,
+        "p10_ms": 2.9186596,
+        "p90_ms": 3.2020603
+      }
+    },
+    {
+      "trial": 1,
+      "route": "a/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.1047452,
+        "median_ms": 0.1033905,
+        "p10_ms": 0.1019065,
+        "p90_ms": 0.11490940000000001
+      }
+    },
+    {
+      "trial": 1,
+      "route": "a/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.08126424,
+        "median_ms": 3.0020885,
+        "p10_ms": 2.9067734,
+        "p90_ms": 3.3460727
+      }
+    },
+    {
+      "trial": 1,
+      "route": "a/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07572002,
+        "median_ms": 0.0742435,
+        "p10_ms": 0.0731061,
+        "p90_ms": 0.0824601
+      }
+    },
+    {
+      "trial": 1,
+      "route": "b/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.04955204,
+        "median_ms": 3.0029515,
+        "p10_ms": 2.9253983999999997,
+        "p90_ms": 3.25358
+      }
+    },
+    {
+      "trial": 1,
+      "route": "b/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07438866,
+        "median_ms": 0.0741145,
+        "p10_ms": 0.0731543,
+        "p90_ms": 0.0755743
+      }
+    },
+    {
+      "trial": 1,
+      "route": "b/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09475164,
+        "median_ms": 0.093308,
+        "p10_ms": 0.0919899,
+        "p90_ms": 0.1012321
+      }
+    },
+    {
+      "trial": 1,
+      "route": "b/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07522044,
+        "median_ms": 0.074876,
+        "p10_ms": 0.0735689,
+        "p90_ms": 0.0785933
+      }
+    },
+    {
+      "trial": 1,
+      "route": "b/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.10046858,
+        "median_ms": 0.0988245,
+        "p10_ms": 0.0925971,
+        "p90_ms": 0.11166
+      }
+    },
+    {
+      "trial": 1,
+      "route": "b/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0576511200000005,
+        "median_ms": 3.011477,
+        "p10_ms": 2.9414037,
+        "p90_ms": 3.2740251000000002
+      }
+    },
+    {
+      "trial": 1,
+      "route": "c/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09349213999999999,
+        "median_ms": 0.0926295,
+        "p10_ms": 0.0914787,
+        "p90_ms": 0.0974097
+      }
+    },
+    {
+      "trial": 1,
+      "route": "c/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.1439854,
+        "median_ms": 3.0961225,
+        "p10_ms": 2.9391335,
+        "p90_ms": 3.3741721
+      }
+    },
+    {
+      "trial": 1,
+      "route": "c/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07615658,
+        "median_ms": 0.07383200000000001,
+        "p10_ms": 0.0729647,
+        "p90_ms": 0.0863406
+      }
+    },
+    {
+      "trial": 1,
+      "route": "c/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0194973399999996,
+        "median_ms": 3.0070854999999996,
+        "p10_ms": 2.9374549,
+        "p90_ms": 3.0941379
+      }
+    },
+    {
+      "trial": 1,
+      "route": "c/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07608138,
+        "median_ms": 0.0738785,
+        "p10_ms": 0.07280260000000001,
+        "p90_ms": 0.0898144
+      }
+    },
+    {
+      "trial": 1,
+      "route": "c/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09423016,
+        "median_ms": 0.0926295,
+        "p10_ms": 0.0912853,
+        "p90_ms": 0.102169
+      }
+    },
+    {
+      "trial": 1,
+      "route": "d/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.0756372,
+        "median_ms": 0.07422200000000001,
+        "p10_ms": 0.0728318,
+        "p90_ms": 0.0829581
+      }
+    },
+    {
+      "trial": 1,
+      "route": "d/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09445213999999998,
+        "median_ms": 0.0926235,
+        "p10_ms": 0.09083930000000001,
+        "p90_ms": 0.1036976
+      }
+    },
+    {
+      "trial": 1,
+      "route": "d/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.1206067,
+        "median_ms": 3.04849,
+        "p10_ms": 2.9350242,
+        "p90_ms": 3.4031721000000004
+      }
+    },
+    {
+      "trial": 1,
+      "route": "d/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09417044000000001,
+        "median_ms": 0.092785,
+        "p10_ms": 0.0914681,
+        "p90_ms": 0.1041233
+      }
+    },
+    {
+      "trial": 1,
+      "route": "d/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0997451999999996,
+        "median_ms": 3.0614025,
+        "p10_ms": 2.9664471,
+        "p90_ms": 3.3228234
+      }
+    },
+    {
+      "trial": 1,
+      "route": "d/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07496266,
+        "median_ms": 0.0739755,
+        "p10_ms": 0.07286959999999999,
+        "p90_ms": 0.0813414
+      }
+    },
+    {
+      "trial": 2,
+      "route": "a/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09401111999999999,
+        "median_ms": 0.09258150000000001,
+        "p10_ms": 0.0913949,
+        "p90_ms": 0.0991708
+      }
+    },
+    {
+      "trial": 2,
+      "route": "a/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0638770399999995,
+        "median_ms": 3.0030465,
+        "p10_ms": 2.9322879000000004,
+        "p90_ms": 3.3330704
+      }
+    },
+    {
+      "trial": 2,
+      "route": "a/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07726978000000001,
+        "median_ms": 0.0742285,
+        "p10_ms": 0.0729622,
+        "p90_ms": 0.0913693
+      }
+    },
+    {
+      "trial": 2,
+      "route": "a/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.1894268599999998,
+        "median_ms": 3.116353,
+        "p10_ms": 2.9704819000000002,
+        "p90_ms": 3.5492817
+      }
+    },
+    {
+      "trial": 2,
+      "route": "a/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07510508,
+        "median_ms": 0.07396,
+        "p10_ms": 0.072589,
+        "p90_ms": 0.0827257
+      }
+    },
+    {
+      "trial": 2,
+      "route": "a/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09642245999999999,
+        "median_ms": 0.0926815,
+        "p10_ms": 0.0910676,
+        "p90_ms": 0.11080759999999999
+      }
+    },
+    {
+      "trial": 2,
+      "route": "b/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.0755124,
+        "median_ms": 0.073853,
+        "p10_ms": 0.0727039,
+        "p90_ms": 0.0818169
+      }
+    },
+    {
+      "trial": 2,
+      "route": "b/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.0959523,
+        "median_ms": 0.09283949999999999,
+        "p10_ms": 0.0914129,
+        "p90_ms": 0.103399
+      }
+    },
+    {
+      "trial": 2,
+      "route": "b/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.176727980000001,
+        "median_ms": 3.0221435,
+        "p10_ms": 2.9448997,
+        "p90_ms": 3.2159458000000005
+      }
+    },
+    {
+      "trial": 2,
+      "route": "b/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09820293999999999,
+        "median_ms": 0.0946265,
+        "p10_ms": 0.0919815,
+        "p90_ms": 0.1111506
+      }
+    },
+    {
+      "trial": 2,
+      "route": "b/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.1173886599999996,
+        "median_ms": 3.0900635000000003,
+        "p10_ms": 2.9536415000000003,
+        "p90_ms": 3.2893142
+      }
+    },
+    {
+      "trial": 2,
+      "route": "b/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.08160396,
+        "median_ms": 0.0814725,
+        "p10_ms": 0.07462099999999999,
+        "p90_ms": 0.08717380000000001
+      }
+    },
+    {
+      "trial": 2,
+      "route": "c/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.1463483799999996,
+        "median_ms": 3.095139,
+        "p10_ms": 2.9177022000000004,
+        "p90_ms": 3.4100843
+      }
+    },
+    {
+      "trial": 2,
+      "route": "c/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07754324000000001,
+        "median_ms": 0.0744885,
+        "p10_ms": 0.0727291,
+        "p90_ms": 0.0914213
+      }
+    },
+    {
+      "trial": 2,
+      "route": "c/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09607974000000001,
+        "median_ms": 0.09329000000000001,
+        "p10_ms": 0.0912367,
+        "p90_ms": 0.100786
+      }
+    },
+    {
+      "trial": 2,
+      "route": "c/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07661463999999998,
+        "median_ms": 0.07445199999999999,
+        "p10_ms": 0.07257330000000001,
+        "p90_ms": 0.0857959
+      }
+    },
+    {
+      "trial": 2,
+      "route": "c/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09455853999999998,
+        "median_ms": 0.0929805,
+        "p10_ms": 0.0917086,
+        "p90_ms": 0.1017234
+      }
+    },
+    {
+      "trial": 2,
+      "route": "c/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0659205399999996,
+        "median_ms": 3.0515835,
+        "p10_ms": 2.9598631,
+        "p90_ms": 3.1898268
+      }
+    },
+    {
+      "trial": 2,
+      "route": "d/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.10600460000000002,
+        "median_ms": 0.1070815,
+        "p10_ms": 0.092955,
+        "p90_ms": 0.1161288
+      }
+    },
+    {
+      "trial": 2,
+      "route": "d/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.1288367,
+        "median_ms": 3.042461,
+        "p10_ms": 2.9491689,
+        "p90_ms": 3.4690968
+      }
+    },
+    {
+      "trial": 2,
+      "route": "d/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07743858,
+        "median_ms": 0.0744875,
+        "p10_ms": 0.07257380000000001,
+        "p90_ms": 0.08274150000000001
+      }
+    },
+    {
+      "trial": 2,
+      "route": "d/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.3402562599999994,
+        "median_ms": 3.3048505,
+        "p10_ms": 3.0017439,
+        "p90_ms": 3.7369513
+      }
+    },
+    {
+      "trial": 2,
+      "route": "d/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07555830000000001,
+        "median_ms": 0.07410449999999999,
+        "p10_ms": 0.0728367,
+        "p90_ms": 0.0817962
+      }
+    },
+    {
+      "trial": 2,
+      "route": "d/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09660341999999998,
+        "median_ms": 0.09308949999999999,
+        "p10_ms": 0.0917233,
+        "p90_ms": 0.1104567
+      }
+    },
+    {
+      "trial": 3,
+      "route": "a/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0472809399999994,
+        "median_ms": 3.0213520000000003,
+        "p10_ms": 2.943607,
+        "p90_ms": 3.2055462
+      }
+    },
+    {
+      "trial": 3,
+      "route": "a/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07397944,
+        "median_ms": 0.07333049999999999,
+        "p10_ms": 0.0719063,
+        "p90_ms": 0.0784393
+      }
+    },
+    {
+      "trial": 3,
+      "route": "a/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09425441999999999,
+        "median_ms": 0.0926865,
+        "p10_ms": 0.0911529,
+        "p90_ms": 0.1018911
+      }
+    },
+    {
+      "trial": 3,
+      "route": "a/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07493004,
+        "median_ms": 0.0735345,
+        "p10_ms": 0.0722281,
+        "p90_ms": 0.08081330000000002
+      }
+    },
+    {
+      "trial": 3,
+      "route": "a/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09402105999999998,
+        "median_ms": 0.09262300000000001,
+        "p10_ms": 0.0911295,
+        "p90_ms": 0.0988218
+      }
+    },
+    {
+      "trial": 3,
+      "route": "a/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.1150504799999994,
+        "median_ms": 3.070359,
+        "p10_ms": 2.9675554,
+        "p90_ms": 3.3591454
+      }
+    },
+    {
+      "trial": 3,
+      "route": "b/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09430171999999999,
+        "median_ms": 0.092475,
+        "p10_ms": 0.0904316,
+        "p90_ms": 0.1019909
+      }
+    },
+    {
+      "trial": 3,
+      "route": "b/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0808022000000004,
+        "median_ms": 3.02787,
+        "p10_ms": 2.9252972,
+        "p90_ms": 3.2755140000000003
+      }
+    },
+    {
+      "trial": 3,
+      "route": "b/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07402314,
+        "median_ms": 0.073708,
+        "p10_ms": 0.0718847,
+        "p90_ms": 0.0753792
+      }
+    },
+    {
+      "trial": 3,
+      "route": "b/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.06034414,
+        "median_ms": 2.996393,
+        "p10_ms": 2.9188476,
+        "p90_ms": 3.3379849
+      }
+    },
+    {
+      "trial": 3,
+      "route": "b/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.0744971,
+        "median_ms": 0.0737075,
+        "p10_ms": 0.072484,
+        "p90_ms": 0.07999679999999999
+      }
+    },
+    {
+      "trial": 3,
+      "route": "b/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.0973483,
+        "median_ms": 0.0929875,
+        "p10_ms": 0.09132280000000001,
+        "p90_ms": 0.1107462
+      }
+    },
+    {
+      "trial": 3,
+      "route": "c/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07652488,
+        "median_ms": 0.0737585,
+        "p10_ms": 0.0723833,
+        "p90_ms": 0.0874537
+      }
+    },
+    {
+      "trial": 3,
+      "route": "c/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09441814000000001,
+        "median_ms": 0.09265000000000001,
+        "p10_ms": 0.0914052,
+        "p90_ms": 0.1072704
+      }
+    },
+    {
+      "trial": 3,
+      "route": "c/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 2.9766487799999997,
+        "median_ms": 2.9541245,
+        "p10_ms": 2.9111552,
+        "p90_ms": 3.0741484
+      }
+    },
+    {
+      "trial": 3,
+      "route": "c/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09399967999999999,
+        "median_ms": 0.0924595,
+        "p10_ms": 0.09068230000000001,
+        "p90_ms": 0.1062878
+      }
+    },
+    {
+      "trial": 3,
+      "route": "c/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0785670799999996,
+        "median_ms": 3.037086,
+        "p10_ms": 2.9173923,
+        "p90_ms": 3.2670546000000003
+      }
+    },
+    {
+      "trial": 3,
+      "route": "c/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.07675496000000001,
+        "median_ms": 0.074563,
+        "p10_ms": 0.0727968,
+        "p90_ms": 0.08372120000000001
+      }
+    },
+    {
+      "trial": 3,
+      "route": "d/test_01",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 3.0556284799999998,
+        "median_ms": 3.013072,
+        "p10_ms": 2.9145599,
+        "p90_ms": 3.2693134
+      }
+    },
+    {
+      "trial": 3,
+      "route": "d/test_01",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.0741077,
+        "median_ms": 0.0731415,
+        "p10_ms": 0.0723304,
+        "p90_ms": 0.0775377
+      }
+    },
+    {
+      "trial": 3,
+      "route": "d/test_01",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09372748000000002,
+        "median_ms": 0.092484,
+        "p10_ms": 0.0908282,
+        "p90_ms": 0.1010137
+      }
+    },
+    {
+      "trial": 3,
+      "route": "d/test_02",
+      "decoder": "Argmax",
+      "wall_clock": {
+        "mean_ms": 0.08092896,
+        "median_ms": 0.081315,
+        "p10_ms": 0.0761274,
+        "p90_ms": 0.08433560000000001
+      }
+    },
+    {
+      "trial": 3,
+      "route": "d/test_02",
+      "decoder": "Weighted Average",
+      "wall_clock": {
+        "mean_ms": 0.09704894,
+        "median_ms": 0.0936555,
+        "p10_ms": 0.0915463,
+        "p90_ms": 0.1096593
+      }
+    },
+    {
+      "trial": 3,
+      "route": "d/test_02",
+      "decoder": "Mean Shift (original post-iteration tail)",
+      "wall_clock": {
+        "mean_ms": 2.9865467799999994,
+        "median_ms": 2.9647625,
+        "p10_ms": 2.8995567,
+        "p90_ms": 3.0636304
+      }
+    }
+  ]
+}

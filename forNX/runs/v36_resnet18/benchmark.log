@@ -1,0 +1,60 @@
+============================================================================================================
+V36Backbone_resnet18
+device=cuda
+Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+Downloading: "https://download.pytorch.org/models/resnet18-f37072fd.pth" to /home/jetson/circ330/drone/forNX/pretrained_cache/torch/hub/checkpoints/resnet18-f37072fd.pth
+  0%|          | 0.00/44.7M [00:00<?, ?B/s]  3%|▎         | 1.38M/44.7M [00:00<00:03, 13.9MB/s]  8%|▊         | 3.75M/44.7M [00:00<00:02, 20.2MB/s] 14%|█▍        | 6.25M/44.7M [00:00<00:01, 22.5MB/s] 20%|█▉        | 8.75M/44.7M [00:00<00:01, 23.5MB/s] 25%|██▌       | 11.4M/44.7M [00:00<00:01, 24.5MB/s] 31%|███       | 13.9M/44.7M [00:00<00:01, 25.0MB/s] 37%|███▋      | 16.4M/44.7M [00:00<00:01, 25.0MB/s] 42%|████▏     | 18.9M/44.7M [00:00<00:01, 24.8MB/s] 48%|████▊     | 21.2M/44.7M [00:00<00:00, 24.7MB/s] 53%|█████▎    | 23.8M/44.7M [00:01<00:00, 25.0MB/s] 60%|█████▉    | 26.6M/44.7M [00:01<00:00, 26.4MB/s] 65%|██████▌   | 29.2M/44.7M [00:01<00:00, 26.4MB/s] 72%|███████▏  | 32.1M/44.7M [00:01<00:00, 27.0MB/s] 78%|███████▊  | 34.8M/44.7M [00:01<00:00, 26.8MB/s] 84%|████████▎ | 37.4M/44.7M [00:01<00:00, 26.6MB/s] 90%|████████▉ | 40.0M/44.7M [00:01<00:00, 26.6MB/s] 95%|█████████▌| 42.6M/44.7M [00:01<00:00, 26.6MB/s]100%|██████████| 44.7M/44.7M [00:01<00:00, 25.3MB/s]
+route_B backbone cache: 8/2276
+route_B backbone cache: 88/2276
+route_B backbone cache: 168/2276
+route_B backbone cache: 248/2276
+route_B backbone cache: 328/2276
+route_B backbone cache: 408/2276
+route_B backbone cache: 488/2276
+route_B backbone cache: 568/2276
+route_B backbone cache: 648/2276
+route_B backbone cache: 728/2276
+route_B backbone cache: 808/2276
+route_B backbone cache: 888/2276
+route_B backbone cache: 968/2276
+route_B backbone cache: 1048/2276
+route_B backbone cache: 1128/2276
+route_B backbone cache: 1208/2276
+route_B backbone cache: 1288/2276
+route_B backbone cache: 1368/2276
+route_B backbone cache: 1448/2276
+route_B backbone cache: 1528/2276
+route_B backbone cache: 1608/2276
+route_B backbone cache: 1688/2276
+route_B backbone cache: 1768/2276
+route_B backbone cache: 1848/2276
+route_B backbone cache: 1928/2276
+route_B backbone cache: 2008/2276
+route_B backbone cache: 2088/2276
+route_B backbone cache: 2168/2276
+route_B backbone cache: 2248/2276
+route_B backbone cache: 2276/2276
+route_B final MLE=4.242m P90=8.420m LSR@15=100.00% selected_capture=89.63% bank_capture=89.63% acq_acc=100.00% speed_mae=0.664m/frame progress_mae=0.372m heading_mae=9.3deg jump_rate=0.04% max_step=12.37m final_leg=14 gt_leg=14
+route_C backbone cache: 8/1258
+route_C backbone cache: 88/1258
+route_C backbone cache: 168/1258
+route_C backbone cache: 248/1258
+route_C backbone cache: 328/1258
+route_C backbone cache: 408/1258
+route_C backbone cache: 488/1258
+route_C backbone cache: 568/1258
+route_C backbone cache: 648/1258
+route_C backbone cache: 728/1258
+route_C backbone cache: 808/1258
+route_C backbone cache: 888/1258
+route_C backbone cache: 968/1258
+route_C backbone cache: 1048/1258
+route_C backbone cache: 1128/1258
+route_C backbone cache: 1208/1258
+route_C backbone cache: 1258/1258
+route_C final MLE=3.778m P90=7.561m LSR@15=100.00% selected_capture=91.73% bank_capture=91.73% acq_acc=100.00% speed_mae=1.201m/frame progress_mae=0.249m heading_mae=27.9deg jump_rate=0.00% max_step=7.00m final_leg=10 gt_leg=10
+summary: /home/jetson/circ330/drone/forNX/runs/v36_resnet18/robust_tracker_summary.json

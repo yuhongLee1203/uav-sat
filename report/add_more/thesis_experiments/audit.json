@@ -1,0 +1,46 @@
+{
+  "n_routes": 8,
+  "n_test_observations": 1482,
+  "overall_MLE_m": 3.7591276968535423,
+  "overall_LSR_at_3_pct": 41.902834008097166,
+  "overall_LSR_at_15_pct": 100.0,
+  "decoder_mean_shift_matches_full": true,
+  "same_temporal_checkpoint_all_cities": true,
+  "city_specific_visual_checkpoints": true,
+  "route_state_reset_source": "run_route_inference initializes RouteKalman and hidden=None before each route loop; independent route CSVs were evaluated.",
+  "candidate_count": 36,
+  "gt_assisted": true,
+  "training_performed": false,
+  "selected_response_samples": [
+    {
+      "category": "Strong single lattice peak",
+      "sample": "d/test_02/97",
+      "lattice_peaks": 1,
+      "argmax_ms_gap_m": 0.04782419979397629,
+      "weighted_ms_gap_m": 0.009134037738547608
+    },
+    {
+      "category": "Second-strongest response",
+      "sample": "c/test_02/43",
+      "lattice_peaks": 1,
+      "argmax_ms_gap_m": 2.118380155440327,
+      "weighted_ms_gap_m": 0.010044658994369609
+    },
+    {
+      "category": "Largest Argmax/Mean Shift gap",
+      "sample": "d/test_02/63",
+      "lattice_peaks": 1,
+      "argmax_ms_gap_m": 3.674106105856711,
+      "weighted_ms_gap_m": 0.09156884171397586
+    },
+    {
+      "category": "Largest Weighted Average/Mean Shift gap",
+      "sample": "d/test_01/23",
+      "lattice_peaks": 1,
+      "argmax_ms_gap_m": 1.7774662290019478,
+      "weighted_ms_gap_m": 0.30658579160780397
+    }
+  ],
+  "source_csv_count": 88,
+  "source_root": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368"
+}

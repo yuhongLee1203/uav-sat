@@ -1,0 +1,6 @@
+Estimation Stage,MLE (m),Median Error (m),LSR@3 (%),LSR@15 (%)
+Supplied Local Reference,5.37,5.59,0.00,100.00
+Front Mean Shift,9.06,8.88,7.42,91.43
+Corrected Visual Measurement,7.88,7.41,8.91,94.67
+Kalman Posterior,6.79,6.58,15.45,98.04
+Final Mean Shift,3.76,3.44,41.90,100.00

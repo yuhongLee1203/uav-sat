@@ -1,0 +1,6 @@
+Official96 c4m temporal GT assisted experiment
+prepared_source=/yh/study/uav-sat/v39_otherdata/output/abcd_table6_official96_temporal_20260923
+weights=initialized_from_scratch; no historical checkpoint imported
+training=ABCD city episodes, frames 3/2/1 on GPUs 0/5/6
+evaluation=Full and nine ablations on GPUs 0/5/6
+started=2026-09-25T19:34:30+08:00

@@ -1,0 +1,69 @@
+{
+  "FULL_TREND_CHECK": "FAIL",
+  "component_full_best": false,
+  "three_frame_full_best": true,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.5071819369122821,
+      "MLE_95CI": [
+        -0.5954714282423516,
+        -0.42420367296461886
+      ],
+      "full_minus_ablation_LSR@5_pct": 8.556149732620321,
+      "LSR@5_95CI": [
+        5.3475935828877,
+        12.032085561497329
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": 0.004398696773708188,
+      "MLE_95CI": [
+        -0.013745057476410616,
+        0.02425735620587424
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.0,
+      "LSR@5_95CI": [
+        -1.0695187165775333,
+        1.0695187165775444
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": -2.8950607673822972,
+      "MLE_95CI": [
+        -3.1651424700737314,
+        -2.615662099582094
+      ],
+      "full_minus_ablation_LSR@5_pct": 40.64171122994652,
+      "LSR@5_95CI": [
+        35.5548128342246,
+        45.98930481283423
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": -0.05964874163507705,
+      "MLE_95CI": [
+        -0.13133091917509934,
+        -0.0041230876265520005
+      ],
+      "full_minus_ablation_LSR@5_pct": 1.0695187165775444,
+      "LSR@5_95CI": [
+        -0.5347593582887722,
+        2.6737967914438503
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": -0.04223488263880837,
+      "MLE_95CI": [
+        -0.11377233792488925,
+        0.013842946373300595
+      ],
+      "full_minus_ablation_LSR@5_pct": 1.3368983957219305,
+      "LSR@5_95CI": [
+        0.0,
+        2.941176470588236
+      ]
+    }
+  },
+  "claim_guidance": "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; revise only through training/validation data, not held-out navigation results.",
+  "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+}

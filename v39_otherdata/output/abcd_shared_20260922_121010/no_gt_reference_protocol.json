@@ -1,0 +1,10 @@
+{
+  "protocol": "held-out final MeanShift without GT-derived frame-reference prior",
+  "MS_REFERENCE_PRIOR_WEIGHT": 0.0,
+  "MS_KF_PRIOR_WEIGHT": 1.50,
+  "MS_REFERENCE_SIGMA_M": 4.0,
+  "MS_KF_SIGMA_M": 4.0,
+  "seed": 2033,
+  "architecture_changed": false,
+  "table_schema_changed": false
+}

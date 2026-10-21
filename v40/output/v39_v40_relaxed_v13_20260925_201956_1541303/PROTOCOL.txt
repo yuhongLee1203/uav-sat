@@ -1,0 +1,6 @@
+Original four-city v13 4 m prepared routes; fresh GT-assisted v39 training
+prepared_source=/yh/study/uav-sat/v39_otherdata/output/abcd_shared_20260922_121010
+no historical checkpoint imported
+v40 fixes=train-only dynamic motion bounds, no GT progress/step clipping, direct metadata-XY measurement and motion labels, no route-frame smoothing, isolated feature caches
+GT remains an inference input for the controlled reference patch search
+started=2026-09-25T20:19:56+08:00

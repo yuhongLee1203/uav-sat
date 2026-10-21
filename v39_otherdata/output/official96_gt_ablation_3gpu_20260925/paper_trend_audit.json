@@ -1,0 +1,70 @@
+{
+  "LOCALIZATION_TREND_CHECK": "FAIL",
+  "component_full_localization_best": false,
+  "three_frame_full_localization_best": false,
+  "heading_fusion_alpha": 0.0,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.051229097209827046,
+      "MLE_95CI": [
+        -0.1236735311808463,
+        0.0210487401864885
+      ],
+      "full_minus_ablation_LSR@15_pct": -0.1041666666666663,
+      "LSR@15_95CI": [
+        -0.9375000000000022,
+        0.7291666666666696
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": 0.08851752306000549,
+      "MLE_95CI": [
+        0.029828152777112038,
+        0.16764828140072285
+      ],
+      "full_minus_ablation_LSR@15_pct": -0.31250000000000444,
+      "LSR@15_95CI": [
+        -0.7291666666666641,
+        0.0
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": 1.3302145035730035,
+      "MLE_95CI": [
+        1.0326975897574844,
+        1.6332194966374738
+      ],
+      "full_minus_ablation_LSR@15_pct": -6.041666666666668,
+      "LSR@15_95CI": [
+        -7.916666666666666,
+        -4.270833333333335
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": 0.0027188454350124402,
+      "MLE_95CI": [
+        -0.019164696337685073,
+        0.022061110921504923
+      ],
+      "full_minus_ablation_LSR@15_pct": 0.1041666666666663,
+      "LSR@15_95CI": [
+        -0.2083333333333326,
+        0.5208333333333315
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": 0.0017755871067208773,
+      "MLE_95CI": [
+        -0.02044514058523177,
+        0.02234947281430803
+      ],
+      "full_minus_ablation_LSR@15_pct": 0.0,
+      "LSR@15_95CI": [
+        -0.4166666666666652,
+        0.4166666666666652
+      ]
+    }
+  },
+  "claim_guidance": "At least one measured ablation is better on MLE or LSR@15; report that trade-off rather than forcing a preferred ranking.",
+  "integrity": "All values are recomputed from measured frame-level outputs; shared heading fusion is applied identically to every row."
+}

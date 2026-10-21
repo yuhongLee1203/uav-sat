@@ -1,0 +1,11 @@
+{
+  "method": "5x5 geometry -> forward 15 -> front SoftMS -> temporal GRU -> constant velocity -> fixed-R Kalman -> final 5x5 SoftMS",
+  "git_sha": "589fda2064a4d5fec16eb04f513501956bf25740",
+  "front_grid": 5,
+  "front_candidates": 15,
+  "final_ms_grid": 5,
+  "final_ms_bandwidth_m": 7.0,
+  "temporal_epochs": 60,
+  "patience": 10,
+  "jitter_m": 8
+}

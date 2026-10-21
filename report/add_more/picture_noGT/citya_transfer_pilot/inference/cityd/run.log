@@ -1,0 +1,17 @@
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+route_B backbone cache: 64/64
+route_B final MLE=236.520m P90=439.996m LSR@15=1.56% selected_capture=4.69% bank_capture=37.50% acq_acc=N/A speed_mae=17.580m/frame progress_mae=192.946m heading_mae=81.6deg jump_rate=76.19% max_step=849.70m final_leg=2 gt_leg=11
+route_C backbone cache: 98/98
+route_C final MLE=262.164m P90=624.227m LSR@15=13.27% selected_capture=11.22% bank_capture=35.71% acq_acc=N/A speed_mae=21.753m/frame progress_mae=113.360m heading_mae=59.2deg jump_rate=69.07% max_step=1117.56m final_leg=9 gt_leg=9
+[DONE] cityd [('test_01', 236.52), ('test_02', 262.164)]

@@ -1,0 +1,38 @@
+# Bearing-UAV 4-city ICLR ablation (measured)
+
+Dataset domain(s): CITYA, CITYB, CITYC, CITYD; held-out sequences are reported as test_01/test_02.
+The local-search protocol is reported separately from the official Bearing-UAV global-regression benchmark.
+
+## Component removal
+
+| Variant | MLE (m) | P90 (m) | LSR@5 | LSR@15 | HSR@15 | MHE (deg) |
+|---|---:|---:|---:|---:|---:|---:|
+| w/o GRU | 4.275 | 7.418 | 65.92% | 99.87% | 39.54% | 37.04 |
+| w/o Kalman | 3.851 | 6.875 | 72.47% | 100.00% | 38.73% | 36.97 |
+| w/o MeanShift | 7.167 | 12.003 | 29.42% | 97.50% | 38.39% | 37.93 |
+| Full | 3.869 | 6.978 | 72.20% | 100.00% | 38.66% | 37.04 |
+
+## Temporal input
+
+| Input | MLE (m) | P90 (m) | LSR@3 | LSR@5 |
+|---|---:|---:|---:|---:|
+| 1 frame | 3.882 | 6.991 | 39.81% | 72.54% |
+| 2 frames | 3.922 | 7.071 | 39.14% | 71.86% |
+| Full | 3.869 | 6.978 | 40.01% | 72.20% |
+
+## Final MeanShift window
+
+| Window | Candidates | MLE (m) | P90 (m) | LSR@5 | MS latency (ms) |
+|---|---:|---:|---:|---:|---:|
+| 4x4 | 16 | 4.363 | 7.947 | 64.24% | 3.113 |
+| 5x5 | 25 | 3.873 | 7.015 | 72.20% | 3.978 |
+| 6x6 | 36 | 3.869 | 6.978 | 72.20% | 5.398 |
+| 7x7 | 49 | 3.843 | 6.913 | 72.87% | 6.866 |
+| 8x8 | 64 | 3.843 | 6.913 | 72.87% | 8.435 |
+
+## Integrity audit
+
+`FULL_TREND_CHECK=FAIL`
+
+At least one ablation is better on a primary metric. Do not claim every component improves accuracy; revise only through training/validation data, not held-out navigation results.
+

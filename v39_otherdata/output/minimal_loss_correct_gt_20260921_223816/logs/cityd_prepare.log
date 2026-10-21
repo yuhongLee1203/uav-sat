@@ -1,0 +1,426 @@
+[TURN-DIVERSITY-AUDIT] PASS
+{
+  "city": "cityd",
+  "routes": {
+    "test_01": {
+      "source": "Bearing-UAV official wps38bc_50.json",
+      "waypoints": 13,
+      "turn_delta_mod360_deg": [
+        283.3,
+        110.1,
+        45.3,
+        356.4,
+        271.1,
+        346.3,
+        336.9,
+        310.7,
+        3.7,
+        356.2,
+        268.3
+      ],
+      "meaningful_20_350_deg": [
+        283.3,
+        110.1,
+        45.3,
+        271.1,
+        346.3,
+        336.9,
+        310.7,
+        268.3
+      ]
+    },
+    "test_02": {
+      "source": "Bearing-UAV official wps38bc_51.json",
+      "waypoints": 11,
+      "turn_delta_mod360_deg": [
+        349.1,
+        309.4,
+        58.2,
+        351.4,
+        311.4,
+        350.8,
+        90.4,
+        253.9,
+        112.8
+      ],
+      "meaningful_20_350_deg": [
+        349.1,
+        309.4,
+        58.2,
+        311.4,
+        90.4,
+        253.9,
+        112.8
+      ]
+    }
+  },
+  "combined": {
+    "meaningful_turn_count": 15,
+    "occupied_turn_bins": [
+      0,
+      1,
+      4,
+      5
+    ],
+    "near_90_fraction": 0.26666666666666666,
+    "rule": "meaningful delta in [20,350] deg; >=4 bins across two tests; <=65% near 90deg"
+  }
+}
+[TRAIN-ROUTE-PROBE] city=cityd profile=strict
+{
+  "train_01": {
+    "candidate": "train_01",
+    "status": "ok",
+    "full": true,
+    "frames": 195,
+    "targets": 196,
+    "selected_ratio": 0.9948979591836735,
+    "first_target": 0,
+    "last_target": 195,
+    "target_span_ratio": 1.0,
+    "start_m": 8.544224967716552,
+    "end_m": 9.552757040545403,
+    "worst_waypoint_m": 8.542611801946611,
+    "centerline_cross_p90_m": 7.2378931492020415,
+    "same_leg_lateral_delta_p90_m": 5.122159635413539,
+    "backward_step_pct": 15.463917525773196,
+    "actual_step_p90_m": 11.175116425284255
+  },
+  "train_02": {
+    "candidate": "train_02",
+    "status": "incomplete",
+    "full": false,
+    "frames": 90,
+    "targets": 198,
+    "selected_ratio": 0.45454545454545453,
+    "first_target": 0,
+    "last_target": 89,
+    "target_span_ratio": 0.4517766497461929,
+    "start_m": 0.6614966105966832,
+    "end_m": 438.05020783628396,
+    "worst_waypoint_m": 438.05020783628396,
+    "centerline_cross_p90_m": 6.476143959554244,
+    "same_leg_lateral_delta_p90_m": 3.897018799023847,
+    "backward_step_pct": 16.853932584269664,
+    "actual_step_p90_m": 9.725606608078149
+  },
+  "train_03": {
+    "candidate": "train_03",
+    "status": "ok",
+    "full": true,
+    "frames": 157,
+    "targets": 203,
+    "selected_ratio": 0.7733990147783252,
+    "first_target": 0,
+    "last_target": 202,
+    "target_span_ratio": 1.0,
+    "start_m": 1.4929478233312057,
+    "end_m": 4.1063397131237585,
+    "worst_waypoint_m": 4.633152959399538,
+    "centerline_cross_p90_m": 7.364711802861345,
+    "same_leg_lateral_delta_p90_m": 3.6471111789741846,
+    "backward_step_pct": 7.6923076923076925,
+    "actual_step_p90_m": 11.802490192695178
+  }
+}
+[SEQUENCE-V12-FULLROUTE] train_01 {
+  "split": "train",
+  "planned_length_m": 781.1736496816332,
+  "waypoints": 6,
+  "frames": 195,
+  "sample_step_m": 4.0,
+  "selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+  "max_sample_distance_m": 10.0,
+  "preferred_step_m": 4.0,
+  "safety_max_step_m": 22.0,
+  "point_cross_weight": 20.0,
+  "lateral_smooth_weight": 35.0,
+  "big_turn_threshold_deg": 20.0,
+  "heading_weight_px_per_deg": 0.0,
+  "targets": 196,
+  "dense_frames_before_prune": 195,
+  "dense_selected_ratio": 0.9948979591836735,
+  "selected_ratio": 0.9948979591836735,
+  "prune_keep_ratio": 1.0,
+  "skipped_targets": 1,
+  "per_leg_prune": [
+    {
+      "leg": 0,
+      "dense": 195,
+      "kept": 195,
+      "coverage": 1.0,
+      "mode": "dense_fallback_for_coverage",
+      "first_target": 0,
+      "last_target": 195
+    }
+  ],
+  "mean_target_error_m": 5.8699553390420425,
+  "max_target_error_m": 9.958320828605364,
+  "centerline_cross_mean_m": 3.3895544527169954,
+  "centerline_cross_p90_m": 7.2378931492020415,
+  "centerline_cross_max_m": 9.595596571362499,
+  "same_leg_lateral_delta_p90_m": 5.122159635413539,
+  "same_leg_lateral_delta_max_m": 17.834930426260577,
+  "actual_step_mean_m": 5.837601297560361,
+  "actual_step_p50_m": 4.933150677517734,
+  "actual_step_p90_m": 11.175116425284255,
+  "actual_step_p95_m": 12.801230268157266,
+  "actual_step_max_m": 18.68416927792601,
+  "step_over_7m_pct": 33.50515463917525,
+  "step_over_10m_pct": 15.463917525773196,
+  "step_over_14m_pct": 3.0927835051546393,
+  "cross_step_p90_m": 5.122159635413527,
+  "backward_step_pct": 15.463917525773196,
+  "same_leg_backward_step_pct": 15.463917525773196,
+  "max_cross_track_rule_m": 8.5,
+  "max_same_leg_lateral_jump_rule_m": 4.0,
+  "max_same_leg_backward_rule_m": 0.25
+}
+[SEQUENCE-V12-FULLROUTE] test_01 {
+  "split": "inference",
+  "planned_length_m": 750.8491472570564,
+  "waypoints": 13,
+  "frames": 150,
+  "sample_step_m": 4.0,
+  "selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+  "max_sample_distance_m": 10.0,
+  "preferred_step_m": 4.0,
+  "safety_max_step_m": 22.0,
+  "point_cross_weight": 20.0,
+  "lateral_smooth_weight": 35.0,
+  "big_turn_threshold_deg": 20.0,
+  "heading_weight_px_per_deg": 0.0,
+  "targets": 189,
+  "dense_frames_before_prune": 187,
+  "dense_selected_ratio": 0.9894179894179894,
+  "selected_ratio": 0.7936507936507936,
+  "prune_keep_ratio": 0.8021390374331551,
+  "skipped_targets": 39,
+  "per_leg_prune": [
+    {
+      "leg": 0,
+      "dense": 37,
+      "kept": 27,
+      "coverage": 0.9166666666666666,
+      "mode": "smoothed_full_span",
+      "first_target": 0,
+      "last_target": 36
+    },
+    {
+      "leg": 1,
+      "dense": 22,
+      "kept": 22,
+      "coverage": 1.0,
+      "mode": "dense_fallback_for_coverage",
+      "first_target": 37,
+      "last_target": 59
+    },
+    {
+      "leg": 2,
+      "dense": 20,
+      "kept": 13,
+      "coverage": 1.0,
+      "mode": "smoothed_full_span",
+      "first_target": 60,
+      "last_target": 79
+    },
+    {
+      "leg": 3,
+      "dense": 19,
+      "kept": 19,
+      "coverage": 1.0,
+      "mode": "dense_fallback_for_coverage",
+      "first_target": 80,
+      "last_target": 98
+    },
+    {
+      "leg": 4,
+      "dense": 23,
+      "kept": 16,
+      "coverage": 1.0,
+      "mode": "smoothed_full_span",
+      "first_target": 99,
+      "last_target": 121
+    },
+    {
+      "leg": 5,
+      "dense": 28,
+      "kept": 21,
+      "coverage": 1.0,
+      "mode": "smoothed_full_span",
+      "first_target": 122,
+      "last_target": 149
+    },
+    {
+      "leg": 6,
+      "dense": 27,
+      "kept": 27,
+      "coverage": 1.0,
+      "mode": "dense_fallback_for_coverage",
+      "first_target": 150,
+      "last_target": 177
+    },
+    {
+      "leg": 7,
+      "dense": 11,
+      "kept": 5,
+      "coverage": 1.0,
+      "mode": "smoothed_full_span",
+      "first_target": 178,
+      "last_target": 188
+    }
+  ],
+  "mean_target_error_m": 5.729787825271275,
+  "max_target_error_m": 9.994427824541441,
+  "centerline_cross_mean_m": 3.347778193089126,
+  "centerline_cross_p90_m": 7.285999710811066,
+  "centerline_cross_max_m": 9.767605163959404,
+  "same_leg_lateral_delta_p90_m": 5.069014876040268,
+  "same_leg_lateral_delta_max_m": 16.76031505405349,
+  "actual_step_mean_m": 6.650128244780751,
+  "actual_step_p50_m": 5.646973893765422,
+  "actual_step_p90_m": 12.638098956349959,
+  "actual_step_p95_m": 15.839391383057636,
+  "actual_step_max_m": 18.813472887801012,
+  "step_over_7m_pct": 38.25503355704698,
+  "step_over_10m_pct": 21.476510067114095,
+  "step_over_14m_pct": 7.38255033557047,
+  "cross_step_p90_m": 5.403173116616498,
+  "backward_step_pct": 9.395973154362416,
+  "same_leg_backward_step_pct": 8.053691275167786,
+  "max_cross_track_rule_m": 8.5,
+  "max_same_leg_lateral_jump_rule_m": 4.0,
+  "max_same_leg_backward_rule_m": 0.25
+}
+[SEQUENCE-V12-FULLROUTE] test_02 {
+  "split": "inference",
+  "planned_length_m": 1164.7307744629352,
+  "waypoints": 11,
+  "frames": 261,
+  "sample_step_m": 4.0,
+  "selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+  "max_sample_distance_m": 10.0,
+  "preferred_step_m": 4.0,
+  "safety_max_step_m": 22.0,
+  "point_cross_weight": 20.0,
+  "lateral_smooth_weight": 35.0,
+  "big_turn_threshold_deg": 20.0,
+  "heading_weight_px_per_deg": 0.0,
+  "targets": 292,
+  "dense_frames_before_prune": 291,
+  "dense_selected_ratio": 0.9965753424657534,
+  "selected_ratio": 0.8938356164383562,
+  "prune_keep_ratio": 0.8969072164948454,
+  "skipped_targets": 31,
+  "per_leg_prune": [
+    {
+      "leg": 0,
+      "dense": 51,
+      "kept": 51,
+      "coverage": 1.0,
+      "mode": "dense_fallback_for_coverage",
+      "first_target": 0,
+      "last_target": 51
+    },
+    {
+      "leg": 1,
+      "dense": 20,
+      "kept": 16,
+      "coverage": 1.0,
+      "mode": "smoothed_full_span",
+      "first_target": 52,
+      "last_target": 71
+    },
+    {
+      "leg": 2,
+      "dense": 48,
+      "kept": 41,
+      "coverage": 1.0,
+      "mode": "smoothed_full_span",
+      "first_target": 72,
+      "last_target": 119
+    },
+    {
+      "leg": 3,
+      "dense": 42,
+      "kept": 31,
+      "coverage": 0.8780487804878049,
+      "mode": "smoothed_full_span",
+      "first_target": 120,
+      "last_target": 161
+    },
+    {
+      "leg": 4,
+      "dense": 45,
+      "kept": 45,
+      "coverage": 1.0,
+      "mode": "dense_fallback_for_coverage",
+      "first_target": 162,
+      "last_target": 206
+    },
+    {
+      "leg": 5,
+      "dense": 28,
+      "kept": 20,
+      "coverage": 1.0,
+      "mode": "smoothed_full_span",
+      "first_target": 207,
+      "last_target": 234
+    },
+    {
+      "leg": 6,
+      "dense": 57,
+      "kept": 57,
+      "coverage": 1.0,
+      "mode": "dense_fallback_for_coverage",
+      "first_target": 235,
+      "last_target": 291
+    }
+  ],
+  "mean_target_error_m": 5.348710785749982,
+  "max_target_error_m": 9.975022226089921,
+  "centerline_cross_mean_m": 2.840978474888833,
+  "centerline_cross_p90_m": 5.89525316325737,
+  "centerline_cross_max_m": 8.895640408134476,
+  "same_leg_lateral_delta_p90_m": 3.8681496822305856,
+  "same_leg_lateral_delta_max_m": 11.537899125535633,
+  "actual_step_mean_m": 5.931146949889956,
+  "actual_step_p50_m": 5.005410364205354,
+  "actual_step_p90_m": 11.472876687178408,
+  "actual_step_p95_m": 12.858035135344013,
+  "actual_step_max_m": 20.538509245963137,
+  "step_over_7m_pct": 30.76923076923077,
+  "step_over_10m_pct": 16.153846153846153,
+  "step_over_14m_pct": 3.8461538461538463,
+  "cross_step_p90_m": 4.057363963332359,
+  "backward_step_pct": 11.538461538461538,
+  "same_leg_backward_step_pct": 10.76923076923077,
+  "max_cross_track_rule_m": 8.5,
+  "max_same_leg_lateral_jump_rule_m": 4.0,
+  "max_same_leg_backward_rule_m": 0.25
+}
+[DONE] experiment: /yh/study/uav-sat/v39_otherdata/output/minimal_loss_correct_gt_20260921_223816/cityd/prepared__building/experiment.json
+[MULTICITY-PREP] PASS city=cityd Route-A source=train_01 profile=strict
+{
+  "train_01": {
+    "frames": 195,
+    "waypoints": 6,
+    "start_m": 8.544225275008676,
+    "end_m": 9.552757461978494,
+    "worst_waypoint_m": 8.542612012016765
+  },
+  "test_01": {
+    "frames": 150,
+    "waypoints": 13,
+    "start_m": 3.6307379907094512,
+    "end_m": 8.949826444570832,
+    "worst_waypoint_m": 5.068510926274594
+  },
+  "test_02": {
+    "frames": 261,
+    "waypoints": 11,
+    "start_m": 6.127895455085056,
+    "end_m": 4.245533162372914,
+    "worst_waypoint_m": 9.142751118401533
+  }
+}

@@ -1,0 +1,13 @@
+# Full vs w/o Kalman (held-out, measured)
+
+| Variant | R@1* ↑ | LSR@15 ↑ | HSR@15 ↑ | MLE (m) ↓ | MHE (deg) ↓ |
+|---|---:|---:|---:|---:|---:|
+| w/o Kalman | 93.66% | 100.00% | 39.61% | 3.763 | 36.81 |
+| Full | 93.66% | 100.00% | 39.61% | 3.759 | 36.87 |
+
+Full − w/o Kalman MLE: -0.0036 m
+Paired MLE 95% CI: [-0.0153, +0.0085] m
+
+R@1* is the Bearing-UAV same-quadrant/sign criterion derived from continuous final XY.
+[PAIR-JSON] /yh/study/uav-sat/v39_otherdata/output/abcd_shared_20260922_121010/kalman_pair_results.json
+[PAIR-MD] /yh/study/uav-sat/v39_otherdata/output/abcd_shared_20260922_121010/kalman_pair_table.md

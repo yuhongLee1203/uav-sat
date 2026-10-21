@@ -1,0 +1,32 @@
+{
+  "test_01": {
+    "route": "test_01",
+    "gt_display_source": "/yh/study/uav-sat-bearing-all4-20260920_010002/v39_otherdata/generated/cityd/routes/test_01/waypoints.json",
+    "gt_display_definition": "official sparse waypoints joined in waypoint_order",
+    "gt_waypoint_count": 13,
+    "gt_color": "green",
+    "gt_line_style": "solid",
+    "per_frame_gt_plotted": false,
+    "prediction_source": "raw inference CSV final_x/final_y",
+    "prediction_color": "red",
+    "prediction_line_style": "solid",
+    "prediction_postprocess": "none",
+    "legacy_output": "/yh/study/uav-sat-bearing-all4-20260920_010002/v39_otherdata/generated/cityd/v39_output_bearing_adapted/test_01_final_result.jpg",
+    "paper_output": "/yh/study/uav-sat-bearing-all4-20260920_010002/v39_otherdata/generated/cityd/v39_output_bearing_adapted/paper_figures_waypoint_gt/test_01_waypoint_gt_green.jpg"
+  },
+  "test_02": {
+    "route": "test_02",
+    "gt_display_source": "/yh/study/uav-sat-bearing-all4-20260920_010002/v39_otherdata/generated/cityd/routes/test_02/waypoints.json",
+    "gt_display_definition": "official sparse waypoints joined in waypoint_order",
+    "gt_waypoint_count": 11,
+    "gt_color": "green",
+    "gt_line_style": "solid",
+    "per_frame_gt_plotted": false,
+    "prediction_source": "raw inference CSV final_x/final_y",
+    "prediction_color": "red",
+    "prediction_line_style": "solid",
+    "prediction_postprocess": "none",
+    "legacy_output": "/yh/study/uav-sat-bearing-all4-20260920_010002/v39_otherdata/generated/cityd/v39_output_bearing_adapted/test_02_final_result.jpg",
+    "paper_output": "/yh/study/uav-sat-bearing-all4-20260920_010002/v39_otherdata/generated/cityd/v39_output_bearing_adapted/paper_figures_waypoint_gt/test_02_waypoint_gt_green.jpg"
+  }
+}

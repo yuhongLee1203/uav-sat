@@ -1,0 +1,37 @@
+[PREPARED] PASS | city=cityd | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.837601 m | p90=11.175116 m | p95=12.801230 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[ARCH-AUDIT] forward_18: PASS
+[ARCH-AUDIT] base_geometry_6x6: PASS
+[ARCH-AUDIT] front_softms_source: PASS
+[ARCH-AUDIT] one_final_ms_source: PASS
+[ARCH-AUDIT] front_decoder_softms: PASS
+[ARCH-AUDIT] simple_seven_block_gru: PASS
+[ARCH-AUDIT] residual_motion_head: PASS
+[ARCH-AUDIT] causal_visual_displacement: PASS
+[ARCH-AUDIT] cadence_initialized_tracker: PASS
+[ARCH-AUDIT] motion_training_inference_aligned: PASS
+[ARCH-AUDIT] training_city_motion_scale_init: PASS
+[ARCH-AUDIT] forward_origin_backshift_covers_jitter: PASS
+[ARCH-AUDIT] protocol: PASS
+[ARCH-AUDIT] controlled_gt_reference_enabled: PASS
+[ARCH-AUDIT] frame_count: PASS
+[ARCH-AUDIT] gru_flag: PASS
+[ARCH-AUDIT] kalman_flag: PASS
+route_B: reuse UAV backbone cache
+
+=== cityd no_ms: test_01 ===
+route_B final MLE=7.297m P90=12.592m LSR@15=96.67% selected_capture=99.33% bank_capture=99.33% acq_acc=100.00% speed_mae=4.348m/frame progress_mae=4.535m heading_mae=39.8deg jump_rate=9.40% max_step=22.15m final_leg=11 gt_leg=11
+route_C: reuse UAV backbone cache
+
+=== cityd no_ms: test_02 ===
+route_C final MLE=8.098m P90=12.734m LSR@15=96.55% selected_capture=99.23% bank_capture=99.23% acq_acc=100.00% speed_mae=4.757m/frame progress_mae=5.929m heading_mae=42.4deg jump_rate=9.62% max_step=23.05m final_leg=9 gt_leg=9
+[DONE] /yh/study/uav-sat/v39_otherdata/output/cityd_full3f_tuned_20260922_001910/cityd/variants/no_ms/bearing_v39_summary.json

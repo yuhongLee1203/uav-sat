@@ -1,0 +1,16 @@
+============================================================================================================
+V36Exp_softms_only
+device=cuda
+Protocol: CONTROLLED GT+smooth-jitter local prior. The current-frame GT coordinate is intentionally used only to center the local SAT search window; this is not autonomous localization.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+reuse visual checkpoint: /yh/study/uav-sat/v36-exp/outputs/internal/corrected_v2/softms_only/checkpoints/visual_retrieval_A_only.pt
+route_A: reuse UAV backbone cache
+skip temporal training: SoftMS-only ablation has no GRU
+route_B: reuse UAV backbone cache
+route_B final MLE=4.834m P90=9.280m LSR@15=99.12% selected_capture=88.36% bank_capture=88.36% acq_acc=100.00% speed_mae=3.135m/frame progress_mae=13.405m heading_mae=14.8deg jump_rate=1.49% max_step=19.46m final_leg=14 gt_leg=14
+route_C: reuse UAV backbone cache
+route_C final MLE=4.472m P90=8.350m LSR@15=99.68% selected_capture=91.73% bank_capture=91.73% acq_acc=100.00% speed_mae=2.159m/frame progress_mae=6.337m heading_mae=33.7deg jump_rate=2.55% max_step=19.24m final_leg=10 gt_leg=10
+summary: /yh/study/uav-sat/v36-exp/outputs/internal/corrected_v2/softms_only/robust_tracker_summary.json

@@ -1,0 +1,32 @@
+{
+  "method": "Bearing-UAV",
+  "implementation": "released PARCASGM-v5a model and position+heading SmoothL1 objective",
+  "protocol": "Route A train; four fixed full-map 2x2 satellite context patches; Route B/C test; no local prior/jitter/temporal state",
+  "checkpoint": "/yh/study/uav-sat/v36-exp/outputs/native-unreported/Bearing-UAV/route_A_bearinguav_parcasgm_v5a.pt",
+  "routes": {
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 183.37670577351173,
+      "Median_m": 148.87191234113268,
+      "P90_m": 365.990903141537,
+      "P95_m": 438.9530046775648,
+      "LSR@5_pct": 0.17574692442882248,
+      "LSR@10_pct": 0.4393673110720563,
+      "LSR@15_pct": 1.1862917398945518,
+      "latency_ms_end_to_end": 10.232576403131803,
+      "FPS_end_to_end": 97.72709829891306
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 272.9925668886395,
+      "Median_m": 217.25570444412517,
+      "P90_m": 552.2808877802182,
+      "P95_m": 614.5870761362293,
+      "LSR@5_pct": 0.0,
+      "LSR@10_pct": 0.1589825119236884,
+      "LSR@15_pct": 0.6359300476947536,
+      "latency_ms_end_to_end": 9.779106767845173,
+      "FPS_end_to_end": 102.25882831018012
+    }
+  }
+}

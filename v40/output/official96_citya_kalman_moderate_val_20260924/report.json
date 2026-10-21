@@ -1,0 +1,11 @@
+{
+  "checkpoint": "/yh/study/uav-sat/v40/output/official96_citya_multispeed_pilot_20260924/shared_temporal.pt",
+  "city": "citya",
+  "validation_only": true,
+  "current_frame_GT_model_input": false,
+  "MLE_m": 18.035029754754024,
+  "P90_m": 32.59592669803367,
+  "LSR@15_pct": 46.57534246575342,
+  "SelectedCandidateCapture_pct": 58.9041095890411,
+  "BankCandidateCapture_pct": 91.78082191780823
+}

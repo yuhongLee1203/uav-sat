@@ -1,0 +1,22 @@
+[BACKBONE SOURCE SAME-SPLIT] {"global_top1_MLE_m": 5.016909599304199, "global_top1_P90_m": 8.493839263916016, "global_top1_LSR15_pct": 97.38888549804688}
+[BACKBONE GTLOSS] epoch=1 samples=48/16200 loss=4.6687
+[BACKBONE GTLOSS] epoch=1 samples=2448/16200 loss=4.5920
+[BACKBONE GTLOSS] epoch=1 samples=4848/16200 loss=4.6377
+[BACKBONE GTLOSS] epoch=1 samples=7248/16200 loss=4.8731
+[BACKBONE GTLOSS] epoch=1 samples=9648/16200 loss=4.5708
+[BACKBONE GTLOSS] epoch=1 samples=12048/16200 loss=5.0763
+[BACKBONE GTLOSS] epoch=1 samples=14448/16200 loss=4.7308
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+[BACKBONE GTLOSS] {"epoch": 1, "train_loss": 4.773159169586452, "validation": {"global_top1_MLE_m": 5.221532344818115, "global_top1_P90_m": 8.875539779663086, "global_top1_LSR15_pct": 97.16667175292969}}
+[BACKBONE GTLOSS DONE] /yh/study/uav-sat/v40/output/no_gt_6x6_20261008_rank_loss/rank01/train/report.json

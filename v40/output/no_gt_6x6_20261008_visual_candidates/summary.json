@@ -1,0 +1,12 @@
+[
+  {
+    "name": "hard32",
+    "gpu": "0",
+    "topk": 32,
+    "random": 16,
+    "seed": 2061,
+    "MLE_m": 4.848088006285639,
+    "P90_m": 7.477337311481404,
+    "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_visual_candidates/hard32/validation/report.json"
+  }
+]

@@ -1,0 +1,38 @@
+{
+  "diagnostic_only": true,
+  "no_GT_used_in_prediction_fusion": true,
+  "final_MS_grid_size": 6,
+  "input_csvs": [
+    "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_acq_diagnostic/citya/route_V_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+    "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_rotation_ensemble/rot0/citya/route_V_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+    "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_rotation_ensemble/rot1/citya/route_V_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+    "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_rotation_ensemble/rot2/citya/route_V_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+    "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_rotation_ensemble/rot3/citya/route_V_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+  ],
+  "variants": {
+    "feature_average_single_tracker": {
+      "MLE_m": 4.666516102397285,
+      "P90_m": 8.601630074038862,
+      "LSR_at_15_pct": 95.23809523809523,
+      "n": 63
+    },
+    "mean_of_four_rotation_trackers": {
+      "MLE_m": 4.629365415848157,
+      "P90_m": 7.4691438772293655,
+      "LSR_at_15_pct": 96.82539682539682,
+      "n": 63
+    },
+    "mean_of_five_trackers": {
+      "MLE_m": 4.529076654384978,
+      "P90_m": 7.687483973333603,
+      "LSR_at_15_pct": 96.82539682539682,
+      "n": 63
+    },
+    "equal_blend_feature_average_and_four_tracker_mean": {
+      "MLE_m": 4.453479129550845,
+      "P90_m": 8.023197893681946,
+      "LSR_at_15_pct": 96.82539682539682,
+      "n": 63
+    }
+  }
+}

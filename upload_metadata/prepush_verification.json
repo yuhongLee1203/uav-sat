@@ -1,0 +1,8 @@
+{
+  "largest_blob_bytes": 4244087,
+  "weight_blobs_present": false,
+  "source_manifest_verified": true,
+  "original_index_preserved": true,
+  "git_index_blob_hashes_match_manifest": true,
+  "staged_files_before_verification_report": 37049
+}

@@ -1,0 +1,36 @@
+[BACKBONE SOURCE SAME-SPLIT] {"global_top1_MLE_m": 5.3073272705078125, "global_top1_P90_m": 8.706925392150879, "global_top1_LSR15_pct": 97.05555725097656}
+[BACKBONE GTLOSS] epoch=1 samples=16/16200 loss=5.2010
+[BACKBONE GTLOSS] epoch=1 samples=816/16200 loss=4.6096
+[BACKBONE GTLOSS] epoch=1 samples=1616/16200 loss=4.5076
+[BACKBONE GTLOSS] epoch=1 samples=2416/16200 loss=4.3093
+[BACKBONE GTLOSS] epoch=1 samples=3216/16200 loss=4.6051
+[BACKBONE GTLOSS] epoch=1 samples=4016/16200 loss=5.0351
+[BACKBONE GTLOSS] epoch=1 samples=4816/16200 loss=4.4644
+[BACKBONE GTLOSS] epoch=1 samples=5616/16200 loss=4.4064
+[BACKBONE GTLOSS] epoch=1 samples=6416/16200 loss=4.6930
+[BACKBONE GTLOSS] epoch=1 samples=7216/16200 loss=4.5795
+[BACKBONE GTLOSS] epoch=1 samples=8016/16200 loss=4.5760
+[BACKBONE GTLOSS] epoch=1 samples=8816/16200 loss=4.6864
+[BACKBONE GTLOSS] epoch=1 samples=9616/16200 loss=5.4940
+[BACKBONE GTLOSS] epoch=1 samples=10416/16200 loss=5.8085
+[BACKBONE GTLOSS] epoch=1 samples=11216/16200 loss=4.4285
+[BACKBONE GTLOSS] epoch=1 samples=12016/16200 loss=4.4534
+[BACKBONE GTLOSS] epoch=1 samples=12816/16200 loss=5.4700
+[BACKBONE GTLOSS] epoch=1 samples=13616/16200 loss=5.3016
+[BACKBONE GTLOSS] epoch=1 samples=14416/16200 loss=5.7271
+[BACKBONE GTLOSS] epoch=1 samples=15216/16200 loss=5.8978
+[BACKBONE GTLOSS] epoch=1 samples=16016/16200 loss=4.6558
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+[BACKBONE GTLOSS] {"epoch": 1, "train_loss": 4.7105641143813894, "validation": {"global_top1_MLE_m": 5.424943447113037, "global_top1_P90_m": 9.003324508666992, "global_top1_LSR15_pct": 97.11111450195312}}
+[BACKBONE GTLOSS DONE] /yh/study/uav-sat/v40/output/no_gt_6x6_20261008_visual_candidates_retry16/hard64/train/report.json

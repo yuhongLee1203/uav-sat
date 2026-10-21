@@ -1,0 +1,9 @@
+{
+  "protocol": "GT-assisted v39 Full replay",
+  "samples": 1482,
+  "routes": 8,
+  "MLE_m": 3.7591276968535423,
+  "Median_Error_m": 3.4352563389520365,
+  "LSR_at_3_pct": 41.902834008097166,
+  "LSR_at_15_pct": 100.0
+}

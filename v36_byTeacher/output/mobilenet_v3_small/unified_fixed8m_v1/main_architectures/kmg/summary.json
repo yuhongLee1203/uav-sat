@@ -1,0 +1,62 @@
+{
+  "architecture": "KMG",
+  "protocol": {
+    "protocol_name": "unified_fixed_radial_8m_v1",
+    "main_jitter_m": 8.0,
+    "jitter_definition": "fixed radial magnitude; deterministic changing direction",
+    "main_grid_size": 6,
+    "main_candidate_count": 36,
+    "decoder": "softms",
+    "meanshift_bandwidth_m": 8.0,
+    "score_temperature_tau": 0.3,
+    "seed": 2026,
+    "minimum_candidate_capture_rate_pct": 95.0,
+    "formal_oracle_zero_m": false,
+    "train_route": "route_A",
+    "test_routes": [
+      "route_B",
+      "route_C"
+    ]
+  },
+  "training_from_scratch": true,
+  "results": {
+    "route_B": {
+      "MLE_m": 14.53536681882673,
+      "MedLE_m": 12.759208390679358,
+      "P90_m": 26.66240018234376,
+      "P95_m": 30.928829772555627,
+      "P99_m": 37.02884272106875,
+      "CVaR90_m": 31.608309298730553,
+      "LSR@5_pct": 9.84182776801406,
+      "LSR@10_pct": 35.85237258347979,
+      "LSR@15_pct": 58.787346221441126,
+      "LSR@20_pct": 75.30755711775043,
+      "Architecture": "KMG",
+      "Route": "route_B",
+      "BaseVisualMS_MLE_m": 10.619199672479489,
+      "SearchCenterMLE_m": 8.0,
+      "FormalCandidateCaptureRate_pct": 100.0,
+      "SecondMSCaptureRate_pct": 98.06678383128296,
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/unified_fixed8m_v1/main_architectures/kmg/route_B_frames.csv"
+    },
+    "route_C": {
+      "MLE_m": 13.414039734583946,
+      "MedLE_m": 12.046414026170714,
+      "P90_m": 24.823083912995113,
+      "P95_m": 29.018161878932574,
+      "P99_m": 35.691902254542086,
+      "CVaR90_m": 29.873987824409568,
+      "LSR@5_pct": 14.864864864864865,
+      "LSR@10_pct": 39.58664546899841,
+      "LSR@15_pct": 64.46740858505564,
+      "LSR@20_pct": 77.82193958664547,
+      "Architecture": "KMG",
+      "Route": "route_C",
+      "BaseVisualMS_MLE_m": 10.242033426259052,
+      "SearchCenterMLE_m": 8.0,
+      "FormalCandidateCaptureRate_pct": 100.0,
+      "SecondMSCaptureRate_pct": 96.26391096979332,
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/unified_fixed8m_v1/main_architectures/kmg/route_C_frames.csv"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+route_B backbone cache: 64/64
+route_B final MLE=8.091m P90=15.875m LSR@15=87.50% selected_capture=89.06% bank_capture=100.00% acq_acc=N/A speed_mae=9.170m/frame progress_mae=5.542m heading_mae=43.5deg jump_rate=20.63% max_step=41.29m final_leg=11 gt_leg=11
+route_C backbone cache: 98/98
+route_C final MLE=7.590m P90=12.487m LSR@15=92.86% selected_capture=88.78% bank_capture=100.00% acq_acc=N/A speed_mae=11.296m/frame progress_mae=4.831m heading_mae=54.2deg jump_rate=28.87% max_step=75.07m final_leg=9 gt_leg=9
+[V40 FIXED TEST] cityc test_01 MLE=8.091m
+[V40 FIXED TEST] cityc test_02 MLE=7.590m

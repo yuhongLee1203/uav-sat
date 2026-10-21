@@ -1,0 +1,119 @@
+{
+  "route_name": "test_01",
+  "coordinate_system": "bearing_rsi_map_meters",
+  "mpp": 0.25,
+  "waypoints": [
+    {
+      "waypoint_order": 0,
+      "latitude": 110.29265311519885,
+      "longitude": 698.675041913949,
+      "pixel_x": 2794.700167655796,
+      "pixel_y": 441.1706124607954
+    },
+    {
+      "waypoint_order": 1,
+      "latitude": 237.9389461915132,
+      "longitude": 640.3553272852641,
+      "pixel_x": 2561.4213091410566,
+      "pixel_y": 951.7557847660528
+    },
+    {
+      "waypoint_order": 2,
+      "latitude": 363.80038267636695,
+      "longitude": 671.8808520261608,
+      "pixel_x": 2687.5234081046433,
+      "pixel_y": 1455.2015307054678
+    },
+    {
+      "waypoint_order": 3,
+      "latitude": 477.6966037582912,
+      "longitude": 723.9841709053552,
+      "pixel_x": 2895.936683621421,
+      "pixel_y": 1910.7864150331648
+    },
+    {
+      "waypoint_order": 4,
+      "latitude": 575.9178502994201,
+      "longitude": 712.2191547245241,
+      "pixel_x": 2848.8766188980962,
+      "pixel_y": 2303.6714011976806
+    },
+    {
+      "waypoint_order": 5,
+      "latitude": 656.2056169563732,
+      "longitude": 814.145317229089,
+      "pixel_x": 3256.581268916356,
+      "pixel_y": 2624.822467825493
+    },
+    {
+      "waypoint_order": 6,
+      "latitude": 581.5472869387019,
+      "longitude": 782.8434383784331,
+      "pixel_x": 3131.3737535137325,
+      "pixel_y": 2326.1891477548074
+    },
+    {
+      "waypoint_order": 7,
+      "latitude": 539.7982858300244,
+      "longitude": 730.3388131641518,
+      "pixel_x": 2921.3552526566073,
+      "pixel_y": 2159.1931433200975
+    },
+    {
+      "waypoint_order": 8,
+      "latitude": 534.5343927702668,
+      "longitude": 617.0872718687683,
+      "pixel_x": 2468.3490874750732,
+      "pixel_y": 2138.137571081067
+    },
+    {
+      "waypoint_order": 9,
+      "latitude": 491.92491246703497,
+      "longitude": 598.5195175224931,
+      "pixel_x": 2394.0780700899722,
+      "pixel_y": 1967.6996498681399
+    },
+    {
+      "waypoint_order": 10,
+      "latitude": 435.7014736030135,
+      "longitude": 642.5370195567197,
+      "pixel_x": 2570.1480782268786,
+      "pixel_y": 1742.805894412054
+    },
+    {
+      "waypoint_order": 11,
+      "latitude": 420.35294247072517,
+      "longitude": 620.9825839522013,
+      "pixel_x": 2483.930335808805,
+      "pixel_y": 1681.4117698829007
+    },
+    {
+      "waypoint_order": 12,
+      "latitude": 477.79888081411497,
+      "longitude": 681.4639197287685,
+      "pixel_x": 2725.855678915074,
+      "pixel_y": 1911.1955232564599
+    },
+    {
+      "waypoint_order": 13,
+      "latitude": 392.80879264607825,
+      "longitude": 729.9250780078623,
+      "pixel_x": 2919.7003120314494,
+      "pixel_y": 1571.235170584313
+    },
+    {
+      "waypoint_order": 14,
+      "latitude": 344.88786279033116,
+      "longitude": 819.4128653433427,
+      "pixel_x": 3277.6514613733707,
+      "pixel_y": 1379.5514511613246
+    },
+    {
+      "waypoint_order": 15,
+      "latitude": 315.13059461667456,
+      "longitude": 889.2527821019262,
+      "pixel_x": 3557.0111284077047,
+      "pixel_y": 1260.5223784666982
+    }
+  ]
+}

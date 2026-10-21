@@ -1,0 +1,58 @@
+============================================================================================================
+V34ProtocolCompactGRUSoftMSModeVarianceForward3x6PolynomialKalman_v36
+device=cuda
+Protocol: CONTROLLED GT+smooth-jitter local prior; current-frame GT centres the local SAT search window.
+3-frame recurrent state -> v/a + heading/turn-rate -> heading-aware second-order inertial polynomial -> causal-heading forward 3x6 local visual measurement -> robust constrained route-coordinate Kalman -> final XY.
+Evaluation intentionally does not solve global acquisition/re-localization: every frame receives a bounded GT-centered local prior.
+Estimated position may be corrected backward after an over-prediction; physical forward intent is represented by non-negative route velocity.
+============================================================================================================
+route_B backbone cache: 8/2276
+route_B backbone cache: 88/2276
+route_B backbone cache: 168/2276
+route_B backbone cache: 248/2276
+route_B backbone cache: 328/2276
+route_B backbone cache: 408/2276
+route_B backbone cache: 488/2276
+route_B backbone cache: 568/2276
+route_B backbone cache: 648/2276
+route_B backbone cache: 728/2276
+route_B backbone cache: 808/2276
+route_B backbone cache: 888/2276
+route_B backbone cache: 968/2276
+route_B backbone cache: 1048/2276
+route_B backbone cache: 1128/2276
+route_B backbone cache: 1208/2276
+route_B backbone cache: 1288/2276
+route_B backbone cache: 1368/2276
+route_B backbone cache: 1448/2276
+route_B backbone cache: 1528/2276
+route_B backbone cache: 1608/2276
+route_B backbone cache: 1688/2276
+route_B backbone cache: 1768/2276
+route_B backbone cache: 1848/2276
+route_B backbone cache: 1928/2276
+route_B backbone cache: 2008/2276
+route_B backbone cache: 2088/2276
+route_B backbone cache: 2168/2276
+route_B backbone cache: 2248/2276
+route_B backbone cache: 2276/2276
+route_B final MLE=3.716m P90=6.808m LSR@15=100.00% selected_capture=89.63% bank_capture=89.63% acq_acc=100.00% speed_mae=0.782m/frame progress_mae=0.369m heading_mae=9.7deg jump_rate=0.09% max_step=10.54m final_leg=14 gt_leg=14
+route_C backbone cache: 8/1258
+route_C backbone cache: 88/1258
+route_C backbone cache: 168/1258
+route_C backbone cache: 248/1258
+route_C backbone cache: 328/1258
+route_C backbone cache: 408/1258
+route_C backbone cache: 488/1258
+route_C backbone cache: 568/1258
+route_C backbone cache: 648/1258
+route_C backbone cache: 728/1258
+route_C backbone cache: 808/1258
+route_C backbone cache: 888/1258
+route_C backbone cache: 968/1258
+route_C backbone cache: 1048/1258
+route_C backbone cache: 1128/1258
+route_C backbone cache: 1208/1258
+route_C backbone cache: 1258/1258
+route_C final MLE=3.485m P90=6.570m LSR@15=98.33% selected_capture=91.02% bank_capture=91.02% acq_acc=100.00% speed_mae=0.998m/frame progress_mae=0.172m heading_mae=27.8deg jump_rate=0.00% max_step=7.00m final_leg=10 gt_leg=10
+summary: /home/jetson/circ330/drone/forNX/runs/v36_mobileclip2_s2/robust_tracker_summary.json

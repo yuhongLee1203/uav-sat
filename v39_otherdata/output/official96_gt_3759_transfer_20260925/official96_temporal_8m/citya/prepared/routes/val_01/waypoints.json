@@ -1,0 +1,77 @@
+{
+  "route_name": "val_01",
+  "coordinate_system": "bearing_rsi_map_meters",
+  "mpp": 0.25,
+  "waypoints": [
+    {
+      "waypoint_order": 0,
+      "latitude": 370.2346882270476,
+      "longitude": 540.7782812244429,
+      "pixel_x": 2163.1131248977717,
+      "pixel_y": 1480.9387529081905
+    },
+    {
+      "waypoint_order": 1,
+      "latitude": 487.65488320767327,
+      "longitude": 523.165062298167,
+      "pixel_x": 2092.660249192668,
+      "pixel_y": 1950.619532830693
+    },
+    {
+      "waypoint_order": 2,
+      "latitude": 581.2652898339835,
+      "longitude": 544.2649003864103,
+      "pixel_x": 2177.0596015456413,
+      "pixel_y": 2325.061159335934
+    },
+    {
+      "waypoint_order": 3,
+      "latitude": 580.9278709016786,
+      "longitude": 690.4016140098241,
+      "pixel_x": 2761.6064560392965,
+      "pixel_y": 2323.7114836067144
+    },
+    {
+      "waypoint_order": 4,
+      "latitude": 721.3358692676616,
+      "longitude": 654.3347606941926,
+      "pixel_x": 2617.3390427767704,
+      "pixel_y": 2885.3434770706463
+    },
+    {
+      "waypoint_order": 5,
+      "latitude": 823.0739954626271,
+      "longitude": 626.4762649801596,
+      "pixel_x": 2505.9050599206385,
+      "pixel_y": 3292.2959818505083
+    },
+    {
+      "waypoint_order": 6,
+      "latitude": 846.7574014003613,
+      "longitude": 739.4701770083573,
+      "pixel_x": 2957.880708033429,
+      "pixel_y": 3387.0296056014454
+    },
+    {
+      "waypoint_order": 7,
+      "latitude": 957.2323196972867,
+      "longitude": 649.5611127396836,
+      "pixel_x": 2598.2444509587344,
+      "pixel_y": 3828.929278789147
+    },
+    {
+      "waypoint_order": 8,
+      "latitude": 961.1717969740921,
+      "longitude": 650.0198931187208,
+      "pixel_x": 2600.079572474883,
+      "pixel_y": 3844.6871878963684
+    },
+    {
+      "waypoint_order": 9,
+      "latitude": 929.9029064064532,
+      "longitude": 619.7517493054102,
+      "pixel_x": 2479.0069972216406,
+      "pixel_y": 3719.611625625813
+    }
+  ]
+}

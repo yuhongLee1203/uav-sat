@@ -1,0 +1,89 @@
+{
+  "seed": 2033,
+  "rounds": 4,
+  "base_temporal_epoch": 93,
+  "episodes": [
+    {
+      "epoch": 1,
+      "city": "cityd",
+      "route": "train_01"
+    },
+    {
+      "epoch": 1,
+      "city": "cityc",
+      "route": "train_01"
+    },
+    {
+      "epoch": 1,
+      "city": "cityb",
+      "route": "train_01"
+    },
+    {
+      "epoch": 1,
+      "city": "citya",
+      "route": "train_01"
+    },
+    {
+      "epoch": 2,
+      "city": "cityb",
+      "route": "train_01"
+    },
+    {
+      "epoch": 2,
+      "city": "cityd",
+      "route": "train_01"
+    },
+    {
+      "epoch": 2,
+      "city": "citya",
+      "route": "train_01"
+    },
+    {
+      "epoch": 2,
+      "city": "cityc",
+      "route": "train_01"
+    },
+    {
+      "epoch": 3,
+      "city": "cityd",
+      "route": "train_01"
+    },
+    {
+      "epoch": 3,
+      "city": "cityb",
+      "route": "train_01"
+    },
+    {
+      "epoch": 3,
+      "city": "cityc",
+      "route": "train_01"
+    },
+    {
+      "epoch": 3,
+      "city": "citya",
+      "route": "train_01"
+    },
+    {
+      "epoch": 4,
+      "city": "cityb",
+      "route": "train_01"
+    },
+    {
+      "epoch": 4,
+      "city": "citya",
+      "route": "train_01"
+    },
+    {
+      "epoch": 4,
+      "city": "cityd",
+      "route": "train_01"
+    },
+    {
+      "epoch": 4,
+      "city": "cityc",
+      "route": "train_01"
+    }
+  ],
+  "state_reset": "each route",
+  "shared_optimizer": true
+}

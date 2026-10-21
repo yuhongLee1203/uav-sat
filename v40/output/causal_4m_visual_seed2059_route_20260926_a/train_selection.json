@@ -1,0 +1,5 @@
+{
+  "train_report": "/yh/study/uav-sat/v40/output/causal_4m_visual_seed2059_20260926_a/report.json",
+  "best_checkpoint_improved_in_this_run": true,
+  "checkpoint": "/yh/study/uav-sat/v40/output/causal_4m_visual_seed2059_20260926_a/checkpoints/citya/visual_retrieval_A_only.pt"
+}

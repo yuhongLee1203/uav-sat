@@ -1,0 +1,7 @@
+{
+  "MLE_m": 4.696876200906248,
+  "P90_m": 8.186881421660328,
+  "SelectedCandidateCapture_pct": 93.65079365079364,
+  "checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_acq_refine/train/best_temporal_interim.pt",
+  "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20261008_acq_refine/validation/report.json"
+}

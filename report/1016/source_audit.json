@@ -1,0 +1,76 @@
+{
+  "samples": 1482,
+  "source_suite": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368",
+  "max_full_vs_saved_probe_position_difference_m": 0.0,
+  "max_saved_vs_source_logits_difference": 0.0,
+  "source_files": [
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "a9300b0d223eff8db50257f9eafe769e0294e59b1892cfd593734bd36a35cf62"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/variants/decoder_probe/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "599741741123948618439104ff5801704ea5f774126ecd02e012d3760201b731"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "98dfa198dd44b518dda82ff0996d5b9c74f1a700cc544906936b3be66fb351b6"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/variants/decoder_probe/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "d785b53d54599ac6c2f933ff02eafeebf2d53a7a561b9703fe7c3e84e91f58de"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "0d889912894328f6e3f046f3c2ccc2f3141ef5ed672672d7fe9a51e23d6a929d"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/variants/decoder_probe/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "ac9d89c174f4fa40b23d4e4731c4bdc06aea79b491c5581f6331004b6e110831"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "31f84b4ebf212bd3df9d34fafaf374e29a34a6216e663a56efd460c3b1eb2ac8"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/variants/decoder_probe/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "0396a20ebede03a927157870f8b589f7c8dab41f8cdb9a03196c59ad07556ea1"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "676ff6b834da7eda38ba013cc5ce5a7a2d88422dfb971d79dc98a764fd4ebc4e"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/variants/decoder_probe/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "1007672cae26f82243728e24de5e377a5dc9c70398ae200c62914e5f0a928f8c"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "9358233f6aa1e8728b0080e8aee6b0ddd9f3f03d613214ed2d35f36bc5b88551"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/variants/decoder_probe/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "b9b56e7a3966affff08e524cd4eae29f98f677d2f81b9c802cfdfd4c775cb7d3"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/variants/full/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "8ecd6fbd0a3444391cf23da54e1a482aa39b80eebb56c4e4cf2b70492361a3b0"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/variants/decoder_probe/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "ad0f63e14fa41a317015fdddfb381fadbaf437f445523261e19e446f37591ccc"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/variants/full/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "ae9bc5a64e1cefd731ccc1c611a0eeb66cb10a3083b62e6cea76496b312dc3d4"
+    },
+    {
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/variants/decoder_probe/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv",
+      "sha256": "4bc1e281385fc631c895ce97bf71c811080fb9323b7dc604e2ad1ab146cbccb6"
+    }
+  ],
+  "candidate_archive_sha256": "c747915f93a59f8c325ba1ce900fbe26185beab04ed6c252973e4427dcce2a93",
+  "gpu_allowed": "0 only",
+  "model_retrained": false,
+  "sensitivity_scope": "fixed-candidate final decoder only"
+}

@@ -1,0 +1,100 @@
+{
+  "adapter_version": "official_rsi96_seed42_temporal_v1",
+  "official_dataset_id": 96,
+  "metadata_csv": "/yh/study/cvpr_data/Bearing_UAV_90K/c4m_254k_96bc_b15_s100_v3d/metadata/metadata.csv",
+  "metadata_rows": 90000,
+  "split_seed": 42,
+  "split_ratio": [
+    0.85,
+    0.05,
+    0.1
+  ],
+  "split_counts_global": {
+    "train": 76500,
+    "val": 4500,
+    "test": 9000
+  },
+  "split_sha256_global": {
+    "train": "6f39450103c8824719374e07446a31947ab73ec526e973b228190d58de9fb5f3",
+    "val": "b0028ae3f50c10df89cdc69a78a88ce30fbefd3ebf82c90050950a05b5655987",
+    "test": "3834903057c282683f496472183cd71861e3059d69530be49e501acc062e88f3"
+  },
+  "city": "cityd",
+  "city_rows": 22500,
+  "city_split_counts": {
+    "train": 19213,
+    "val": 1098,
+    "test": 2189
+  },
+  "route_stats": {
+    "train_01": {
+      "official_split": "train",
+      "pool_rows": 19213,
+      "sample_step_m": 8.0,
+      "actual_step_mean_m": 9.554092486419805,
+      "actual_step_p90_m": 14.831915795593533,
+      "actual_step_p95_m": 16.01179473427462,
+      "frames": 99,
+      "targets": 99,
+      "first_target": 0,
+      "last_target": 98,
+      "target_span_ratio": 1.0,
+      "target_error_mean_m": 3.820221969486938,
+      "target_error_max_m": 9.805048255598498,
+      "frame_step_mean_m": 9.554092486419805,
+      "frame_step_p90_m": 14.831915795593533,
+      "frame_step_p95_m": 16.01179473427462,
+      "frame_step_max_m": 22.527983748140123
+    },
+    "val_01": {
+      "official_split": "val",
+      "pool_rows": 1098,
+      "sample_step_m": 8.0,
+      "actual_step_mean_m": 22.384793959992603,
+      "actual_step_p90_m": 33.6186705400062,
+      "actual_step_p95_m": 35.627120931747754,
+      "frames": 72,
+      "target_frames": 80,
+      "waypoint_anchors": 10,
+      "frame_step_mean_m": 22.384793959992603,
+      "frame_step_p90_m": 33.6186705400062,
+      "frame_step_p95_m": 35.627120931747754,
+      "frame_step_max_m": 40.002423003227115,
+      "construction": "deterministic nearest-neighbor chain within official split"
+    },
+    "test_01": {
+      "official_split": "test",
+      "pool_rows": 2189,
+      "sample_step_m": 8.0,
+      "actual_step_mean_m": 19.739861401847815,
+      "actual_step_p90_m": 25.27409828547116,
+      "actual_step_p95_m": 27.472993318372055,
+      "frames": 120,
+      "target_frames": 120,
+      "waypoint_anchors": 16,
+      "frame_step_mean_m": 19.739861401847815,
+      "frame_step_p90_m": 25.27409828547116,
+      "frame_step_p95_m": 27.472993318372055,
+      "frame_step_max_m": 37.60666958218404,
+      "construction": "deterministic nearest-neighbor chain within official split"
+    },
+    "test_02": {
+      "official_split": "test",
+      "pool_rows": 2189,
+      "sample_step_m": 8.0,
+      "actual_step_mean_m": 20.318010491702804,
+      "actual_step_p90_m": 25.78289398099465,
+      "actual_step_p95_m": 28.622279067536173,
+      "frames": 120,
+      "target_frames": 120,
+      "waypoint_anchors": 16,
+      "frame_step_mean_m": 20.318010491702804,
+      "frame_step_p90_m": 25.78289398099465,
+      "frame_step_p95_m": 28.622279067536173,
+      "frame_step_max_m": 39.60475925102181,
+      "construction": "deterministic nearest-neighbor chain within official split"
+    }
+  },
+  "no_cross_split_samples": true,
+  "temporal_adapter": "Independent official rows are ordered into nearby per-city episodes; this is not an original recorded UAV video."
+}

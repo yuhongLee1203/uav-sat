@@ -1,0 +1,34 @@
+diff --git a/train_university.py b/train_university.py
+index fa79afa..13cef2a 100644
+--- a/train_university.py
++++ b/train_university.py
+@@ -90,7 +90,28 @@ class Configuration:
+ 
+ config = Configuration() 
+ 
+-if config.dataset == 'U1652-D2S':
++# FieldAnchor data binding.  These overrides only select the dataset location,
++# run length, batch size, and checkpoint directory; the official Sample4Geo
++# architecture, transforms, InfoNCE loss, and training loop below are unchanged.
++# Without this block the script is hard-coded to the authors' local U1652 path,
++# which prevents a reproducible Route-A training run on this project.
++_fieldanchor_data = os.environ.get("UAVSAT_NATIVE_DATA")
++if _fieldanchor_data:
++    config.query_folder_train = os.path.join(_fieldanchor_data, "train", "satellite")
++    config.gallery_folder_train = os.path.join(_fieldanchor_data, "train", "drone")
++    config.query_folder_test = os.path.join(_fieldanchor_data, "test", "query_drone")
++    config.gallery_folder_test = os.path.join(_fieldanchor_data, "test", "gallery_satellite")
++else:
++    config.query_folder_train = './data/U1652/train/satellite'
++    config.gallery_folder_train = './data/U1652/train/drone'
++    config.query_folder_test = './data/U1652/test/query_drone'
++    config.gallery_folder_test = './data/U1652/test/gallery_satellite'
++config.epochs = int(os.environ.get("UAVSAT_NATIVE_EPOCHS", config.epochs))
++config.batch_size = int(os.environ.get("UAVSAT_NATIVE_BATCH", config.batch_size))
++config.batch_size_eval = int(os.environ.get("UAVSAT_NATIVE_EVAL_BATCH", config.batch_size_eval))
++config.model_path = os.environ.get("UAVSAT_NATIVE_MODEL_PATH", config.model_path)
++
++if not _fieldanchor_data and config.dataset == 'U1652-D2S':
+     config.query_folder_train = './data/U1652/train/satellite'
+     config.gallery_folder_train = './data/U1652/train/drone'   
+     config.query_folder_test = './data/U1652/test/query_drone' 

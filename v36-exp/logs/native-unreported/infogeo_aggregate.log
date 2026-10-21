@@ -1,0 +1,32 @@
+{
+  "method": "InfoGeo",
+  "implementation": "released InfoGeo slot-attention/cross-view fusion modules with portable public DINOv2-B replacement for omitted upstream local backbone paths",
+  "protocol": "Route A train; fixed global satellite gallery; Route B/C test; no local prior/jitter/temporal state",
+  "checkpoint": "/yh/study/uav-sat/v36-exp/outputs/native-unreported/InfoGeo/route_A_infogeo_released_slots.pt",
+  "routes": {
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 241.98922309345696,
+      "Median_m": 159.68209109724071,
+      "P90_m": 536.4399515981193,
+      "P95_m": 673.7610838571472,
+      "LSR@5_pct": 1.5377855887521967,
+      "LSR@10_pct": 4.130052724077329,
+      "LSR@15_pct": 7.293497363796134,
+      "latency_ms_fixed_gallery_similarity_only": 0.001389277945084396,
+      "FPS_fixed_gallery_similarity_only": 719798.369749008
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 231.9158834738373,
+      "Median_m": 92.66500907189814,
+      "P90_m": 558.7197286295656,
+      "P95_m": 896.4346844534216,
+      "LSR@5_pct": 1.4308426073131957,
+      "LSR@10_pct": 4.213036565977743,
+      "LSR@15_pct": 8.187599364069953,
+      "latency_ms_fixed_gallery_similarity_only": 0.001372679155941798,
+      "FPS_fixed_gallery_similarity_only": 728502.3566296509
+    }
+  }
+}

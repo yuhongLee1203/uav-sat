@@ -1,0 +1,55 @@
+# Bearing-UAV 4-city ICLR ablation (measured)
+
+Dataset domain(s): CITYA, CITYB, CITYC, CITYD; held-out sequences are reported as test_01/test_02.
+The local-search protocol is reported separately from the official Bearing-UAV global-regression benchmark.
+
+## Component removal
+
+| Variant | MLE (m) | P90 (m) | LSR@5 | Jump rate | Speed error (m/frame) |
+|---|---:|---:|---:|---:|---:|
+| w/o GRU | 4.284 | 7.420 | 65.86% | 0.475% | 5.921 |
+| w/o Kalman | 3.934 | 7.044 | 70.92% | 0.746% | 2.732 |
+| w/o MeanShift | 7.380 | 12.241 | 28.41% | 6.649% | 2.714 |
+| Full | 3.952 | 7.052 | 70.99% | 0.543% | 2.714 |
+
+## Temporal input
+
+| Input | MLE (m) | P90 (m) | LSR@3 | LSR@5 |
+|---|---:|---:|---:|---:|
+| 1 frame | 3.886 | 6.988 | 39.81% | 72.33% |
+| 2 frames | 3.926 | 7.072 | 39.14% | 71.79% |
+| Full | 3.952 | 7.052 | 38.12% | 70.99% |
+
+## Final MeanShift window
+
+| Window | Candidates | MLE (m) | P90 (m) | LSR@5 | MS latency (ms) |
+|---|---:|---:|---:|---:|---:|
+| 4x4 | 16 | 4.476 | 8.048 | 62.21% | 2.925 |
+| 5x5 | 25 | 3.957 | 7.061 | 70.99% | 3.880 |
+| 6x6 | 36 | 3.952 | 7.052 | 70.99% | 5.764 |
+| 7x7 | 49 | 3.924 | 7.013 | 71.79% | 7.106 |
+| 8x8 | 64 | 3.924 | 7.015 | 71.79% | 7.711 |
+
+## Heading diagnostic
+
+Heading is reported as a diagnostic because the current minimal-loss run sets the heading-loss weight to zero.
+
+| Variant | HSR@15 | MHE (deg) |
+|---|---:|---:|
+| w/o GRU | 39.54% | 37.07 |
+| w/o Kalman | 38.93% | 37.03 |
+| w/o MeanShift | 38.46% | 38.22 |
+| Full | 38.73% | 37.19 |
+
+## Interpretation
+
+- Full vs. w/o Kalman: MLE changes by +0.018 m, while jump rate changes from 0.746% to 0.543%.
+- Three frames have the best MLE/P90 (3.952/7.052 m); the LSR@5 difference from one frame is not statistically resolved by the paired bootstrap.
+- 6x6 is the balance point: only +0.029 m MLE behind 7x7, with 18.9% lower MeanShift latency.
+
+## Integrity audit
+
+`STRICT_ALL_METRICS_FULL_BEST=FAIL`
+
+Do not claim that Full wins every metric. The measured result supports GRU and MeanShift for localization, three frames for MLE/P90, and Kalman for lower jump rate; the no-Kalman MLE advantage is 0.018 m.
+

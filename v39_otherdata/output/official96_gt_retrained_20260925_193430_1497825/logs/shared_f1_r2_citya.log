@@ -1,0 +1,83 @@
+[PREPARED] PASS | city=citya | step=8 m | selection=official_rsi96_seed42_temporal_v1 | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=9.154182 m | p90=13.434345 m | p95=14.426946 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[PATCH OK] stable UAV model-state feature cache
+[ARCH-AUDIT] forward_18: PASS
+[ARCH-AUDIT] base_geometry_6x6: PASS
+[ARCH-AUDIT] front_softms_source: PASS
+[ARCH-AUDIT] one_final_ms_source: PASS
+[ARCH-AUDIT] front_decoder_softms: PASS
+[ARCH-AUDIT] simple_seven_block_gru: PASS
+[ARCH-AUDIT] residual_motion_head: PASS
+[ARCH-AUDIT] temporal_reliability_gate: PASS
+[ARCH-AUDIT] causal_visual_displacement: PASS
+[ARCH-AUDIT] cadence_initialized_tracker: PASS
+[ARCH-AUDIT] motion_training_inference_aligned: PASS
+[ARCH-AUDIT] training_city_motion_scale_init: PASS
+[ARCH-AUDIT] forward_origin_backshift_covers_jitter: PASS
+[ARCH-AUDIT] protocol: PASS
+[ARCH-AUDIT] controlled_gt_reference_enabled: PASS
+[ARCH-AUDIT] frame_count: PASS
+[ARCH-AUDIT] gru_flag: PASS
+[ARCH-AUDIT] kalman_flag: PASS
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+Route A backbone cache: 99/99
+Route A visual candidate capture=100.00%
+resume visual training from epoch 20
+visual epoch=021/25 loss=3.89880 val_softms_mle=8.426m val_p90=11.076m val_lsr10=81.82%
+visual epoch=022/25 loss=4.65124 val_softms_mle=6.956m val_p90=9.570m val_lsr10=90.91%
+visual epoch=023/25 loss=4.08307 val_softms_mle=7.291m val_p90=11.428m val_lsr10=81.82%
+visual epoch=024/25 loss=3.67738 val_softms_mle=7.695m val_p90=11.614m val_lsr10=72.73%
+visual epoch=025/25 loss=3.36230 val_softms_mle=7.660m val_p90=11.224m val_lsr10=72.73%
+best Route A visual validation SoftMS MLE=6.821m
+route_A: reuse UAV backbone cache
+[ABCD CHECKPOINT] materialized carried best -> /yh/study/uav-sat/v39_otherdata/output/official96_gt_retrained_20260925_193430_1497825/citya/train_frames1/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt
+resume temporal training from epoch 34
+temporal split train=[0,67) val=[71,82) route_length=781.2m
+City training-sequence mean forward step=9.012m/frame p90=13.956m/frame
+temporal epoch=034/60 loss=12.10826 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.615 radius=0.0m pred_step=8.752 target_step=9.012 pred_v=8.807 target_v=9.012 val_mle=1.607m val_p90=3.313m val_speed_mae=3.117 heading=-1.1/0.6deg val_progress_mae=0.000m val_heading_mae=28.9deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.820 best=1.820 patience=0/20
+temporal epoch=035/60 loss=12.17664 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.615 radius=0.0m pred_step=8.770 target_step=9.012 pred_v=8.824 target_v=9.012 val_mle=1.603m val_p90=3.270m val_speed_mae=3.114 heading=-1.1/0.6deg val_progress_mae=0.000m val_heading_mae=28.9deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.817 best=1.817 patience=0/20
+temporal epoch=036/60 loss=12.07892 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.615 radius=0.0m pred_step=8.767 target_step=9.012 pred_v=8.820 target_v=9.012 val_mle=1.601m val_p90=3.252m val_speed_mae=3.114 heading=-1.0/0.6deg val_progress_mae=0.000m val_heading_mae=28.9deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.815 best=1.817 patience=1/20
+temporal epoch=037/60 loss=12.02902 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.615 radius=0.0m pred_step=8.765 target_step=9.012 pred_v=8.816 target_v=9.012 val_mle=1.602m val_p90=3.251m val_speed_mae=3.118 heading=-0.8/0.6deg val_progress_mae=0.000m val_heading_mae=28.9deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.816 best=1.817 patience=2/20
+temporal epoch=038/60 loss=11.97568 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.615 radius=0.0m pred_step=8.750 target_step=9.012 pred_v=8.801 target_v=9.012 val_mle=1.608m val_p90=3.261m val_speed_mae=3.126 heading=-0.6/0.6deg val_progress_mae=0.000m val_heading_mae=28.9deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.822 best=1.817 patience=3/20
+temporal epoch=039/60 loss=11.93124 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.615 radius=0.0m pred_step=8.669 target_step=9.012 pred_v=8.728 target_v=9.012 val_mle=1.610m val_p90=3.265m val_speed_mae=3.140 heading=-0.4/0.6deg val_progress_mae=0.000m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.825 best=1.817 patience=4/20
+temporal epoch=040/60 loss=11.93802 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.615 radius=0.0m pred_step=8.539 target_step=9.012 pred_v=8.614 target_v=9.012 val_mle=1.607m val_p90=3.257m val_speed_mae=3.159 heading=-0.1/0.6deg val_progress_mae=0.000m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.822 best=1.817 patience=5/20
+temporal epoch=041/60 loss=11.91186 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.434 target_step=9.012 pred_v=8.522 target_v=9.012 val_mle=1.601m val_p90=3.236m val_speed_mae=3.176 heading=0.1/0.6deg val_progress_mae=0.000m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.818 best=1.817 patience=6/20
+temporal epoch=042/60 loss=11.91455 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.269 target_step=9.012 pred_v=8.378 target_v=9.012 val_mle=1.597m val_p90=3.209m val_speed_mae=3.182 heading=0.2/0.6deg val_progress_mae=0.000m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.813 best=1.813 patience=0/20
+temporal epoch=043/60 loss=11.88799 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.233 target_step=9.012 pred_v=8.347 target_v=9.012 val_mle=1.597m val_p90=3.186m val_speed_mae=3.168 heading=0.3/0.6deg val_progress_mae=0.000m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.813 best=1.813 patience=1/20
+temporal epoch=044/60 loss=11.80861 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.293 target_step=9.012 pred_v=8.399 target_v=9.012 val_mle=1.612m val_p90=3.181m val_speed_mae=3.138 heading=0.3/0.6deg val_progress_mae=0.000m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.827 best=1.813 patience=2/20
+temporal epoch=045/60 loss=11.65541 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.418 target_step=9.012 pred_v=8.508 target_v=9.012 val_mle=1.628m val_p90=3.193m val_speed_mae=3.105 heading=0.3/0.6deg val_progress_mae=0.000m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.841 best=1.813 patience=3/20
+temporal epoch=046/60 loss=11.52929 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.510 target_step=9.012 pred_v=8.588 target_v=9.012 val_mle=1.649m val_p90=3.225m val_speed_mae=3.127 heading=0.2/0.6deg val_progress_mae=0.012m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.863 best=1.813 patience=4/20
+temporal epoch=047/60 loss=11.42407 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.611 target_step=9.012 pred_v=8.676 target_v=9.012 val_mle=1.679m val_p90=3.275m val_speed_mae=3.143 heading=0.1/0.6deg val_progress_mae=0.028m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.895 best=1.813 patience=5/20
+temporal epoch=048/60 loss=11.35279 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.469 target_step=9.012 pred_v=8.551 target_v=9.012 val_mle=1.718m val_p90=3.340m val_speed_mae=3.145 heading=0.0/0.6deg val_progress_mae=0.045m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.935 best=1.813 patience=6/20
+temporal epoch=049/60 loss=11.22255 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.617 radius=0.0m pred_step=8.312 target_step=9.012 pred_v=8.413 target_v=9.012 val_mle=1.780m val_p90=3.453m val_speed_mae=3.160 heading=0.0/0.6deg val_progress_mae=0.071m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.998 best=1.813 patience=7/20
+temporal epoch=050/60 loss=11.04565 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.617 radius=0.0m pred_step=8.273 target_step=9.012 pred_v=8.378 target_v=9.012 val_mle=1.872m val_p90=3.602m val_speed_mae=3.200 heading=0.0/0.6deg val_progress_mae=0.147m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=2.094 best=1.813 patience=8/20
+temporal epoch=051/60 loss=10.87851 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.617 radius=0.0m pred_step=8.277 target_step=9.012 pred_v=8.382 target_v=9.012 val_mle=2.032m val_p90=3.746m val_speed_mae=3.263 heading=0.0/0.6deg val_progress_mae=0.263m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=2.261 best=1.813 patience=9/20
+temporal epoch=052/60 loss=10.74813 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.617 radius=0.0m pred_step=8.444 target_step=9.012 pred_v=8.528 target_v=9.012 val_mle=2.214m val_p90=3.883m val_speed_mae=3.352 heading=0.0/0.6deg val_progress_mae=0.374m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=2.450 best=1.813 patience=10/20
+temporal epoch=053/60 loss=10.58434 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.346 target_step=9.012 pred_v=8.443 target_v=9.012 val_mle=2.366m val_p90=3.961m val_speed_mae=3.351 heading=0.1/0.6deg val_progress_mae=0.452m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=2.604 best=1.813 patience=11/20
+temporal epoch=054/60 loss=10.49674 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.301 target_step=9.012 pred_v=8.404 target_v=9.012 val_mle=2.568m val_p90=3.864m val_speed_mae=3.325 heading=0.2/0.6deg val_progress_mae=0.533m val_heading_mae=28.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=2.808 best=1.813 patience=12/20
+temporal epoch=055/60 loss=10.36881 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.313 target_step=9.012 pred_v=8.415 target_v=9.012 val_mle=2.512m val_p90=4.277m val_speed_mae=3.290 heading=0.2/0.6deg val_progress_mae=0.458m val_heading_mae=28.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=2.747 best=1.813 patience=13/20
+temporal epoch=056/60 loss=10.28396 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.353 target_step=9.012 pred_v=8.450 target_v=9.012 val_mle=2.272m val_p90=4.201m val_speed_mae=3.283 heading=0.2/0.6deg val_progress_mae=0.280m val_heading_mae=28.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=2.502 best=1.813 patience=14/20
+temporal epoch=057/60 loss=10.21984 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.619 radius=0.0m pred_step=8.385 target_step=9.012 pred_v=8.478 target_v=9.012 val_mle=2.138m val_p90=4.182m val_speed_mae=3.316 heading=0.2/0.6deg val_progress_mae=0.161m val_heading_mae=28.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=2.366 best=1.813 patience=15/20
+temporal epoch=058/60 loss=10.15290 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.619 radius=0.0m pred_step=8.497 target_step=9.012 pred_v=8.577 target_v=9.012 val_mle=1.769m val_p90=3.699m val_speed_mae=3.337 heading=0.2/0.6deg val_progress_mae=0.127m val_heading_mae=28.6deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.997 best=1.813 patience=16/20
+temporal epoch=059/60 loss=10.07984 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.619 radius=0.0m pred_step=8.488 target_step=9.012 pred_v=8.569 target_v=9.012 val_mle=1.754m val_p90=3.682m val_speed_mae=3.333 heading=0.2/0.6deg val_progress_mae=0.203m val_heading_mae=28.6deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.984 best=1.813 patience=17/20
+temporal epoch=060/60 loss=10.02273 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=100.00% acq_conf=0.620 radius=0.0m pred_step=8.283 target_step=9.012 pred_v=8.391 target_v=9.012 val_mle=1.639m val_p90=3.051m val_speed_mae=3.345 heading=0.3/0.6deg val_progress_mae=0.285m val_heading_mae=28.6deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=1.872 best=1.813 patience=18/20

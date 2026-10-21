@@ -1,0 +1,45 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "device": "cuda:0",
+  "mode_count_histogram": {
+    "1": 1482
+  },
+  "frames": 1482,
+  "actual_route_examples": 8,
+  "ops_per_graph_replay": 64,
+  "scope": "final coordinate weighted reduction only, after scoring and after Mean Shift convergence/merging",
+  "rows": [
+    {
+      "decoder": "Weighted Average (36 patches)",
+      "inputs": 36,
+      "single_call": {
+        "mean_ms": 0.04252399934688583,
+        "median_ms": 0.04198399931192398,
+        "p90_ms": 0.04505600035190582,
+        "samples": 1200
+      },
+      "device_only": {
+        "mean_ms": 0.004035489989910275,
+        "median_ms": 0.003920000046491623,
+        "p90_ms": 0.004528000019490719,
+        "samples": 1600
+      }
+    },
+    {
+      "decoder": "Mean Shift final aggregation (1 mode)",
+      "inputs": 1,
+      "single_call": {
+        "mean_ms": 0.04217919934851428,
+        "median_ms": 0.042479999363422394,
+        "p90_ms": 0.04505600035190582,
+        "samples": 1200
+      },
+      "device_only": {
+        "mean_ms": 0.002718810028163716,
+        "median_ms": 0.0026400000788271427,
+        "p90_ms": 0.0030400000978261232,
+        "samples": 1600
+      }
+    }
+  ]
+}

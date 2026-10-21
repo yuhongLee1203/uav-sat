@@ -1,0 +1,18 @@
+[V40 CACHE] reuse image-only train cache
+[confidence_gated] frame=25 loss=0.1562
+[confidence_gated] frame=50 loss=0.0728
+[confidence_gated] frame=75 loss=0.0721
+[confidence_gated] frame=100 loss=0.1040
+[confidence_gated] frame=125 loss=0.1058
+[confidence_gated] epoch=1 image_only_loss=0.10288
+[confidence_gated] frame=25 loss=0.1383
+[confidence_gated] frame=50 loss=0.1196
+[confidence_gated] frame=75 loss=0.0740
+[confidence_gated] frame=100 loss=0.0780
+[confidence_gated] frame=125 loss=0.1128
+[confidence_gated] epoch=2 image_only_loss=0.10459
+route_B: reuse UAV backbone cache
+route_B final MLE=193.441m P90=345.276m LSR@15=6.21% selected_capture=0.00% bank_capture=0.00% acq_acc=0.00% speed_mae=4.658m/frame progress_mae=309.293m heading_mae=65.4deg jump_rate=30.00% max_step=45.74m final_leg=0 gt_leg=11
+route_C: reuse UAV backbone cache
+route_C final MLE=335.075m P90=591.234m LSR@15=1.37% selected_capture=0.00% bank_capture=0.00% acq_acc=0.00% speed_mae=4.300m/frame progress_mae=477.768m heading_mae=58.3deg jump_rate=5.96% max_step=44.99m final_leg=0 gt_leg=8
+[V40 RESULT] /yh/study/uav-sat/v40/output/citya_image_only_20260923_212342/confidence_gated/result.json

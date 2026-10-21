@@ -1,0 +1,73 @@
+{
+  "city": "citya",
+  "no_cross_split_samples": true,
+  "no_duplicate_extra_rows": true,
+  "predeclared_train_waypoints": true,
+  "official_split_seed": 42,
+  "episodes": {
+    "train_02_shiftp20_step20": {
+      "frames": 41,
+      "targets": 41,
+      "first_target": 0,
+      "last_target": 40,
+      "target_span_ratio": 1.0,
+      "target_error_mean_m": 3.276669059640086,
+      "target_error_max_m": 8.678968878283367,
+      "frame_step_mean_m": 20.106996665682672,
+      "frame_step_p90_m": 24.995070281863956,
+      "frame_step_p95_m": 27.311635275977054,
+      "frame_step_max_m": 27.577020136730884,
+      "official_split": "train",
+      "predeclared_observation_offset_m": 20.0,
+      "waypoints_derived_from_selected_GT": false
+    },
+    "train_02_shiftn20_step25": {
+      "frames": 32,
+      "targets": 32,
+      "first_target": 0,
+      "last_target": 31,
+      "target_span_ratio": 1.0,
+      "target_error_mean_m": 3.2871850589055005,
+      "target_error_max_m": 6.53260493591202,
+      "frame_step_mean_m": 25.18380140715479,
+      "frame_step_p90_m": 30.308878422430016,
+      "frame_step_p95_m": 30.720976137221616,
+      "frame_step_max_m": 31.889339689541522,
+      "official_split": "train",
+      "predeclared_observation_offset_m": -20.0,
+      "waypoints_derived_from_selected_GT": false
+    },
+    "train_03_shiftp25_step30": {
+      "frames": 28,
+      "targets": 28,
+      "first_target": 0,
+      "last_target": 27,
+      "target_span_ratio": 1.0,
+      "target_error_mean_m": 3.8890492424639596,
+      "target_error_max_m": 7.356051387057461,
+      "frame_step_mean_m": 30.18289610406243,
+      "frame_step_p90_m": 34.170824942799115,
+      "frame_step_p95_m": 34.579671247499476,
+      "frame_step_max_m": 35.19602059776977,
+      "official_split": "train",
+      "predeclared_observation_offset_m": 25.0,
+      "waypoints_derived_from_selected_GT": false
+    },
+    "train_03_shiftn25_step30": {
+      "frames": 28,
+      "targets": 28,
+      "first_target": 0,
+      "last_target": 27,
+      "target_span_ratio": 1.0,
+      "target_error_mean_m": 3.6061424591661306,
+      "target_error_max_m": 7.622726008770744,
+      "frame_step_mean_m": 30.27256201996157,
+      "frame_step_p90_m": 34.50587271109758,
+      "frame_step_p95_m": 35.04591641309732,
+      "frame_step_max_m": 37.48930186922113,
+      "official_split": "train",
+      "predeclared_observation_offset_m": -25.0,
+      "waypoints_derived_from_selected_GT": false
+    }
+  }
+}

@@ -1,0 +1,153 @@
+{
+  "city": "citya",
+  "samples": 18000,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "previous_task_checkpoint_loaded": false,
+  "excluded_test_manifest_sha256": "d4911bc19b3c372814c3888799e1b04833988fe36c7b84b85f646883a7551050",
+  "best_val_global_top1_MLE_m": 9.744232177734375,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 4.379940907786212,
+      "validation": {
+        "global_top1_MLE_m": 12.91439437866211,
+        "global_top1_P90_m": 20.458980560302734,
+        "global_top1_LSR15_pct": 77.72222137451172
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 5.1408492636492875,
+      "validation": {
+        "global_top1_MLE_m": 11.30250072479248,
+        "global_top1_P90_m": 19.527420043945312,
+        "global_top1_LSR15_pct": 80.1111068725586
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 4.958951266731803,
+      "validation": {
+        "global_top1_MLE_m": 10.994405746459961,
+        "global_top1_P90_m": 19.09208106994629,
+        "global_top1_LSR15_pct": 80.6111068725586
+      }
+    },
+    {
+      "epoch": 4,
+      "train_loss": 4.853534394361842,
+      "validation": {
+        "global_top1_MLE_m": 10.726277351379395,
+        "global_top1_P90_m": 18.591588973999023,
+        "global_top1_LSR15_pct": 82.0
+      }
+    },
+    {
+      "epoch": 5,
+      "train_loss": 4.77419529186459,
+      "validation": {
+        "global_top1_MLE_m": 10.718049049377441,
+        "global_top1_P90_m": 18.535335540771484,
+        "global_top1_LSR15_pct": 82.44445037841797
+      }
+    },
+    {
+      "epoch": 6,
+      "train_loss": 4.709546318204384,
+      "validation": {
+        "global_top1_MLE_m": 10.506880760192871,
+        "global_top1_P90_m": 18.239694595336914,
+        "global_top1_LSR15_pct": 83.0
+      }
+    },
+    {
+      "epoch": 7,
+      "train_loss": 4.653972888556052,
+      "validation": {
+        "global_top1_MLE_m": 10.827178001403809,
+        "global_top1_P90_m": 17.47821044921875,
+        "global_top1_LSR15_pct": 84.44444274902344
+      }
+    },
+    {
+      "epoch": 8,
+      "train_loss": 4.605761689463939,
+      "validation": {
+        "global_top1_MLE_m": 10.290740013122559,
+        "global_top1_P90_m": 17.32813262939453,
+        "global_top1_LSR15_pct": 83.61111450195312
+      }
+    },
+    {
+      "epoch": 9,
+      "train_loss": 4.562581531644806,
+      "validation": {
+        "global_top1_MLE_m": 10.497246742248535,
+        "global_top1_P90_m": 17.700042724609375,
+        "global_top1_LSR15_pct": 83.83332824707031
+      }
+    },
+    {
+      "epoch": 10,
+      "train_loss": 4.5220927553852714,
+      "validation": {
+        "global_top1_MLE_m": 10.069205284118652,
+        "global_top1_P90_m": 17.216829299926758,
+        "global_top1_LSR15_pct": 84.88888549804688
+      }
+    },
+    {
+      "epoch": 11,
+      "train_loss": 4.48719474837536,
+      "validation": {
+        "global_top1_MLE_m": 9.744232177734375,
+        "global_top1_P90_m": 16.705608367919922,
+        "global_top1_LSR15_pct": 85.83333587646484
+      }
+    },
+    {
+      "epoch": 12,
+      "train_loss": 4.457360770758681,
+      "validation": {
+        "global_top1_MLE_m": 10.041337966918945,
+        "global_top1_P90_m": 17.45901870727539,
+        "global_top1_LSR15_pct": 85.33333587646484
+      }
+    },
+    {
+      "epoch": 13,
+      "train_loss": 4.422454526105265,
+      "validation": {
+        "global_top1_MLE_m": 10.059309959411621,
+        "global_top1_P90_m": 16.784809112548828,
+        "global_top1_LSR15_pct": 85.94444274902344
+      }
+    },
+    {
+      "epoch": 14,
+      "train_loss": 4.396060121341015,
+      "validation": {
+        "global_top1_MLE_m": 9.75440788269043,
+        "global_top1_P90_m": 17.04908561706543,
+        "global_top1_LSR15_pct": 85.0
+      }
+    },
+    {
+      "epoch": 15,
+      "train_loss": 4.3678535701721675,
+      "validation": {
+        "global_top1_MLE_m": 10.318798065185547,
+        "global_top1_P90_m": 16.817455291748047,
+        "global_top1_LSR15_pct": 86.27777862548828
+      }
+    }
+  ],
+  "distance_loss_weight": 5.0,
+  "official96_train_only": true,
+  "sat_crop_size_m": 64.0,
+  "sat_crop_size_px": 256,
+  "satellite_gallery_rebuilt": true,
+  "same_task_checkpoint_resumed": "/yh/study/uav-sat/v40/output/official96_citya_visual_distance5_resume20_20260924/checkpoints/citya/visual_retrieval_A_only.pt",
+  "checkpoint": "v40/output/official96_citya_crop64_20260925/checkpoints/citya/visual_retrieval_A_only.pt"
+}

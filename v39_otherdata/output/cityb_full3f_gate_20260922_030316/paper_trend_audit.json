@@ -1,0 +1,69 @@
+{
+  "FULL_TREND_CHECK": "PASS",
+  "component_full_best": true,
+  "three_frame_full_best": true,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.5006393805230123,
+      "MLE_95CI": [
+        -0.6015937880961959,
+        -0.39979298496506965
+      ],
+      "full_minus_ablation_LSR@5_pct": 5.678233438485803,
+      "LSR@5_95CI": [
+        2.8391167192428957,
+        8.832807570977907
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": -0.0138249251503475,
+      "MLE_95CI": [
+        -0.05543664636778818,
+        0.022059360269860474
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.0,
+      "LSR@5_95CI": [
+        -0.9463722397476282,
+        0.9463722397476282
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": -2.585800550223268,
+      "MLE_95CI": [
+        -2.852629577901834,
+        -2.312392000128691
+      ],
+      "full_minus_ablation_LSR@5_pct": 38.170347003154575,
+      "LSR@5_95CI": [
+        32.49211356466877,
+        43.856466876971574
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": -0.05187998294645091,
+      "MLE_95CI": [
+        -0.11751383048556553,
+        0.007962597973093647
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.6309148264984299,
+      "LSR@5_95CI": [
+        -1.577287066246058,
+        2.8391167192429068
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": -0.02282716754473224,
+      "MLE_95CI": [
+        -0.060830248480870874,
+        0.010421587517248788
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.3154574132492094,
+      "LSR@5_95CI": [
+        -0.9463722397476393,
+        1.577287066246058
+      ]
+    }
+  },
+  "claim_guidance": "Full is numerically best on the predeclared primary metrics; inspect paired confidence intervals before claiming significance.",
+  "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+}

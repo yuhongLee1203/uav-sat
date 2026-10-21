@@ -1,0 +1,28 @@
+# Bearing-UAV ABCD path-primary ablation (measured)
+
+Primary contribution: held-out route localization error (MLE).
+
+## Component ablation
+
+| Variant | MLE (m) | P90 (m) | LSR@5 | Jump rate |
+|---|---:|---:|---:|---:|
+| w/o GRU | 4.279 | 7.429 | 65.79% | 0.543% |
+| w/o MeanShift | 6.843 | 11.629 | 33.47% | 6.242% |
+| Full (3-frame GRU + MeanShift) | 3.763 | 6.818 | 73.82% | 0.610% |
+
+## Temporal input
+
+| Input | MLE (m) | P90 (m) | LSR@5 |
+|---|---:|---:|---:|
+| 1 frame | 3.894 | 7.023 | 72.27% |
+| 2 frames | 3.928 | 7.111 | 71.39% |
+| Full (3-frame GRU + MeanShift) | 3.763 | 6.818 | 73.82% |
+
+## Optional stability extension
+
+| Configuration | MLE (m) | P90 (m) | Jump rate |
+|---|---:|---:|---:|
+| Full (3-frame GRU + MeanShift) | 3.763 | 6.818 | 0.610% |
+| + optional Kalman stability extension | 3.759 | 6.837 | 0.610% |
+
+`PATH_PRIMARY_TREND_CHECK=PASS`

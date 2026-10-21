@@ -1,0 +1,18 @@
+[V40 CACHE] reused prior UAV backbone features; GT discarded
+[visual_pseudo] frame=25 loss=0.4200
+[visual_pseudo] frame=50 loss=0.4554
+[visual_pseudo] frame=75 loss=0.3906
+[visual_pseudo] frame=100 loss=0.5522
+[visual_pseudo] frame=125 loss=0.5275
+[visual_pseudo] epoch=1 image_only_loss=0.46680
+[visual_pseudo] frame=25 loss=0.3702
+[visual_pseudo] frame=50 loss=0.2435
+[visual_pseudo] frame=75 loss=0.4644
+[visual_pseudo] frame=100 loss=0.3861
+[visual_pseudo] frame=125 loss=0.7328
+[visual_pseudo] epoch=2 image_only_loss=0.45206
+route_B: reuse UAV backbone cache
+route_B final MLE=47.258m P90=78.154m LSR@15=9.32% selected_capture=8.07% bank_capture=16.15% acq_acc=N/A speed_mae=3.025m/frame progress_mae=49.923m heading_mae=54.6deg jump_rate=3.75% max_step=12.22m final_leg=10 gt_leg=11
+route_C: reuse UAV backbone cache
+route_C final MLE=88.304m P90=142.985m LSR@15=3.20% selected_capture=3.20% bank_capture=6.39% acq_acc=N/A speed_mae=3.324m/frame progress_mae=112.213m heading_mae=69.5deg jump_rate=0.92% max_step=10.64m final_leg=6 gt_leg=8
+[V40 RESULT] v40/output/citya_local7_validation_20260924/visual_pseudo/result.json

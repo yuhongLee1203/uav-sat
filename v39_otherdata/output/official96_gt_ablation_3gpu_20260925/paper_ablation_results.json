@@ -1,0 +1,208 @@
+{
+  "cities": [
+    "citya",
+    "cityb",
+    "cityc",
+    "cityd"
+  ],
+  "metric_set": [
+    "R@1*_pct",
+    "LSR@15_pct",
+    "HSR@15_pct",
+    "MLE_m",
+    "MHE_deg"
+  ],
+  "heading_fusion_alpha": 0.0,
+  "rows": {
+    "frames1": {
+      "variant": "frames1",
+      "label": "1 frame",
+      "frames": 960,
+      "R@1*_pct": 56.770833333333336,
+      "LSR@15_pct": 31.770833333333332,
+      "HSR@15_pct": 17.5,
+      "MLE_m": 99.77457595942707,
+      "MHE_deg": 66.77966555312616,
+      "MS_Latency_ms": 7.578868898821787,
+      "heading_fusion_alpha": 0.0
+    },
+    "frames2": {
+      "variant": "frames2",
+      "label": "2 frames",
+      "frames": 960,
+      "R@1*_pct": 56.458333333333336,
+      "LSR@15_pct": 31.874999999999996,
+      "HSR@15_pct": 17.395833333333332,
+      "MLE_m": 99.77551921775536,
+      "MHE_deg": 66.77220999189858,
+      "MS_Latency_ms": 7.878310661504253,
+      "heading_fusion_alpha": 0.0
+    },
+    "full": {
+      "variant": "full",
+      "label": "Full",
+      "frames": 960,
+      "R@1*_pct": 56.666666666666664,
+      "LSR@15_pct": 31.874999999999996,
+      "HSR@15_pct": 17.5,
+      "MLE_m": 99.77729480486208,
+      "MHE_deg": 66.77350090554265,
+      "MS_Latency_ms": 7.762193419815352,
+      "heading_fusion_alpha": 0.0
+    },
+    "grid4": {
+      "variant": "grid4",
+      "label": "4x4",
+      "frames": 960,
+      "R@1*_pct": 56.875,
+      "LSR@15_pct": 33.541666666666664,
+      "HSR@15_pct": 17.5,
+      "MLE_m": 99.57677752376274,
+      "MHE_deg": 67.05751877981665,
+      "MS_Latency_ms": 4.33255607365734,
+      "heading_fusion_alpha": 0.0
+    },
+    "grid5": {
+      "variant": "grid5",
+      "label": "5x5",
+      "frames": 960,
+      "R@1*_pct": 56.458333333333336,
+      "LSR@15_pct": 32.708333333333336,
+      "HSR@15_pct": 17.395833333333332,
+      "MLE_m": 99.68973176113938,
+      "MHE_deg": 67.13767160807109,
+      "MS_Latency_ms": 5.747930168096597,
+      "heading_fusion_alpha": 0.0
+    },
+    "grid7": {
+      "variant": "grid7",
+      "label": "7x7",
+      "frames": 960,
+      "R@1*_pct": 56.041666666666664,
+      "LSR@15_pct": 31.5625,
+      "HSR@15_pct": 17.604166666666668,
+      "MLE_m": 99.82411058316353,
+      "MHE_deg": 66.66903084475655,
+      "MS_Latency_ms": 10.056851251930414,
+      "heading_fusion_alpha": 0.0
+    },
+    "grid8": {
+      "variant": "grid8",
+      "label": "8x8",
+      "frames": 960,
+      "R@1*_pct": 56.041666666666664,
+      "LSR@15_pct": 31.25,
+      "HSR@15_pct": 17.8125,
+      "MLE_m": 99.89165801567323,
+      "MHE_deg": 66.52068788490152,
+      "MS_Latency_ms": 12.36887997818283,
+      "heading_fusion_alpha": 0.0
+    },
+    "no_gru": {
+      "variant": "no_gru",
+      "label": "w/o GRU",
+      "frames": 960,
+      "R@1*_pct": 56.458333333333336,
+      "LSR@15_pct": 31.979166666666664,
+      "HSR@15_pct": 17.395833333333332,
+      "MLE_m": 99.82852390207191,
+      "MHE_deg": 66.72948051694149,
+      "MS_Latency_ms": 8.019429007415763,
+      "heading_fusion_alpha": 0.0
+    },
+    "no_kalman": {
+      "variant": "no_kalman",
+      "label": "w/o Kalman",
+      "frames": 960,
+      "R@1*_pct": 56.979166666666664,
+      "LSR@15_pct": 32.1875,
+      "HSR@15_pct": 17.708333333333336,
+      "MLE_m": 99.68877728180207,
+      "MHE_deg": 66.79739415935296,
+      "MS_Latency_ms": 7.848922458166878,
+      "heading_fusion_alpha": 0.0
+    },
+    "no_ms": {
+      "variant": "no_ms",
+      "label": "w/o MeanShift",
+      "frames": 960,
+      "R@1*_pct": 58.125,
+      "LSR@15_pct": 37.916666666666664,
+      "HSR@15_pct": 17.604166666666668,
+      "MLE_m": 98.44708030128908,
+      "MHE_deg": 66.96105460538483,
+      "MS_Latency_ms": 0.0,
+      "heading_fusion_alpha": 0.0
+    }
+  },
+  "audit": {
+    "LOCALIZATION_TREND_CHECK": "FAIL",
+    "component_full_localization_best": false,
+    "three_frame_full_localization_best": false,
+    "heading_fusion_alpha": 0.0,
+    "paired_bootstrap": {
+      "no_gru": {
+        "full_minus_ablation_MLE_m": -0.051229097209827046,
+        "MLE_95CI": [
+          -0.1236735311808463,
+          0.0210487401864885
+        ],
+        "full_minus_ablation_LSR@15_pct": -0.1041666666666663,
+        "LSR@15_95CI": [
+          -0.9375000000000022,
+          0.7291666666666696
+        ]
+      },
+      "no_kalman": {
+        "full_minus_ablation_MLE_m": 0.08851752306000549,
+        "MLE_95CI": [
+          0.029828152777112038,
+          0.16764828140072285
+        ],
+        "full_minus_ablation_LSR@15_pct": -0.31250000000000444,
+        "LSR@15_95CI": [
+          -0.7291666666666641,
+          0.0
+        ]
+      },
+      "no_ms": {
+        "full_minus_ablation_MLE_m": 1.3302145035730035,
+        "MLE_95CI": [
+          1.0326975897574844,
+          1.6332194966374738
+        ],
+        "full_minus_ablation_LSR@15_pct": -6.041666666666668,
+        "LSR@15_95CI": [
+          -7.916666666666666,
+          -4.270833333333335
+        ]
+      },
+      "frames1": {
+        "full_minus_ablation_MLE_m": 0.0027188454350124402,
+        "MLE_95CI": [
+          -0.019164696337685073,
+          0.022061110921504923
+        ],
+        "full_minus_ablation_LSR@15_pct": 0.1041666666666663,
+        "LSR@15_95CI": [
+          -0.2083333333333326,
+          0.5208333333333315
+        ]
+      },
+      "frames2": {
+        "full_minus_ablation_MLE_m": 0.0017755871067208773,
+        "MLE_95CI": [
+          -0.02044514058523177,
+          0.02234947281430803
+        ],
+        "full_minus_ablation_LSR@15_pct": 0.0,
+        "LSR@15_95CI": [
+          -0.4166666666666652,
+          0.4166666666666652
+        ]
+      }
+    },
+    "claim_guidance": "At least one measured ablation is better on MLE or LSR@15; report that trade-off rather than forcing a preferred ranking.",
+    "integrity": "All values are recomputed from measured frame-level outputs; shared heading fusion is applied identically to every row."
+  }
+}

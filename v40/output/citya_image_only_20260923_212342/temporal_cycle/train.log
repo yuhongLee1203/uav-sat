@@ -1,0 +1,18 @@
+[V40 CACHE] reuse image-only train cache
+[temporal_cycle] frame=25 loss=0.8750
+[temporal_cycle] frame=50 loss=0.9628
+[temporal_cycle] frame=75 loss=0.6778
+[temporal_cycle] frame=100 loss=0.7857
+[temporal_cycle] frame=125 loss=0.9958
+[temporal_cycle] epoch=1 image_only_loss=0.85982
+[temporal_cycle] frame=25 loss=0.7538
+[temporal_cycle] frame=50 loss=0.7592
+[temporal_cycle] frame=75 loss=0.6405
+[temporal_cycle] frame=100 loss=0.5900
+[temporal_cycle] frame=125 loss=0.8861
+[temporal_cycle] epoch=2 image_only_loss=0.74032
+route_B: reuse UAV backbone cache
+route_B final MLE=194.500m P90=346.462m LSR@15=6.21% selected_capture=0.00% bank_capture=0.00% acq_acc=0.00% speed_mae=4.449m/frame progress_mae=310.268m heading_mae=65.6deg jump_rate=24.38% max_step=45.79m final_leg=0 gt_leg=11
+route_C: reuse UAV backbone cache
+route_C final MLE=335.362m P90=590.115m LSR@15=1.37% selected_capture=0.00% bank_capture=0.00% acq_acc=0.00% speed_mae=4.330m/frame progress_mae=477.690m heading_mae=58.1deg jump_rate=6.88% max_step=44.63m final_leg=0 gt_leg=8
+[V40 RESULT] /yh/study/uav-sat/v40/output/citya_image_only_20260923_212342/temporal_cycle/result.json

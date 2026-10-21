@@ -1,0 +1,69 @@
+{
+  "FULL_TREND_CHECK": "FAIL",
+  "component_full_best": true,
+  "three_frame_full_best": false,
+  "paired_bootstrap": {
+    "no_gru": {
+      "full_minus_ablation_MLE_m": -0.3312879281927201,
+      "MLE_95CI": [
+        -0.39968515887570605,
+        -0.25901162380407855
+      ],
+      "full_minus_ablation_LSR@5_pct": 5.722070844686645,
+      "LSR@5_95CI": [
+        2.997275204359673,
+        8.719346049046317
+      ]
+    },
+    "no_kalman": {
+      "full_minus_ablation_MLE_m": -0.0029172725853721104,
+      "MLE_95CI": [
+        -0.022779468332306353,
+        0.027079165589208105
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.27247956403270157,
+      "LSR@5_95CI": [
+        -0.5449591280654031,
+        1.3623978201634857
+      ]
+    },
+    "no_ms": {
+      "full_minus_ablation_MLE_m": -2.879898239889648,
+      "MLE_95CI": [
+        -3.1646309796032464,
+        -2.5833338704725177
+      ],
+      "full_minus_ablation_LSR@5_pct": 33.242506811989095,
+      "LSR@5_95CI": [
+        27.792915531335154,
+        38.69209809264305
+      ]
+    },
+    "frames1": {
+      "full_minus_ablation_MLE_m": 0.0016739697124088515,
+      "MLE_95CI": [
+        -0.022395323752355045,
+        0.033246153954332225
+      ],
+      "full_minus_ablation_LSR@5_pct": -0.8174386920980936,
+      "LSR@5_95CI": [
+        -1.9073569482288777,
+        0.0
+      ]
+    },
+    "frames2": {
+      "full_minus_ablation_MLE_m": -0.024023834647180387,
+      "MLE_95CI": [
+        -0.04966724395637182,
+        -0.0009969082269260235
+      ],
+      "full_minus_ablation_LSR@5_pct": 0.544959128065392,
+      "LSR@5_95CI": [
+        -0.8174386920980936,
+        1.9073569482288888
+      ]
+    }
+  },
+  "claim_guidance": "At least one ablation is better on a primary metric. Do not claim every component improves accuracy; revise only through training/validation data, not held-out navigation results.",
+  "integrity": "No result is modified, hidden, or selectively discarded to force a preferred ranking."
+}

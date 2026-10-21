@@ -1,0 +1,100 @@
+/yh/study/uav-sat/v36-exp/others_paper/Bearing-UAV/cvphr/utils/utils_transform.py:8: FutureWarning: In the future `np.bool` will be defined as the corresponding NumPy scalar.
+  if not hasattr(np, "bool"):
+/usr/local/lib/python3.8/dist-packages/PIL/Image.py:3035: DecompressionBombWarning: Image size (103381404 pixels) exceeds limit of 89478485 pixels, could be decompression bomb DOS attack.
+  warnings.warn(
+/usr/local/lib/python3.8/dist-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/usr/local/lib/python3.8/dist-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=VGG16_Weights.IMAGENET1K_V1`. You can also use `weights=VGG16_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Bearing-UAV Route-A epoch 1/60: loss=0.072810
+Bearing-UAV Route-A epoch 2/60: loss=0.022908
+Bearing-UAV Route-A epoch 3/60: loss=0.008526
+Bearing-UAV Route-A epoch 4/60: loss=0.005990
+Bearing-UAV Route-A epoch 5/60: loss=0.004506
+Bearing-UAV Route-A epoch 6/60: loss=0.003934
+Bearing-UAV Route-A epoch 7/60: loss=0.003110
+Bearing-UAV Route-A epoch 8/60: loss=0.002710
+Bearing-UAV Route-A epoch 9/60: loss=0.002211
+Bearing-UAV Route-A epoch 10/60: loss=0.001875
+Bearing-UAV Route-A epoch 11/60: loss=0.001526
+Bearing-UAV Route-A epoch 12/60: loss=0.001483
+Bearing-UAV Route-A epoch 13/60: loss=0.001417
+Bearing-UAV Route-A epoch 14/60: loss=0.001213
+Bearing-UAV Route-A epoch 15/60: loss=0.001101
+Bearing-UAV Route-A epoch 16/60: loss=0.000996
+Bearing-UAV Route-A epoch 17/60: loss=0.001107
+Bearing-UAV Route-A epoch 18/60: loss=0.001228
+Bearing-UAV Route-A epoch 19/60: loss=0.000837
+Bearing-UAV Route-A epoch 20/60: loss=0.000911
+Bearing-UAV Route-A epoch 21/60: loss=0.001478
+Bearing-UAV Route-A epoch 22/60: loss=0.001038
+Bearing-UAV Route-A epoch 23/60: loss=0.000875
+Bearing-UAV Route-A epoch 24/60: loss=0.000621
+Bearing-UAV Route-A epoch 25/60: loss=0.000469
+Bearing-UAV Route-A epoch 26/60: loss=0.000417
+Bearing-UAV Route-A epoch 27/60: loss=0.000451
+Bearing-UAV Route-A epoch 28/60: loss=0.000493
+Bearing-UAV Route-A epoch 29/60: loss=0.000351
+Bearing-UAV Route-A epoch 30/60: loss=0.000337
+Bearing-UAV Route-A epoch 31/60: loss=0.000291
+Bearing-UAV Route-A epoch 32/60: loss=0.000255
+Bearing-UAV Route-A epoch 33/60: loss=0.000519
+Bearing-UAV Route-A epoch 34/60: loss=0.000451
+Bearing-UAV Route-A epoch 35/60: loss=0.000342
+Bearing-UAV Route-A epoch 36/60: loss=0.000307
+Bearing-UAV Route-A epoch 37/60: loss=0.000471
+Bearing-UAV Route-A epoch 38/60: loss=0.000341
+Bearing-UAV Route-A epoch 39/60: loss=0.000243
+Bearing-UAV Route-A epoch 40/60: loss=0.000259
+Bearing-UAV Route-A epoch 41/60: loss=0.000244
+Bearing-UAV Route-A epoch 42/60: loss=0.000211
+Bearing-UAV Route-A epoch 43/60: loss=0.000205
+Bearing-UAV Route-A epoch 44/60: loss=0.000239
+Bearing-UAV Route-A epoch 45/60: loss=0.000174
+Bearing-UAV Route-A epoch 46/60: loss=0.000168
+Bearing-UAV Route-A epoch 47/60: loss=0.000198
+Bearing-UAV Route-A epoch 48/60: loss=0.000233
+Bearing-UAV Route-A epoch 49/60: loss=0.000198
+Bearing-UAV Route-A epoch 50/60: loss=0.000199
+Bearing-UAV Route-A epoch 51/60: loss=0.001526
+Bearing-UAV Route-A epoch 52/60: loss=0.003242
+Bearing-UAV Route-A epoch 53/60: loss=0.001607
+Bearing-UAV Route-A epoch 54/60: loss=0.001163
+Bearing-UAV Route-A epoch 55/60: loss=0.000818
+Bearing-UAV Route-A epoch 56/60: loss=0.000646
+Bearing-UAV Route-A epoch 57/60: loss=0.000481
+Bearing-UAV Route-A epoch 58/60: loss=0.000443
+Bearing-UAV Route-A epoch 59/60: loss=0.000329
+Bearing-UAV Route-A epoch 60/60: loss=0.000378
+{
+  "method": "Bearing-UAV",
+  "implementation": "released PARCASGM-v5a model and position+heading SmoothL1 objective",
+  "protocol": "Route A train; four fixed full-map 2x2 satellite context patches; Route B/C test; no local prior/jitter/temporal state",
+  "checkpoint": "/yh/study/uav-sat/v36-exp/outputs/native-unreported/Bearing-UAV/route_A_bearinguav_parcasgm_v5a.pt",
+  "routes": {
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 183.37672177953746,
+      "Median_m": 148.87167437288934,
+      "P90_m": 365.99092349920136,
+      "P95_m": 438.9529052322795,
+      "LSR@5_pct": 0.17574692442882248,
+      "LSR@10_pct": 0.4393673110720563,
+      "LSR@15_pct": 1.1862917398945518,
+      "latency_ms_end_to_end": 9.338632199392771,
+      "FPS_end_to_end": 107.0820628383912
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 272.9927322254839,
+      "Median_m": 217.2563868934773,
+      "P90_m": 552.2804697858645,
+      "P95_m": 614.5877057169682,
+      "LSR@5_pct": 0.0,
+      "LSR@10_pct": 0.1589825119236884,
+      "LSR@15_pct": 0.6359300476947536,
+      "latency_ms_end_to_end": 9.51896096906952,
+      "FPS_end_to_end": 105.05348254387792
+    }
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "protocol": "one shared ABCD model + one global Route-A-selected inference profile + pooled held-out B/C frames",
+  "official96_split_adapter": false,
+  "official96_split_audits": {},
+  "cities": [
+    "citya",
+    "cityb",
+    "cityc",
+    "cityd"
+  ],
+  "metric_set": [
+    "R@1*_pct",
+    "LSR@15_pct",
+    "HSR@15_pct",
+    "MLE_m",
+    "MHE_deg"
+  ],
+  "rows": {
+    "no_gru": {
+      "variant": "no_gru",
+      "label": "w/o GRU",
+      "frames": 1482,
+      "R@1*_pct": 30.026990553306344,
+      "LSR@15_pct": 2.42914979757085,
+      "HSR@15_pct": 20.58029689608637,
+      "MLE_m": 319.284925049748,
+      "MHE_deg": 56.615547870098226,
+      "MS_Latency_ms": 6.285173020036771,
+      "heading_fusion_alpha": 1.0
+    },
+    "no_kalman": {
+      "variant": "no_kalman",
+      "label": "w/o Kalman",
+      "frames": 1482,
+      "R@1*_pct": 30.026990553306344,
+      "LSR@15_pct": 2.901484480431849,
+      "HSR@15_pct": 20.445344129554655,
+      "MLE_m": 307.00840304584204,
+      "MHE_deg": 56.047045175508345,
+      "MS_Latency_ms": 6.75218618108706,
+      "heading_fusion_alpha": 1.0
+    },
+    "no_ms": {
+      "variant": "no_ms",
+      "label": "w/o MeanShift",
+      "frames": 1482,
+      "R@1*_pct": 30.29689608636977,
+      "LSR@15_pct": 3.4412955465587043,
+      "HSR@15_pct": 20.715249662618085,
+      "MLE_m": 307.37466669395656,
+      "MHE_deg": 55.81726020012263,
+      "MS_Latency_ms": 0.0,
+      "heading_fusion_alpha": 1.0
+    },
+    "full": {
+      "variant": "full",
+      "label": "Full",
+      "frames": 1482,
+      "R@1*_pct": 30.29689608636977,
+      "LSR@15_pct": 3.2388663967611335,
+      "HSR@15_pct": 20.715249662618085,
+      "MLE_m": 307.41417530502576,
+      "MHE_deg": 55.83434725865371,
+      "MS_Latency_ms": 6.272585372922314,
+      "heading_fusion_alpha": 1.0
+    }
+  },
+  "full_strictly_better": {
+    "no_gru": {
+      "R@1*": true,
+      "LSR@15": true,
+      "HSR@15": true,
+      "MLE": true,
+      "MHE": true
+    },
+    "no_kalman": {
+      "R@1*": true,
+      "LSR@15": true,
+      "HSR@15": true,
+      "MLE": false,
+      "MHE": true
+    },
+    "no_ms": {
+      "R@1*": false,
+      "LSR@15": false,
+      "HSR@15": false,
+      "MLE": false,
+      "MHE": false
+    }
+  },
+  "full_best_all_component_metrics": false
+}

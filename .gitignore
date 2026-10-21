@@ -18,9 +18,12 @@ __pycache__/
 *.webm
 *.gif
 
-# Generated experiment artifacts are ignored by default. Keep only compact,
-# human-readable training logs and evaluation summaries in any future output
-# directory so experiment metrics can still be reviewed in Git.
+# forNX contains packaged runtime assets that must stay local.
+forNX/data/
+forNX/pretrained_cache/
+forNX/weights/
+
+# Generated experiment artifacts are ignored by default.
 output/**
 outputs/**
 !output/
@@ -48,3 +51,45 @@ tensorboard/
 v36-exp/outputs/**/checkpoints/*.pt
 v36-exp/outputs/**/*.pth
 v36-exp/outputs/**/*.pt
+
+# Bearing-UAV external repos, virtualenvs and downloaded model caches.
+v39_otherdata/external/
+**/.venv/
+**/venv/
+**/hf_cache/
+**/torch_cache/
+**/huggingface/
+
+# Large Bearing-UAV runtime caches. Keep compact CSV/JSON/JPG results elsewhere.
+v39_otherdata/generated/route_baseline_cache/
+v39_otherdata/generated/native_m2t_cache/
+v39_otherdata/generated/native_four_rst_cache/
+v39_otherdata/generated/full_benchmark_cache/
+v39_otherdata/generated/native_m2t_baselines/**/checkpoint.pt
+v39_otherdata/generated/native_four_rst_baselines/**/checkpoint.pt
+v39_otherdata/generated/full_benchmark_baselines/**/checkpoint.pt
+v39_otherdata/generated/full_benchmark_baselines/**/*_resume.pt
+
+# Compact GitHub snapshot policy (2026-10-21)
+*.safetensors
+*.tflite
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.bin
+*.engine
+*.npy
+*.npz
+*.zip
+*.tar
+*.tgz
+*.7z
+*.rar
+**/cache/
+**/.cache/
+**/weights/
+**/checkpoints/
+# Only selected numerical table archives are included.
+!**/*.csv.gz

@@ -1,0 +1,486 @@
+{
+  "dataset_root": "/yh/study/cvpr_data/Bearing_UAV_90K",
+  "city": "cityb",
+  "satellite_image": "/yh/study/cvpr_data/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+  "metadata_csv": "/yh/study/cvpr_data/Bearing_UAV_90K/c4m_254k_96bc_b15_s100_v3d/metadata/metadata.csv",
+  "mpp": 0.25,
+  "sequence_selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+  "train_routes": [
+    "train_01"
+  ],
+  "inference_routes": [
+    "test_01",
+    "test_02"
+  ],
+  "route_stats": {
+    "train_01": {
+      "split": "train",
+      "planned_length_m": 781.1736496816332,
+      "waypoints": 6,
+      "frames": 196,
+      "sample_step_m": 4.0,
+      "selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+      "max_sample_distance_m": 10.0,
+      "preferred_step_m": 4.0,
+      "safety_max_step_m": 22.0,
+      "point_cross_weight": 20.0,
+      "lateral_smooth_weight": 35.0,
+      "big_turn_threshold_deg": 20.0,
+      "heading_weight_px_per_deg": 0.0,
+      "targets": 196,
+      "dense_frames_before_prune": 196,
+      "dense_selected_ratio": 1.0,
+      "selected_ratio": 1.0,
+      "prune_keep_ratio": 1.0,
+      "skipped_targets": 0,
+      "per_leg_prune": [
+        {
+          "leg": 0,
+          "dense": 196,
+          "kept": 196,
+          "coverage": 1.0,
+          "mode": "dense_fallback_for_coverage",
+          "first_target": 0,
+          "last_target": 195
+        }
+      ],
+      "mean_target_error_m": 5.646142546359249,
+      "max_target_error_m": 9.942592585604569,
+      "centerline_cross_mean_m": 3.0796462537453895,
+      "centerline_cross_p90_m": 6.009884562255637,
+      "centerline_cross_max_m": 8.940922461701366,
+      "same_leg_lateral_delta_p90_m": 4.269875199581627,
+      "same_leg_lateral_delta_max_m": 13.372694982018878,
+      "actual_step_mean_m": 5.550782849065184,
+      "actual_step_p50_m": 4.997687787941248,
+      "actual_step_p90_m": 9.862440572091874,
+      "actual_step_p95_m": 11.094215690906863,
+      "actual_step_max_m": 19.472439143457382,
+      "step_over_7m_pct": 30.256410256410255,
+      "step_over_10m_pct": 9.743589743589745,
+      "step_over_14m_pct": 3.5897435897435894,
+      "cross_step_p90_m": 4.269875199581633,
+      "backward_step_pct": 13.333333333333334,
+      "same_leg_backward_step_pct": 13.333333333333334,
+      "max_cross_track_rule_m": 8.5,
+      "max_same_leg_lateral_jump_rule_m": 4.0,
+      "max_same_leg_backward_rule_m": 0.25
+    },
+    "test_01": {
+      "split": "inference",
+      "planned_length_m": 750.8491472570564,
+      "waypoints": 13,
+      "frames": 146,
+      "sample_step_m": 4.0,
+      "selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+      "max_sample_distance_m": 10.0,
+      "preferred_step_m": 4.0,
+      "safety_max_step_m": 22.0,
+      "point_cross_weight": 20.0,
+      "lateral_smooth_weight": 35.0,
+      "big_turn_threshold_deg": 20.0,
+      "heading_weight_px_per_deg": 0.0,
+      "targets": 189,
+      "dense_frames_before_prune": 189,
+      "dense_selected_ratio": 1.0,
+      "selected_ratio": 0.7724867724867724,
+      "prune_keep_ratio": 0.7724867724867724,
+      "skipped_targets": 43,
+      "per_leg_prune": [
+        {
+          "leg": 0,
+          "dense": 37,
+          "kept": 26,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 0,
+          "last_target": 36
+        },
+        {
+          "leg": 1,
+          "dense": 23,
+          "kept": 23,
+          "coverage": 1.0,
+          "mode": "dense_fallback_for_coverage",
+          "first_target": 37,
+          "last_target": 59
+        },
+        {
+          "leg": 2,
+          "dense": 20,
+          "kept": 13,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 60,
+          "last_target": 79
+        },
+        {
+          "leg": 3,
+          "dense": 19,
+          "kept": 12,
+          "coverage": 0.9444444444444444,
+          "mode": "smoothed_full_span",
+          "first_target": 80,
+          "last_target": 98
+        },
+        {
+          "leg": 4,
+          "dense": 23,
+          "kept": 23,
+          "coverage": 1.0,
+          "mode": "dense_fallback_for_coverage",
+          "first_target": 99,
+          "last_target": 121
+        },
+        {
+          "leg": 5,
+          "dense": 28,
+          "kept": 21,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 122,
+          "last_target": 149
+        },
+        {
+          "leg": 6,
+          "dense": 28,
+          "kept": 19,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 150,
+          "last_target": 177
+        },
+        {
+          "leg": 7,
+          "dense": 11,
+          "kept": 9,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 178,
+          "last_target": 188
+        }
+      ],
+      "mean_target_error_m": 5.134625178654219,
+      "max_target_error_m": 9.931523560198851,
+      "centerline_cross_mean_m": 3.030343310752056,
+      "centerline_cross_p90_m": 5.872164775741731,
+      "centerline_cross_max_m": 9.04586537050419,
+      "same_leg_lateral_delta_p90_m": 3.3971938144980443,
+      "same_leg_lateral_delta_max_m": 8.727586793578018,
+      "actual_step_mean_m": 6.208981391232377,
+      "actual_step_p50_m": 5.13079278176728,
+      "actual_step_p90_m": 11.375489125687423,
+      "actual_step_p95_m": 13.712446996099978,
+      "actual_step_max_m": 21.362592751971988,
+      "step_over_7m_pct": 36.55172413793103,
+      "step_over_10m_pct": 17.24137931034483,
+      "step_over_14m_pct": 4.827586206896552,
+      "cross_step_p90_m": 3.55212993169628,
+      "backward_step_pct": 6.896551724137931,
+      "same_leg_backward_step_pct": 4.827586206896552,
+      "max_cross_track_rule_m": 8.5,
+      "max_same_leg_lateral_jump_rule_m": 4.0,
+      "max_same_leg_backward_rule_m": 0.25
+    },
+    "test_02": {
+      "split": "inference",
+      "planned_length_m": 847.2626075191283,
+      "waypoints": 11,
+      "frames": 171,
+      "sample_step_m": 4.0,
+      "selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+      "max_sample_distance_m": 10.0,
+      "preferred_step_m": 4.0,
+      "safety_max_step_m": 22.0,
+      "point_cross_weight": 20.0,
+      "lateral_smooth_weight": 35.0,
+      "big_turn_threshold_deg": 20.0,
+      "heading_weight_px_per_deg": 0.0,
+      "targets": 213,
+      "dense_frames_before_prune": 213,
+      "dense_selected_ratio": 1.0,
+      "selected_ratio": 0.8028169014084507,
+      "prune_keep_ratio": 0.8028169014084507,
+      "skipped_targets": 42,
+      "per_leg_prune": [
+        {
+          "leg": 0,
+          "dense": 25,
+          "kept": 13,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 0,
+          "last_target": 24
+        },
+        {
+          "leg": 1,
+          "dense": 17,
+          "kept": 12,
+          "coverage": 0.9375,
+          "mode": "smoothed_full_span",
+          "first_target": 25,
+          "last_target": 41
+        },
+        {
+          "leg": 2,
+          "dense": 27,
+          "kept": 27,
+          "coverage": 1.0,
+          "mode": "dense_fallback_for_coverage",
+          "first_target": 42,
+          "last_target": 68
+        },
+        {
+          "leg": 3,
+          "dense": 16,
+          "kept": 15,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 69,
+          "last_target": 84
+        },
+        {
+          "leg": 4,
+          "dense": 24,
+          "kept": 20,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 85,
+          "last_target": 108
+        },
+        {
+          "leg": 5,
+          "dense": 16,
+          "kept": 12,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 109,
+          "last_target": 124
+        },
+        {
+          "leg": 6,
+          "dense": 27,
+          "kept": 27,
+          "coverage": 1.0,
+          "mode": "dense_fallback_for_coverage",
+          "first_target": 125,
+          "last_target": 151
+        },
+        {
+          "leg": 7,
+          "dense": 17,
+          "kept": 16,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 152,
+          "last_target": 168
+        },
+        {
+          "leg": 8,
+          "dense": 26,
+          "kept": 16,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 169,
+          "last_target": 194
+        },
+        {
+          "leg": 9,
+          "dense": 18,
+          "kept": 13,
+          "coverage": 1.0,
+          "mode": "smoothed_full_span",
+          "first_target": 195,
+          "last_target": 212
+        }
+      ],
+      "mean_target_error_m": 4.976508369648001,
+      "max_target_error_m": 9.96871616321604,
+      "centerline_cross_mean_m": 2.6861465420241353,
+      "centerline_cross_p90_m": 5.607453568630085,
+      "centerline_cross_max_m": 9.059145604561264,
+      "same_leg_lateral_delta_p90_m": 3.4571360908421034,
+      "same_leg_lateral_delta_max_m": 17.152676128082796,
+      "actual_step_mean_m": 5.960103124495514,
+      "actual_step_p50_m": 5.127693708132501,
+      "actual_step_p90_m": 11.979688181314996,
+      "actual_step_p95_m": 14.592368522040632,
+      "actual_step_max_m": 19.98121638823098,
+      "step_over_7m_pct": 29.411764705882355,
+      "step_over_10m_pct": 14.117647058823529,
+      "step_over_14m_pct": 5.88235294117647,
+      "cross_step_p90_m": 3.7535650155704077,
+      "backward_step_pct": 10.588235294117647,
+      "same_leg_backward_step_pct": 8.823529411764707,
+      "max_cross_track_rule_m": 8.5,
+      "max_same_leg_lateral_jump_rule_m": 4.0,
+      "max_same_leg_backward_rule_m": 0.25
+    }
+  },
+  "note": "Dense real-observation route first; coverage-safe per-leg physical cleanup second. Smoothing may never truncate a leg. Retained GT coordinates remain real and yaw is not used.",
+  "canonical_train_routes": [
+    "train_01"
+  ],
+  "route_a_candidate_source": "train_01",
+  "training_candidate_probes": {
+    "strict": {
+      "train_01": {
+        "candidate": "train_01",
+        "status": "ok",
+        "full": true,
+        "frames": 196,
+        "targets": 196,
+        "selected_ratio": 1.0,
+        "first_target": 0,
+        "last_target": 195,
+        "target_span_ratio": 1.0,
+        "start_m": 8.206129326817738,
+        "end_m": 4.968348202036445,
+        "worst_waypoint_m": 8.206129326817738,
+        "centerline_cross_p90_m": 6.009884562255637,
+        "same_leg_lateral_delta_p90_m": 4.269875199581627,
+        "backward_step_pct": 13.333333333333334,
+        "actual_step_p90_m": 9.862440572091874
+      },
+      "train_02": {
+        "candidate": "train_02",
+        "status": "ok",
+        "full": true,
+        "frames": 196,
+        "targets": 198,
+        "selected_ratio": 0.98989898989899,
+        "first_target": 0,
+        "last_target": 197,
+        "target_span_ratio": 1.0,
+        "start_m": 3.3617232179296304,
+        "end_m": 3.6587385518363247,
+        "worst_waypoint_m": 4.7184755746399105,
+        "centerline_cross_p90_m": 5.514509415788263,
+        "same_leg_lateral_delta_p90_m": 4.670972443450521,
+        "backward_step_pct": 12.820512820512821,
+        "actual_step_p90_m": 9.867382472575892
+      },
+      "train_03": {
+        "candidate": "train_03",
+        "status": "ok",
+        "full": true,
+        "frames": 180,
+        "targets": 203,
+        "selected_ratio": 0.8866995073891626,
+        "first_target": 0,
+        "last_target": 202,
+        "target_span_ratio": 1.0,
+        "start_m": 9.795112666526435,
+        "end_m": 6.069927978752081,
+        "worst_waypoint_m": 6.574314243137049,
+        "centerline_cross_p90_m": 6.0126136272103246,
+        "same_leg_lateral_delta_p90_m": 4.447454592384387,
+        "backward_step_pct": 13.40782122905028,
+        "actual_step_p90_m": 11.084165392810728
+      }
+    }
+  },
+  "preparation_profile": {
+    "name": "strict",
+    "max_sample_distance_m": 10.0,
+    "safety_max_step_m": 22.0,
+    "max_cross_track_m": 8.5,
+    "max_same_leg_lateral_jump_m": 4.0
+  },
+  "test_route_source": {
+    "test_01": "Bearing-UAV official wps36bc_50.json",
+    "test_02": "Bearing-UAV official wps36bc_51.json"
+  },
+  "turn_diversity_audit": {
+    "city": "cityb",
+    "routes": {
+      "test_01": {
+        "source": "Bearing-UAV official wps36bc_50.json",
+        "waypoints": 13,
+        "turn_delta_mod360_deg": [
+          283.3,
+          110.1,
+          45.3,
+          356.4,
+          271.1,
+          346.3,
+          336.9,
+          310.7,
+          3.7,
+          356.2,
+          268.3
+        ],
+        "meaningful_20_350_deg": [
+          283.3,
+          110.1,
+          45.3,
+          271.1,
+          346.3,
+          336.9,
+          310.7,
+          268.3
+        ]
+      },
+      "test_02": {
+        "source": "Bearing-UAV official wps36bc_51.json",
+        "waypoints": 11,
+        "turn_delta_mod360_deg": [
+          72.0,
+          283.7,
+          65.8,
+          298.5,
+          61.5,
+          294.2,
+          76.3,
+          283.7,
+          76.3
+        ],
+        "meaningful_20_350_deg": [
+          72.0,
+          283.7,
+          65.8,
+          298.5,
+          61.5,
+          294.2,
+          76.3,
+          283.7,
+          76.3
+        ]
+      }
+    },
+    "combined": {
+      "meaningful_turn_count": 17,
+      "occupied_turn_bins": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "near_90_fraction": 0.4117647058823529,
+      "rule": "meaningful delta in [20,350] deg; >=4 bins across two tests; <=65% near 90deg"
+    }
+  },
+  "full_route_coverage_audit": {
+    "train_01": {
+      "frames": 196,
+      "waypoints": 6,
+      "start_m": 8.206129373704336,
+      "end_m": 4.968348203432159,
+      "worst_waypoint_m": 8.206129373704336
+    },
+    "test_01": {
+      "frames": 146,
+      "waypoints": 13,
+      "start_m": 7.139945292701452,
+      "end_m": 3.1405090534628406,
+      "worst_waypoint_m": 10.752818913029271
+    },
+    "test_02": {
+      "frames": 171,
+      "waypoints": 11,
+      "start_m": 6.109551506211894,
+      "end_m": 7.004476719273896,
+      "worst_waypoint_m": 7.004476719273896
+    }
+  }
+}

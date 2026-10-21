@@ -1,0 +1,50 @@
+{
+  "method": "InfoGeo",
+  "official_source": "/yh/study/uav-sat/v36-exp/others_paper/InfoGeo",
+  "model": "vit_base_patch14_dinov2.lvd142m",
+  "adapter": "official InfoGeo DINOv2-B backbone family; common global descriptor adapter",
+  "fairness_protocol": "same Route-A train / Route-B,C test; controlled GT+jitter forward 3x6 local gallery",
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "route_B": {
+    "frames": 2276,
+    "MLE_m": 12.093052155929103,
+    "Median_m": 12.236906051635742,
+    "P90_m": 19.02794361114502,
+    "P95_m": 20.717868328094482,
+    "LSR@5_pct": 10.23725834797891,
+    "LSR@10_pct": 35.89630931458699,
+    "LSR@15_pct": 68.49736379613357,
+    "latency_ms": 9.49772205228651,
+    "FPS": 105.28840436631403
+  },
+  "route_C": {
+    "frames": 1258,
+    "MLE_m": 12.593820943504525,
+    "Median_m": 12.715499877929688,
+    "P90_m": 19.730796241760252,
+    "P95_m": 21.206919288635248,
+    "LSR@5_pct": 9.220985691573928,
+    "LSR@10_pct": 32.98887122416534,
+    "LSR@15_pct": 66.21621621621621,
+    "latency_ms": 9.6099483416528,
+    "FPS": 104.05883199867561
+  },
+  "combined": {
+    "frames": 3534,
+    "MLE_m": 12.27131110747689,
+    "Median_m": 12.418701648712158,
+    "P90_m": 19.292645835876467,
+    "P95_m": 20.796988677978515,
+    "LSR@5_pct": 9.875495189586871,
+    "LSR@10_pct": 34.861346915676286,
+    "LSR@15_pct": 67.68534238822863,
+    "latency_ms": 9.537392139604243,
+    "FPS": 104.85046492399916
+  }
+}

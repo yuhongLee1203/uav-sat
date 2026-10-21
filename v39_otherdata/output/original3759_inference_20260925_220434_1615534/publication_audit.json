@@ -1,0 +1,89 @@
+{
+  "frames": 1482,
+  "routes": 8,
+  "gt_prior_frames": 1482,
+  "historical_exact_printed_match": false,
+  "historical_exact_mismatches": [
+    "no_kalman: MLE 3.763/3.763; LSR@5 73.82%/73.68%"
+  ],
+  "teacher_target_matches": 1482,
+  "prior_MLE_m": 5.372479122924438,
+  "prior_LSR_at_5_pct": 21.45748987854251,
+  "bootstrap_seed": 2033,
+  "bootstrap_replicates": 100000,
+  "bootstrap_unit": "whole route, frame-count-weighted pooled MLE",
+  "comparisons": {
+    "no_gru": {
+      "full_minus_variant_MLE_m": -0.5159480421439278,
+      "route_bootstrap_95CI_m": [
+        -0.615000385369598,
+        -0.4179091085275416
+      ],
+      "routes_full_better": 8
+    },
+    "no_kalman": {
+      "full_minus_variant_MLE_m": -0.0035912698853493913,
+      "route_bootstrap_95CI_m": [
+        -0.011630382713983587,
+        0.00479122893000698
+      ],
+      "routes_full_better": 4
+    },
+    "no_ms": {
+      "full_minus_variant_MLE_m": -3.026353278964697,
+      "route_bootstrap_95CI_m": [
+        -3.356755110773227,
+        -2.6321626820942865
+      ],
+      "routes_full_better": 8
+    },
+    "frames1": {
+      "full_minus_variant_MLE_m": -0.12386117595018721,
+      "route_bootstrap_95CI_m": [
+        -0.15435852690383323,
+        -0.09826028174651169
+      ],
+      "routes_full_better": 8
+    },
+    "frames2": {
+      "full_minus_variant_MLE_m": -0.16188344621178483,
+      "route_bootstrap_95CI_m": [
+        -0.1870415942186586,
+        -0.1341920710748412
+      ],
+      "routes_full_better": 8
+    },
+    "grid4": {
+      "full_minus_variant_MLE_m": -0.4090682199057801,
+      "route_bootstrap_95CI_m": [
+        -0.5278257809256203,
+        -0.2699472961973181
+      ],
+      "routes_full_better": 8
+    },
+    "grid5": {
+      "full_minus_variant_MLE_m": -0.003379623131557035,
+      "route_bootstrap_95CI_m": [
+        -0.010249427739774025,
+        0.00032767211627418585
+      ],
+      "routes_full_better": 4
+    },
+    "grid7": {
+      "full_minus_variant_MLE_m": 0.02123889151808679,
+      "route_bootstrap_95CI_m": [
+        0.010249917895181605,
+        0.0312909138814497
+      ],
+      "routes_full_better": 0
+    },
+    "grid8": {
+      "full_minus_variant_MLE_m": 0.020825544489144237,
+      "route_bootstrap_95CI_m": [
+        0.009850795842034037,
+        0.030820882547157667
+      ],
+      "routes_full_better": 0
+    }
+  }
+}

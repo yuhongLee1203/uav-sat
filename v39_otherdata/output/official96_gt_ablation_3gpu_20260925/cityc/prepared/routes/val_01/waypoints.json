@@ -1,0 +1,84 @@
+{
+  "route_name": "val_01",
+  "coordinate_system": "bearing_rsi_map_meters",
+  "mpp": 0.25,
+  "waypoints": [
+    {
+      "waypoint_order": 0,
+      "latitude": 853.9337775139994,
+      "longitude": 388.80728390193184,
+      "pixel_x": 1555.2291356077274,
+      "pixel_y": 3415.7351100559977
+    },
+    {
+      "waypoint_order": 1,
+      "latitude": 749.6601171119623,
+      "longitude": 334.07244415230804,
+      "pixel_x": 1336.2897766092321,
+      "pixel_y": 2998.6404684478493
+    },
+    {
+      "waypoint_order": 2,
+      "latitude": 683.8614523232719,
+      "longitude": 443.80317553351483,
+      "pixel_x": 1775.2127021340593,
+      "pixel_y": 2735.4458092930877
+    },
+    {
+      "waypoint_order": 3,
+      "latitude": 536.7630889386179,
+      "longitude": 500.5112559016495,
+      "pixel_x": 2002.045023606598,
+      "pixel_y": 2147.0523557544716
+    },
+    {
+      "waypoint_order": 4,
+      "latitude": 483.42353714640035,
+      "longitude": 397.9353014411254,
+      "pixel_x": 1591.7412057645015,
+      "pixel_y": 1933.6941485856014
+    },
+    {
+      "waypoint_order": 5,
+      "latitude": 598.2399366429702,
+      "longitude": 411.84192819034405,
+      "pixel_x": 1647.3677127613762,
+      "pixel_y": 2392.9597465718807
+    },
+    {
+      "waypoint_order": 6,
+      "latitude": 586.6615628362221,
+      "longitude": 347.62163358242566,
+      "pixel_x": 1390.4865343297026,
+      "pixel_y": 2346.6462513448882
+    },
+    {
+      "waypoint_order": 7,
+      "latitude": 591.671756311055,
+      "longitude": 192.82692918509102,
+      "pixel_x": 771.3077167403641,
+      "pixel_y": 2366.68702524422
+    },
+    {
+      "waypoint_order": 8,
+      "latitude": 465.19445449832347,
+      "longitude": 184.08871021901905,
+      "pixel_x": 736.3548408760762,
+      "pixel_y": 1860.7778179932939
+    },
+    {
+      "waypoint_order": 9,
+      "latitude": 398.96244388052423,
+      "longitude": 120.92206588346627,
+      "pixel_x": 483.6882635338651,
+      "pixel_y": 1595.849775522097
+    },
+    {
+      "waypoint_order": 10,
+      "latitude": 423.34509530970365,
+      "longitude": 182.0703417233757,
+      "pixel_x": 728.2813668935028,
+      "pixel_y": 1693.3803812388146
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "method": "Sample4Geo",
+  "official_source": "/yh/study/uav-sat/v36-exp/others_paper/Sample4Geo",
+  "model": "convnext_base.fb_in22k_ft_in1k_384",
+  "adapter": "official Sample4Geo ConvNeXt-B shared-weight dual encoder",
+  "fairness_protocol": "same Route-A train / Route-B,C test; controlled GT+jitter forward 3x6 local gallery",
+  "train_routes": [
+    "route_A"
+  ],
+  "eval_routes": [
+    "route_B",
+    "route_C"
+  ],
+  "route_B": {
+    "frames": 2276,
+    "MLE_m": 11.866837019248095,
+    "Median_m": 11.768649578094482,
+    "P90_m": 18.954254150390625,
+    "P95_m": 20.660974502563477,
+    "LSR@5_pct": 9.885764499121265,
+    "LSR@10_pct": 38.62038664323374,
+    "LSR@15_pct": 72.23198594024605,
+    "latency_ms": 17.80407675703654,
+    "FPS": 56.1669113005132
+  },
+  "route_C": {
+    "frames": 1258,
+    "MLE_m": 12.80030351431836,
+    "Median_m": 13.165882587432861,
+    "P90_m": 20.109406852722167,
+    "P95_m": 21.888817882537836,
+    "LSR@5_pct": 8.505564387917328,
+    "LSR@10_pct": 33.147853736089026,
+    "LSR@15_pct": 65.26232114467409,
+    "latency_ms": 18.172715053399145,
+    "FPS": 55.027550757362114
+  },
+  "combined": {
+    "frames": 3534,
+    "MLE_m": 12.19912362105862,
+    "Median_m": 12.102339744567871,
+    "P90_m": 19.41540679931641,
+    "P95_m": 21.12075061798095,
+    "LSR@5_pct": 9.39445387662705,
+    "LSR@10_pct": 36.6723259762309,
+    "LSR@15_pct": 69.75099037917374,
+    "latency_ms": 17.934384134104267,
+    "FPS": 55.75881460564829
+  }
+}

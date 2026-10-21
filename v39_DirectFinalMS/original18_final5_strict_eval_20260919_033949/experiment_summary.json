@@ -1,0 +1,602 @@
+{
+  "full_model": {
+    "metadata": {
+      "experiment_category": "module_ablation",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 5,
+      "checkpoint_retrained": false
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.12765256096726,
+      "MedLE_m": 1.9885600876061538,
+      "P90_m": 3.90457211495517,
+      "P95_m": 4.447755535985546,
+      "P99_m": 5.533726368916534,
+      "LSR@5_pct": 97.75922671353251,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.730903884253812,
+      "MedLE_m": 1.3637606564801674,
+      "P90_m": 3.687082882748261,
+      "P95_m": 5.01594211806442,
+      "P99_m": 5.953031721236831,
+      "LSR@5_pct": 94.75357710651828,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 1.9864217077398922,
+      "MedLE_m": 1.7321862585566965,
+      "P90_m": 3.8456689206041137,
+      "P95_m": 4.598501120543116,
+      "P99_m": 5.835138567894702,
+      "LSR@5_pct": 96.68930390492359,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/full_model/robust_tracker_summary.json"
+  },
+  "abl_no_gru": {
+    "metadata": {
+      "experiment_category": "module_ablation",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": true,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 5,
+      "checkpoint_retrained": false
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 1.9760093996805215,
+      "MedLE_m": 1.8407435945044044,
+      "P90_m": 3.6150777692920126,
+      "P95_m": 4.189222418110242,
+      "P99_m": 5.218192576996957,
+      "LSR@5_pct": 98.68189806678383,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.5926305429527567,
+      "MedLE_m": 1.0935059853124733,
+      "P90_m": 3.711734683633828,
+      "P95_m": 5.008793261018381,
+      "P99_m": 6.717902304662349,
+      "LSR@5_pct": 94.83306836248012,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 1.8395378089155163,
+      "MedLE_m": 1.5946534533196686,
+      "P90_m": 3.637690968627153,
+      "P95_m": 4.390497953982262,
+      "P99_m": 5.765710570644616,
+      "LSR@5_pct": 97.31182795698925,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/abl_no_gru/robust_tracker_summary.json"
+  },
+  "abl_no_kalman": {
+    "metadata": {
+      "experiment_category": "module_ablation",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "none",
+      "ms_enabled": true,
+      "ms_grid_size": 5,
+      "checkpoint_retrained": false
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.612817921328286,
+      "MedLE_m": 2.4302923842268074,
+      "P90_m": 4.561957028642265,
+      "P95_m": 5.3926699153036655,
+      "P99_m": 7.842135129445392,
+      "LSR@5_pct": 92.88224956063269,
+      "LSR@10_pct": 99.73637961335676,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 2.178956708461636,
+      "MedLE_m": 1.9216305269764375,
+      "P90_m": 4.2208378685691335,
+      "P95_m": 5.289888610445081,
+      "P99_m": 6.436869043687725,
+      "LSR@5_pct": 94.19713831478538,
+      "LSR@10_pct": 99.52305246422894,
+      "LSR@15_pct": 99.76152623211448,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 2.458376097393298,
+      "MedLE_m": 2.17332383176997,
+      "P90_m": 4.493628929646858,
+      "P95_m": 5.361663733764919,
+      "P99_m": 7.695522476867506,
+      "LSR@5_pct": 93.35031126202603,
+      "LSR@10_pct": 99.66044142614601,
+      "LSR@15_pct": 99.9151103565365,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/abl_no_kalman/robust_tracker_summary.json"
+  },
+  "abl_no_final_ms": {
+    "metadata": {
+      "experiment_category": "module_ablation",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": false,
+      "ms_grid_size": 5,
+      "checkpoint_retrained": false
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 4.628872643870497,
+      "MedLE_m": 4.440370423105787,
+      "P90_m": 8.305648294430743,
+      "P95_m": 9.493417637676707,
+      "P99_m": 11.126856698263138,
+      "LSR@5_pct": 56.94200351493849,
+      "LSR@10_pct": 97.23198594024605,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 3.974519462593405,
+      "MedLE_m": 3.2828829920175915,
+      "P90_m": 7.925920374795522,
+      "P95_m": 9.222130567873615,
+      "P99_m": 14.485821891030156,
+      "LSR@5_pct": 69.71383147853736,
+      "LSR@10_pct": 95.54848966613673,
+      "LSR@15_pct": 99.12559618441972,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 4.395942167909381,
+      "MedLE_m": 4.072064363050066,
+      "P90_m": 8.137661820238213,
+      "P95_m": 9.481489455700093,
+      "P99_m": 12.134915474848984,
+      "LSR@5_pct": 61.48839841539332,
+      "LSR@10_pct": 96.63271080928126,
+      "LSR@15_pct": 99.68873797396718,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/abl_no_final_ms/robust_tracker_summary.json"
+  },
+  "temporal_1frame": {
+    "metadata": {
+      "experiment_category": "temporal_frames",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 1,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 5,
+      "checkpoint_retrained": true
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.1164346585800695,
+      "MedLE_m": 1.9739960840909374,
+      "P90_m": 3.905477878955936,
+      "P95_m": 4.431774621100226,
+      "P99_m": 5.54262021172422,
+      "LSR@5_pct": 97.89103690685414,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.7222907969476435,
+      "MedLE_m": 1.364580406484605,
+      "P90_m": 3.6951349131388285,
+      "P95_m": 5.020583650235549,
+      "P99_m": 5.968006729599001,
+      "LSR@5_pct": 94.75357710651828,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 1.9761310428659804,
+      "MedLE_m": 1.729054376100402,
+      "P90_m": 3.8663126449614196,
+      "P95_m": 4.575193618500791,
+      "P99_m": 5.826390705664206,
+      "LSR@5_pct": 96.7741935483871,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/temporal_1frame/robust_tracker_summary.json"
+  },
+  "temporal_2frame": {
+    "metadata": {
+      "experiment_category": "temporal_frames",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 2,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 5,
+      "checkpoint_retrained": true
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.126831590047061,
+      "MedLE_m": 1.9774421486591165,
+      "P90_m": 3.9263983081806355,
+      "P95_m": 4.436781326084342,
+      "P99_m": 5.550924015879821,
+      "LSR@5_pct": 97.80316344463972,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.7303858946026387,
+      "MedLE_m": 1.3602503042532246,
+      "P90_m": 3.6572105206110246,
+      "P95_m": 5.0179834604733236,
+      "P99_m": 5.943194627255047,
+      "LSR@5_pct": 94.83306836248012,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 1.9857085892352098,
+      "MedLE_m": 1.7383029277215787,
+      "P90_m": 3.872147842299151,
+      "P95_m": 4.593554602640427,
+      "P99_m": 5.778724245681631,
+      "LSR@5_pct": 96.74589700056593,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/temporal_2frame/robust_tracker_summary.json"
+  },
+  "temporal_3frame": {
+    "metadata": {
+      "experiment_category": "temporal_frames",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 5,
+      "checkpoint_retrained": true
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.127675261157714,
+      "MedLE_m": 1.9872208234975801,
+      "P90_m": 3.906399370499746,
+      "P95_m": 4.447293055770951,
+      "P99_m": 5.532566040659658,
+      "LSR@5_pct": 97.75922671353251,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.7307611378873458,
+      "MedLE_m": 1.3626309230726052,
+      "P90_m": 3.686927946859301,
+      "P95_m": 5.015952594611344,
+      "P99_m": 5.953138483274167,
+      "LSR@5_pct": 94.75357710651828,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 1.986385513824912,
+      "MedLE_m": 1.7329974389602087,
+      "P90_m": 3.8517438991641098,
+      "P95_m": 4.598396311416947,
+      "P99_m": 5.834639899307368,
+      "LSR@5_pct": 96.68930390492359,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/temporal_3frame/robust_tracker_summary.json"
+  },
+  "ms_window_4x4": {
+    "metadata": {
+      "experiment_category": "ms_window",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 4,
+      "checkpoint_retrained": false
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.2792429816037276,
+      "MedLE_m": 2.0365426307363874,
+      "P90_m": 4.325051973553746,
+      "P95_m": 5.088825952167006,
+      "P99_m": 6.72951617006267,
+      "LSR@5_pct": 94.5079086115993,
+      "LSR@10_pct": 99.95606326889279,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.8835694042208828,
+      "MedLE_m": 1.3737795121730183,
+      "P90_m": 4.019791360620338,
+      "P95_m": 5.524018863962175,
+      "P99_m": 8.568511809172536,
+      "LSR@5_pct": 92.2893481717011,
+      "LSR@10_pct": 99.4435612082671,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 2.1383948320995914,
+      "MedLE_m": 1.7747121448174763,
+      "P90_m": 4.2943743152492235,
+      "P95_m": 5.296221305577209,
+      "P99_m": 7.36621103941608,
+      "LSR@5_pct": 93.71816638370119,
+      "LSR@10_pct": 99.77362761743068,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/ms_window_4x4/robust_tracker_summary.json"
+  },
+  "ms_window_5x5": {
+    "metadata": {
+      "experiment_category": "ms_window",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 5,
+      "checkpoint_retrained": false
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.127675261157714,
+      "MedLE_m": 1.9872208234975801,
+      "P90_m": 3.906399370499746,
+      "P95_m": 4.447293055770951,
+      "P99_m": 5.532566040659658,
+      "LSR@5_pct": 97.75922671353251,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.7307611378873458,
+      "MedLE_m": 1.3626309230726052,
+      "P90_m": 3.686927946859301,
+      "P95_m": 5.015952594611344,
+      "P99_m": 5.953138483274167,
+      "LSR@5_pct": 94.75357710651828,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 1.986385513824912,
+      "MedLE_m": 1.7329974389602087,
+      "P90_m": 3.8517438991641098,
+      "P95_m": 4.598396311416947,
+      "P99_m": 5.834639899307368,
+      "LSR@5_pct": 96.68930390492359,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/ms_window_5x5/robust_tracker_summary.json"
+  },
+  "ms_window_6x6": {
+    "metadata": {
+      "experiment_category": "ms_window",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 6,
+      "checkpoint_retrained": false
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.127980733782723,
+      "MedLE_m": 1.987779065452132,
+      "P90_m": 3.9059252991203524,
+      "P95_m": 4.448154506746146,
+      "P99_m": 5.53682556805046,
+      "LSR@5_pct": 97.75922671353251,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.7313014659564676,
+      "MedLE_m": 1.3629990498629172,
+      "P90_m": 3.6881729711172797,
+      "P95_m": 5.015952543927127,
+      "P99_m": 5.953138215631389,
+      "LSR@5_pct": 94.75357710651828,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 1.9867745880766028,
+      "MedLE_m": 1.7335422616357379,
+      "P90_m": 3.8524805951543515,
+      "P95_m": 4.596485622696144,
+      "P99_m": 5.83565576583361,
+      "LSR@5_pct": 96.68930390492359,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/ms_window_6x6/robust_tracker_summary.json"
+  },
+  "ms_window_7x7": {
+    "metadata": {
+      "experiment_category": "ms_window",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 7,
+      "checkpoint_retrained": false
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.1263843782884404,
+      "MedLE_m": 1.9872670547431373,
+      "P90_m": 3.906167507405132,
+      "P95_m": 4.432815170119337,
+      "P99_m": 5.532479472205061,
+      "LSR@5_pct": 97.80316344463972,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.7289314716634363,
+      "MedLE_m": 1.3628522012655186,
+      "P90_m": 3.6872568883107104,
+      "P95_m": 5.001762091166096,
+      "P99_m": 5.953138025638488,
+      "LSR@5_pct": 94.91255961844197,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 1.9849028399369248,
+      "MedLE_m": 1.7327548992377282,
+      "P90_m": 3.8487092213388316,
+      "P95_m": 4.595536387608065,
+      "P99_m": 5.828349717668513,
+      "LSR@5_pct": 96.7741935483871,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/ms_window_7x7/robust_tracker_summary.json"
+  },
+  "ms_window_8x8": {
+    "metadata": {
+      "experiment_category": "ms_window",
+      "front_decoder": "forward_3x6_softms",
+      "experiment_frame_count": 3,
+      "experiment_forward_only": true,
+      "experiment_disable_gru": false,
+      "experiment_kalman": "fixed",
+      "ms_enabled": true,
+      "ms_grid_size": 8,
+      "checkpoint_retrained": false
+    },
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 2.126868059433422,
+      "MedLE_m": 1.987952698303121,
+      "P90_m": 3.9058429767413942,
+      "P95_m": 4.434946762590627,
+      "P99_m": 5.536104576827386,
+      "LSR@5_pct": 97.80316344463972,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 1.7294452650996304,
+      "MedLE_m": 1.3629091279978,
+      "P90_m": 3.6884516196289416,
+      "P95_m": 5.0021959249770305,
+      "P99_m": 5.95313769309364,
+      "LSR@5_pct": 94.91255961844197,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "combined": {
+      "frames": 3534,
+      "MLE_m": 1.9853972401714217,
+      "MedLE_m": 1.7334640622100461,
+      "P90_m": 3.8462278882639875,
+      "P95_m": 4.59564471919772,
+      "P99_m": 5.830299273386133,
+      "LSR@5_pct": 96.7741935483871,
+      "LSR@10_pct": 100.0,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0
+    },
+    "summary_file": "/yh/study/uav-sat/v39_DirectFinalMS/original18_final5_strict_eval_20260919_033949/ms_window_8x8/robust_tracker_summary.json"
+  }
+}

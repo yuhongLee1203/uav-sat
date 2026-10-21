@@ -1,0 +1,115 @@
+{
+  "source_training_split": "soft_sequence_v13_multicity_auto_train_fullroute",
+  "target_split": "official_rsi96_seed42_temporal_v1",
+  "cities": {
+    "citya": {
+      "source_train_frames": 198,
+      "target_routes": {
+        "val_01": {
+          "frames": 73,
+          "source_train_overlap": 1,
+          "overlapping_image_paths": [
+            "/yh/study/cvpr_data/Bearing_UAV_90K/citya/uav_254k_34bc_b15_s100/blk_10_9_s_001_v3d.jpg"
+          ]
+        },
+        "test_01": {
+          "frames": 120,
+          "source_train_overlap": 2,
+          "overlapping_image_paths": [
+            "/yh/study/cvpr_data/Bearing_UAV_90K/citya/uav_254k_34bc_b15_s100/blk_11_9_s_076_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/citya/uav_254k_34bc_b15_s100/blk_12_9_s_099_v3d.jpg"
+          ]
+        },
+        "test_02": {
+          "frames": 120,
+          "source_train_overlap": 1,
+          "overlapping_image_paths": [
+            "/yh/study/cvpr_data/Bearing_UAV_90K/citya/uav_254k_34bc_b15_s100/blk_5_10_s_023_v3d.jpg"
+          ]
+        }
+      }
+    },
+    "cityb": {
+      "source_train_frames": 196,
+      "target_routes": {
+        "val_01": {
+          "frames": 80,
+          "source_train_overlap": 0,
+          "overlapping_image_paths": []
+        },
+        "test_01": {
+          "frames": 120,
+          "source_train_overlap": 8,
+          "overlapping_image_paths": [
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_10_4_s_030_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_10_4_s_072_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_11_4_s_029_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_11_4_s_036_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_11_4_s_070_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_11_5_s_017_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_12_5_s_065_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_8_4_s_085_v3d.jpg"
+          ]
+        },
+        "test_02": {
+          "frames": 120,
+          "source_train_overlap": 3,
+          "overlapping_image_paths": [
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_1_2_s_017_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_2_2_s_042_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityb/uav_254k_36bc_b15_s100/blk_3_2_s_029_v3d.jpg"
+          ]
+        }
+      }
+    },
+    "cityc": {
+      "source_train_frames": 196,
+      "target_routes": {
+        "val_01": {
+          "frames": 77,
+          "source_train_overlap": 0,
+          "overlapping_image_paths": []
+        },
+        "test_01": {
+          "frames": 120,
+          "source_train_overlap": 3,
+          "overlapping_image_paths": [
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityc/uav_254k_37bc_b15_s100/blk_11_4_s_033_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityc/uav_254k_37bc_b15_s100/blk_11_4_s_083_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityc/uav_254k_37bc_b15_s100/blk_11_5_s_037_v3d.jpg"
+          ]
+        },
+        "test_02": {
+          "frames": 120,
+          "source_train_overlap": 0,
+          "overlapping_image_paths": []
+        }
+      }
+    },
+    "cityd": {
+      "source_train_frames": 195,
+      "target_routes": {
+        "val_01": {
+          "frames": 72,
+          "source_train_overlap": 0,
+          "overlapping_image_paths": []
+        },
+        "test_01": {
+          "frames": 120,
+          "source_train_overlap": 3,
+          "overlapping_image_paths": [
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityd/uav_254k_38bc_b15_s100/blk_5_2_s_092_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityd/uav_254k_38bc_b15_s100/blk_5_3_s_087_v3d.jpg",
+            "/yh/study/cvpr_data/Bearing_UAV_90K/cityd/uav_254k_38bc_b15_s100/blk_9_4_s_003_v3d.jpg"
+          ]
+        },
+        "test_02": {
+          "frames": 120,
+          "source_train_overlap": 0,
+          "overlapping_image_paths": []
+        }
+      }
+    }
+  },
+  "total_test_overlap": 20
+}

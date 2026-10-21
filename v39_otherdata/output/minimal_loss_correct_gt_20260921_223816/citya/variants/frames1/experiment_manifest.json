@@ -1,0 +1,79 @@
+{
+  "architecture": "ICLR_Bearing4City_Forward18SoftMS_ResidualTemporalGRU_Kalman_FinalMS",
+  "city": "citya",
+  "phase": "held_out_evaluation",
+  "variant": "frames1",
+  "variant_settings": {
+    "frames": 1,
+    "disable_gru": false,
+    "kalman": "fixed",
+    "ms": true,
+    "grid": 6
+  },
+  "seed": 2033,
+  "temporal_epochs": 100,
+  "patience": 8,
+  "reference_protocol": "controlled_gt_jitter",
+  "uses_controlled_gt_reference": true,
+  "candidate_geometry": "6x6 local geometry; heading-guided forward 3x6 = 18 scored patches",
+  "paper_chain": "Forward18 SoftMS -> residual temporal GRU -> constrained Kalman -> final MeanShift -> XY",
+  "dataset_protocol": "Bearing-UAV citya/cityb/cityc/cityd with official nav50/nav51 reporting",
+  "architecture_audit": {
+    "forward_18": true,
+    "base_geometry_6x6": true,
+    "front_softms_source": true,
+    "one_final_ms_source": true,
+    "front_decoder_softms": true,
+    "simple_seven_block_gru": true,
+    "residual_motion_head": true,
+    "causal_visual_displacement": true,
+    "cadence_initialized_tracker": true,
+    "motion_training_inference_aligned": true,
+    "training_city_motion_scale_init": true,
+    "forward_origin_backshift_covers_jitter": true,
+    "protocol": true,
+    "controlled_gt_reference_enabled": true,
+    "frame_count": true,
+    "gru_flag": true,
+    "kalman_flag": true
+  },
+  "prepared_data": {
+    "prepared_root": "/yh/study/uav-sat/v39_otherdata/output/minimal_loss_correct_gt_20260921_223816/citya/prepared",
+    "selection_version": "soft_sequence_v13_multicity_auto_train_fullroute",
+    "selection_version_status": "recorded",
+    "sample_step_m": {
+      "train_01": 4.0,
+      "test_01": 4.0,
+      "test_02": 4.0
+    },
+    "sha256": {
+      "routes/train_01/manifest.csv": "b424dc86aace9d17e065235839aa19d4e267456eb8ca7538e86602c0d04649a7",
+      "routes/train_01/waypoints.json": "bb41e6b9632abc3f3da145d66893b69d47a050d126c2f75081e56c098b2509c8",
+      "routes/test_01/manifest.csv": "aad888a32e5c30dcd366b79dca92c92e000411f871aa157e96f59a73fed9fe34",
+      "routes/test_01/waypoints.json": "6c268a1c0d2486d4cbccce0a4d8e9a9d27ed37d24f813317c575db4e298b1017",
+      "routes/test_02/manifest.csv": "86964ecb67ba476167967bf7faeabe8cb42c98b5d8a593ff4f950b36af588626",
+      "routes/test_02/waypoints.json": "34fefdd858099808de36e9ac652f57bae9f1d115327590a67e273f7b9aca8b10",
+      "experiment.json": "ad1ab634165dc03abe102d492e926968c65ce927e64e43a922e7b0c9a7188020",
+      "bearing_satellite.json": "b53ad6815022d8af7b4ae157220e2cf6bb44a6aabba968b6b9ee5e114f27011e"
+    },
+    "data_modified": false
+  },
+  "training_cadence": {
+    "source": "train_01_only",
+    "statistics_provenance": {
+      "source": "experiment_route_stats_train_01",
+      "derived_fields": []
+    },
+    "train_step_mean_m": 5.3591721379978425,
+    "train_step_p90_m": 10.084329283110215,
+    "train_step_p95_m": 11.123011223366694,
+    "max_forward_speed_m_per_frame": 14.0,
+    "max_polynomial_step_m_per_frame": 14.0,
+    "max_measurement_correction_parallel_m": 8.067463426488173,
+    "kalman_max_measurement_innovation_progress_m": 10.588545747265727,
+    "kalman_max_posterior_correction_progress_m": 8.067463426488173,
+    "kalman_max_velocity_correction_m_per_frame": 3.025298784933064,
+    "kalman_final_step_max_m": 12.791462906871697
+  },
+  "integrity": "Measured outputs are never edited, clipped, or reordered to force Full to win."
+}

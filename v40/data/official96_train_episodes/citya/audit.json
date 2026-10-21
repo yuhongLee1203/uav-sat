@@ -1,0 +1,40 @@
+{
+  "city": "citya",
+  "source_split": "c4m official ID96 seed42 train only",
+  "base_suite": "/yh/study/uav-sat/v39_otherdata/output/abcd_table6_official96_temporal_20260923",
+  "original_train_images_excluded": true,
+  "no_cross_split_samples": true,
+  "episode_stats": {
+    "train_spatial_08": {
+      "frames": 120,
+      "target_frames": 120,
+      "waypoint_anchors": 16,
+      "frame_step_mean_m": 8.445354663321524,
+      "frame_step_p90_m": 10.445516299238268,
+      "frame_step_p95_m": 11.0590907283635,
+      "frame_step_max_m": 14.974712196032558,
+      "construction": "deterministic nearest-neighbor chain within official split"
+    },
+    "train_spatial_20": {
+      "frames": 120,
+      "target_frames": 120,
+      "waypoint_anchors": 16,
+      "frame_step_mean_m": 20.03582973521907,
+      "frame_step_p90_m": 21.374594490828912,
+      "frame_step_p95_m": 22.043589672455408,
+      "frame_step_max_m": 24.896015515339702,
+      "construction": "deterministic nearest-neighbor chain within official split"
+    },
+    "train_spatial_30": {
+      "frames": 120,
+      "target_frames": 120,
+      "waypoint_anchors": 16,
+      "frame_step_mean_m": 29.984197300602723,
+      "frame_step_p90_m": 31.162690088808837,
+      "frame_step_p95_m": 31.702133135954533,
+      "frame_step_max_m": 35.49688936078865,
+      "construction": "deterministic nearest-neighbor chain within official split"
+    }
+  },
+  "warning": "Pseudo-temporal ordering of independent images, not UAV video"
+}

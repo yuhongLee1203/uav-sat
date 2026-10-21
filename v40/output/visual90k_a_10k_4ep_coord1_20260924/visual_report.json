@@ -1,0 +1,67 @@
+{
+  "cities": [
+    "citya"
+  ],
+  "samples_per_city": 10000,
+  "coord_loss_weight": 1.0,
+  "label_smoothing": 0.05,
+  "test_paths_excluded_sha256": {
+    "citya": "96aa0b92836b3b3faa12fa04f48006e2fd516807eca4307aca7427857b47305d"
+  },
+  "best_val_mle": 5.309778213500977,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 7.00810495336005,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 11.796151161193848,
+          "SoftMS_MLE_m": 5.56925630569458,
+          "SoftMS_P90_m": 9.534172058105469,
+          "LSR@10_pct": 92.40000247955322
+        }
+      },
+      "macro_val_mle": 5.56925630569458
+    },
+    {
+      "epoch": 2,
+      "train_loss": 6.643922454076455,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 11.634092330932617,
+          "SoftMS_MLE_m": 5.422397613525391,
+          "SoftMS_P90_m": 9.158252716064453,
+          "LSR@10_pct": 94.0999984741211
+        }
+      },
+      "macro_val_mle": 5.422397613525391
+    },
+    {
+      "epoch": 3,
+      "train_loss": 6.520948629852728,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 11.486881256103516,
+          "SoftMS_MLE_m": 5.3599853515625,
+          "SoftMS_P90_m": 8.951921463012695,
+          "LSR@10_pct": 94.80000138282776
+        }
+      },
+      "macro_val_mle": 5.3599853515625
+    },
+    {
+      "epoch": 4,
+      "train_loss": 6.44585065300583,
+      "val": {
+        "citya": {
+          "Top1_MLE_m": 11.330799102783203,
+          "SoftMS_MLE_m": 5.309778213500977,
+          "SoftMS_P90_m": 8.998126029968262,
+          "LSR@10_pct": 95.3000009059906
+        }
+      },
+      "macro_val_mle": 5.309778213500977
+    }
+  ],
+  "checkpoint_root": "v40/output/visual90k_a_10k_4ep_coord1_20260924/checkpoints"
+}

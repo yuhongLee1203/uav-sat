@@ -1,0 +1,57 @@
+{
+  "path_full_component_mle_best": true,
+  "three_frame_mle_best": true,
+  "PATH_PRIMARY_TREND_CHECK": "PASS",
+  "paired_bootstrap": {
+    "path_no_gru": {
+      "full_minus_ablation_MLE_m": -0.516033768611754,
+      "MLE_95CI": [
+        -0.5669415358097503,
+        -0.46861498455621386
+      ],
+      "full_minus_ablation_LSR@5_pct": 8.02968960863697,
+      "LSR@5_95CI": [
+        6.545209176788125,
+        9.649122807017541
+      ]
+    },
+    "path_no_ms": {
+      "full_minus_ablation_MLE_m": -3.080218753995677,
+      "MLE_95CI": [
+        -3.2174699548492014,
+        -2.942965630645083
+      ],
+      "full_minus_ablation_LSR@5_pct": 40.35087719298245,
+      "LSR@5_95CI": [
+        37.7867746288799,
+        43.04993252361674
+      ]
+    },
+    "path_frames1": {
+      "full_minus_ablation_MLE_m": -0.13155513722902867,
+      "MLE_95CI": [
+        -0.16320688326207192,
+        -0.09902749942884959
+      ],
+      "full_minus_ablation_LSR@5_pct": 1.5519568151147078,
+      "LSR@5_95CI": [
+        0.47233468286099756,
+        2.6990553306342706
+      ]
+    },
+    "path_frames2": {
+      "full_minus_ablation_MLE_m": -0.1650419338589466,
+      "MLE_95CI": [
+        -0.20405041852946615,
+        -0.12728460852542003
+      ],
+      "full_minus_ablation_LSR@5_pct": 2.429149797570851,
+      "LSR@5_95CI": [
+        1.2820512820512775,
+        3.6437246963562764
+      ]
+    }
+  },
+  "selection": "Temporal/Kalman scales selected on each city's train_01 validation only.",
+  "integrity": "All values are aggregated from raw held-out frame CSVs without editing or clipping."
+}

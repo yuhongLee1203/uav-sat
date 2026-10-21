@@ -1,0 +1,157 @@
+{
+  "architecture": "ICLR_Bearing4City_Forward18SoftMS_ResidualTemporalGRU_Kalman_FinalMS",
+  "source_dataset": "/yh/study/cvpr_data/Bearing_UAV_90K",
+  "protocol": "custom pseudo-route episodes within the official96 metadata split; not official Table 6",
+  "training_supervision": "gt_train",
+  "initialization": "random_temporal",
+  "training_teacher_acquisition_ratio": 0.0,
+  "training_teacher_center_ratio": 0.0,
+  "training_teacher_state_ratio": 0.0,
+  "training_GT_loss_only": true,
+  "training_GT_model_inputs": false,
+  "extra_train_routes_dir": null,
+  "best_validation_mean_mle_m": 10.496971267857074,
+  "best_validation_epoch": 3,
+  "dense_offbank_loss": false,
+  "training_loss_weights_acquisition_measurement_motion": [
+    2.0,
+    5.0,
+    0.5
+  ],
+  "visual_weights": "external visual checkpoints: verify training_protocol=global_gallery_gt_loss_only",
+  "visual_checkpoint_root": "/yh/study/uav-sat/v40/output/official96_citya_visual_distance5_resume20_20260924/checkpoints",
+  "train_cities": [
+    "citya"
+  ],
+  "eval_cities": [
+    "citya"
+  ],
+  "image_counts_train_test01_test02": {
+    "citya": [
+      66,
+      64,
+      89
+    ]
+  },
+  "test_GT_used_by_model": false,
+  "test_GT_derived_waypoints": false,
+  "episode_construction_uses_GT_offline": true,
+  "route_duration_prior": false,
+  "checkpoint": "v40/output/official96_citya_temporal_loss_visual_20260925/shared_temporal.pt",
+  "test_evaluated": false,
+  "history": [
+    {
+      "epoch": 1,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 16.99200937603459,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 1,
+      "validation_mle_by_city": {
+        "citya": 10.784950050363673
+      },
+      "validation_mean_mle_m": 10.784950050363673
+    },
+    {
+      "epoch": 2,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 15.77011960925478,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 2,
+      "validation_mle_by_city": {
+        "citya": 10.63980804661783
+      },
+      "validation_mean_mle_m": 10.63980804661783
+    },
+    {
+      "epoch": 3,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 15.385726524121834,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 3,
+      "validation_mle_by_city": {
+        "citya": 10.496971267857074
+      },
+      "validation_mean_mle_m": 10.496971267857074
+    },
+    {
+      "epoch": 4,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 14.880369489843195,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 4,
+      "validation_mle_by_city": {
+        "citya": 11.059401344006206
+      },
+      "validation_mean_mle_m": 11.059401344006206
+    },
+    {
+      "epoch": 5,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 13.774463566866787,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 5,
+      "validation_mle_by_city": {
+        "citya": 11.145411593682995
+      },
+      "validation_mean_mle_m": 11.145411593682995
+    },
+    {
+      "epoch": 6,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 14.887168497750253,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 6,
+      "validation_mle_by_city": {
+        "citya": 11.636267107645923
+      },
+      "validation_mean_mle_m": 11.636267107645923
+    },
+    {
+      "epoch": 7,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 15.473022957642874,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 7,
+      "validation_mle_by_city": {
+        "citya": 11.504315228077912
+      },
+      "validation_mean_mle_m": 11.504315228077912
+    },
+    {
+      "epoch": 8,
+      "city": "citya",
+      "route": "train_01",
+      "loss": 14.279025220509732,
+      "training_GT_used": true
+    },
+    {
+      "epoch": 8,
+      "validation_mle_by_city": {
+        "citya": 11.694230067518065
+      },
+      "validation_mean_mle_m": 11.694230067518065
+    }
+  ],
+  "results": {}
+}

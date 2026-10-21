@@ -1,0 +1,796 @@
+{
+  "created_at": "2026-10-16T16:54:00.427838+08:00",
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "physical_gpu": 0,
+  "torch": "1.13.1+cu117",
+  "cuda": "11.7",
+  "batch_size": 1,
+  "operations_per_graph": 128,
+  "graph_repeats_per_route_method": 200,
+  "single_repeats_per_route_method": 150,
+  "accuracy_frames": 1482,
+  "latency_route_examples": 8,
+  "mode_count_histogram": {
+    "1": 1482
+  },
+  "reproduction_max_xy_difference_m": {
+    "Argmax": 0.0,
+    "Mean Shift": 0.0,
+    "Weighted Average": 0.00017503547591620497
+  },
+  "scope": "Inputs and normalized weights ready on GPU. Argmax includes max-index search and coordinate gather; weighted average includes multiply and sum; Mean Shift includes actual active-mode multiply and sum after convergence AND basin consolidation. Excludes scoring, softmax, allocation of inputs, model, convergence, consolidation, CPU transfers. CUDA graph outputs allocated during capture, reused during replay. GPU-only is per B=1 operation averaged over 128 serial graph operations, not throughput divided by batch size. Single-call includes host dispatch gaps. No forced ordering.",
+  "rows": [
+    {
+      "decoder": "Argmax",
+      "N": 1482,
+      "MLE_m": 4.135789900241109,
+      "LSR3_pct": 36.09986504723347,
+      "LSR5_pct": 68.08367071524967,
+      "gpu_only": {
+        "mean_ms": 0.0035881646907364485,
+        "median_ms": 0.0035200000274926424,
+        "p10_ms": 0.003496000077575445,
+        "p90_ms": 0.004056000150740147
+      },
+      "single_call": {
+        "mean_ms": 0.0395459729541714,
+        "median_ms": 0.03891199827194214,
+        "p10_ms": 0.03174399957060814,
+        "p90_ms": 0.048128001391887665
+      }
+    },
+    {
+      "decoder": "Mean Shift",
+      "N": 1482,
+      "MLE_m": 3.7591276968535423,
+      "LSR3_pct": 41.902834008097166,
+      "LSR5_pct": 73.75168690958165,
+      "gpu_only": {
+        "mean_ms": 0.0026927853144297843,
+        "median_ms": 0.002687999978661537,
+        "p10_ms": 0.00266400002874434,
+        "p90_ms": 0.0027199999894946814
+      },
+      "single_call": {
+        "mean_ms": 0.03632976042417189,
+        "median_ms": 0.03481600061058998,
+        "p10_ms": 0.03174399957060814,
+        "p90_ms": 0.04403200000524521
+      }
+    },
+    {
+      "decoder": "Weighted Average",
+      "N": 1482,
+      "MLE_m": 3.7485090891854775,
+      "LSR3_pct": 42.51012145748988,
+      "LSR5_pct": 74.2914979757085,
+      "gpu_only": {
+        "mean_ms": 0.004065940348955337,
+        "median_ms": 0.004064000211656094,
+        "p10_ms": 0.004040000028908253,
+        "p90_ms": 0.004095999989658594
+      },
+      "single_call": {
+        "mean_ms": 0.03604029373110582,
+        "median_ms": 0.035840000957250595,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.043007999658584595
+      }
+    }
+  ],
+  "per_route_latency": [
+    {
+      "route": "a/test_01",
+      "sample_key": "a/test_01/80",
+      "decoder": "Argmax",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.004071000039111823,
+        "median_ms": 0.004064000211656094,
+        "p10_ms": 0.0040480000898242,
+        "p90_ms": 0.004095999989658594
+      },
+      "single_call": {
+        "mean_ms": 0.040727892940243086,
+        "median_ms": 0.03891199827194214,
+        "p10_ms": 0.035840000957250595,
+        "p90_ms": 0.048128001391887665
+      }
+    },
+    {
+      "route": "a/test_01",
+      "sample_key": "a/test_01/80",
+      "decoder": "Mean Shift",
+      "inputs": 1,
+      "gpu_only": {
+        "mean_ms": 0.0026874325110111384,
+        "median_ms": 0.00267999991774559,
+        "p10_ms": 0.00266400002874434,
+        "p90_ms": 0.002704000100493431
+      },
+      "single_call": {
+        "mean_ms": 0.036590720390280086,
+        "median_ms": 0.035840000957250595,
+        "p10_ms": 0.03276799991726875,
+        "p90_ms": 0.042188799381256095
+      }
+    },
+    {
+      "route": "a/test_01",
+      "sample_key": "a/test_01/80",
+      "decoder": "Weighted Average",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.004080154998227954,
+        "median_ms": 0.004071999806910753,
+        "p10_ms": 0.004056000150740147,
+        "p90_ms": 0.004112000111490488
+      },
+      "single_call": {
+        "mean_ms": 0.03730816051363945,
+        "median_ms": 0.035840000957250595,
+        "p10_ms": 0.03276799991726875,
+        "p90_ms": 0.04331519976258276
+      }
+    },
+    {
+      "route": "a/test_02",
+      "sample_key": "a/test_02/109",
+      "decoder": "Mean Shift",
+      "inputs": 1,
+      "gpu_only": {
+        "mean_ms": 0.002689793752506375,
+        "median_ms": 0.002687999978661537,
+        "p10_ms": 0.00266400002874434,
+        "p90_ms": 0.0027119999285787344
+      },
+      "single_call": {
+        "mean_ms": 0.036782080518702666,
+        "median_ms": 0.035840000957250595,
+        "p10_ms": 0.03266879990696907,
+        "p90_ms": 0.04505600035190582
+      }
+    },
+    {
+      "route": "a/test_02",
+      "sample_key": "a/test_02/109",
+      "decoder": "Weighted Average",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.0040664338017813864,
+        "median_ms": 0.004056000150740147,
+        "p10_ms": 0.004040000028908253,
+        "p90_ms": 0.004087999928742647
+      },
+      "single_call": {
+        "mean_ms": 0.03708928057303031,
+        "median_ms": 0.035840000957250595,
+        "p10_ms": 0.03276799991726875,
+        "p90_ms": 0.04403200000524521
+      }
+    },
+    {
+      "route": "a/test_02",
+      "sample_key": "a/test_02/109",
+      "decoder": "Argmax",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.003518317493144423,
+        "median_ms": 0.0035119999665766954,
+        "p10_ms": 0.003496000077575445,
+        "p90_ms": 0.0035600000992417336
+      },
+      "single_call": {
+        "mean_ms": 0.04018858677397172,
+        "median_ms": 0.037376001477241516,
+        "p10_ms": 0.035840000957250595,
+        "p90_ms": 0.04628480076789855
+      }
+    },
+    {
+      "route": "b/test_01",
+      "sample_key": "b/test_01/73",
+      "decoder": "Weighted Average",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.0040617975289933385,
+        "median_ms": 0.004056000150740147,
+        "p10_ms": 0.004031999967992306,
+        "p90_ms": 0.004080799873918295
+      },
+      "single_call": {
+        "mean_ms": 0.0357512536769112,
+        "median_ms": 0.03379200026392937,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.04403200000524521
+      }
+    },
+    {
+      "route": "b/test_01",
+      "sample_key": "b/test_01/73",
+      "decoder": "Argmax",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.003513077492825687,
+        "median_ms": 0.0035039999056607485,
+        "p10_ms": 0.003488000016659498,
+        "p90_ms": 0.0035447999835014343
+      },
+      "single_call": {
+        "mean_ms": 0.04100031937162081,
+        "median_ms": 0.03891199827194214,
+        "p10_ms": 0.035840000957250595,
+        "p90_ms": 0.04628480076789855
+      }
+    },
+    {
+      "route": "b/test_01",
+      "sample_key": "b/test_01/73",
+      "decoder": "Mean Shift",
+      "inputs": 1,
+      "gpu_only": {
+        "mean_ms": 0.0026995137485209854,
+        "median_ms": 0.002687999978661537,
+        "p10_ms": 0.002672000089660287,
+        "p90_ms": 0.0027199999894946814
+      },
+      "single_call": {
+        "mean_ms": 0.035418027117848395,
+        "median_ms": 0.03481600061058998,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.04311039969325065
+      }
+    },
+    {
+      "route": "b/test_02",
+      "sample_key": "b/test_02/85",
+      "decoder": "Argmax",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.003508555005537346,
+        "median_ms": 0.0035039999056607485,
+        "p10_ms": 0.003488000016659498,
+        "p90_ms": 0.0035359999164938927
+      },
+      "single_call": {
+        "mean_ms": 0.033102292915185294,
+        "median_ms": 0.03174399957060814,
+        "p10_ms": 0.030719999223947525,
+        "p90_ms": 0.033795200288295746
+      }
+    },
+    {
+      "route": "b/test_02",
+      "sample_key": "b/test_02/85",
+      "decoder": "Mean Shift",
+      "inputs": 1,
+      "gpu_only": {
+        "mean_ms": 0.002696877506095916,
+        "median_ms": 0.002687999978661537,
+        "p10_ms": 0.002672000089660287,
+        "p90_ms": 0.0027280000504106283
+      },
+      "single_call": {
+        "mean_ms": 0.03539562700937192,
+        "median_ms": 0.03481600061058998,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.044134400039911266
+      }
+    },
+    {
+      "route": "b/test_02",
+      "sample_key": "b/test_02/85",
+      "decoder": "Weighted Average",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.004062076290138066,
+        "median_ms": 0.004056000150740147,
+        "p10_ms": 0.004031999967992306,
+        "p90_ms": 0.004087999928742647
+      },
+      "single_call": {
+        "mean_ms": 0.034705920269091924,
+        "median_ms": 0.03276799991726875,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.043007999658584595
+      }
+    },
+    {
+      "route": "c/test_01",
+      "sample_key": "c/test_01/74",
+      "decoder": "Mean Shift",
+      "inputs": 1,
+      "gpu_only": {
+        "mean_ms": 0.0026912337541580202,
+        "median_ms": 0.002687999978661537,
+        "p10_ms": 0.00266400002874434,
+        "p90_ms": 0.0027199999894946814
+      },
+      "single_call": {
+        "mean_ms": 0.03684330714245637,
+        "median_ms": 0.035840000957250595,
+        "p10_ms": 0.03174399957060814,
+        "p90_ms": 0.04608000069856644
+      }
+    },
+    {
+      "route": "c/test_01",
+      "sample_key": "c/test_01/74",
+      "decoder": "Weighted Average",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.004063198810908944,
+        "median_ms": 0.004056000150740147,
+        "p10_ms": 0.004040000028908253,
+        "p90_ms": 0.004087999928742647
+      },
+      "single_call": {
+        "mean_ms": 0.036154240543643634,
+        "median_ms": 0.035840000957250595,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.04198399931192398
+      }
+    },
+    {
+      "route": "c/test_01",
+      "sample_key": "c/test_01/74",
+      "decoder": "Argmax",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.003518151232274249,
+        "median_ms": 0.0035119999665766954,
+        "p10_ms": 0.003496000077575445,
+        "p90_ms": 0.0035528000444173813
+      },
+      "single_call": {
+        "mean_ms": 0.04040682638684909,
+        "median_ms": 0.03891199827194214,
+        "p10_ms": 0.03481600061058998,
+        "p90_ms": 0.04925440140068531
+      }
+    },
+    {
+      "route": "c/test_02",
+      "sample_key": "c/test_02/113",
+      "decoder": "Weighted Average",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.0040642750379629436,
+        "median_ms": 0.004056000150740147,
+        "p10_ms": 0.004040000028908253,
+        "p90_ms": 0.004087999928742647
+      },
+      "single_call": {
+        "mean_ms": 0.035192320222655935,
+        "median_ms": 0.03276799991726875,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.04198399931192398
+      }
+    },
+    {
+      "route": "c/test_02",
+      "sample_key": "c/test_02/113",
+      "decoder": "Argmax",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.0035327500058338047,
+        "median_ms": 0.0035280000884085894,
+        "p10_ms": 0.0035119999665766954,
+        "p90_ms": 0.003567999927327037
+      },
+      "single_call": {
+        "mean_ms": 0.03983423965672652,
+        "median_ms": 0.03891199827194214,
+        "p10_ms": 0.03174399957060814,
+        "p90_ms": 0.048128001391887665
+      }
+    },
+    {
+      "route": "c/test_02",
+      "sample_key": "c/test_02/113",
+      "decoder": "Mean Shift",
+      "inputs": 1,
+      "gpu_only": {
+        "mean_ms": 0.0026959549984894695,
+        "median_ms": 0.002687999978661537,
+        "p10_ms": 0.00267999991774559,
+        "p90_ms": 0.002712799934670329
+      },
+      "single_call": {
+        "mean_ms": 0.03617429366956155,
+        "median_ms": 0.03481600061058998,
+        "p10_ms": 0.03174399957060814,
+        "p90_ms": 0.04403200000524521
+      }
+    },
+    {
+      "route": "d/test_01",
+      "sample_key": "d/test_01/75",
+      "decoder": "Argmax",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.003525991253554821,
+        "median_ms": 0.0035200000274926424,
+        "p10_ms": 0.0035039999056607485,
+        "p90_ms": 0.0035520000383257866
+      },
+      "single_call": {
+        "mean_ms": 0.04043477274477482,
+        "median_ms": 0.039903998374938965,
+        "p10_ms": 0.035840000957250595,
+        "p90_ms": 0.04505600035190582
+      }
+    },
+    {
+      "route": "d/test_01",
+      "sample_key": "d/test_01/75",
+      "decoder": "Mean Shift",
+      "inputs": 1,
+      "gpu_only": {
+        "mean_ms": 0.0026975187414791436,
+        "median_ms": 0.002687999978661537,
+        "p10_ms": 0.00267999991774559,
+        "p90_ms": 0.0027280000504106283
+      },
+      "single_call": {
+        "mean_ms": 0.037422933876514436,
+        "median_ms": 0.035840000957250595,
+        "p10_ms": 0.03276799991726875,
+        "p90_ms": 0.04505600035190582
+      }
+    },
+    {
+      "route": "d/test_01",
+      "sample_key": "d/test_01/75",
+      "decoder": "Weighted Average",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.004063390044029802,
+        "median_ms": 0.004056000150740147,
+        "p10_ms": 0.004040000028908253,
+        "p90_ms": 0.004087999928742647
+      },
+      "single_call": {
+        "mean_ms": 0.03564074713736773,
+        "median_ms": 0.035840000957250595,
+        "p10_ms": 0.028672000393271446,
+        "p90_ms": 0.041062398999929424
+      }
+    },
+    {
+      "route": "d/test_02",
+      "sample_key": "d/test_02/130",
+      "decoder": "Mean Shift",
+      "inputs": 1,
+      "gpu_only": {
+        "mean_ms": 0.0026839575031772254,
+        "median_ms": 0.00267999991774559,
+        "p10_ms": 0.00266400002874434,
+        "p90_ms": 0.002704000100493431
+      },
+      "single_call": {
+        "mean_ms": 0.03601109366863966,
+        "median_ms": 0.03481600061058998,
+        "p10_ms": 0.03174399957060814,
+        "p90_ms": 0.04311039969325065
+      }
+    },
+    {
+      "route": "d/test_02",
+      "sample_key": "d/test_02/130",
+      "decoder": "Weighted Average",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.0040661962796002624,
+        "median_ms": 0.004064000211656094,
+        "p10_ms": 0.004040000028908253,
+        "p90_ms": 0.004095999989658594
+      },
+      "single_call": {
+        "mean_ms": 0.03648042691250642,
+        "median_ms": 0.035312000662088394,
+        "p10_ms": 0.03174399957060814,
+        "p90_ms": 0.04310719966888427
+      }
+    },
+    {
+      "route": "d/test_02",
+      "sample_key": "d/test_02/130",
+      "decoder": "Argmax",
+      "inputs": 36,
+      "gpu_only": {
+        "mean_ms": 0.003517475003609434,
+        "median_ms": 0.0035119999665766954,
+        "p10_ms": 0.003496000077575445,
+        "p90_ms": 0.0035359999164938927
+      },
+      "single_call": {
+        "mean_ms": 0.040672852843999865,
+        "median_ms": 0.03993599861860275,
+        "p10_ms": 0.03174399957060814,
+        "p90_ms": 0.05119999870657921
+      }
+    }
+  ],
+  "per_route_accuracy": [
+    {
+      "route": "a/test_01",
+      "decoder": "Argmax",
+      "N": 161,
+      "MLE_m": 4.163894945947514,
+      "LSR3_pct": 40.993788819875775,
+      "LSR5_pct": 65.83850931677019
+    },
+    {
+      "route": "a/test_01",
+      "decoder": "Mean Shift",
+      "N": 161,
+      "MLE_m": 3.6569573095712546,
+      "LSR3_pct": 44.72049689440994,
+      "LSR5_pct": 73.91304347826086
+    },
+    {
+      "route": "a/test_01",
+      "decoder": "Weighted Average",
+      "N": 161,
+      "MLE_m": 3.6387976846042562,
+      "LSR3_pct": 44.72049689440994,
+      "LSR5_pct": 73.91304347826086
+    },
+    {
+      "route": "a/test_02",
+      "decoder": "Argmax",
+      "N": 219,
+      "MLE_m": 4.003375987344742,
+      "LSR3_pct": 36.07305936073059,
+      "LSR5_pct": 68.94977168949772
+    },
+    {
+      "route": "a/test_02",
+      "decoder": "Mean Shift",
+      "N": 219,
+      "MLE_m": 3.6505200539973517,
+      "LSR3_pct": 42.00913242009132,
+      "LSR5_pct": 74.88584474885845
+    },
+    {
+      "route": "a/test_02",
+      "decoder": "Weighted Average",
+      "N": 219,
+      "MLE_m": 3.6434067425271226,
+      "LSR3_pct": 41.55251141552511,
+      "LSR5_pct": 75.79908675799086
+    },
+    {
+      "route": "b/test_01",
+      "decoder": "Argmax",
+      "N": 146,
+      "MLE_m": 4.203584080614996,
+      "LSR3_pct": 34.24657534246575,
+      "LSR5_pct": 67.12328767123287
+    },
+    {
+      "route": "b/test_01",
+      "decoder": "Mean Shift",
+      "N": 146,
+      "MLE_m": 3.8463868239569936,
+      "LSR3_pct": 37.67123287671233,
+      "LSR5_pct": 71.23287671232876
+    },
+    {
+      "route": "b/test_01",
+      "decoder": "Weighted Average",
+      "N": 146,
+      "MLE_m": 3.8413253357719794,
+      "LSR3_pct": 38.35616438356164,
+      "LSR5_pct": 71.23287671232876
+    },
+    {
+      "route": "b/test_02",
+      "decoder": "Argmax",
+      "N": 171,
+      "MLE_m": 4.1560883351437035,
+      "LSR3_pct": 34.50292397660819,
+      "LSR5_pct": 66.08187134502924
+    },
+    {
+      "route": "b/test_02",
+      "decoder": "Mean Shift",
+      "N": 171,
+      "MLE_m": 3.5907066968240153,
+      "LSR3_pct": 42.69005847953216,
+      "LSR5_pct": 74.26900584795322
+    },
+    {
+      "route": "b/test_02",
+      "decoder": "Weighted Average",
+      "N": 171,
+      "MLE_m": 3.5719446057710553,
+      "LSR3_pct": 45.614035087719294,
+      "LSR5_pct": 74.85380116959064
+    },
+    {
+      "route": "c/test_01",
+      "decoder": "Argmax",
+      "N": 148,
+      "MLE_m": 3.8773355680289177,
+      "LSR3_pct": 41.891891891891895,
+      "LSR5_pct": 70.27027027027027
+    },
+    {
+      "route": "c/test_01",
+      "decoder": "Mean Shift",
+      "N": 148,
+      "MLE_m": 3.5653000301839346,
+      "LSR3_pct": 45.27027027027027,
+      "LSR5_pct": 73.64864864864865
+    },
+    {
+      "route": "c/test_01",
+      "decoder": "Weighted Average",
+      "N": 148,
+      "MLE_m": 3.5566553093791633,
+      "LSR3_pct": 45.27027027027027,
+      "LSR5_pct": 73.64864864864865
+    },
+    {
+      "route": "c/test_02",
+      "decoder": "Argmax",
+      "N": 226,
+      "MLE_m": 4.578761703335739,
+      "LSR3_pct": 30.53097345132743,
+      "LSR5_pct": 63.716814159292035
+    },
+    {
+      "route": "c/test_02",
+      "decoder": "Mean Shift",
+      "N": 226,
+      "MLE_m": 4.191366175994011,
+      "LSR3_pct": 38.93805309734513,
+      "LSR5_pct": 68.58407079646017
+    },
+    {
+      "route": "c/test_02",
+      "decoder": "Weighted Average",
+      "N": 226,
+      "MLE_m": 4.173558712869635,
+      "LSR3_pct": 39.823008849557525,
+      "LSR5_pct": 69.91150442477876
+    },
+    {
+      "route": "d/test_01",
+      "decoder": "Argmax",
+      "N": 150,
+      "MLE_m": 4.240803441057912,
+      "LSR3_pct": 36.666666666666664,
+      "LSR5_pct": 70.66666666666667
+    },
+    {
+      "route": "d/test_01",
+      "decoder": "Mean Shift",
+      "N": 150,
+      "MLE_m": 4.084096310654138,
+      "LSR3_pct": 40.666666666666664,
+      "LSR5_pct": 74.66666666666667
+    },
+    {
+      "route": "d/test_01",
+      "decoder": "Weighted Average",
+      "N": 150,
+      "MLE_m": 4.075943112444212,
+      "LSR3_pct": 40.0,
+      "LSR5_pct": 76.66666666666667
+    },
+    {
+      "route": "d/test_02",
+      "decoder": "Argmax",
+      "N": 261,
+      "MLE_m": 3.880971258126701,
+      "LSR3_pct": 36.39846743295019,
+      "LSR5_pct": 71.64750957854406
+    },
+    {
+      "route": "d/test_02",
+      "decoder": "Mean Shift",
+      "N": 261,
+      "MLE_m": 3.523686972321611,
+      "LSR3_pct": 43.29501915708812,
+      "LSR5_pct": 77.77777777777779
+    },
+    {
+      "route": "d/test_02",
+      "decoder": "Weighted Average",
+      "N": 261,
+      "MLE_m": 3.5206943217061566,
+      "LSR3_pct": 44.44444444444444,
+      "LSR5_pct": 77.39463601532567
+    }
+  ],
+  "provenance": {
+    "source_suite": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368",
+    "checkpoints_and_calibration": [
+      {
+        "city": "citya",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/train_frames3/checkpoints/visual_retrieval_A_only.pt",
+        "sha256": "16af088d55cb93eee7f3d3d7126a89627e9545de27047fd6e363eeec85be9090",
+        "bytes": 60487585
+      },
+      {
+        "city": "citya",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt",
+        "sha256": "34b42624eb359fc2f952a655874ba3a1cb2b9f0bb0737106ec6c74b8589b55f6",
+        "bytes": 6961099
+      },
+      {
+        "city": "citya",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/train_frames3/kalman_calibration.json",
+        "sha256": "e12bdb1a323af8a4d54f1c82ea120055d7e5009becb41f62cfc4d9a225c54998",
+        "bytes": 52920
+      },
+      {
+        "city": "cityb",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/train_frames3/checkpoints/visual_retrieval_A_only.pt",
+        "sha256": "ba51192db5b2a44b860ea5b765e8a96a8604955be380451c5379f97a79841ba3",
+        "bytes": 60487585
+      },
+      {
+        "city": "cityb",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt",
+        "sha256": "34b42624eb359fc2f952a655874ba3a1cb2b9f0bb0737106ec6c74b8589b55f6",
+        "bytes": 6961099
+      },
+      {
+        "city": "cityb",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/train_frames3/kalman_calibration.json",
+        "sha256": "b3fa7e14cc0f0665729d9ebd0ccd73c9a76e3abd34946a1545a8a13e554fdbc2",
+        "bytes": 53185
+      },
+      {
+        "city": "cityc",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/train_frames3/checkpoints/visual_retrieval_A_only.pt",
+        "sha256": "2fbb3f588553614d569bd06b9233ed76086e7bcf1a27ba52fb57fb756f1f90d1",
+        "bytes": 60487585
+      },
+      {
+        "city": "cityc",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt",
+        "sha256": "34b42624eb359fc2f952a655874ba3a1cb2b9f0bb0737106ec6c74b8589b55f6",
+        "bytes": 6961099
+      },
+      {
+        "city": "cityc",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/train_frames3/kalman_calibration.json",
+        "sha256": "dca54c73e46a9a2325d00a2f3f8b4783186cd090e52b4ae44b33b3b96ea5e327",
+        "bytes": 53046
+      },
+      {
+        "city": "cityd",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/train_frames3/checkpoints/visual_retrieval_A_only.pt",
+        "sha256": "cfc7ba5f2d76ae7c7226b21f5ebecf7554a6f8572263d593f66f00911efd950c",
+        "bytes": 60487585
+      },
+      {
+        "city": "cityd",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt",
+        "sha256": "34b42624eb359fc2f952a655874ba3a1cb2b9f0bb0737106ec6c74b8589b55f6",
+        "bytes": 6961099
+      },
+      {
+        "city": "cityd",
+        "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/train_frames3/kalman_calibration.json",
+        "sha256": "383e7784928ec4d3718afcfface7142fca63d36f0d7ab85dafd82237e83e879f",
+        "bytes": 53064
+      }
+    ],
+    "fixture": "/yh/study/uav-sat/report/add_more/thesis_experiments/raw/final_decoder_predictions.npz",
+    "fixture_sha256": "c747915f93a59f8c325ba1ce900fbe26185beab04ed6c252973e4427dcce2a93",
+    "protocol": "Original GT-assisted v13, 4m, frames3, full; frozen candidates/logits; conditional final decoder comparison",
+    "parameters": {
+      "tau": 0.3,
+      "bandwidth_m": 7.0,
+      "iterations": 3,
+      "beta": 12.0,
+      "grid": "6x6"
+    }
+  }
+}

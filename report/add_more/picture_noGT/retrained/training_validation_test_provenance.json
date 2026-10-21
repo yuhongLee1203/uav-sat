@@ -1,0 +1,65 @@
+{
+  "training_root": "/yh/study/uav-sat/v40/output/no_gt_multicity_retrain_20261009",
+  "selected_temporal_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_multicity_retrain_20261009/temporal/best_temporal_interim.pt",
+  "visual_root": "/yh/study/uav-sat/v40/output/no_gt_multicity_retrain_20261009/visual_checkpoints",
+  "validation": {
+    "citya": {
+      "MLE_m": 4.823241710418099,
+      "P90_m": 8.144572924884638
+    },
+    "cityb": {
+      "MLE_m": 9.004685081118854,
+      "P90_m": 17.29336426800622
+    },
+    "cityc": {
+      "MLE_m": 6.464512756540565,
+      "P90_m": 10.683284743116769
+    },
+    "cityd": {
+      "MLE_m": 7.602119387410598,
+      "P90_m": 12.446917545493857
+    }
+  },
+  "test": {
+    "citya": {
+      "test_01": {
+        "MLE_m": 4.932122061922813,
+        "LSR@15_pct": 95.3125
+      },
+      "test_02": {
+        "MLE_m": 3.971462501504464,
+        "LSR@15_pct": 97.75280898876404
+      }
+    },
+    "cityb": {
+      "test_01": {
+        "MLE_m": 10.509359874316699,
+        "LSR@15_pct": 76.5625
+      },
+      "test_02": {
+        "MLE_m": 10.854032760334853,
+        "LSR@15_pct": 80.55555555555556
+      }
+    },
+    "cityc": {
+      "test_01": {
+        "MLE_m": 8.090653030160674,
+        "LSR@15_pct": 87.5
+      },
+      "test_02": {
+        "MLE_m": 7.589746300327362,
+        "LSR@15_pct": 92.85714285714286
+      }
+    },
+    "cityd": {
+      "test_01": {
+        "MLE_m": 11.143526010811314,
+        "LSR@15_pct": 75.0
+      },
+      "test_02": {
+        "MLE_m": 7.481264906221649,
+        "LSR@15_pct": 91.83673469387756
+      }
+    }
+  }
+}

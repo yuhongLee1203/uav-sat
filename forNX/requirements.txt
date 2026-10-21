@@ -1,0 +1,5 @@
+# Jetson: install PyTorch/torchvision from the NVIDIA JetPack-compatible build first.
+numpy
+Pillow
+open-clip-torch
+timm

@@ -1,0 +1,22 @@
+[BACKBONE SOURCE SAME-SPLIT] {"global_top1_MLE_m": 10.709038734436035, "global_top1_P90_m": 20.626354217529297, "global_top1_LSR15_pct": 81.0}
+[BACKBONE GTLOSS] epoch=1 samples=48/16200 loss=8.1021
+[BACKBONE GTLOSS] epoch=1 samples=2448/16200 loss=7.5069
+[BACKBONE GTLOSS] epoch=1 samples=4848/16200 loss=7.0646
+[BACKBONE GTLOSS] epoch=1 samples=7248/16200 loss=7.5123
+[BACKBONE GTLOSS] epoch=1 samples=9648/16200 loss=6.7705
+[BACKBONE GTLOSS] epoch=1 samples=12048/16200 loss=8.6927
+[BACKBONE GTLOSS] epoch=1 samples=14448/16200 loss=6.8153
+satellite backbone cache: 256/47961
+satellite backbone cache: 5376/47961
+satellite backbone cache: 10496/47961
+satellite backbone cache: 15616/47961
+satellite backbone cache: 20736/47961
+satellite backbone cache: 25856/47961
+satellite backbone cache: 30976/47961
+satellite backbone cache: 36096/47961
+satellite backbone cache: 41216/47961
+satellite backbone cache: 46336/47961
+satellite backbone cache: 47961/47961
+satellite gallery size=47961
+[BACKBONE GTLOSS] {"epoch": 1, "train_loss": 7.353972732668092, "validation": {"global_top1_MLE_m": 9.615869522094727, "global_top1_P90_m": 18.352407455444336, "global_top1_LSR15_pct": 84.38888549804688}}
+[BACKBONE GTLOSS DONE] /yh/study/uav-sat/v40/output/no_gt_multicity_retrain_20261009/visual_finetune/cityc/report.json

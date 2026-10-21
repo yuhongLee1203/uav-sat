@@ -1,0 +1,84 @@
+{
+  "routes": [
+    {
+      "City": "A",
+      "Route": "test_01",
+      "Frames": 64,
+      "MLE (m)": 4.932122061922813,
+      "P90 (m)": 8.548620494897502,
+      "LSR@15 (%)": 95.3125,
+      "Prediction CSV": "/yh/study/uav-sat/report/add_more/picture_noGT/retrained/inference/citya/citya/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "A",
+      "Route": "test_02",
+      "Frames": 89,
+      "MLE (m)": 3.971462501504464,
+      "P90 (m)": 6.417883866391685,
+      "LSR@15 (%)": 97.75280898876404,
+      "Prediction CSV": "/yh/study/uav-sat/report/add_more/picture_noGT/retrained/inference/citya/citya/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "B",
+      "Route": "test_01",
+      "Frames": 64,
+      "MLE (m)": 10.509359874316699,
+      "P90 (m)": 20.6372064180409,
+      "LSR@15 (%)": 76.5625,
+      "Prediction CSV": "/yh/study/uav-sat/report/add_more/picture_noGT/retrained/inference/cityb/cityb/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "B",
+      "Route": "test_02",
+      "Frames": 72,
+      "MLE (m)": 10.854032760334853,
+      "P90 (m)": 20.309063633594427,
+      "LSR@15 (%)": 80.55555555555556,
+      "Prediction CSV": "/yh/study/uav-sat/report/add_more/picture_noGT/retrained/inference/cityb/cityb/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "C",
+      "Route": "test_01",
+      "Frames": 64,
+      "MLE (m)": 8.090653030160674,
+      "P90 (m)": 15.874656561516712,
+      "LSR@15 (%)": 87.5,
+      "Prediction CSV": "/yh/study/uav-sat/report/add_more/picture_noGT/retrained/inference/cityc/cityc/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "C",
+      "Route": "test_02",
+      "Frames": 98,
+      "MLE (m)": 7.589746300327362,
+      "P90 (m)": 12.487221520982697,
+      "LSR@15 (%)": 92.85714285714286,
+      "Prediction CSV": "/yh/study/uav-sat/report/add_more/picture_noGT/retrained/inference/cityc/cityc/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "D",
+      "Route": "test_01",
+      "Frames": 64,
+      "MLE (m)": 11.143526010811314,
+      "P90 (m)": 23.319270825517854,
+      "LSR@15 (%)": 75.0,
+      "Prediction CSV": "/yh/study/uav-sat/report/add_more/picture_noGT/retrained/inference/cityd/cityd/route_B_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    },
+    {
+      "City": "D",
+      "Route": "test_02",
+      "Frames": 98,
+      "MLE (m)": 7.481264906221649,
+      "P90 (m)": 13.533905775539866,
+      "LSR@15 (%)": 91.83673469387756,
+      "Prediction CSV": "/yh/study/uav-sat/report/add_more/picture_noGT/retrained/inference/cityd/cityd/route_C_controlled_gtprior_forward3x6_continuous_waypoint_rnn_polynomial_kalman_frames.csv"
+    }
+  ],
+  "overall": {
+    "Frames": 613,
+    "MLE (m)": 7.881161373835801,
+    "P90 (m)": 16.30345482494909,
+    "LSR@15 (%)": 88.09135399673735
+  },
+  "distinct_satellite_hashes": 4,
+  "distinct_error_hashes": 8
+}

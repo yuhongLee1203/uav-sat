@@ -1,0 +1,70 @@
+{
+  "type": "world_file_projected",
+  "crs": "EPSG:3826",
+  "image": "/yh/study/test/outputs/sim_competition_crop_check/sim_map_competition_roi_crop.png",
+  "source_tif": "/yh/study/sim_data/map.tif",
+  "source_tfw": "/yh/study/sim_data/map.tfw",
+  "width": 8214,
+  "height": 12586,
+  "world_file": {
+    "A": 0.0016896499,
+    "D": 0.1479206327,
+    "B": 0.1479208287,
+    "E": -0.0016667954,
+    "C": 175480.8573748486,
+    "F": 2593984.594853537
+  },
+  "meters_per_pixel_col": 0.14793028254942553,
+  "meters_per_pixel_row": 0.14793021925962324,
+  "meters_per_pixel_at_center": 0.14793025090452439,
+  "corners": [
+    {
+      "pixel": [
+        0,
+        0
+      ],
+      "x": 175057.9090143591,
+      "y": 2593635.93282659,
+      "lat": 23.44395622581106,
+      "lon": 120.26653837357003
+    },
+    {
+      "pixel": [
+        10602,
+        0
+      ],
+      "x": 175075.8226825989,
+      "y": 2595204.1873744754,
+      "lat": 23.458117566114527,
+      "lon": 120.2666355022689
+    },
+    {
+      "pixel": [
+        0,
+        15417
+      ],
+      "x": 177338.40443042698,
+      "y": 2593610.235841908,
+      "lat": 23.443827478725378,
+      "lon": 120.28885757303458
+    },
+    {
+      "pixel": [
+        10602,
+        15417
+      ],
+      "x": 177356.3180986668,
+      "y": 2595178.490389793,
+      "lat": 23.457988864055658,
+      "lon": 120.28895708241666
+    }
+  ],
+  "note": "Uses TWD97 TM2 zone 121 conversion implemented in code; no pyproj dependency.",
+  "source_full_image": "/yh/study/sim_data/satellite_from_tif/map_tif_rgb_p1p99.png",
+  "crop_box_px_left_top_right_bottom": [
+    2389,
+    2832,
+    10602,
+    15417
+  ]
+}

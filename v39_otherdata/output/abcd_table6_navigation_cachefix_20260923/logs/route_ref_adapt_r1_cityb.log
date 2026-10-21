@@ -1,0 +1,39 @@
+[PREPARED] PASS | city=cityb | step=4 m | selection=soft_sequence_v13_multicity_auto_train_fullroute | existing GT/routes unchanged
+[CADENCE] source=experiment_route_stats_train_01 | mean=5.550783 m | p90=9.862441 m | p95=11.094216 m
+[OK] clean v39 runtime: Forward-18 SoftMS -> GRU -> Kalman -> one final MeanShift
+[OK] weighted-centroid decoder removed from generated runtime source
+[PATCH OK] GRU = current + delta + delta2 + SAT + SoftMS position + visual displacement + previous state
+[PATCH OK] V5 3-frame direct acceleration + next-step correction
+[PATCH OK] training/validation/inference motion starts from current-city cadence
+[PATCH OK] Kalman = smooth confidence-adaptive measurement-preserving residual fusion
+[PATCH OK] step corridor = continuous confidence relaxation
+[PATCH OK] no held-out navigation result is read by this patch
+[V39-BEARING] final-MS route-centerline reference patch: PASS
+[PATCH OK] stable UAV model-state feature cache
+[PATCH OK] route-reference stage reset + scheduled acquisition
+[ROUTE-REF-AUDIT] forward_18: PASS
+[ROUTE-REF-AUDIT] base_geometry_6x6: PASS
+[ROUTE-REF-AUDIT] front_decoder_softms: PASS
+[ROUTE-REF-AUDIT] one_final_ms_source: PASS
+[ROUTE-REF-AUDIT] simple_seven_block_gru: PASS
+[ROUTE-REF-AUDIT] residual_motion_head: PASS
+[ROUTE-REF-AUDIT] temporal_reliability_gate: PASS
+[ROUTE-REF-AUDIT] protocol_route_reference: PASS
+[ROUTE-REF-AUDIT] no_current_frame_gt_inference: PASS
+[ROUTE-REF-AUDIT] route_reference_only: PASS
+[ROUTE-REF-AUDIT] final_ms_current_gt_prior_disabled: PASS
+[ROUTE-REF-AUDIT] causal_route_search_center: PASS
+[ROUTE-REF-AUDIT] frame_count: PASS
+[ROUTE-REF-AUDIT] gru_flag: PASS
+[ROUTE-REF-AUDIT] kalman_flag: PASS
+[TRAIN] frozen visual checkpoint; skip visual retraining /yh/study/uav-sat/v39_otherdata/output/abcd_table6_navigation_cachefix_20260923/cityb/train_frames3/checkpoints/visual_retrieval_A_only.pt
+route_A: reuse UAV backbone cache
+[ABCD CHECKPOINT] materialized carried best -> /yh/study/uav-sat/v39_otherdata/output/abcd_table6_navigation_cachefix_20260923/cityb/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt
+resume route-reference adaptation from epoch 98 with fresh optimizer/validation patience
+temporal split train=[0,135) val=[139,164) route_length=781.2m
+City training-sequence mean forward step=5.317m/frame p90=9.734m/frame
+temporal epoch=098/101 loss=18.27766 center_teacher=1.000 acq_teacher=1.000 capture=100.00% bank_capture=100.00% acq_acc=8.21% acq_conf=0.588 radius=60.0m pred_step=3.690 target_step=4.024 pred_v=3.943 target_v=4.024 val_mle=513.649m val_p90=555.244m val_speed_mae=2.964 heading=1.6/2.4deg val_progress_mae=514.320m val_heading_mae=32.0deg val_capture=0.00% val_bank=0.00% val_acq_acc=0.00% score=531.291 best=531.291 patience=0/8
+temporal epoch=099/101 loss=16.00858 center_teacher=1.000 acq_teacher=0.667 capture=73.88% bank_capture=85.82% acq_acc=8.96% acq_conf=0.588 radius=60.0m pred_step=3.925 target_step=4.024 pred_v=4.161 target_v=4.024 val_mle=512.787m val_p90=554.195m val_speed_mae=2.624 heading=-0.7/2.4deg val_progress_mae=513.502m val_heading_mae=32.0deg val_capture=0.00% val_bank=0.00% val_acq_acc=0.00% score=530.388 best=530.388 patience=0/8
+temporal epoch=100/101 loss=12.82010 center_teacher=1.000 acq_teacher=0.333 capture=46.27% bank_capture=88.81% acq_acc=6.72% acq_conf=0.580 radius=60.0m pred_step=3.890 target_step=4.024 pred_v=4.238 target_v=4.024 val_mle=510.763m val_p90=554.309m val_speed_mae=2.579 heading=-0.2/2.4deg val_progress_mae=511.461m val_heading_mae=31.9deg val_capture=0.00% val_bank=0.00% val_acq_acc=0.00% score=528.300 best=528.300 patience=0/8
+temporal epoch=101/101 loss=7.08683 center_teacher=1.000 acq_teacher=0.000 capture=4.48% bank_capture=18.66% acq_acc=2.24% acq_conf=0.672 radius=60.0m pred_step=3.520 target_step=4.024 pred_v=4.081 target_v=4.024 val_mle=512.142m val_p90=554.360m val_speed_mae=2.726 heading=-0.7/2.4deg val_progress_mae=512.866m val_heading_mae=31.8deg val_capture=0.00% val_bank=0.00% val_acq_acc=0.00% score=529.728 best=528.300 patience=1/8
+[TRAIN] skip redundant city-local Kalman sweep; global ABCD calibration runs after adaptation

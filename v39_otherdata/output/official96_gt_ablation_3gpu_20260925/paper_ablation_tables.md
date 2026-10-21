@@ -1,0 +1,45 @@
+# Bearing-UAV 4-city ablation (measured)
+
+Dataset domains: CITYA, CITYB, CITYC, CITYD; held-out sequences: test_01/test_02.
+R@1* uses Bearing-UAV's same-quadrant/sign rule on the tracker's continuous final XY.
+HSR/MHE use predicted heading with shared causal state-direction fusion alpha=0.00 for every compared row.
+
+## Component removal
+
+| Variant | R@1* ↑ | LSR@15 ↑ | HSR@15 ↑ | MLE (m) ↓ | MHE (deg) ↓ |
+|---|---:|---:|---:|---:|---:|
+| w/o GRU | 56.46% | 31.98% | 17.40% | 99.829 | 66.73 |
+| w/o Kalman | 56.98% | 32.19% | 17.71% | 99.689 | 66.80 |
+| w/o MeanShift | 58.12% | 37.92% | 17.60% | 98.447 | 66.96 |
+| Full | 56.67% | 31.87% | 17.50% | 99.777 | 66.77 |
+
+## Temporal input
+
+| Input | R@1* ↑ | LSR@15 ↑ | HSR@15 ↑ | MLE (m) ↓ | MHE (deg) ↓ |
+|---|---:|---:|---:|---:|---:|
+| 1 frame | 56.77% | 31.77% | 17.50% | 99.775 | 66.78 |
+| 2 frames | 56.46% | 31.87% | 17.40% | 99.776 | 66.77 |
+| Full | 56.67% | 31.87% | 17.50% | 99.777 | 66.77 |
+
+## Final MeanShift window
+
+| Window | Candidates | R@1* ↑ | LSR@15 ↑ | HSR@15 ↑ | MLE (m) ↓ | MHE (deg) ↓ | MS latency (ms) ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 4x4 | 16 | 56.88% | 33.54% | 17.50% | 99.577 | 67.06 | 4.333 |
+| 5x5 | 25 | 56.46% | 32.71% | 17.40% | 99.690 | 67.14 | 5.748 |
+| 6x6 | 36 | 56.67% | 31.87% | 17.50% | 99.777 | 66.77 | 7.762 |
+| 7x7 | 49 | 56.04% | 31.56% | 17.60% | 99.824 | 66.67 | 10.057 |
+| 8x8 | 64 | 56.04% | 31.25% | 17.81% | 99.892 | 66.52 | 12.369 |
+
+## Notes
+
+- P90/P95/P99/CVaR and jump-rate are not included in paper-facing tables.
+- HSR@15 is the percentage of frames with heading error <= 15 degrees.
+- MHE is mean absolute heading error in degrees.
+- Heading fusion uses only predicted recurrent heading and causal estimator-state displacement; GT is used only to score the final heading prediction.
+
+## Integrity audit
+
+`LOCALIZATION_TREND_CHECK=FAIL`
+
+At least one measured ablation is better on MLE or LSR@15; report that trade-off rather than forcing a preferred ranking.

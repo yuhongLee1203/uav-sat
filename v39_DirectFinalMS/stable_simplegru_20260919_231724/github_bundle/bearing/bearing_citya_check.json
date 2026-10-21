@@ -1,0 +1,22 @@
+{
+  "test_01": {
+    "MLE_m": 3.8264498513459517,
+    "MedLE_m": 3.568141981851089,
+    "P90_m": 6.962622300062068,
+    "LSR@5_pct": 73.4567901234568,
+    "LSR@10_pct": 100.0,
+    "LSR@15_pct": 100.0,
+    "LSR@20_pct": 100.0
+  },
+  "test_02": {
+    "MLE_m": 4.000584573115267,
+    "MedLE_m": 3.81741987658937,
+    "P90_m": 7.124712535171824,
+    "LSR@5_pct": 63.41463414634146,
+    "LSR@10_pct": 100.0,
+    "LSR@15_pct": 100.0,
+    "LSR@20_pct": 100.0
+  },
+  "sanity_check_under_10m_both_routes": true,
+  "note": "Measured values only. This check detects the 50-60m runner/protocol failure; it does not edit metrics."
+}

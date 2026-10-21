@@ -1,0 +1,120 @@
+{
+  "model_name": "phr5",
+  "model_backbone": "vgg16",
+  "loss_type": "smoothl1",
+  "multiloss": [
+    0.8,
+    0.2
+  ],
+  "batch_size": 16,
+  "model_class": "PARCASGM_v5a",
+  "dataset_class": "RSBlockDatasetPA_v3q",
+  "model_kwargs": {
+    "backbone_name": "vgg16",
+    "feature_dim": 256,
+    "coord_enc_dims": [
+      16,
+      64,
+      256
+    ],
+    "regressor_dims": [
+      1024,
+      256,
+      64
+    ],
+    "reduction_ratio": 1,
+    "num_clusters": 4,
+    "freeze_backbone": true,
+    "partial_unfreeze": false,
+    "add_patch_coord": true
+  },
+  "dataset_kwargs": {
+    "city_id": 96,
+    "rsi_id": 96,
+    "rsi_type": "254k",
+    "n_sample": 100,
+    "city_rsi_id_str": "096096",
+    "dset_id_str": "96100_2d",
+    "rsi_id_str": "96",
+    "rsi_name": "merge_c4_254k",
+    "rs_image_path": {
+      "34bc": "/yh/study/bearinguav_updateByMe/Bearing_UAV_90K/city_rsi/35.67091338738739_139.69289911300856_1791.95_1024_1024_4326_city.jpg",
+      "36bc": "/yh/study/bearinguav_updateByMe/Bearing_UAV_90K/city_rsi/25.030947387387386_121.51462868800057_1791.95_1024_1024_4326_city.jpg",
+      "37bc": "/yh/study/bearinguav_updateByMe/Bearing_UAV_90K/city_rsi/1.2897673873873876_103.84197619336068_1791.95_1024_1024_4326_city.jpg",
+      "38bc": "/yh/study/bearinguav_updateByMe/Bearing_UAV_90K/city_rsi/37.75538738738739_-122.4533351740761_1791.95_1024_1024_4326_city.jpg"
+    },
+    "dset_name": "c4m_254k_96bc_b15_s100",
+    "dset_dir": "/yh/study/bearinguav_updateByMe/Bearing_UAV_90K/c4m_254k_96bc_b15_s100"
+  },
+  "dataset": "/yh/study/bearinguav_updateByMe/Bearing_UAV_90K/c4m_254k_96bc_b15_s100",
+  "metadata": "/yh/study/bearinguav_updateByMe/Bearing_UAV_90K/c4m_254k_96bc_b15_s100/metadata/metadata.csv",
+  "split_ratio": [
+    0.85,
+    0.05,
+    0.1
+  ],
+  "test_loss": 0.0081,
+  "mae_pos": [
+    0.10467594116926193,
+    0.10529741644859314
+  ],
+  "mae_lonlat": [
+    1.2935491895404994e-06,
+    1.824158459839964e-07
+  ],
+  "mae_dir": [
+    0.045567359775304794,
+    0.04724767804145813
+  ],
+  "MLE_each_rsi": [
+    4.913351058959961,
+    5.579716205596924,
+    5.493447303771973,
+    5.1768927574157715
+  ],
+  "MLE_each_rsi_lonlat": [
+    [
+      -2.5389761049154913e-07,
+      -1.6510352907062043e-07
+    ],
+    [
+      -2.757332822511671e-06,
+      -4.0627625708111736e-07
+    ],
+    [
+      -1.8214383317172178e-06,
+      9.807282594920252e-07
+    ],
+    [
+      -3.4152787975472165e-07,
+      3.2031496743911703e-07
+    ]
+  ],
+  "mae_dis": 5.29,
+  "mae_agl": 4.16,
+  "recall_at_1": 90.83,
+  "lsr_at_5": 53.39,
+  "lsr_at_10": 92.13,
+  "lsr_at_15": 98.7,
+  "lsr_at_20": 99.83,
+  "lsr_at_25": 99.99,
+  "lsr_at_30": 100.0,
+  "hsr_at_5": 72.34,
+  "hsr_at_10": 93.72,
+  "hsr_at_15": 97.94,
+  "hsr_at_20": 99.12,
+  "hsr_at_25": 99.48,
+  "hsr_at_30": 99.61,
+  "mean_distance_error": 5.28559126024776,
+  "std_distance_error": 3.190012690378681,
+  "median_distance_error": 4.754234075546265,
+  "min_distance_error": 0.12085168063640594,
+  "max_distance_error": 25.78523826599121,
+  "mean_angle_error": 4.160619735717773,
+  "std_angle_error": 6.218533515930176,
+  "median_angle_error": 3.0130488872528076,
+  "min_angle_error": 0.0,
+  "max_angle_error": 175.60284423828125,
+  "angle_error_90th_percentile": 8.36578121185303,
+  "angle_error_95th_percentile": 10.875653934478757
+}

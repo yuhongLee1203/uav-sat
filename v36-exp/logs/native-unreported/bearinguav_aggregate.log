@@ -1,0 +1,40 @@
+/yh/study/uav-sat/v36-exp/others_paper/Bearing-UAV/cvphr/utils/utils_transform.py:8: FutureWarning: In the future `np.bool` will be defined as the corresponding NumPy scalar.
+  if not hasattr(np, "bool"):
+/usr/local/lib/python3.8/dist-packages/PIL/Image.py:3035: DecompressionBombWarning: Image size (103381404 pixels) exceeds limit of 89478485 pixels, could be decompression bomb DOS attack.
+  warnings.warn(
+/usr/local/lib/python3.8/dist-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/usr/local/lib/python3.8/dist-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=VGG16_Weights.IMAGENET1K_V1`. You can also use `weights=VGG16_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+{
+  "method": "Bearing-UAV",
+  "implementation": "released PARCASGM-v5a model and position+heading SmoothL1 objective",
+  "protocol": "Route A train; four fixed full-map 2x2 satellite context patches; Route B/C test; no local prior/jitter/temporal state",
+  "checkpoint": "/yh/study/uav-sat/v36-exp/outputs/native-unreported/Bearing-UAV/route_A_bearinguav_parcasgm_v5a.pt",
+  "routes": {
+    "route_B": {
+      "frames": 2276,
+      "MLE_m": 183.37674404599989,
+      "Median_m": 148.87167437288934,
+      "P90_m": 365.99092349920136,
+      "P95_m": 438.9529052322795,
+      "LSR@5_pct": 0.17574692442882248,
+      "LSR@10_pct": 0.4393673110720563,
+      "LSR@15_pct": 1.1862917398945518,
+      "latency_ms_end_to_end": 10.298835213896812,
+      "FPS_end_to_end": 97.09835910867304
+    },
+    "route_C": {
+      "frames": 1258,
+      "MLE_m": 272.992827326539,
+      "Median_m": 217.2563868934773,
+      "P90_m": 552.2804697858645,
+      "P95_m": 614.5877057169682,
+      "LSR@5_pct": 0.0,
+      "LSR@10_pct": 0.1589825119236884,
+      "LSR@15_pct": 0.6359300476947536,
+      "latency_ms_end_to_end": 9.867269009061525,
+      "FPS_end_to_end": 101.3451644098948
+    }
+  }
+}

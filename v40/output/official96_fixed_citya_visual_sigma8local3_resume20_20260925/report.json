@@ -1,0 +1,222 @@
+{
+  "city": "citya",
+  "samples": 18000,
+  "training_GT_loss_only": true,
+  "GT_selected_forward_inputs": false,
+  "previous_task_checkpoint_loaded": false,
+  "excluded_test_manifest_sha256": "a00ca6fcef96b88dfbc24853cd83f7b7492d05db52f143bcd3b7b08b693fc888",
+  "best_val_global_top1_MLE_m": 10.501769065856934,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 15.840077467790739,
+      "image_selected_local_capture_pct": 94.16762360437649,
+      "validation": {
+        "global_top1_MLE_m": 14.463971138000488,
+        "global_top1_P90_m": 24.831506729125977,
+        "global_top1_LSR15_pct": 70.27777862548828
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 17.744433620783287,
+      "image_selected_local_capture_pct": 94.75407370432156,
+      "validation": {
+        "global_top1_MLE_m": 13.885380744934082,
+        "global_top1_P90_m": 24.089689254760742,
+        "global_top1_LSR15_pct": 71.05555725097656
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 17.554318615770715,
+      "image_selected_local_capture_pct": 95.07053804209852,
+      "validation": {
+        "global_top1_MLE_m": 13.533647537231445,
+        "global_top1_P90_m": 23.354202270507812,
+        "global_top1_LSR15_pct": 72.11111450195312
+      }
+    },
+    {
+      "epoch": 4,
+      "train_loss": 17.453555054551973,
+      "image_selected_local_capture_pct": 95.2017716535433,
+      "validation": {
+        "global_top1_MLE_m": 13.221793174743652,
+        "global_top1_P90_m": 23.10724449157715,
+        "global_top1_LSR15_pct": 72.55555725097656
+      }
+    },
+    {
+      "epoch": 5,
+      "train_loss": 17.367249000729537,
+      "image_selected_local_capture_pct": 95.53805772713788,
+      "validation": {
+        "global_top1_MLE_m": 13.168392181396484,
+        "global_top1_P90_m": 22.756391525268555,
+        "global_top1_LSR15_pct": 72.94444274902344
+      }
+    },
+    {
+      "epoch": 6,
+      "train_loss": 17.271668066189985,
+      "image_selected_local_capture_pct": 95.74105969564182,
+      "validation": {
+        "global_top1_MLE_m": 12.438956260681152,
+        "global_top1_P90_m": 22.003646850585938,
+        "global_top1_LSR15_pct": 74.94444274902344
+      }
+    },
+    {
+      "epoch": 7,
+      "train_loss": 17.20216827692948,
+      "image_selected_local_capture_pct": 96.0486384357993,
+      "validation": {
+        "global_top1_MLE_m": 12.629380226135254,
+        "global_top1_P90_m": 21.731090545654297,
+        "global_top1_LSR15_pct": 74.94444274902344
+      }
+    },
+    {
+      "epoch": 8,
+      "train_loss": 17.136622661680686,
+      "image_selected_local_capture_pct": 96.19490921966673,
+      "validation": {
+        "global_top1_MLE_m": 12.156399726867676,
+        "global_top1_P90_m": 21.69152069091797,
+        "global_top1_LSR15_pct": 75.94444274902344
+      }
+    },
+    {
+      "epoch": 9,
+      "train_loss": 17.078664178923358,
+      "image_selected_local_capture_pct": 96.48676730516388,
+      "validation": {
+        "global_top1_MLE_m": 11.689566612243652,
+        "global_top1_P90_m": 21.171735763549805,
+        "global_top1_LSR15_pct": 76.83332824707031
+      }
+    },
+    {
+      "epoch": 10,
+      "train_loss": 17.00854217349075,
+      "image_selected_local_capture_pct": 96.46421149959714,
+      "validation": {
+        "global_top1_MLE_m": 11.492744445800781,
+        "global_top1_P90_m": 20.8529052734375,
+        "global_top1_LSR15_pct": 77.27777862548828
+      }
+    },
+    {
+      "epoch": 11,
+      "train_loss": 16.993569156316322,
+      "image_selected_local_capture_pct": 96.7977635503754,
+      "validation": {
+        "global_top1_MLE_m": 11.746282577514648,
+        "global_top1_P90_m": 20.8529052734375,
+        "global_top1_LSR15_pct": 78.55555725097656
+      }
+    },
+    {
+      "epoch": 12,
+      "train_loss": 16.95011584965263,
+      "image_selected_local_capture_pct": 96.75128502169932,
+      "validation": {
+        "global_top1_MLE_m": 11.625833511352539,
+        "global_top1_P90_m": 20.492517471313477,
+        "global_top1_LSR15_pct": 78.33333587646484
+      }
+    },
+    {
+      "epoch": 13,
+      "train_loss": 16.890678180484322,
+      "image_selected_local_capture_pct": 96.85176071219557,
+      "validation": {
+        "global_top1_MLE_m": 11.27190113067627,
+        "global_top1_P90_m": 20.77773666381836,
+        "global_top1_LSR15_pct": 79.0
+      }
+    },
+    {
+      "epoch": 14,
+      "train_loss": 16.855980910654143,
+      "image_selected_local_capture_pct": 96.99461394407618,
+      "validation": {
+        "global_top1_MLE_m": 11.534334182739258,
+        "global_top1_P90_m": 20.633169174194336,
+        "global_top1_LSR15_pct": 77.94444274902344
+      }
+    },
+    {
+      "epoch": 15,
+      "train_loss": 16.811290155245562,
+      "image_selected_local_capture_pct": 97.0957732106757,
+      "validation": {
+        "global_top1_MLE_m": 11.087789535522461,
+        "global_top1_P90_m": 19.905685424804688,
+        "global_top1_LSR15_pct": 80.0
+      }
+    },
+    {
+      "epoch": 16,
+      "train_loss": 16.77371766999012,
+      "image_selected_local_capture_pct": 97.1654910271562,
+      "validation": {
+        "global_top1_MLE_m": 11.030667304992676,
+        "global_top1_P90_m": 19.868425369262695,
+        "global_top1_LSR15_pct": 80.1111068725586
+      }
+    },
+    {
+      "epoch": 17,
+      "train_loss": 16.738913032952254,
+      "image_selected_local_capture_pct": 97.21743764839773,
+      "validation": {
+        "global_top1_MLE_m": 11.146041870117188,
+        "global_top1_P90_m": 19.95471954345703,
+        "global_top1_LSR15_pct": 80.5
+      }
+    },
+    {
+      "epoch": 18,
+      "train_loss": 16.696828601867196,
+      "image_selected_local_capture_pct": 97.40061788108405,
+      "validation": {
+        "global_top1_MLE_m": 10.866644859313965,
+        "global_top1_P90_m": 19.761201858520508,
+        "global_top1_LSR15_pct": 80.55555725097656
+      }
+    },
+    {
+      "epoch": 19,
+      "train_loss": 16.666825196874424,
+      "image_selected_local_capture_pct": 97.40540244447904,
+      "validation": {
+        "global_top1_MLE_m": 11.051453590393066,
+        "global_top1_P90_m": 20.151248931884766,
+        "global_top1_LSR15_pct": 80.55555725097656
+      }
+    },
+    {
+      "epoch": 20,
+      "train_loss": 16.635108812587468,
+      "image_selected_local_capture_pct": 97.32543197203809,
+      "validation": {
+        "global_top1_MLE_m": 10.501769065856934,
+        "global_top1_P90_m": 19.121877670288086,
+        "global_top1_LSR15_pct": 82.22222137451172
+      }
+    }
+  ],
+  "distance_loss_weight": 5.0,
+  "local_loss_weight": 3.0,
+  "local_topk_windows": 3,
+  "official96_train_only": true,
+  "sat_crop_size_m": 45.0,
+  "sat_crop_size_px": 180,
+  "satellite_gallery_rebuilt": false,
+  "same_task_checkpoint_resumed": "/yh/study/uav-sat/v40/output/official96_fixed_citya_visual_sigma8local3_20260925/checkpoints/citya/visual_retrieval_A_only.pt",
+  "checkpoint": "/yh/study/uav-sat/v40/output/official96_fixed_citya_visual_sigma8local3_resume20_20260925/checkpoints/citya/visual_retrieval_A_only.pt",
+  "last_epoch_checkpoint": "/yh/study/uav-sat/v40/output/official96_fixed_citya_visual_sigma8local3_resume20_20260925/checkpoints_last/citya/visual_retrieval_A_only.pt",
+  "last_epoch_val_global_top1_MLE_m": 10.501769065856934
+}

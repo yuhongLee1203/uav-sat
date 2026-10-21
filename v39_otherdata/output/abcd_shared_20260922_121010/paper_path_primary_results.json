@@ -1,0 +1,193 @@
+{
+  "cities": [
+    "citya",
+    "cityb",
+    "cityc",
+    "cityd"
+  ],
+  "rows": {
+    "path_no_gru": {
+      "variant": "path_no_gru",
+      "label": "path_no_gru",
+      "frames": 1482,
+      "MLE_m": 4.278752735350645,
+      "MedLE_m": 4.052823850078142,
+      "P90_m": 7.429071843177543,
+      "P95_m": 8.670686531987714,
+      "P99_m": 10.452785656970995,
+      "CVaR90_m": 8.930069892182663,
+      "LSR@3_pct": 32.523616734143054,
+      "LSR@5_pct": 65.78947368421053,
+      "LSR@10_pct": 98.38056680161942,
+      "LSR@15_pct": 99.86504723346829,
+      "LSR@20_pct": 100.0,
+      "HSR@15_pct": 39.473684210526315,
+      "MHE_deg": 37.0392435358518,
+      "JumpRate_pct": 0.5426763900029894,
+      "MeanSpeedError_m_per_frame": 5.920715060115537,
+      "MS_Latency_ms": 5.448768824776221
+    },
+    "path_no_ms": {
+      "variant": "path_no_ms",
+      "label": "path_no_ms",
+      "frames": 1482,
+      "MLE_m": 6.842937720734568,
+      "MedLE_m": 6.622864269958443,
+      "P90_m": 11.629295625622683,
+      "P95_m": 13.032613208438924,
+      "P99_m": 16.18880685994167,
+      "CVaR90_m": 13.575831108863465,
+      "LSR@3_pct": 15.114709851551957,
+      "LSR@5_pct": 33.46828609986505,
+      "LSR@10_pct": 80.22941970310391,
+      "LSR@15_pct": 97.84075573549258,
+      "LSR@20_pct": 100.0,
+      "HSR@15_pct": 39.40620782726046,
+      "MHE_deg": 37.67496695236757,
+      "JumpRate_pct": 6.2420366090029304,
+      "MeanSpeedError_m_per_frame": 2.569022096505934,
+      "MS_Latency_ms": 0.0
+    },
+    "path_full": {
+      "variant": "path_full",
+      "label": "path_full",
+      "frames": 1482,
+      "MLE_m": 3.762718966738891,
+      "MedLE_m": 3.461432091034453,
+      "P90_m": 6.81759010923188,
+      "P95_m": 8.116693458436155,
+      "P99_m": 10.136592023730996,
+      "CVaR90_m": 8.374620081122371,
+      "LSR@3_pct": 41.29554655870445,
+      "LSR@5_pct": 73.8191632928475,
+      "LSR@10_pct": 98.85290148448043,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "HSR@15_pct": 39.60863697705803,
+      "MHE_deg": 36.808880638385574,
+      "JumpRate_pct": 0.6104778692081047,
+      "MeanSpeedError_m_per_frame": 2.569022096505934,
+      "MS_Latency_ms": 5.638169291025023
+    },
+    "path_frames1": {
+      "variant": "path_frames1",
+      "label": "path_frames1",
+      "frames": 1482,
+      "MLE_m": 3.89427410396792,
+      "MedLE_m": 3.58516108483291,
+      "P90_m": 7.02261994520593,
+      "P95_m": 8.186363432635837,
+      "P99_m": 10.64575454304515,
+      "CVaR90_m": 8.653274025996476,
+      "LSR@3_pct": 39.473684210526315,
+      "LSR@5_pct": 72.2672064777328,
+      "LSR@10_pct": 98.51551956815115,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "HSR@15_pct": 39.473684210526315,
+      "MHE_deg": 36.86191665658166,
+      "JumpRate_pct": 0.6783225819764858,
+      "MeanSpeedError_m_per_frame": 2.417584855412192,
+      "MS_Latency_ms": 5.255681673086042
+    },
+    "path_frames2": {
+      "variant": "path_frames2",
+      "label": "path_frames2",
+      "frames": 1482,
+      "MLE_m": 3.927760900597838,
+      "MedLE_m": 3.606373755333117,
+      "P90_m": 7.110645986798181,
+      "P95_m": 8.288723741263462,
+      "P99_m": 10.659250162942106,
+      "CVaR90_m": 8.676296717944425,
+      "LSR@3_pct": 39.473684210526315,
+      "LSR@5_pct": 71.39001349527665,
+      "LSR@10_pct": 98.51551956815115,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "HSR@15_pct": 37.65182186234818,
+      "MHE_deg": 36.974783118172866,
+      "JumpRate_pct": 0.6105270443596058,
+      "MeanSpeedError_m_per_frame": 2.471684207541384,
+      "MS_Latency_ms": 5.233590814874867
+    },
+    "full": {
+      "variant": "full",
+      "label": "Full",
+      "frames": 1482,
+      "MLE_m": 3.7591276968535423,
+      "MedLE_m": 3.4352563389520365,
+      "P90_m": 6.837368447506529,
+      "P95_m": 8.15163872257047,
+      "P99_m": 10.116800219077907,
+      "CVaR90_m": 8.349956598251044,
+      "LSR@3_pct": 41.902834008097166,
+      "LSR@5_pct": 73.75168690958165,
+      "LSR@10_pct": 98.85290148448043,
+      "LSR@15_pct": 100.0,
+      "LSR@20_pct": 100.0,
+      "HSR@15_pct": 39.60863697705803,
+      "MHE_deg": 36.87131222906896,
+      "JumpRate_pct": 0.6104778692081047,
+      "MeanSpeedError_m_per_frame": 2.545651934873354,
+      "MS_Latency_ms": 5.390403349410422
+    }
+  },
+  "audit": {
+    "path_full_component_mle_best": true,
+    "three_frame_mle_best": true,
+    "PATH_PRIMARY_TREND_CHECK": "PASS",
+    "paired_bootstrap": {
+      "path_no_gru": {
+        "full_minus_ablation_MLE_m": -0.516033768611754,
+        "MLE_95CI": [
+          -0.5669415358097503,
+          -0.46861498455621386
+        ],
+        "full_minus_ablation_LSR@5_pct": 8.02968960863697,
+        "LSR@5_95CI": [
+          6.545209176788125,
+          9.649122807017541
+        ]
+      },
+      "path_no_ms": {
+        "full_minus_ablation_MLE_m": -3.080218753995677,
+        "MLE_95CI": [
+          -3.2174699548492014,
+          -2.942965630645083
+        ],
+        "full_minus_ablation_LSR@5_pct": 40.35087719298245,
+        "LSR@5_95CI": [
+          37.7867746288799,
+          43.04993252361674
+        ]
+      },
+      "path_frames1": {
+        "full_minus_ablation_MLE_m": -0.13155513722902867,
+        "MLE_95CI": [
+          -0.16320688326207192,
+          -0.09902749942884959
+        ],
+        "full_minus_ablation_LSR@5_pct": 1.5519568151147078,
+        "LSR@5_95CI": [
+          0.47233468286099756,
+          2.6990553306342706
+        ]
+      },
+      "path_frames2": {
+        "full_minus_ablation_MLE_m": -0.1650419338589466,
+        "MLE_95CI": [
+          -0.20405041852946615,
+          -0.12728460852542003
+        ],
+        "full_minus_ablation_LSR@5_pct": 2.429149797570851,
+        "LSR@5_95CI": [
+          1.2820512820512775,
+          3.6437246963562764
+        ]
+      }
+    },
+    "selection": "Temporal/Kalman scales selected on each city's train_01 validation only.",
+    "integrity": "All values are aggregated from raw held-out frame CSVs without editing or clipping."
+  }
+}

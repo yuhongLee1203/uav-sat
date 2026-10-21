@@ -1,0 +1,70 @@
+{
+  "architecture": "delayGK",
+  "protocol": {
+    "protocol_name": "unified_fixed_radial_8m_v1",
+    "main_jitter_m": 8.0,
+    "jitter_definition": "fixed radial magnitude; deterministic changing direction",
+    "main_grid_size": 6,
+    "main_candidate_count": 36,
+    "decoder": "softms",
+    "meanshift_bandwidth_m": 8.0,
+    "score_temperature_tau": 0.3,
+    "seed": 2026,
+    "minimum_candidate_capture_rate_pct": 95.0,
+    "formal_oracle_zero_m": false,
+    "train_route": "route_A",
+    "test_routes": [
+      "route_B",
+      "route_C"
+    ]
+  },
+  "training_from_scratch": true,
+  "results": {
+    "route_B": {
+      "MLE_m": 17.10074326173206,
+      "MedLE_m": 16.455874257336646,
+      "P90_m": 27.86643849501936,
+      "P95_m": 30.84250167395294,
+      "P99_m": 35.74524256254799,
+      "CVaR90_m": 31.55924655264364,
+      "LSR@5_pct": 4.793315743183817,
+      "LSR@10_pct": 19.744942832014072,
+      "LSR@15_pct": 43.35971855760774,
+      "LSR@20_pct": 65.39138082673702,
+      "Architecture": "delayGK",
+      "Route": "route_B",
+      "LatencyFrames": 1,
+      "CurrentMS_MLE_m": 10.620807636276586,
+      "ProvisionalNextMLE_m": 15.153216446495119,
+      "FinalMS_MLE_m": 17.10074326173206,
+      "MeanMSCorrectionGain_m": -1.9475268152369403,
+      "FinalNextCandidateCaptureRate_pct": 84.1688654353562,
+      "FormalCurrentCandidateCaptureRate_pct": 100.0,
+      "CurrentSearchCenterMLE_m": 8.0,
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/unified_fixed8m_v1/main_architectures/delaygk/route_B_frames.csv"
+    },
+    "route_C": {
+      "MLE_m": 16.878982192459013,
+      "MedLE_m": 16.75547997537562,
+      "P90_m": 26.832769432401548,
+      "P95_m": 30.828102358173034,
+      "P99_m": 36.4034873228811,
+      "CVaR90_m": 31.41104742372387,
+      "LSR@5_pct": 5.334394904458599,
+      "LSR@10_pct": 21.576433121019107,
+      "LSR@15_pct": 42.35668789808918,
+      "LSR@20_pct": 65.36624203821655,
+      "Architecture": "delayGK",
+      "Route": "route_C",
+      "LatencyFrames": 1,
+      "CurrentMS_MLE_m": 10.245046008024437,
+      "ProvisionalNextMLE_m": 14.90953027852438,
+      "FinalMS_MLE_m": 16.878982192459013,
+      "MeanMSCorrectionGain_m": -1.9694519139346311,
+      "FinalNextCandidateCaptureRate_pct": 85.828025477707,
+      "FormalCurrentCandidateCaptureRate_pct": 100.0,
+      "CurrentSearchCenterMLE_m": 8.0,
+      "CSV": "/yh/study/uav-sat/v36_byTeacher/output/mobilenet_v3_small/unified_fixed8m_v1/main_architectures/delaygk/route_C_frames.csv"
+    }
+  }
+}

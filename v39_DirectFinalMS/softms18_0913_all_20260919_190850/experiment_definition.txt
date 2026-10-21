@@ -1,0 +1,9 @@
+Source baseline : V39 pipeline as recorded on 2026-09-13
+Only model change: front decoder weighted_centroid -> Soft MeanShift
+Front geometry   : 6x6 constructed, heading-forward 3x6 = 18 scored candidates
+Temporal         : 3-frame GRU for Full; fair 1/2/3-frame retraining in temporal ablation
+Motion           : Constant Velocity (Sep-13 selected setting)
+Kalman           : Fixed-R (Sep-13 selected setting)
+Post-Kalman MS   : unchanged from each Sep-13 runner
+Forbidden extras : split gate / dual gate / residual gate / 5x5-forward15 patch
+GPU pool         : 0, 5, 6

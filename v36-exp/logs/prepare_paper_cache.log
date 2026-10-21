@@ -1,0 +1,50 @@
+candidate geometry route_A: 1732 frames
+candidate geometry route_B: 2276 frames
+candidate geometry route_C: 1258 frames
+satellite image cache: 1/14945
+satellite image cache: 500/14945
+satellite image cache: 1000/14945
+satellite image cache: 1500/14945
+satellite image cache: 2000/14945
+satellite image cache: 2500/14945
+satellite image cache: 3000/14945
+satellite image cache: 3500/14945
+satellite image cache: 4000/14945
+satellite image cache: 4500/14945
+satellite image cache: 5000/14945
+satellite image cache: 5500/14945
+satellite image cache: 6000/14945
+satellite image cache: 6500/14945
+satellite image cache: 7000/14945
+satellite image cache: 7500/14945
+satellite image cache: 8000/14945
+satellite image cache: 8500/14945
+satellite image cache: 9000/14945
+satellite image cache: 9500/14945
+satellite image cache: 10000/14945
+satellite image cache: 10500/14945
+satellite image cache: 11000/14945
+satellite image cache: 11500/14945
+satellite image cache: 12000/14945
+satellite image cache: 12500/14945
+satellite image cache: 13000/14945
+satellite image cache: 13500/14945
+satellite image cache: 14000/14945
+satellite image cache: 14500/14945
+satellite image cache: 14945/14945
+UAV image cache route_A: 1/1732
+UAV image cache route_A: 500/1732
+UAV image cache route_A: 1000/1732
+UAV image cache route_A: 1500/1732
+UAV image cache route_A: 1732/1732
+UAV image cache route_B: 1/2276
+UAV image cache route_B: 500/2276
+UAV image cache route_B: 1000/2276
+UAV image cache route_B: 1500/2276
+UAV image cache route_B: 2000/2276
+UAV image cache route_B: 2276/2276
+UAV image cache route_C: 1/1258
+UAV image cache route_C: 500/1258
+UAV image cache route_C: 1000/1258
+UAV image cache route_C: 1258/1258
+wrote /yh/study/uav-sat/v36-exp/cache/paper_common_256.pt

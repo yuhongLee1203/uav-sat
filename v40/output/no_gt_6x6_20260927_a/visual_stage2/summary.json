@@ -1,0 +1,38 @@
+[
+  {
+    "name": "continue_sigma4",
+    "gpu": "0",
+    "seed": 2081,
+    "target_sigma_m": 4.0,
+    "distance_loss_weight": 10.0,
+    "MLE_m": 4.667706912743488,
+    "P90_m": 8.59667773206593,
+    "visual_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_stage2/continue_sigma4/train/checkpoints/citya/visual_retrieval_A_only.pt",
+    "temporal_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/train/best_temporal_interim.pt",
+    "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_stage2/continue_sigma4/validation/report.json"
+  },
+  {
+    "name": "soft_sigma6",
+    "gpu": "5",
+    "seed": 2081,
+    "target_sigma_m": 6.0,
+    "distance_loss_weight": 10.0,
+    "MLE_m": 4.667706912743488,
+    "P90_m": 8.59667773206593,
+    "visual_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_stage2/soft_sigma6/train/checkpoints/citya/visual_retrieval_A_only.pt",
+    "temporal_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/train/best_temporal_interim.pt",
+    "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_stage2/soft_sigma6/validation/report.json"
+  },
+  {
+    "name": "distance5",
+    "gpu": "6",
+    "seed": 2081,
+    "target_sigma_m": 4.0,
+    "distance_loss_weight": 5.0,
+    "MLE_m": 4.667706912743488,
+    "P90_m": 8.59667773206593,
+    "visual_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_stage2/distance5/train/checkpoints/citya/visual_retrieval_A_only.pt",
+    "temporal_checkpoint": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/temporal_visual2061/raw10_sigma4/train/best_temporal_interim.pt",
+    "report": "/yh/study/uav-sat/v40/output/no_gt_6x6_20260927_a/visual_stage2/distance5/validation/report.json"
+  }
+]

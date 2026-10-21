@@ -1,0 +1,87 @@
+{
+  "source_suite": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368",
+  "checkpoints_and_calibration": [
+    {
+      "city": "citya",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/train_frames3/checkpoints/visual_retrieval_A_only.pt",
+      "sha256": "16af088d55cb93eee7f3d3d7126a89627e9545de27047fd6e363eeec85be9090",
+      "bytes": 60487585
+    },
+    {
+      "city": "citya",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt",
+      "sha256": "34b42624eb359fc2f952a655874ba3a1cb2b9f0bb0737106ec6c74b8589b55f6",
+      "bytes": 6961099
+    },
+    {
+      "city": "citya",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/citya/train_frames3/kalman_calibration.json",
+      "sha256": "e12bdb1a323af8a4d54f1c82ea120055d7e5009becb41f62cfc4d9a225c54998",
+      "bytes": 52920
+    },
+    {
+      "city": "cityb",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/train_frames3/checkpoints/visual_retrieval_A_only.pt",
+      "sha256": "ba51192db5b2a44b860ea5b765e8a96a8604955be380451c5379f97a79841ba3",
+      "bytes": 60487585
+    },
+    {
+      "city": "cityb",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt",
+      "sha256": "34b42624eb359fc2f952a655874ba3a1cb2b9f0bb0737106ec6c74b8589b55f6",
+      "bytes": 6961099
+    },
+    {
+      "city": "cityb",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityb/train_frames3/kalman_calibration.json",
+      "sha256": "b3fa7e14cc0f0665729d9ebd0ccd73c9a76e3abd34946a1545a8a13e554fdbc2",
+      "bytes": 53185
+    },
+    {
+      "city": "cityc",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/train_frames3/checkpoints/visual_retrieval_A_only.pt",
+      "sha256": "2fbb3f588553614d569bd06b9233ed76086e7bcf1a27ba52fb57fb756f1f90d1",
+      "bytes": 60487585
+    },
+    {
+      "city": "cityc",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt",
+      "sha256": "34b42624eb359fc2f952a655874ba3a1cb2b9f0bb0737106ec6c74b8589b55f6",
+      "bytes": 6961099
+    },
+    {
+      "city": "cityc",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityc/train_frames3/kalman_calibration.json",
+      "sha256": "dca54c73e46a9a2325d00a2f3f8b4783186cd090e52b4ae44b33b3b96ea5e327",
+      "bytes": 53046
+    },
+    {
+      "city": "cityd",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/train_frames3/checkpoints/visual_retrieval_A_only.pt",
+      "sha256": "cfc7ba5f2d76ae7c7226b21f5ebecf7554a6f8572263d593f66f00911efd950c",
+      "bytes": 60487585
+    },
+    {
+      "city": "cityd",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/train_frames3/checkpoints/controlled_gtprior_forward3x6_continuous_waypoint_state_gru_A_only.pt",
+      "sha256": "34b42624eb359fc2f952a655874ba3a1cb2b9f0bb0737106ec6c74b8589b55f6",
+      "bytes": 6961099
+    },
+    {
+      "city": "cityd",
+      "path": "/yh/study/uav-sat/v39_otherdata/output/original3759_inference_20260925_224113_1642368/cityd/train_frames3/kalman_calibration.json",
+      "sha256": "383e7784928ec4d3718afcfface7142fca63d36f0d7ab85dafd82237e83e879f",
+      "bytes": 53064
+    }
+  ],
+  "fixture": "/yh/study/uav-sat/report/add_more/thesis_experiments/raw/final_decoder_predictions.npz",
+  "fixture_sha256": "c747915f93a59f8c325ba1ce900fbe26185beab04ed6c252973e4427dcce2a93",
+  "protocol": "Original GT-assisted v13, 4m, frames3, full; frozen candidates/logits; conditional final decoder comparison",
+  "parameters": {
+    "tau": 0.3,
+    "bandwidth_m": 7.0,
+    "iterations": 3,
+    "beta": 12.0,
+    "grid": "6x6"
+  }
+}

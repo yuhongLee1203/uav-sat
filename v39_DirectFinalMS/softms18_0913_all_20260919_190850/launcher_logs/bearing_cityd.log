@@ -1,0 +1,159 @@
+[PREP] rebuilding Bearing routes: city=cityd step=8.00m
+train_01 {'split': 'train', 'planned_length_m': 781.1736496816332, 'waypoints': 6, 'frames': 99, 'sample_step_m': 8.0, 'mean_nearest_sample_error_m': 5.883183224577176, 'max_nearest_sample_error_m': 13.341613831416135}
+train_02 {'split': 'train', 'planned_length_m': 789.4022056368694, 'waypoints': 6, 'frames': 100, 'sample_step_m': 8.0, 'mean_nearest_sample_error_m': 5.019454012432236, 'max_nearest_sample_error_m': 12.682384135337696}
+train_03 {'split': 'train', 'planned_length_m': 808.5131019322297, 'waypoints': 6, 'frames': 102, 'sample_step_m': 8.0, 'mean_nearest_sample_error_m': 5.429967128668714, 'max_nearest_sample_error_m': 14.915042138497256}
+test_01 {'split': 'inference', 'planned_length_m': 731.619715375558, 'waypoints': 6, 'frames': 92, 'sample_step_m': 8.0, 'mean_nearest_sample_error_m': 5.844421802809774, 'max_nearest_sample_error_m': 14.152341201219798}
+test_02 {'split': 'inference', 'planned_length_m': 859.153442559624, 'waypoints': 6, 'frames': 108, 'sample_step_m': 8.0, 'mean_nearest_sample_error_m': 5.709095471911493, 'max_nearest_sample_error_m': 14.307971921104086}
+preview: /yh/study/uav-sat/v39_otherdata/generated/cityd/route_plan_full_satellite.jpg
+[OK] clean v39: Weighted Centroid -> original GRU -> original Kalman -> one final MS; pure MS timer enabled
+[RUNTIME] canonical v39 DirectFinalMS source + patches: PASS
+[AUDIT] canonical v39 training settings: PASS
+{
+  "architecture": "V39_Sep13_Forward18SoftMS_ContextGRU_FixedKalman_FinalMS5x5_BearingUAV",
+  "canonical_source": "v39_DirectFinalMS/base_src + patch_direct_finalms.py + run.sh Context-GRU patch",
+  "backbone": "mobilenet_v3_small",
+  "reference_protocol": "controlled_gt_jitter",
+  "visual_decoder": "softms",
+  "frame_count": 3,
+  "motion": "velocity",
+  "kalman": "fixed",
+  "forward_only": true,
+  "final_ms_grid": 5,
+  "final_ms_bandwidth_m": 7.0,
+  "losses": {
+    "acquisition": 0.0,
+    "measurement": 1.0,
+    "next_step": 3.0,
+    "velocity": 0.25,
+    "heading": 1.25,
+    "variance_nll": 0.05
+  },
+  "bearing_step_m": 8.0,
+  "route_frames": {
+    "train_01": 99,
+    "train_02": 100,
+    "train_03": 102,
+    "test_01": 92,
+    "test_02": 108
+  },
+  "train_routes": [
+    "train_01",
+    "train_02",
+    "train_03"
+  ],
+  "test_routes": [
+    "test_01",
+    "test_02"
+  ]
+}
+satellite backbone cache: 256/14161
+satellite backbone cache: 5376/14161
+satellite backbone cache: 10496/14161
+satellite backbone cache: 14161/14161
+satellite gallery size=14161
+Route A backbone cache: 256/301
+Route A backbone cache: 301/301
+Route A visual candidate capture=100.00%
+visual epoch=001/30 loss=5.27274 val_softms_mle=12.644m val_p90=17.498m val_lsr10=34.78%
+visual epoch=002/30 loss=4.85481 val_softms_mle=11.388m val_p90=17.602m val_lsr10=47.83%
+visual epoch=003/30 loss=4.61537 val_softms_mle=10.644m val_p90=16.485m val_lsr10=52.17%
+visual epoch=004/30 loss=4.42419 val_softms_mle=9.198m val_p90=14.003m val_lsr10=60.87%
+visual epoch=005/30 loss=4.26336 val_softms_mle=9.549m val_p90=15.628m val_lsr10=52.17%
+visual epoch=006/30 loss=4.16779 val_softms_mle=9.941m val_p90=15.253m val_lsr10=47.83%
+visual epoch=007/30 loss=4.27174 val_softms_mle=11.827m val_p90=18.580m val_lsr10=34.78%
+visual epoch=008/30 loss=4.15262 val_softms_mle=11.820m val_p90=18.838m val_lsr10=30.43%
+visual epoch=009/30 loss=4.14093 val_softms_mle=11.295m val_p90=17.873m val_lsr10=30.43%
+visual epoch=010/30 loss=3.97126 val_softms_mle=12.184m val_p90=18.715m val_lsr10=43.48%
+visual epoch=011/30 loss=3.97818 val_softms_mle=12.848m val_p90=21.000m val_lsr10=39.13%
+visual epoch=012/30 loss=4.05376 val_softms_mle=12.316m val_p90=19.987m val_lsr10=39.13%
+visual early stopping: Route A validation stopped improving
+best Route A visual validation SoftMS MLE=9.198m
+train_01 backbone cache: 99/99
+
+=== canonical v39 temporal episode 1/3: train_01 ===
+temporal split train=[0,58) val=[80,81) route_length=781.2m
+Route-A GT mean forward step=9.580m/frame p90=14.000m/frame
+temporal epoch=001/20 loss=25.07286 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=0.755 target_step=9.580 pred_v=0.751 target_v=9.580 val_mle=115.763m val_p90=115.763m val_speed_mae=10.985 heading=-0.0/0.7deg val_progress_mae=115.829m val_heading_mae=36.3deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=156.194 best=156.194 patience=0/10
+temporal epoch=002/20 loss=24.99978 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=0.787 target_step=9.580 pred_v=0.756 target_v=9.580 val_mle=115.770m val_p90=115.770m val_speed_mae=10.975 heading=-0.1/0.7deg val_progress_mae=115.824m val_heading_mae=36.3deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=156.183 best=156.194 patience=1/10
+temporal epoch=003/20 loss=24.87422 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=0.843 target_step=9.580 pred_v=0.766 target_v=9.580 val_mle=115.780m val_p90=115.780m val_speed_mae=10.962 heading=-0.1/0.7deg val_progress_mae=115.817m val_heading_mae=36.3deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=156.165 best=156.194 patience=2/10
+temporal epoch=004/20 loss=24.64085 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=0.922 target_step=9.580 pred_v=0.780 target_v=9.580 val_mle=115.755m val_p90=115.755m val_speed_mae=10.945 heading=-0.0/0.7deg val_progress_mae=115.785m val_heading_mae=36.1deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=156.096 best=156.096 patience=0/10
+temporal epoch=005/20 loss=24.42219 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=1.023 target_step=9.580 pred_v=0.798 target_v=9.580 val_mle=115.747m val_p90=115.747m val_speed_mae=10.924 heading=0.2/0.7deg val_progress_mae=115.744m val_heading_mae=35.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=156.029 best=156.029 patience=0/10
+temporal epoch=006/20 loss=24.16283 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=1.142 target_step=9.580 pred_v=0.820 target_v=9.580 val_mle=115.752m val_p90=115.752m val_speed_mae=10.899 heading=0.6/0.7deg val_progress_mae=115.693m val_heading_mae=35.2deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=155.960 best=155.960 patience=0/10
+temporal epoch=007/20 loss=23.87230 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=1.277 target_step=9.580 pred_v=0.845 target_v=9.580 val_mle=115.798m val_p90=115.798m val_speed_mae=10.870 heading=1.1/0.7deg val_progress_mae=115.646m val_heading_mae=34.4deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=155.917 best=155.960 patience=1/10
+temporal epoch=008/20 loss=23.53150 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=1.437 target_step=9.580 pred_v=0.875 target_v=9.580 val_mle=115.909m val_p90=115.909m val_speed_mae=10.837 heading=1.8/0.7deg val_progress_mae=115.597m val_heading_mae=33.4deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=155.924 best=155.960 patience=2/10
+temporal epoch=009/20 loss=23.19292 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=1.608 target_step=9.580 pred_v=0.908 target_v=9.580 val_mle=116.034m val_p90=116.034m val_speed_mae=10.799 heading=2.7/0.7deg val_progress_mae=115.541m val_heading_mae=32.2deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=155.928 best=155.960 patience=3/10
+temporal epoch=010/20 loss=22.77548 center_teacher=1.000 acq_teacher=1.000 capture=79.31% bank_capture=79.31% acq_acc=100.00% acq_conf=0.424 radius=0.0m pred_step=1.809 target_step=9.580 pred_v=0.947 target_v=9.580 val_mle=115.930m val_p90=115.930m val_speed_mae=10.756 heading=4.0/0.7deg val_progress_mae=115.436m val_heading_mae=30.6deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=155.675 best=155.675 patience=0/10
+temporal epoch=011/20 loss=22.53386 center_teacher=1.000 acq_teacher=1.000 capture=81.03% bank_capture=81.03% acq_acc=100.00% acq_conf=0.428 radius=0.0m pred_step=2.027 target_step=9.580 pred_v=0.992 target_v=9.580 val_mle=115.746m val_p90=115.746m val_speed_mae=10.706 heading=5.4/0.7deg val_progress_mae=115.251m val_heading_mae=28.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=155.310 best=155.310 patience=0/10
+temporal epoch=012/20 loss=22.53044 center_teacher=1.000 acq_teacher=1.000 capture=87.93% bank_capture=87.93% acq_acc=100.00% acq_conf=0.426 radius=0.0m pred_step=2.275 target_step=9.580 pred_v=1.043 target_v=9.580 val_mle=115.440m val_p90=115.440m val_speed_mae=10.650 heading=7.1/0.7deg val_progress_mae=114.944m val_heading_mae=26.6deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=154.778 best=154.778 patience=0/10
+temporal epoch=013/20 loss=22.23447 center_teacher=1.000 acq_teacher=1.000 capture=91.38% bank_capture=91.38% acq_acc=100.00% acq_conf=0.425 radius=0.0m pred_step=2.564 target_step=9.580 pred_v=1.105 target_v=9.580 val_mle=114.945m val_p90=114.945m val_speed_mae=10.587 heading=8.9/0.7deg val_progress_mae=114.446m val_heading_mae=23.9deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=154.001 best=154.001 patience=0/10
+temporal epoch=014/20 loss=21.66371 center_teacher=1.000 acq_teacher=1.000 capture=91.38% bank_capture=91.38% acq_acc=100.00% acq_conf=0.425 radius=0.0m pred_step=2.834 target_step=9.580 pred_v=1.163 target_v=9.580 val_mle=114.158m val_p90=114.158m val_speed_mae=10.515 heading=11.0/0.7deg val_progress_mae=113.654m val_heading_mae=20.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=152.861 best=152.861 patience=0/10
+temporal epoch=015/20 loss=21.13152 center_teacher=1.000 acq_teacher=1.000 capture=91.38% bank_capture=91.38% acq_acc=100.00% acq_conf=0.425 radius=0.0m pred_step=3.159 target_step=9.580 pred_v=1.236 target_v=9.580 val_mle=112.983m val_p90=112.983m val_speed_mae=10.434 heading=12.9/0.7deg val_progress_mae=112.473m val_heading_mae=17.4deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=151.245 best=151.245 patience=0/10
+temporal epoch=016/20 loss=20.55471 center_teacher=1.000 acq_teacher=1.000 capture=91.38% bank_capture=91.38% acq_acc=100.00% acq_conf=0.421 radius=0.0m pred_step=3.545 target_step=9.580 pred_v=1.328 target_v=9.580 val_mle=111.776m val_p90=111.776m val_speed_mae=10.344 heading=14.9/0.7deg val_progress_mae=111.259m val_heading_mae=13.9deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=149.569 best=149.569 patience=0/10
+temporal epoch=017/20 loss=20.06073 center_teacher=1.000 acq_teacher=1.000 capture=91.38% bank_capture=91.38% acq_acc=100.00% acq_conf=0.421 radius=0.0m pred_step=3.860 target_step=9.580 pred_v=1.405 target_v=9.580 val_mle=111.609m val_p90=111.609m val_speed_mae=10.243 heading=16.5/0.7deg val_progress_mae=111.092m val_heading_mae=10.2deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=149.065 best=149.065 patience=0/10
+temporal epoch=018/20 loss=19.79426 center_teacher=1.000 acq_teacher=1.000 capture=91.38% bank_capture=91.38% acq_acc=100.00% acq_conf=0.422 radius=0.0m pred_step=4.278 target_step=9.580 pred_v=1.517 target_v=9.580 val_mle=112.937m val_p90=112.937m val_speed_mae=10.131 heading=17.9/0.7deg val_progress_mae=112.426m val_heading_mae=6.4deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=150.254 best=149.065 patience=1/10
+temporal epoch=019/20 loss=19.40496 center_teacher=1.000 acq_teacher=1.000 capture=91.38% bank_capture=91.38% acq_acc=100.00% acq_conf=0.421 radius=0.0m pred_step=4.633 target_step=9.580 pred_v=1.627 target_v=9.580 val_mle=114.529m val_p90=114.529m val_speed_mae=10.007 heading=18.6/0.7deg val_progress_mae=114.026m val_heading_mae=2.6deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=151.726 best=149.065 patience=2/10
+temporal epoch=020/20 loss=19.06553 center_teacher=1.000 acq_teacher=1.000 capture=91.38% bank_capture=91.38% acq_acc=100.00% acq_conf=0.421 radius=0.0m pred_step=4.978 target_step=9.580 pred_v=1.758 target_v=9.580 val_mle=115.900m val_p90=115.900m val_speed_mae=9.874 heading=18.9/0.7deg val_progress_mae=115.404m val_heading_mae=0.6deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=152.976 best=149.065 patience=3/10
+train_02 backbone cache: 100/100
+
+=== canonical v39 temporal episode 2/3: train_02 ===
+resume temporal training from epoch 21
+temporal split train=[0,59) val=[81,82) route_length=789.4m
+Route-A GT mean forward step=9.292m/frame p90=14.000m/frame
+temporal epoch=021/40 loss=18.51222 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=5.237 target_step=9.292 pred_v=1.872 target_v=9.292 val_mle=124.483m val_p90=124.483m val_speed_mae=11.992 heading=19.5/3.8deg val_progress_mae=125.511m val_heading_mae=109.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=170.589 best=170.589 patience=0/10
+temporal epoch=022/40 loss=18.30325 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=5.534 target_step=9.292 pred_v=2.044 target_v=9.292 val_mle=124.803m val_p90=124.803m val_speed_mae=11.850 heading=19.5/3.8deg val_progress_mae=125.831m val_heading_mae=112.3deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=170.746 best=170.589 patience=1/10
+temporal epoch=023/40 loss=18.01246 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=5.700 target_step=9.292 pred_v=2.183 target_v=9.292 val_mle=124.630m val_p90=124.630m val_speed_mae=11.704 heading=19.5/3.8deg val_progress_mae=125.658m val_heading_mae=114.2deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=170.314 best=170.314 patience=0/10
+temporal epoch=024/40 loss=17.71251 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=5.820 target_step=9.292 pred_v=2.307 target_v=9.292 val_mle=124.041m val_p90=124.041m val_speed_mae=11.556 heading=19.5/3.8deg val_progress_mae=125.069m val_heading_mae=115.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=169.386 best=169.386 patience=0/10
+temporal epoch=025/40 loss=17.45435 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=5.964 target_step=9.292 pred_v=2.464 target_v=9.292 val_mle=123.098m val_p90=123.098m val_speed_mae=11.406 heading=19.5/3.8deg val_progress_mae=124.126m val_heading_mae=116.9deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=168.035 best=168.035 patience=0/10
+temporal epoch=026/40 loss=17.09542 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.030 target_step=9.292 pred_v=2.594 target_v=9.292 val_mle=121.933m val_p90=121.933m val_speed_mae=11.252 heading=19.5/3.8deg val_progress_mae=122.961m val_heading_mae=117.8deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=166.415 best=166.415 patience=0/10
+temporal epoch=027/40 loss=16.78518 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.074 target_step=9.292 pred_v=2.717 target_v=9.292 val_mle=120.748m val_p90=120.748m val_speed_mae=11.095 heading=19.5/3.8deg val_progress_mae=121.776m val_heading_mae=118.5deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=164.757 best=164.757 patience=0/10
+temporal epoch=028/40 loss=16.47079 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.196 target_step=9.292 pred_v=2.901 target_v=9.292 val_mle=119.857m val_p90=119.857m val_speed_mae=10.934 heading=19.5/3.8deg val_progress_mae=120.886m val_heading_mae=119.0deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=163.427 best=163.427 patience=0/10
+temporal epoch=029/40 loss=16.11059 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.264 target_step=9.292 pred_v=3.068 target_v=9.292 val_mle=119.218m val_p90=119.218m val_speed_mae=10.767 heading=19.5/3.8deg val_progress_mae=120.247m val_heading_mae=119.4deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=162.371 best=162.371 patience=0/10
+temporal epoch=030/40 loss=15.85069 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.346 target_step=9.292 pred_v=3.231 target_v=9.292 val_mle=118.916m val_p90=118.916m val_speed_mae=10.595 heading=19.5/3.8deg val_progress_mae=119.944m val_heading_mae=119.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=161.687 best=161.687 patience=0/10
+temporal epoch=031/40 loss=15.67726 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.383 target_step=9.292 pred_v=3.388 target_v=9.292 val_mle=119.264m val_p90=119.264m val_speed_mae=10.414 heading=19.5/3.8deg val_progress_mae=120.293m val_heading_mae=119.9deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=161.733 best=161.687 patience=1/10
+temporal epoch=032/40 loss=15.38981 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.532 target_step=9.292 pred_v=3.602 target_v=9.292 val_mle=119.573m val_p90=119.573m val_speed_mae=10.224 heading=19.5/3.8deg val_progress_mae=120.602m val_heading_mae=120.1deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=161.715 best=161.687 patience=2/10
+temporal epoch=033/40 loss=15.21025 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.677 target_step=9.292 pred_v=3.810 target_v=9.292 val_mle=119.994m val_p90=119.994m val_speed_mae=10.028 heading=19.5/3.8deg val_progress_mae=121.023m val_heading_mae=120.3deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=161.811 best=161.687 patience=3/10
+temporal epoch=034/40 loss=15.06874 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.774 target_step=9.292 pred_v=3.965 target_v=9.292 val_mle=120.096m val_p90=120.096m val_speed_mae=9.822 heading=19.5/3.8deg val_progress_mae=121.125m val_heading_mae=120.4deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=161.521 best=161.521 patience=0/10
+temporal epoch=035/40 loss=14.83035 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=6.979 target_step=9.292 pred_v=4.179 target_v=9.292 val_mle=120.013m val_p90=120.013m val_speed_mae=9.611 heading=19.5/3.8deg val_progress_mae=121.043m val_heading_mae=120.5deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=161.006 best=161.006 patience=0/10
+temporal epoch=036/40 loss=14.66244 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=7.169 target_step=9.292 pred_v=4.377 target_v=9.292 val_mle=119.901m val_p90=119.901m val_speed_mae=9.395 heading=19.5/3.8deg val_progress_mae=120.930m val_heading_mae=120.6deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=160.447 best=160.447 patience=0/10
+temporal epoch=037/40 loss=14.48680 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=7.443 target_step=9.292 pred_v=4.626 target_v=9.292 val_mle=119.708m val_p90=119.708m val_speed_mae=9.178 heading=19.5/3.8deg val_progress_mae=120.738m val_heading_mae=120.6deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=159.794 best=159.794 patience=0/10
+temporal epoch=038/40 loss=14.44633 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=7.599 target_step=9.292 pred_v=4.750 target_v=9.292 val_mle=119.402m val_p90=119.402m val_speed_mae=8.962 heading=19.5/3.8deg val_progress_mae=120.432m val_heading_mae=120.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=159.011 best=159.011 patience=0/10
+temporal epoch=039/40 loss=14.25404 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=7.866 target_step=9.292 pred_v=4.994 target_v=9.292 val_mle=119.155m val_p90=119.155m val_speed_mae=8.752 heading=19.5/3.8deg val_progress_mae=120.184m val_heading_mae=120.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=158.307 best=158.307 patience=0/10
+temporal epoch=040/40 loss=14.05281 center_teacher=1.000 acq_teacher=1.000 capture=84.75% bank_capture=84.75% acq_acc=100.00% acq_conf=0.463 radius=0.0m pred_step=8.115 target_step=9.292 pred_v=5.230 target_v=9.292 val_mle=118.877m val_p90=118.877m val_speed_mae=8.546 heading=19.5/3.8deg val_progress_mae=119.906m val_heading_mae=120.7deg val_capture=100.00% val_bank=100.00% val_acq_acc=100.00% score=157.577 best=157.577 patience=0/10
+train_03 backbone cache: 102/102
+
+=== canonical v39 temporal episode 3/3: train_03 ===
+resume temporal training from epoch 41
+temporal split train=[0,60) val=[82,83) route_length=808.5m
+Route-A GT mean forward step=9.170m/frame p90=14.000m/frame
+temporal epoch=041/60 loss=14.20029 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.226 target_step=9.170 pred_v=5.344 target_v=9.170 val_mle=123.612m val_p90=123.612m val_speed_mae=4.255 heading=19.8/-2.0deg val_progress_mae=123.077m val_heading_mae=4.5deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=156.718 best=156.718 patience=0/10
+temporal epoch=042/60 loss=14.07776 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.418 target_step=9.170 pred_v=5.527 target_v=9.170 val_mle=123.616m val_p90=123.616m val_speed_mae=4.095 heading=19.8/-2.0deg val_progress_mae=123.081m val_heading_mae=4.5deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=156.402 best=156.402 patience=0/10
+temporal epoch=043/60 loss=13.98052 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.609 target_step=9.170 pred_v=5.704 target_v=9.170 val_mle=123.619m val_p90=123.619m val_speed_mae=3.953 heading=19.8/-2.0deg val_progress_mae=123.084m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=156.121 best=156.121 patience=0/10
+temporal epoch=044/60 loss=13.91252 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.703 target_step=9.170 pred_v=5.803 target_v=9.170 val_mle=123.622m val_p90=123.622m val_speed_mae=3.827 heading=19.8/-2.0deg val_progress_mae=123.087m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=155.872 best=155.872 patience=0/10
+temporal epoch=045/60 loss=14.07400 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.742 target_step=9.170 pred_v=5.842 target_v=9.170 val_mle=123.626m val_p90=123.626m val_speed_mae=3.717 heading=19.8/-2.0deg val_progress_mae=123.091m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=155.656 best=155.656 patience=0/10
+temporal epoch=046/60 loss=13.90418 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.954 target_step=9.170 pred_v=6.045 target_v=9.170 val_mle=123.631m val_p90=123.631m val_speed_mae=3.621 heading=19.8/-2.0deg val_progress_mae=123.097m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=155.470 best=155.470 patience=0/10
+temporal epoch=047/60 loss=14.05326 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=9.045 target_step=9.170 pred_v=6.128 target_v=9.170 val_mle=123.642m val_p90=123.642m val_speed_mae=3.538 heading=19.8/-2.0deg val_progress_mae=123.107m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=155.316 best=155.316 patience=0/10
+temporal epoch=048/60 loss=14.05428 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.996 target_step=9.170 pred_v=6.090 target_v=9.170 val_mle=123.648m val_p90=123.648m val_speed_mae=3.467 heading=19.8/-2.0deg val_progress_mae=123.114m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=155.180 best=155.180 patience=0/10
+temporal epoch=049/60 loss=13.91715 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=9.165 target_step=9.170 pred_v=6.260 target_v=9.170 val_mle=123.649m val_p90=123.649m val_speed_mae=3.406 heading=19.8/-2.0deg val_progress_mae=123.115m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=155.061 best=155.061 patience=0/10
+temporal epoch=050/60 loss=13.94609 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=9.192 target_step=9.170 pred_v=6.290 target_v=9.170 val_mle=123.647m val_p90=123.647m val_speed_mae=3.357 heading=19.8/-2.0deg val_progress_mae=123.113m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.959 best=154.959 patience=0/10
+temporal epoch=051/60 loss=13.96001 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=9.208 target_step=9.170 pred_v=6.301 target_v=9.170 val_mle=123.642m val_p90=123.642m val_speed_mae=3.315 heading=19.8/-2.0deg val_progress_mae=123.107m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.868 best=154.868 patience=0/10
+temporal epoch=052/60 loss=13.93342 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=9.200 target_step=9.170 pred_v=6.311 target_v=9.170 val_mle=123.631m val_p90=123.631m val_speed_mae=3.279 heading=19.8/-2.0deg val_progress_mae=123.097m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.784 best=154.784 patience=0/10
+temporal epoch=053/60 loss=13.75531 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=9.135 target_step=9.170 pred_v=6.235 target_v=9.170 val_mle=123.614m val_p90=123.614m val_speed_mae=3.249 heading=19.8/-2.0deg val_progress_mae=123.079m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.705 best=154.705 patience=0/10
+temporal epoch=054/60 loss=13.83595 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=9.106 target_step=9.170 pred_v=6.227 target_v=9.170 val_mle=123.609m val_p90=123.609m val_speed_mae=3.228 heading=19.8/-2.0deg val_progress_mae=123.075m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.658 best=154.705 patience=1/10
+temporal epoch=055/60 loss=13.75315 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=9.075 target_step=9.170 pred_v=6.192 target_v=9.170 val_mle=123.593m val_p90=123.593m val_speed_mae=3.219 heading=19.8/-2.0deg val_progress_mae=123.058m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.623 best=154.623 patience=0/10
+temporal epoch=056/60 loss=13.74602 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.986 target_step=9.170 pred_v=6.134 target_v=9.170 val_mle=123.607m val_p90=123.607m val_speed_mae=3.216 heading=19.8/-2.0deg val_progress_mae=123.072m val_heading_mae=4.5deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.633 best=154.623 patience=1/10
+temporal epoch=057/60 loss=13.82236 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.791 target_step=9.170 pred_v=5.963 target_v=9.170 val_mle=123.625m val_p90=123.625m val_speed_mae=3.204 heading=19.8/-2.0deg val_progress_mae=123.090m val_heading_mae=4.5deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.630 best=154.623 patience=2/10
+temporal epoch=058/60 loss=13.80698 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.814 target_step=9.170 pred_v=6.002 target_v=9.170 val_mle=123.620m val_p90=123.620m val_speed_mae=3.181 heading=19.8/-2.0deg val_progress_mae=123.086m val_heading_mae=4.5deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.580 best=154.623 patience=3/10
+temporal epoch=059/60 loss=13.76776 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.770 target_step=9.170 pred_v=5.949 target_v=9.170 val_mle=123.612m val_p90=123.612m val_speed_mae=3.141 heading=19.8/-2.0deg val_progress_mae=123.077m val_heading_mae=4.5deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.490 best=154.490 patience=0/10
+temporal epoch=060/60 loss=13.63740 center_teacher=1.000 acq_teacher=1.000 capture=96.67% bank_capture=96.67% acq_acc=100.00% acq_conf=0.317 radius=0.0m pred_step=8.827 target_step=9.170 pred_v=6.004 target_v=9.170 val_mle=123.565m val_p90=123.565m val_speed_mae=3.090 heading=19.8/-2.0deg val_progress_mae=123.030m val_heading_mae=4.4deg val_capture=0.00% val_bank=0.00% val_acq_acc=100.00% score=154.333 best=154.333 patience=0/10
+test_01 backbone cache: 92/92
+
+=== held-out canonical-v39 inference: test_01 ===
+test_01 final MLE=58.875m P90=109.827m LSR@15=18.48% selected_capture=100.00% bank_capture=100.00% acq_acc=100.00% speed_mae=4.182m/frame progress_mae=59.869m heading_mae=41.7deg jump_rate=1.10% max_step=14.47m final_leg=4 gt_leg=4
+test_02 backbone cache: 108/108
+
+=== held-out canonical-v39 inference: test_02 ===
+test_02 final MLE=69.068m P90=128.547m LSR@15=15.74% selected_capture=87.96% bank_capture=87.96% acq_acc=100.00% speed_mae=4.467m/frame progress_mae=68.526m heading_mae=47.2deg jump_rate=1.87% max_step=16.44m final_leg=4 gt_leg=4
+
+[DONE] summary: /yh/study/uav-sat/v39_otherdata/generated/cityd/v39_output_corrected/bearing_v39_summary.json
+[DONE] audit  : /yh/study/uav-sat/v39_otherdata/generated/cityd/v39_output_corrected/v39_bearing_training_audit.json
+[DONE] output : /yh/study/uav-sat/v39_otherdata/generated/cityd/v39_output_corrected

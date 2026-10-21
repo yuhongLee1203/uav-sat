@@ -1,0 +1,17 @@
+{
+  "method": "DenseUAV",
+  "protocol": "native class-paired training; fixed global gallery; no local prior",
+  "distance_definition": "Top-1 predicted gallery centre minus positive gallery centre",
+  "combined": {
+    "frames": 3534,
+    "MLE_m": 417.28187202820874,
+    "Median_m": 347.9522546310735,
+    "P90_m": 872.1452710964421,
+    "P95_m": 1073.1562627798144,
+    "LSR@3_pct": 0.2546689303904924,
+    "LSR@5_pct": 0.622524052065648,
+    "LSR@10_pct": 1.0186757215619695,
+    "LSR@15_pct": 1.8675721561969438,
+    "FPS": 99.67677237304089
+  }
+}

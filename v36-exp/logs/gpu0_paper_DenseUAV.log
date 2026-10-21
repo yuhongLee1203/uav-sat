@@ -1,0 +1,15 @@
+DenseUAV epoch 01/12 loss=0.65366
+DenseUAV epoch 02/12 loss=0.18505
+DenseUAV epoch 03/12 loss=0.11475
+DenseUAV epoch 04/12 loss=0.10077
+DenseUAV epoch 05/12 loss=0.07733
+DenseUAV epoch 06/12 loss=0.08673
+DenseUAV epoch 07/12 loss=0.09801
+DenseUAV epoch 08/12 loss=0.06630
+DenseUAV epoch 09/12 loss=0.05836
+DenseUAV epoch 10/12 loss=0.07481
+DenseUAV epoch 11/12 loss=0.04934
+DenseUAV epoch 12/12 loss=0.05485
+DenseUAV route_B {'frames': 2276, 'MLE_m': 12.276926026141078, 'Median_m': 12.176056861877441, 'P90_m': 19.150339126586914, 'P95_m': 20.779035568237305, 'LSR@5_pct': 8.172231985940245, 'LSR@10_pct': 35.50087873462214, 'LSR@15_pct': 68.27768014059754, 'latency_ms': 8.868325708180215, 'FPS': 112.76085620959905}
+DenseUAV route_C {'frames': 1258, 'MLE_m': 12.634163009414422, 'Median_m': 12.523219585418701, 'P90_m': 19.747792625427245, 'P95_m': 21.585342407226552, 'LSR@5_pct': 8.505564387917328, 'LSR@10_pct': 32.670906200317965, 'LSR@15_pct': 67.72655007949126, 'latency_ms': 9.242814004645723, 'FPS': 108.19215874054906}
+wrote /yh/study/uav-sat/v36-exp/outputs/papers/DenseUAV/summary.json

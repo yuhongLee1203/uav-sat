@@ -1,0 +1,24 @@
+/usr/local/lib/python3.8/dist-packages/timm/models/layers/__init__.py:48: FutureWarning: Importing from timm.models.layers is deprecated, please import via timm.layers
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)
+Traceback (most recent call last):
+  File "train.py", line 15, in <module>
+    from datasets.make_dataloader import make_dataset
+  File "/usr/local/lib/python3.8/dist-packages/datasets/__init__.py", line 17, in <module>
+    from .arrow_dataset import Dataset
+  File "/usr/local/lib/python3.8/dist-packages/datasets/arrow_dataset.py", line 76, in <module>
+    from .arrow_reader import ArrowReader
+  File "/usr/local/lib/python3.8/dist-packages/datasets/arrow_reader.py", line 30, in <module>
+    from .download.download_config import DownloadConfig  # noqa: F401
+  File "/usr/local/lib/python3.8/dist-packages/datasets/download/__init__.py", line 9, in <module>
+    from .download_manager import DownloadManager, DownloadMode
+  File "/usr/local/lib/python3.8/dist-packages/datasets/download/download_manager.py", line 32, in <module>
+    from ..utils.file_utils import (
+  File "/usr/local/lib/python3.8/dist-packages/datasets/utils/file_utils.py", line 30, in <module>
+    import aiohttp.client_exceptions
+ModuleNotFoundError: No module named 'aiohttp'
+Traceback (most recent call last):
+  File "train_university.py", line 17, in <module>
+    from game4loc.evaluate.university import evaluate
+  File "/yh/study/uav-sat/v36-exp/others_paper/GTA-UAV/Game4Loc/game4loc/evaluate/university.py", line 5, in <module>
+    from ..trainer import predict
+ImportError: cannot import name 'predict' from 'game4loc.trainer' (unknown location)
